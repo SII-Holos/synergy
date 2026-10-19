@@ -370,7 +370,7 @@ export namespace File {
           ignoreWhitespace: true,
         })
         const diff = formatPatch(patch)
-        return { type: "text", content, patch, diff }
+        return { type: "text", content, patch: { ...patch, oldFileName: file, newFileName: file }, diff }
       }
     }
     return { type: "text", content }

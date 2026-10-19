@@ -874,11 +874,9 @@ describe("SessionWorking", () => {
 
             const messages = await Session.messages({ sessionID: session.id })
             const completedAssistant = messages.find((m) => m.info.id === completedAssistantID)?.info as
-              | MessageV2.Assistant
-              | undefined
+              MessageV2.Assistant | undefined
             const interruptedAssistant = messages.find((m) => m.info.id === interruptedAssistantID)?.info as
-              | MessageV2.Assistant
-              | undefined
+              MessageV2.Assistant | undefined
             assertExists(completedAssistant)
             assertExists(interruptedAssistant)
             expect(completedAssistant.finish).toBe("stop")
@@ -1012,8 +1010,7 @@ describe("SessionWorking", () => {
 
             const messages = await Session.messages({ sessionID: child.id })
             const stored = messages.find((message) => message.info.id === assistant.id)?.info as
-              | MessageV2.Assistant
-              | undefined
+              MessageV2.Assistant | undefined
             assertExists(stored)
             // Settlement is owned by the delegation's own status change, so the
             // transcript is left exactly as the crash left it.

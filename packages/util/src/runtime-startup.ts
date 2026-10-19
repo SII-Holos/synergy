@@ -12,6 +12,7 @@ export const RUNTIME_STARTUP_MAX_LINE_LENGTH = 1024
 const count = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)
 const timeout = z.number().int().positive().max(2_147_483_647)
 export const RuntimeStartupStage = z.enum([
+  "installation",
   "initializing",
   "storage",
   "migrations",

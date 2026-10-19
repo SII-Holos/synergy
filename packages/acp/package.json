@@ -9,14 +9,14 @@
     "./component": "./src/component.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/acp",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "0.5.1",
+    "@agentclientprotocol/sdk": "1.9.0",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
@@ -30,7 +30,6 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   },
   "synergy": {

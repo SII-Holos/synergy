@@ -4,8 +4,8 @@ import { createRequire } from "node:module"
 
 const owner = path.resolve(import.meta.dir, "..")
 const require = createRequire(path.join(owner, "package.json"))
-const PATCH = "parcel-2.5.6-eintr-1"
-export const WATCHER_BUILD_IMAGE = "node:22.14.0-bullseye"
+const PATCH = "parcel-2.6.0-eintr-1"
+export const WATCHER_BUILD_IMAGE = "node:22.23.2-bullseye"
 const sources = [
   "binding",
   "Watcher",
@@ -36,8 +36,8 @@ export async function buildWatcher(options: { arch?: string; libc?: string; loca
   if (!["x64", "arm64"].includes(arch) || !["glibc", "musl"].includes(libc))
     throw new Error("Unsupported watcher target")
   const source = path.dirname(require.resolve("@parcel/watcher/package.json"))
-  if ((await Bun.file(path.join(source, "package.json")).json()).version !== "2.5.6")
-    throw new Error("Watcher source must be pinned to 2.5.6")
+  if ((await Bun.file(path.join(source, "package.json")).json()).version !== "2.6.0")
+    throw new Error("Watcher source must be pinned to 2.6.0")
   const upstream = await Bun.file(path.join(source, "src/linux/InotifyBackend.cc")).bytes()
   if (
     new Bun.CryptoHasher("sha256").update(upstream).digest("hex") !==
@@ -108,7 +108,7 @@ export async function buildWatcher(options: { arch?: string; libc?: string; loca
       await run(compile, stage)
       await run([process.execPath, "-e", check], stage)
     } else {
-      const image = libc === "musl" ? "node:22.14.0-alpine3.21" : WATCHER_BUILD_IMAGE
+      const image = libc === "musl" ? "node:22.23.3-alpine3.23" : WATCHER_BUILD_IMAGE
       const platform = `linux/${arch === "x64" ? "amd64" : "arm64"}`
       const script =
         (libc === "musl" ? "apk add --no-cache g++\n" : "") + compile.join(" ") + "\nnode -e " + JSON.stringify(check)
@@ -143,12 +143,12 @@ export async function buildWatcher(options: { arch?: string; libc?: string; loca
         patch: PATCH,
         identity,
         patch_sha256: hash,
-        source: "@parcel/watcher@2.5.6",
+        source: "@parcel/watcher@2.6.0",
         arch,
         libc,
         sha256,
         compiler: compile,
-        node_headers: "22.14.0",
+        node_headers: "22.23.2",
       }),
     )
     await fs.mkdir(target, { recursive: true })

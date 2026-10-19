@@ -10,6 +10,11 @@ import { noteReferenceExcerpt, resolveNoteReference } from "./note-reference"
 import { createResourcePreviewCache } from "./resource-preview-cache"
 import { fileWriteErrorMessage } from "./file/errors"
 import { usePlatform } from "./platform"
+import {
+  BROWSER_PROTOCOL_VERSION,
+  BrowserNativePresentationCapabilityResultSchema,
+  type BrowserNativePresentationCapabilityResult,
+} from "@ericsanchezok/synergy-browser-core"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { usePluginHost } from "@/plugin/host"
@@ -59,6 +64,7 @@ import { isOptimisticMessagePending } from "./session-optimistic-message"
 import { useBrowserCatalog } from "@/components/workspace/browser/browser-catalog"
 import {
   browserWorkbenchRoute,
+  browserURLTitle,
   sameBrowserCatalog,
   type BrowserWorkbenchRoute,
 } from "@/components/workspace/browser/browser-workbench-model"
@@ -136,6 +142,50 @@ export function ResourceOpenProvider(props: ParentProps) {
   const noteDocuments = useNoteDocuments()
   const previewCache = createResourcePreviewCache<ResourcePreview>()
   const notePreviewTargets = createResourcePreviewCache<Awaited<ReturnType<typeof resolveNoteReference>>>()
+  let nativeCapability:
+    | {
+        bridge: NonNullable<typeof platform.browserNative>
+        serverUrl: string
+        selection: ReturnType<typeof globalSDK.capabilities.current>
+        value?: BrowserNativePresentationCapabilityResult
+        pending: Promise<BrowserNativePresentationCapabilityResult>
+      }
+    | undefined
+  const readNativeCapability = (bridge: NonNullable<typeof platform.browserNative>) => {
+    const serverUrl = sdk.url
+    const selection = globalSDK.capabilities.current()
+    if (
+      nativeCapability?.bridge === bridge &&
+      nativeCapability.serverUrl === serverUrl &&
+      nativeCapability.selection === selection
+    )
+      return nativeCapability.value ?? nativeCapability.pending
+    const entry = {
+      bridge,
+      serverUrl,
+      selection,
+      value: undefined as BrowserNativePresentationCapabilityResult | undefined,
+      pending: bridge.presentationCapability({ protocolVersion: BROWSER_PROTOCOL_VERSION, serverUrl }),
+    }
+    nativeCapability = entry
+    void entry.pending.then(
+      (value) => {
+        const result = BrowserNativePresentationCapabilityResultSchema.safeParse(value)
+        if (result.success && !result.data.error && result.data.managedLocal && result.data.status === "ready")
+          entry.value = result.data
+        else if (nativeCapability === entry) nativeCapability = undefined
+      },
+      () => {
+        if (nativeCapability === entry) nativeCapability = undefined
+      },
+    )
+    return entry.pending
+  }
+  createEffect(() => {
+    const bridge = platform.browserNative
+    if (globalSDK.capabilities.has("browser") && bridge)
+      void Promise.resolve(readNativeCapability(bridge)).catch(() => undefined)
+  })
   const [previewEpoch, setPreviewEpoch] = createSignal(0)
   const ownerKey = () => JSON.stringify([sdk.url, sdk.scopeKey, params.id])
   const contextKey = () => JSON.stringify([ownerKey(), previewEpoch(), workbench.surface("side").selectionRevision()])
@@ -851,13 +901,8 @@ export function ResourceOpenProvider(props: ParentProps) {
       captured === ownerKey() &&
       globalSDK.capabilities.current() === selection &&
       side.selectionRevision() === revision
-    const { BROWSER_PROTOCOL_VERSION, BrowserNativePresentationCapabilityResultSchema } = await import(
-      "@ericsanchezok/synergy-browser-core"
-    )
-    const capability = await platform.browserNative.presentationCapability({
-      protocolVersion: BROWSER_PROTOCOL_VERSION,
-      serverUrl: sdk.url,
-    })
+    const prepared = readNativeCapability(platform.browserNative)
+    const capability = prepared instanceof Promise ? await prepared : prepared
     if (!current()) return { status: "cancelled" }
     const validated = BrowserNativePresentationCapabilityResultSchema.safeParse(capability)
     if (
@@ -940,7 +985,7 @@ export function ResourceOpenProvider(props: ParentProps) {
     const tab = await workbench.openPanel("browser", {
       canCommit: current,
       forceNew: true,
-      init: { state: { url: input.url } },
+      init: { title: browserURLTitle(input.url), state: { url: input.url } },
       onOpening,
     })
     if (!current()) return { status: "cancelled" }

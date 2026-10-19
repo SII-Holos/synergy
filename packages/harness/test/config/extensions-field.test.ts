@@ -182,3 +182,10 @@ test("field and domain projections remain stable per generation and independent 
     })
   }
 })
+
+test("dynamic schema conversion keeps one owner identity when the resolver creates metadata wrappers", () => {
+  const field = ConfigExtensions.dynamicSchema(() => z.enum(["first", "second"]).describe("Current runtime choices"))
+  expect(z.toJSONSchema(z.object({ field }))).toMatchObject({
+    properties: { field: { type: "string", enum: ["first", "second"], description: "Current runtime choices" } },
+  })
+})

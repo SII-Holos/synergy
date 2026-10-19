@@ -2,7 +2,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import { RolloutTool } from "./rollout/tool"
 import Ajv2020 from "ajv/dist/2020"
 import { Global } from "../global"
-import { type Tool as AITool, tool, jsonSchema, type ToolCallOptions, type JSONSchema7 } from "ai"
+import { type Tool as AITool, tool, jsonSchema, type ToolExecutionOptions, type JSONSchema7 } from "ai"
 import z from "zod"
 import { Agent } from "../agent/agent"
 import { Identifier } from "../id/id"
@@ -1107,7 +1107,7 @@ export namespace ToolResolver {
   }
 
   function contextFactory(input: Input, toolID: string) {
-    return (args: any, options: ToolCallOptions): Tool.Context => {
+    return (args: any, options: ToolExecutionOptions<Record<string, unknown>>): Tool.Context => {
       const resolveCurrentProfile = async (): Promise<ResolvedProfile> => {
         const profileId = await Session.resolveEffectiveControlProfile({
           sessionID: input.session?.id,
@@ -1487,7 +1487,7 @@ export namespace ToolResolver {
       id: diagnostic.toolName as any,
       description: diagnostic.message,
       inputSchema: jsonSchema(schema),
-      async execute(args: Record<string, unknown>, options: ToolCallOptions) {
+      async execute(args: Record<string, unknown>, options: ToolExecutionOptions<Record<string, unknown>>) {
         log.info("tool.execute.callback.start", {
           tool: diagnostic.toolName,
           sessionID: input.sessionID,
@@ -1960,7 +1960,7 @@ export namespace ToolResolver {
               await resources?.release()
             }
           },
-          toModelOutput(result) {
+          toModelOutput({ output: result }) {
             return {
               type: "text",
               value: result.output,
@@ -2049,7 +2049,7 @@ export namespace ToolResolver {
                 toolTrace?.dispose()
               }
             },
-            toModelOutput(result) {
+            toModelOutput({ output: result }) {
               return {
                 type: "text",
                 value: result.output,
@@ -2091,7 +2091,10 @@ export namespace ToolResolver {
         result.push({
           id: key,
           exposure,
-          description: entry.presentation?.description ?? item.description ?? "",
+          description:
+            entry.presentation?.description ??
+            (typeof item.description === "function" ? item.description({ context: {} }) : item.description) ??
+            "",
           inputSchema: schema,
           executor: "mcp",
           createRuntimeTool(runtimeInput) {
@@ -2333,7 +2336,7 @@ export namespace ToolResolver {
                   disposeToolTimeout(ctx)
                 }
               },
-              toModelOutput(result) {
+              toModelOutput({ output: result }) {
                 return {
                   type: "text",
                   value: result.output,

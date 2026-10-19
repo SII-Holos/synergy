@@ -240,7 +240,7 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
     spinner.start(`Removing ${dir.label}...`)
     const err = await fs.rm(dir.path, { recursive: true, force: true }).catch((e) => e)
     if (err) {
-      spinner.stop(`Failed to remove ${dir.label}`, 1)
+      spinner.error(`Failed to remove ${dir.label}`)
       errors.push(`${dir.label}: ${err.message}`)
       continue
     }
@@ -256,7 +256,7 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
       currentExecutable,
     }).catch((error) => error)
     if (result instanceof Error) {
-      spinner.stop("Failed to remove standalone runtime", 1)
+      spinner.error("Failed to remove standalone runtime")
       errors.push(`Standalone runtime: ${result.message}`)
     } else if (result.deferred.length > 0) {
       spinner.stop("Standalone runtime removal will finish after Synergy exits")
@@ -269,7 +269,7 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
     spinner.start(`Cleaning shell config ${shortenPath(shellConfig)}...`)
     const err = await StandaloneInstallation.cleanShellConfig(shellConfig, targets.standaloneHome!).catch((e) => e)
     if (err) {
-      spinner.stop(`Failed to clean shell config ${shortenPath(shellConfig)}`, 1)
+      spinner.error(`Failed to clean shell config ${shortenPath(shellConfig)}`)
       errors.push(`Shell config ${shortenPath(shellConfig)}: ${err.message}`)
     } else {
       spinner.stop(`Cleaned shell config ${shortenPath(shellConfig)}`)
@@ -280,7 +280,7 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
     spinner.start("Removing Desktop CLI link...")
     const err = await fs.rm(targets.desktopCliLink, { force: true }).catch((e) => e)
     if (err) {
-      spinner.stop("Failed to remove Desktop CLI link", 1)
+      spinner.error("Failed to remove Desktop CLI link")
       errors.push(`Desktop CLI link: ${err.message}`)
     } else {
       spinner.stop("Removed Desktop CLI link")
@@ -291,7 +291,7 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
     spinner.start("Removing Desktop CLI PATH entry...")
     const result = await DesktopInstallation.removeWindowsUserPathEntry(targets.desktopPathEntry).catch((e) => e)
     if (result instanceof Error) {
-      spinner.stop("Failed to remove Desktop CLI PATH entry", 1)
+      spinner.error("Failed to remove Desktop CLI PATH entry")
       errors.push(`Desktop CLI PATH entry: ${result.message}`)
     } else if (result.removed) {
       spinner.stop("Removed Desktop CLI PATH entry")
@@ -313,7 +313,7 @@ async function executeUninstall(method: Installation.InstalledMethod, targets: R
       spinner.start(`Running ${cmd.join(" ")}...`)
       const result = await $`${cmd}`.quiet().nothrow()
       if (result.exitCode !== 0) {
-        spinner.stop(`Package manager uninstall failed`, 1)
+        spinner.error(`Package manager uninstall failed`)
         prompts.log.warn(`You may need to run manually: ${cmd.join(" ")}`)
         errors.push(`Package manager: exit code ${result.exitCode}`)
       } else {

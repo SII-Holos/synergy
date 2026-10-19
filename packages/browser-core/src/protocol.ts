@@ -2,7 +2,10 @@ import z from "zod"
 
 import { BrowserProfileIdSchema } from "./profile.js"
 
-export const BROWSER_PROTOCOL_VERSION = 7 as const
+export const BROWSER_PROTOCOL_VERSION = 8 as const
+export const BROWSER_NATIVE_INIT_TIMEOUT_MS = 30_000
+export const BROWSER_PAGE_CREATE_TIMEOUT_MS = 35_000
+export const BROWSER_PAGE_PREPARE_TIMEOUT_MS = 40_000
 export const BROWSER_HOST_INSTALL_TIMEOUT_MS = 120_000
 export const BROWSER_HOST_START_TIMEOUT_MS = 30_000
 export const BROWSER_HOST_WAIT_TIMEOUT_MS = 5_000
@@ -114,6 +117,19 @@ export function normalizeBrowserURL(input: string, base?: string): string {
   return `https://www.google.com/search?q=${encodeURIComponent(raw)}`
 }
 
+export const BrowserNavigationSchema = z
+  .object({
+    id: nonEmpty,
+    generation: z.number().int().positive(),
+    revision: z.number().int().nonnegative(),
+    requestedURL: browserURL,
+    phase: z.enum(["loading", "committed", "completed", "failed", "stopped"]),
+    slow: z.boolean(),
+    error: z.object({ code: nonEmpty, message: browserMessage }).strict().optional(),
+  })
+  .strict()
+export type BrowserNavigation = z.infer<typeof BrowserNavigationSchema>
+
 export const BrowserPageSchema = z
   .object({
     id: pageId,
@@ -121,6 +137,7 @@ export const BrowserPageSchema = z
     title: browserTitle,
     isLoading: z.boolean(),
     lastActiveAt: z.number().int().nullable(),
+    navigation: BrowserNavigationSchema.optional(),
   })
   .strict()
 export type BrowserPage = z.infer<typeof BrowserPageSchema>
@@ -285,28 +302,7 @@ export const BrowserNativeViewEventSchema = z.discriminatedUnion("type", [
       action: z.enum(["newTab", "closeTab", "address", "find", "reload", "zoomIn", "zoomOut", "zoomReset", "print"]),
     })
     .strict(),
-  z.object({ type: z.literal("native.loading"), protocolVersion, pageId, url: browserURL.optional() }).strict(),
-  z
-    .object({
-      type: z.literal("native.loaded"),
-      protocolVersion,
-      pageId,
-      url: browserURL.optional(),
-      title: browserTitle.optional(),
-    })
-    .strict(),
-  z.object({ type: z.literal("native.navigated"), protocolVersion, pageId, url: browserURL }).strict(),
-  z.object({ type: z.literal("native.title"), protocolVersion, pageId, title: browserTitle }).strict(),
-  z
-    .object({
-      type: z.literal("native.error"),
-      protocolVersion,
-      pageId,
-      code: z.number().int().optional(),
-      message: browserMessage,
-      url: browserURL.optional(),
-    })
-    .strict(),
+  z.object({ type: z.literal("native.page"), protocolVersion, pageId, page: BrowserPageSchema }).strict(),
 ])
 export type BrowserNativeViewEvent = z.infer<typeof BrowserNativeViewEventSchema>
 
@@ -927,6 +923,28 @@ export const BrowserBackendCommandSchema = z.discriminatedUnion("type", [
 export type BrowserBackendCommand = z.input<typeof BrowserBackendCommandSchema>
 export type BrowserParsedBackendCommand = z.infer<typeof BrowserBackendCommandSchema>
 
+export function browserBackendCommandTimeoutMs(command: BrowserBackendCommand): number {
+  const initializationAndDelivery = BROWSER_NATIVE_INIT_TIMEOUT_MS + 5_000
+  if (command.type === "evaluate") return initializationAndDelivery + (command.timeoutMs ?? 30_000)
+  if (command.type === "wait") return initializationAndDelivery + (command.timeoutMs ?? 10_000)
+  if (command.type === "action")
+    return (
+      initializationAndDelivery +
+      (command.action.timeoutMs ?? 5_000) +
+      10_000 +
+      (command.action.settleTimeoutMs ?? BROWSER_ACTION_SETTLE_TIMEOUT_MS) +
+      BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS
+    )
+  if (command.type === "navigate" || command.type === "history" || command.type === "reload")
+    return (
+      initializationAndDelivery +
+      10_000 +
+      (command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS) +
+      BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS
+    )
+  return initializationAndDelivery + 30_000
+}
+
 /**
  * Commands that only observe page state and never dispatch a side effect.
  * A failed recovery state must still serve these (plus `resume` and `close`)
@@ -1043,13 +1061,54 @@ export const BrowserHostDownloadEntrySchema = BrowserDownloadEntrySchema.extend(
 }).strict()
 export type BrowserHostDownloadEntry = z.infer<typeof BrowserHostDownloadEntrySchema>
 
+export const BrowserNavigationStageSchema = z.enum([
+  "received",
+  "native.proxy",
+  "native.bootstrap",
+  "native.guards",
+  "native.viewport",
+  "ready",
+  "dispatched",
+  "mounted",
+  "committed",
+  "dom-ready",
+  "completed",
+  "stopped",
+  "failed",
+])
+export type BrowserNavigationStage = z.infer<typeof BrowserNavigationStageSchema>
+
 export const BrowserHostPageEventSchema = z.discriminatedUnion("type", [
+  z
+    .object({
+      type: z.literal("page.stage"),
+      pageId,
+      requestId: z.string().min(1).max(128),
+      navigationId: z.string().min(1).max(128),
+      generation: z.number().int().positive(),
+      stage: BrowserNavigationStageSchema,
+      elapsedMs: z.number().finite().nonnegative(),
+      errorCode: z
+        .string()
+        .regex(/^[a-zA-Z0-9_.-]{1,80}$/)
+        .optional(),
+      failurePhase: BrowserNavigationStageSchema.optional(),
+    })
+    .strict(),
   z.object({ type: z.literal("page.closed"), pageId }).strict(),
   z.object({ type: z.literal("host.status"), pageId, status: BrowserHostStatusSchema }).strict(),
   z.object({ type: z.literal("page.updated"), page: BrowserPageSchema }).strict(),
   z.object({ type: z.literal("page.loading"), pageId, url: browserURL }).strict(),
   z.object({ type: z.literal("page.loaded"), page: BrowserPageSchema }).strict(),
-  z.object({ type: z.literal("page.error"), pageId, url: browserURL.optional(), message: browserMessage }).strict(),
+  z
+    .object({
+      type: z.literal("page.error"),
+      pageId,
+      url: browserURL.optional(),
+      message: browserMessage,
+      navigation: BrowserNavigationSchema.optional(),
+    })
+    .strict(),
   z
     .object({
       type: z.literal("dialog.opened"),
@@ -1310,6 +1369,7 @@ export const BrowserEventSchema = z.discriminatedUnion("type", [
       pageId,
       url: browserURL.optional(),
       message: browserMessage,
+      navigation: BrowserNavigationSchema.optional(),
     })
     .strict(),
   z

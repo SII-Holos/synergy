@@ -10681,6 +10681,42 @@ msgid "browser.downloads.waiting"
 msgstr "⟦Waiting⟧"
 
 #. js-lingui-explicit-id
+msgid "browser.failure.address"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.certificate"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.denied"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.details"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.proxy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.request"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.failure.uncertain"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "browser.identities.access"
 msgstr "⟦Access⟧"
 
@@ -10959,6 +10995,18 @@ msgstr "⟦timeout⟧"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "⟦unsettled⟧"
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.opening"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.slow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.stop"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.page.back"

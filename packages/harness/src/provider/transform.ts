@@ -79,9 +79,9 @@ export namespace ProviderTransform {
       const scrub = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_")
       msgs = msgs.map((msg) => {
         if ((msg.role === "assistant" || msg.role === "tool") && Array.isArray(msg.content)) {
-          msg.content = msg.content.map((part) => {
+          msg.content.forEach((part) => {
             if ((part.type === "tool-call" || part.type === "tool-result") && "toolCallId" in part) {
-              return { ...part, toolCallId: scrub(part.toolCallId) }
+              part.toolCallId = scrub(part.toolCallId)
             }
             return part
           })
@@ -116,7 +116,7 @@ export namespace ProviderTransform {
         const nextMsg = msgs[i + 1]
 
         if ((msg.role === "assistant" || msg.role === "tool") && Array.isArray(msg.content)) {
-          msg.content = msg.content.map((part) => {
+          msg.content.forEach((part) => {
             if ((part.type === "tool-call" || part.type === "tool-result") && "toolCallId" in part) {
               // Mistral requires alphanumeric tool call IDs with exactly 9 characters
               const normalizedId = part.toolCallId
@@ -124,10 +124,7 @@ export namespace ProviderTransform {
                 .substring(0, 9) // Take first 9 characters
                 .padEnd(9, "0") // Pad with zeros if less than 9 characters
 
-              return {
-                ...part,
-                toolCallId: normalizedId,
-              }
+              part.toolCallId = normalizedId
             }
             return part
           })
@@ -251,7 +248,12 @@ export namespace ProviderTransform {
 
       if (shouldUseContentOptions) {
         const lastContent = msg.content[msg.content.length - 1]
-        if (lastContent && typeof lastContent === "object") {
+        if (
+          lastContent &&
+          typeof lastContent === "object" &&
+          lastContent.type !== "tool-approval-response" &&
+          lastContent.type !== "tool-approval-request"
+        ) {
           lastContent.providerOptions = {
             ...lastContent.providerOptions,
             ...providerOptions,
@@ -373,7 +375,8 @@ export namespace ProviderTransform {
     const mime = part.mediaType
     const modality = mimeToModality(mime)
     if (!modality) return undefined
-    const data = typeof part.data === "string" ? parseDataUrl(part.data) : undefined
+    const fileData = part.data?.type === "url" ? String(part.data.url) : part.data
+    const data = typeof fileData === "string" ? parseDataUrl(fileData) : undefined
     return {
       modality,
       mime,

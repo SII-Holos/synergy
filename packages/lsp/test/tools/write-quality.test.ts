@@ -193,14 +193,14 @@ function setDiagnostics(value: Awaited<ReturnType<typeof LSP.diagnostics>>) {
   LSP.diagnostics = mock(async () => value) as typeof LSP.diagnostics
 }
 
-function diagnosticMap(): Awaited<ReturnType<typeof LSP.diagnostics>> {
+function diagnosticMap(): Record<string, (LSPClient.Diagnostic & { message: string })[]> {
   return {
     [filePath]: [diagnostic(0, 1, "file error"), diagnostic(1, 2, "file warning")],
     [otherFilePath]: [diagnostic(0, 1, "project error"), diagnostic(1, 2, "project warning")],
   }
 }
 
-function diagnostic(line: number, severity: 1 | 2, message: string): LSPClient.Diagnostic {
+function diagnostic(line: number, severity: 1 | 2, message: string): LSPClient.Diagnostic & { message: string } {
   return {
     severity,
     range: {

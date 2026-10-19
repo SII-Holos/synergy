@@ -302,6 +302,58 @@ test("dialog replies unblock a pending page command and retain response replay",
     })
   }))
 
+test("human stop reuses an active page binding without accepting a stale Workspace", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const original = owner(await Session.create({}))
+        const host = new WorkspaceHost()
+        host.attach()
+        BrowserBroker.prepare(original, directory.path, "native")
+        const pageId = (await (await BrowserRuntime.getOrCreateSession(original)).openPage({})).id
+        const entered = Promise.withResolvers<void>()
+        const finish = Promise.withResolvers<void>()
+        host.beforeReply = async (message) => {
+          if (message.type !== "page.command") return
+          if (message.command.type === "wait") {
+            entered.resolve()
+            await finish.promise
+          }
+          if (message.command.type === "stop") finish.resolve()
+        }
+        const pending = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "waiting",
+          command: { type: "wait", condition: { type: "title", value: "Never", match: "equals" }, timeoutMs: 60000 },
+        })
+        await entered.promise
+        const stop = BrowserCommandService.execute(original, {
+          pageId,
+          commandId: "stop",
+          command: { type: "stop" },
+        })
+        try {
+          expect(await Promise.race([stop.then(() => true), Bun.sleep(300).then(() => false)])).toBe(true)
+          await expect(
+            BrowserCommandService.execute(
+              { ...original, directory: `${directory.path}/stale` },
+              {
+                pageId,
+                commandId: "stale-stop",
+                command: { type: "stop" },
+              },
+            ),
+          ).rejects.toMatchObject({ code: "browser_workspace_changed" })
+        } finally {
+          finish.resolve()
+          await Promise.all([pending, stop])
+        }
+      },
+    })
+  }))
+
 test("Workspace selection drains an active Host command and acknowledges page closure before committing", () =>
   runtime.run(async () => {
     await using first = await tmpdir(),

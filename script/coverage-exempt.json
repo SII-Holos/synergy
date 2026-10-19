@@ -779,6 +779,14 @@
           "reason": "The lightweight frame, disabled navigation, first-frame presentation, visible preparation failures and Retry are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage."
         },
         {
+          "glob": "src/components/workspace/browser/browser-error-message.tsx",
+          "reason": "Localized recovery copy and expandable redacted diagnostics are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Bun cannot instrument the child renderer's TSX source. Error classification remains measured in browser-error.test.ts."
+        },
+        {
+          "glob": "src/components/workspace/browser/browser-toolbar.tsx",
+          "reason": "First-frame progress and stable content bounds across loading and completion are exercised by browser-opening.dom.test.tsx and browser-panel-presentation.dom.test.tsx in Chromium; Vite execution does not contribute Bun coverage."
+        },
+        {
           "glob": "src/components/workspace/browser/browser-new-tab.tsx",
           "reason": "New-tab search composition/submission, footer styles and keyboard import/focus return are exercised by browser-interaction.dom.test.tsx through Vite and Chromium; Bun cannot instrument the child renderer's TSX source"
         },
@@ -2094,6 +2102,10 @@
         {
           "glob": "src/assets.d.ts",
           "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/styles/index.d.ts",
+          "reason": "CSS entry type declarations contain no runtime logic; package exports and consumer typechecks validate them"
         },
         {
           "glob": "src/components/accordion.tsx",

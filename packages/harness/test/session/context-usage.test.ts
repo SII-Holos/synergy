@@ -71,36 +71,38 @@ afterEach(() =>
 describe("ContextUsage provenance and measurement", () => {
   test("classifies mutually exclusive prompt contributions with bounded UTF-8 estimation", () =>
     runtime.run(async () => {
-      const history = MessageV2.projectModelMessages([
-        userMessage([
-          part({ type: "text", text: "pasted code", origin: "user" }),
-          part({ type: "text", text: "runtime guidance", origin: "system" }),
-          part({
-            type: "attachment",
-            mime: "text/plain",
-            filename: "notes.txt",
-            url: "asset://notes",
-            model: { mode: "content", text: "file contents" },
-          }),
-        ]),
-        assistantMessage([
-          part({ type: "text", text: "assistant reply" }),
-          part({ type: "reasoning", text: "reasoning", time: { start: 0 } }),
-          part({
-            type: "tool",
-            tool: "read",
-            callID: "call_1",
-            state: {
-              status: "completed",
-              input: { filePath: "source.ts" },
-              output: "file read result",
-              title: "Read",
-              metadata: {},
-              time: { start: 0, end: 1 },
-            },
-          }),
-        ]),
-      ]).provenance
+      const history = (
+        await MessageV2.projectModelMessages([
+          userMessage([
+            part({ type: "text", text: "pasted code", origin: "user" }),
+            part({ type: "text", text: "runtime guidance", origin: "system" }),
+            part({
+              type: "attachment",
+              mime: "text/plain",
+              filename: "notes.txt",
+              url: "asset://notes",
+              model: { mode: "content", text: "file contents" },
+            }),
+          ]),
+          assistantMessage([
+            part({ type: "text", text: "assistant reply" }),
+            part({ type: "reasoning", text: "reasoning", time: { start: 0 } }),
+            part({
+              type: "tool",
+              tool: "read",
+              callID: "call_1",
+              state: {
+                status: "completed",
+                input: { filePath: "source.ts" },
+                output: "file read result",
+                title: "Read",
+                metadata: {},
+                time: { start: 0, end: 1 },
+              },
+            }),
+          ]),
+        ])
+      ).provenance
       const provenance = ContextUsage.buildProvenance({
         history,
         toolDefinitions: [
@@ -208,29 +210,31 @@ describe("ContextUsage provenance and measurement", () => {
     runtime.run(async () => {
       ;(Token.countModel as any) = mock(async (_modelID: string, text: string) => text.length)
 
-      const history = MessageV2.projectModelMessages([
-        userMessage([part({ type: "text", text: "excluded" })], false),
-        userMessage([
-          part({
-            type: "attachment",
-            mime: "text/plain",
-            url: "asset://none",
-            model: { mode: "none" },
-          }),
-          part({
-            type: "attachment",
-            mime: "text/plain",
-            url: "asset://summary",
-            model: { mode: "summary", summary: "summary text" },
-          }),
-          part({
-            type: "attachment",
-            mime: "application/pdf",
-            url: "https://provider.test/file",
-            model: { mode: "provider-file", summary: "opaque file" },
-          }),
-        ]),
-      ]).provenance
+      const history = (
+        await MessageV2.projectModelMessages([
+          userMessage([part({ type: "text", text: "excluded" })], false),
+          userMessage([
+            part({
+              type: "attachment",
+              mime: "text/plain",
+              url: "asset://none",
+              model: { mode: "none" },
+            }),
+            part({
+              type: "attachment",
+              mime: "text/plain",
+              url: "asset://summary",
+              model: { mode: "summary", summary: "summary text" },
+            }),
+            part({
+              type: "attachment",
+              mime: "application/pdf",
+              url: "https://provider.test/file",
+              model: { mode: "provider-file", summary: "opaque file" },
+            }),
+          ]),
+        ])
+      ).provenance
       const provenance = ContextUsage.buildProvenance({ history, toolDefinitions: [] })
 
       const draft = await ContextUsage.measureDraft({
@@ -258,7 +262,7 @@ describe("ContextUsage provenance and measurement", () => {
         providerID: "test",
         instructions: [],
         provenance: ContextUsage.buildProvenance({
-          history: MessageV2.projectModelMessages([]).provenance,
+          history: (await MessageV2.projectModelMessages([])).provenance,
           toolDefinitions: [],
         }),
       })
@@ -285,7 +289,7 @@ describe("ContextUsage provenance and measurement", () => {
         providerID: "test",
         instructions: ["system instructions"],
         provenance: ContextUsage.buildProvenance({
-          history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "userMessages" })])])
+          history: (await MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "userMessages" })])]))
             .provenance,
           toolDefinitions: [],
         }),
@@ -482,7 +486,7 @@ describe("ContextUsage provenance and measurement", () => {
         providerID: "test",
         instructions: ["instructions"],
         provenance: ContextUsage.buildProvenance({
-          history: MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "userMessages" })])])
+          history: (await MessageV2.projectModelMessages([userMessage([part({ type: "text", text: "userMessages" })])]))
             .provenance,
           toolDefinitions: [],
         }),
@@ -602,7 +606,7 @@ afterRuntimeTests(() => runtime.close())
 
 test("source indices preserve message identity, skills and injected fragments through prompt transforms", () =>
   runtime.run(async () => {
-    const projected = MessageV2.projectModelMessages([
+    const projected = await MessageV2.projectModelMessages([
       userMessage([part({ type: "text", text: "user text", origin: "user" })]),
       assistantMessage([
         part({
@@ -652,7 +656,7 @@ test("source indices preserve message identity, skills and injected fragments th
   }))
 
 test("native attachments retain source identity without counting encoded bytes as text", () =>
-  runtime.run(() => {
+  runtime.run(async () => {
     const attachment = part({
       type: "attachment",
       mime: "image/png",
@@ -660,7 +664,7 @@ test("native attachments retain source identity without counting encoded bytes a
       url: "data:image/png;base64,aW1hZ2U=",
       model: { mode: "provider-file", summary: "fixture.png" },
     })
-    const projected = MessageV2.projectModelMessages([userMessage([attachment])])
+    const projected = await MessageV2.projectModelMessages([userMessage([attachment])])
     const sources = ContextUsage.sourceIndex({
       messages: projected.messages,
       system: [],

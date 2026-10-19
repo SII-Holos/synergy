@@ -9,6 +9,9 @@ import { DesktopServerStartup } from "../../src/server-startup.js"
 import { defaultDesktopSkinState, desktopThemeSnapshot } from "../../src/theme.js"
 import { DesktopStartupOverlay } from "../../src/startup-overlay.js"
 
+const background = process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1"
+if (background && process.platform === "darwin") app.setActivationPolicy("prohibited")
+
 void run().catch((error) => {
   console.error(error)
   app.exit(1)
@@ -487,13 +490,13 @@ async function run() {
     try {
       await overlay.load()
       overlay.attach()
-      window.showInactive()
+      if (!background) window.showInactive()
       const view = window.contentView.children.at(-1)
       assert.ok(view instanceof WebContentsView)
       const controls = view.webContents
       controls.setBackgroundThrottling(false)
       await stateRequested
-      controls.focus()
+      if (!background) controls.focus()
       const maximizeLabel = () =>
         controls.executeJavaScript(
           `document.querySelector('[data-window-action="maximize"]').getAttribute('aria-label')`,

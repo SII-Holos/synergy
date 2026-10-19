@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 import { extractFromFile, writePo } from "../../script/i18n-extract"
 
 function source(text: string, fileName = "/tmp/example.tsx") {

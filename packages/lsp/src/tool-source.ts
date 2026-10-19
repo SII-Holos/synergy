@@ -14,6 +14,15 @@ export function registerLspToolSource() {
       return { enabled: config.lspWriteDiagnostics !== false, ...config.lspDiagnostics }
     },
     touchFile: (file, waitForDiagnostics) => LSP.touchFile(file, waitForDiagnostics),
-    diagnostics: () => LSP.diagnostics(),
+    diagnostics: async () =>
+      Object.fromEntries(
+        Object.entries(await LSP.diagnostics()).map(([file, diagnostics]) => [
+          file,
+          diagnostics.map((diagnostic) => ({
+            ...diagnostic,
+            message: typeof diagnostic.message === "string" ? diagnostic.message : diagnostic.message.value,
+          })),
+        ]),
+      ),
   })
 }

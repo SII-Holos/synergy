@@ -16,16 +16,15 @@
   "scripts": {
     "test": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test:ci": "bun ../testing/script/test-ci.ts"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "@zip.js/zip.js": "2.8.26"
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@zip.js/zip.js": "2.24.0"
   }
 }

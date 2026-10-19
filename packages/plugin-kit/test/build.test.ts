@@ -112,7 +112,11 @@ export default definePlugin({
       expect(() => ajv.compile(eventContribution.payload)).not.toThrow()
       expect(() => ajv.compile(toolContribution.input)).not.toThrow()
       expect(operationContribution.input).toMatchObject({ type: "object" })
-      expect(JSON.stringify(operationContribution.input)).toContain('"anyOf"')
+      const validate = ajv.compile(operationContribution.input)
+      expect(validate({ mode: { kind: "text", value: "hello" }, tag: "label" })).toBe(true)
+      expect(validate({ mode: { kind: "count", value: 3 }, tag: 1 })).toBe(true)
+      expect(validate({ mode: { kind: "count", value: "wrong" }, tag: 1 })).toBe(false)
+      expect(validate({ mode: { kind: "unknown", value: 3 }, tag: 1 })).toBe(false)
       expect(JSON.stringify(operationContribution.input)).toContain('"default":"fallback"')
       expect(JSON.stringify(manifest.contributions)).not.toContain('"type":"union"')
     } finally {

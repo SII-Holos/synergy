@@ -1,5 +1,5 @@
 import { APICallError } from "ai"
-import type { LanguageModelV2Middleware } from "@ai-sdk/provider"
+import type { LanguageModelV4Middleware } from "@ai-sdk/provider"
 import { providerRetryable } from "./retry"
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -32,9 +32,9 @@ export function responsesError(value: unknown): APICallError | undefined {
 
 // The locked OpenAI adapter drops response.failed and error.headers during schema projection.
 // Inspect its existing raw event once, before projection, without another SSE parser or retry owner.
-export function responsesErrorMiddleware(): LanguageModelV2Middleware {
+export function responsesErrorMiddleware(): LanguageModelV4Middleware {
   return {
-    middlewareVersion: "v2",
+    specificationVersion: "v4",
     transformParams: async ({ params }) => ({ ...params, includeRawChunks: true }),
     async wrapStream({ doStream }) {
       const result = await doStream()

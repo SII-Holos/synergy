@@ -64,19 +64,19 @@ jobs:
             musl_target: aarch64-unknown-linux-musl
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable # stable
         with:
           targets: ${{ matrix.gnu_target }},${{ matrix.musl_target }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
 
       - name: Install musl toolchain
         run: sudo apt-get update && sudo apt-get install -y musl-tools
@@ -107,7 +107,7 @@ jobs:
           bun packages/local-runtime/script/build-pty.ts --arch "${{ matrix.arch }}"
           bun packages/local-runtime/script/build-pty.ts --arch "${{ matrix.arch }}" --libc musl
       - name: Upload Linux PTY libraries
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pty-assets-linux-${{ matrix.arch }}
           path: packages/local-runtime/.artifacts/pty
@@ -116,14 +116,14 @@ jobs:
       - name: Verify watcher coexistence with ONNX and signal recovery in Bun
         run: bun test --config /dev/null test/script/watcher-native.test.ts
       - name: Upload Linux watcher bindings
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: watcher-assets-linux-${{ matrix.arch }}
           path: packages/local-runtime/.artifacts/watcher
           include-hidden-files: true
           if-no-files-found: error
       - name: Upload Linux sandbox assets
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sandbox-assets-linux-${{ matrix.arch }}
           path: packages/local-runtime/sandbox-assets
@@ -141,19 +141,19 @@ jobs:
             target: aarch64-pc-windows-msvc
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable # stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "1.4.2"
+          bun-version: "1.4.3"
 
       - run: bun install --frozen-lockfile
 
@@ -167,7 +167,7 @@ jobs:
             packages/local-runtime/sandbox-assets/windows-${{ matrix.arch }}/synergy-sandbox-windows.exe
 
       - name: Upload Windows sandbox assets
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sandbox-assets-windows-${{ matrix.arch }}
           path: packages/local-runtime/sandbox-assets
@@ -176,7 +176,7 @@ jobs:
       - name: Build Windows PTY library
         run: bun packages/local-runtime/script/build-pty.ts --arch "${{ matrix.arch }}"
       - name: Upload Windows PTY library
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pty-assets-windows-${{ matrix.arch }}
           path: packages/local-runtime/.artifacts/pty
@@ -187,20 +187,20 @@ jobs:
     name: macOS SQLite and PTY libraries
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "1.4.2"
-      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+          bun-version: "1.4.3"
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable # stable
         with:
           targets: x86_64-apple-darwin,aarch64-apple-darwin
       - run: bun packages/harness/script/build-sqlite.ts
       - run: bun install --frozen-lockfile
       - name: Verify packaged SQLite without host libraries
         run: bun test --config /dev/null test/script/release/workspace-sqlite.test.ts
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sqlite-assets-darwin
           path: packages/harness/.artifacts/sqlite/
@@ -209,7 +209,7 @@ jobs:
         run: |
           bun packages/local-runtime/script/build-pty.ts --arch x64
           bun packages/local-runtime/script/build-pty.ts --arch arm64
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pty-assets-darwin
           path: packages/local-runtime/.artifacts/pty

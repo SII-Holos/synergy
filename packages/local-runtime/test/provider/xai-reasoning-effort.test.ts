@@ -13,7 +13,7 @@ test("grok chat accepts documented reasoning efforts past local schema validatio
       { preconnect() {} },
     ),
   })
-  const model = xai.chat("grok-4.7")
+  const model = xai.languageModel("grok-4.7")
 
   for (const reasoningEffort of efforts) {
     let error: unknown

@@ -56,7 +56,7 @@ test("the launcher verifies modules before import and workers retain the foregro
       trustHostCode: true,
     })
   }
-  async function run(pin?: { id: string; sha256: string }, command = [Bun.argv[0], launcher]) {
+  async function run(pin?: { id: string; sha256: string }, command = [Bun.argv[0], launcher], managed = false) {
     const messages: unknown[] = []
     const process = Bun.spawn([...command, ...(pin ? ["__storage-worker-runner"] : [])], {
       env: {
@@ -65,6 +65,7 @@ test("the launcher verifies modules before import and workers retain the foregro
         SYNERGY_RUNTIME_ROOT: root,
         SYNERGY_INSTALLATION_PIN: pin ? JSON.stringify(pin) : undefined,
         SYNERGY_INSTALLATION_ROOT: root,
+        SYNERGY_DESKTOP_STARTUP_PROGRESS: managed ? "1" : undefined,
       },
       ...(pin ? { ipc: (message: unknown) => messages.push(message) } : {}),
       serialization: "advanced",
@@ -85,6 +86,11 @@ test("the launcher verifies modules before import and workers retain the foregro
     const foreground = await run()
     expect(foreground.code).toBe(0)
     expect(JSON.parse(foreground.stdout)).toMatchObject({ tag: "second", version, pin: { id: second.id } })
+    const managed = await run(undefined, [Bun.argv[0], launcher, "serve"], true)
+    expect(managed.code, managed.stderr).toBe(0)
+    const [preparing, ready] = managed.stdout.trim().split("\n")
+    expect(preparing).toBe('SYNERGY_STARTUP_V1 {"phase":"runtime","state":"opening","stage":"installation"}')
+    expect(JSON.parse(ready)).toMatchObject({ tag: "second", pin: { id: second.id } })
     const literal = await run(undefined, [Bun.argv[0], launcher, "send", "__owned-process-runner"])
     expect(literal.code, literal.stderr).toBe(0)
     expect(JSON.parse(literal.stdout).tag).toBe("second")

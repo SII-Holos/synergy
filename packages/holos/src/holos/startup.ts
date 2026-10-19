@@ -89,7 +89,7 @@ export namespace HolosStartup {
         spinner.stop(`${GREEN}●${RESET} Identity verified ${DIM}— agent ${result.agentId.slice(0, 8)}…${RESET}`)
         await HolosAuth.configureHolos()
       } else {
-        spinner.stop(`${WARN}●${RESET} Verification failed`, 1)
+        spinner.error(`${WARN}●${RESET} Verification failed`)
         prompts.log.warn(
           `${BOLD}Credential mismatch${RESET} — this identity is not recognized by Holos.\n` +
             `  ${DIM}Reason: ${result.reason}${RESET}\n` +
@@ -112,7 +112,7 @@ export namespace HolosStartup {
       try {
         me = await HolosProfile.getMe({ agentSecret })
       } catch (err) {
-        spinner.stop(`${WARN}●${RESET} Verification failed`, 1)
+        spinner.error(`${WARN}●${RESET} Verification failed`)
         prompts.log.warn(
           `${BOLD}Unrecognized credentials${RESET} — Holos did not accept this identity.\n` +
             `  ${DIM}Reason: ${err instanceof Error ? err.message : String(err)}${RESET}\n` +

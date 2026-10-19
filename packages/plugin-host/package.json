@@ -56,25 +56,25 @@
     "./installation/bootstrap": "./src/installation/bootstrap.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/plugin-host",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@clack/prompts": "1.0.0-alpha.1",
+    "@clack/prompts": "1.8.1",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@hono/standard-validator": "^0.2.0",
-    "ajv": "8.18.0",
+    "@hono/standard-validator": "0.4.0",
+    "ajv": "8.20.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "remeda": "catalog:",
-    "unzipper": "^0.12.3",
-    "yargs": "18.0.0",
+    "unzipper": "0.12.5",
+    "yargs": "18.2.0",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -83,8 +83,7 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/unzipper": "0.10.11",
-    "@types/yargs": "17.0.33",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
+    "@types/yargs": "17.0.35",
     "typescript": "catalog:"
   },
   "peerDependencies": {

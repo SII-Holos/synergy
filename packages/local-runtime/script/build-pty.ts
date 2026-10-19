@@ -51,7 +51,7 @@ export async function buildPty(options: Target = {}) {
     await fs.cp(crate, stage, { recursive: true, filter: (entry) => path.basename(entry) !== "target" })
     let source: string
     if (os === "linux" && (process.platform !== "linux" || arch !== process.arch || libc === "musl")) {
-      const image = libc === "musl" ? "rust:1.94.0-alpine3.23" : "rust:1.94.0-bookworm"
+      const image = libc === "musl" ? "rust:1.99.1-alpine3.23" : "rust:1.99.1-bookworm"
       await run(
         [
           "docker",

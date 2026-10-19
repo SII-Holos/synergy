@@ -6,6 +6,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelTab } from "../../src/plugin/registries/workbench-panel-registry"
 import type {
@@ -26,6 +27,7 @@ type Fixture = {
   availability(value: boolean): void
   owner(id: string, scopeID?: string, url?: string): void
   hold(): void
+  capabilityDelay(value: number): void
   resolve(): void
   settled(): Promise<void>
   missing(value: boolean): void
@@ -87,6 +89,7 @@ beforeAll(async () => {
     }
     const [session,setSession]=createSignal("session"),[scope,setScope]=createSignal("project"),[server,setServer]=createSignal("http://fixture.test")
     const calls=[],reads=[],external=[],controls=[],nativeEvents=[]; let complete; let hold=false; let missing=false; let evidence; let workbench; let pending; let native="missing"; let pageSequence=0; let platform="desktop"
+    let capabilityDelay=0; const bridges=new Map()
     let notes=[{scopeID:"home",notes:[{id:"note"},{id:"one"}]}],noteDraft,fileDraft
     const route={mode:"scope",scopeID:"project",path_directory:"project"}
     const [catalog,setCatalog]=createStore({session:{pages:[]}}),[sync,setSync]=createSignal(false)
@@ -111,7 +114,7 @@ beforeAll(async () => {
     export const fixture=window.fixture={calls,reads,external,controls,nativeEvents,platform:value=>platform=value,openingAttempts,openingMode,native:value=>native=value,features:features=>setSelection(features ? {features} : undefined),tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),
       availability(value){disposers.forEach(dispose=>dispose());disposers=value?register():[]},owner(id,scopeID="project",url="http://fixture.test"){setSession(id);setScope(scopeID);setServer(url)},
       browserPages(value){setCatalog("session","pages",value)},sync:setSync,revision:()=>workbench.surface("side").selectionRevision(),
-      hold(){hold=true},resolve(){complete?.();complete=undefined},missing(value){missing=value},close(){workbench.surface("side").close()},
+      capabilityDelay(value){capabilityDelay=value},hold(){hold=true},resolve(){complete?.();complete=undefined},missing(value){missing=value},close(){workbench.surface("side").close()},
       settled(){return pending},
       retarget(resourceId){workbench.updateTab(workbench.surface("side").active(),{resourceId})},
       switchBack(){const side=workbench.surface("side"),active=side.active();side.setActive("other");side.setActive(active)},
@@ -135,14 +138,17 @@ beforeAll(async () => {
       openLink(url){external.push(url)},
       get browserNative(){
         if(native==="missing")return undefined
-        return {async createPresentationTicket(){return {ok:true,ticket:"fixture-ticket"}},async presentationCapability(){
+        if(bridges.has(native))return bridges.get(native)
+        const bridge={async createPresentationTicket(){return {ok:true,ticket:"fixture-ticket"}},async presentationCapability(){
+          reads.push("native-capability"); if(capabilityDelay)await new Promise(resolve=>setTimeout(resolve,capabilityDelay))
           if(native==="failed")throw new Error("Native bridge disconnected")
           if(native==="incompatible")return {protocolVersion:6,managedLocal:false,status:"failed",error:{code:"browser_native_ticket_rejected",message:"The Browser native capability request was invalid.",retryable:false}}
-          if(native==="rejected")return {protocolVersion:7,managedLocal:false,status:"failed",error:{code:"browser_native_sender_rejected",message:"The Browser native capability request was rejected.",retryable:false}}
+          if(native==="rejected")return {protocolVersion:${BROWSER_PROTOCOL_VERSION},managedLocal:false,status:"failed",error:{code:"browser_native_sender_rejected",message:"The Browser native capability request was rejected.",retryable:false}}
           if(native==="malformed")return {managedLocal:false,status:"ready"}
-          if(native==="inconsistent")return {protocolVersion:7,managedLocal:false,status:"ready"}
-          return {protocolVersion:7,managedLocal:native==="local",status:native==="local"?"ready":"failed"}
+          if(native==="inconsistent")return {protocolVersion:${BROWSER_PROTOCOL_VERSION},managedLocal:false,status:"ready"}
+          return {protocolVersion:${BROWSER_PROTOCOL_VERSION},managedLocal:native==="local",status:native==="local"?"ready":"failed"}
         }}
+        bridges.set(native,bridge); return bridge
       }
     })
     export const useNoteDocuments=()=>({peek:()=>noteDraft===undefined?undefined:{title:()=>"Unsaved note",content:()=>({type:"doc",content:[{type:"paragraph",attrs:{blockId:"block"},content:[{type:"text",text:noteDraft}]}]})}})
@@ -178,7 +184,7 @@ beforeAll(async () => {
     fixture.tool=(tool,input={},metadata={},status="completed")=>setPart({...part(),sessionID:"session",tool,state:{status,input,metadata,title:tool,output:"receipt",error:status==="error"?"Failed":undefined,time:{start:1,end:2}}})
     const [data,setData]=createStore({session:[],message:{},part:{}})
     const group=createMemo(()=>({kind:"group",id:"group",family:"produce",state:part().state.status==="error"?"error":"done",steps:[{part:part(),title:"Open resource",icon:"file-text",state:part().state.status==="error"?"error":"done",family:"produce"}]}))
-    function NativeLinks(){const resources=useResourceOpen();let root;onMount(()=>{const dispose=observeMarkdownResources(root,resources);const record=event=>{if(event.target.closest("a#native-link"))fixture.nativeEvents.push({type:event.type,prevented:event.defaultPrevented,href:event.target.closest("a").getAttribute("href")})};for(const type of ["click","auxclick","contextmenu","keydown"])document.addEventListener(type,record);onCleanup(()=>{dispose();for(const type of ["click","auxclick","contextmenu","keydown"])document.removeEventListener(type,record)})});return <div ref={root}><a id="native-link" href="https://example.test/native?doc=first#section" target="_blank" rel="noopener noreferrer">Native web target</a></div>}
+    function NativeLinks(){const resources=useResourceOpen();let root;onMount(()=>{const dispose=observeMarkdownResources(root,resources);const record=event=>{if(event.target.closest("a#native-link"))queueMicrotask(()=>fixture.nativeEvents.push({type:event.type,prevented:event.defaultPrevented,href:event.target.closest("a").getAttribute("href")}))};for(const type of ["click","auxclick","contextmenu","keydown"])document.addEventListener(type,record);onCleanup(()=>{dispose();for(const type of ["click","auxclick","contextmenu","keydown"])document.removeEventListener(type,record)})});return <div ref={root}><a id="native-link" href={location.origin+"/native?doc=first#section"} target="_blank" rel="noopener noreferrer">Native web target</a></div>}
     function Controls(){const resources=useResourceOpen();fixture.previewContexts=[];createEffect(()=>fixture.previewContexts.push(resources.contextKey()));fixture.open=(resource,options)=>resources.open(resource,options);fixture.preview=(resource,options)=>resources.preview(resource,options);fixture.openTool=()=>resources.openToolActivity({sessionID:"session",messageID:"message",partID:"part",callID:"call"},part());return <><ActivityTrace group={group()} serverUrl="http://fixture.test"/><NativeLinks/></>}
     function Harness(){attachWorkbench(useWorkbenchPanels());return <><Toast.Region/><Show when={isSyncEnabled()}><Suspense><BrowserWorkbenchSync route={browserRoute}/></Suspense></Show><ResourceOpenProvider><Controls/></ResourceOpenProvider></>}
     render(()=><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DialogProvider><DataProvider data={data} directory={null} serverUrl="http://fixture.test" hasFeature={() => true}><WorkbenchPanelsProvider><Harness/></WorkbenchPanelsProvider></DataProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
@@ -189,7 +195,19 @@ beforeAll(async () => {
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, ".vite"),
-    plugins: [solid()],
+    plugins: [
+      solid(),
+      {
+        name: "native-link-destination",
+        configureServer(server) {
+          server.middlewares.use((request, response, next) => {
+            if (!request.url?.startsWith("/native?")) return next()
+            response.setHeader("Content-Type", "text/html")
+            response.end("<title>Native destination</title><p>Destination</p>")
+          })
+        },
+      },
+    ],
     resolve: {
       alias: [
         { find: "./global-sdk", replacement: bridge },
@@ -576,6 +594,24 @@ test("message URLs open the native Browser, reuse only their local tab and prese
   expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(1)
 })
 
+test("a prepared native capability opens the next URL before the next frame", async () => {
+  await load()
+  await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.native("local")
+    await f.open({ kind: "url", url: "https://example.test/first" })
+    f.capabilityDelay(100)
+  })
+  const first = await page.evaluate(() => {
+    const f = (window as unknown as FixtureWindow).fixture
+    void f.open({ kind: "url", url: "https://example.test/next" })
+    return new Promise((resolve) =>
+      requestAnimationFrame(() => resolve(f.tabs().find((tab) => tab.id === f.active())?.state)),
+    )
+  })
+  expect(first).toMatchObject({ browserURL: "https://example.test/next" })
+})
+
 test("unmounted or unsupported native Browser stays external; a broken selected bridge does not silently fall back", async () => {
   for (const mode of ["missing", "remote", "failed", "local"] as const) {
     await load()
@@ -625,84 +661,85 @@ test("selected Browser rejects incompatible, rejected and malformed capabilities
 })
 
 test("pure Web URLs retain native modifier, middle, keyboard and context-menu anchor behavior", async () => {
-  const target = "https://example.test/native?doc=first#section"
-  await page
-    .context()
-    .route("https://example.test/**", (route) =>
-      route.fulfill({ contentType: "text/html", body: "<title>Native destination</title><p>Destination</p>" }),
-    )
-  try {
-    for (const selected of [true, false]) {
-      await load()
-      await page.evaluate((selected) => {
-        const f = (window as unknown as FixtureWindow).fixture
-        f.platform("web")
-        f.native(selected ? "local" : "missing")
-        if (!selected) f.features([])
-      }, selected)
-      const link = page.locator("#native-link")
-      const source = page.url()
-      const tabModifier = process.platform === "darwin" ? "Meta" : "Control"
-      for (const input of ["ordinary", tabModifier, "middle", "keyboard"] as const) {
-        const popup = page.context().waitForEvent("page")
-        if (input === "keyboard") {
-          await link.focus()
-          await page.keyboard.press("Enter")
-        } else if (input === "middle") await link.click({ button: "middle" })
-        else await link.click({ modifiers: input === "ordinary" ? [] : [input] })
-        const opened = await popup
-        await opened.waitForURL(target)
-        expect(opened.url()).toBe(target)
-        expect(await opened.title()).toBe("Native destination")
-        await opened.close()
-        expect(page.url()).toBe(source)
-        expect(
-          await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1)),
-        ).toMatchObject({
-          prevented: false,
-          href: target,
+  const target = new URL("/native?doc=first#section", url).href
+  for (const selected of [true, false]) {
+    await load()
+    await page.evaluate((selected) => {
+      const f = (window as unknown as FixtureWindow).fixture
+      f.platform("web")
+      f.native(selected ? "local" : "missing")
+      if (!selected) f.features([])
+    }, selected)
+    const link = page.locator("#native-link")
+    const source = page.url()
+    const tabModifier = process.platform === "darwin" ? "Meta" : "Control"
+    for (const input of ["ordinary", tabModifier, "middle", "keyboard"] as const) {
+      const popup = page
+        .context()
+        .waitForEvent("page")
+        .catch(async (error) => {
+          const facts = await page.evaluate(() => {
+            const f = (window as unknown as FixtureWindow).fixture
+            return { events: f.nativeEvents, calls: f.calls, external: f.external, focused: document.hasFocus() }
+          })
+          throw new Error(`${selected}:${input}: ${String(error)}; facts=${JSON.stringify(facts)}`)
         })
-      }
-      await link.click({ modifiers: [process.platform === "darwin" ? "Control" : "Meta"] })
+      if (input === "keyboard") {
+        await link.focus()
+        await page.keyboard.press("Enter")
+      } else if (input === "middle") await link.click({ button: "middle" })
+      else await link.click({ modifiers: input === "ordinary" ? [] : [input] })
+      const opened = await popup
+      await opened.waitForURL(target).catch((error) => {
+        throw new Error(`${input}: URL=${opened.url()}; source=${page.url()}; ${String(error)}`)
+      })
+      expect(opened.url()).toBe(target)
+      await opened.getByText("Destination", { exact: true }).waitFor()
+      expect(await opened.title()).toBe("Native destination")
+      await opened.close()
+      expect(page.url()).toBe(source)
       expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1))).toMatchObject(
         {
           prevented: false,
           href: target,
         },
       )
-      await page.keyboard.press("Escape")
-      await link.click({ button: "right" })
-      expect(await link.getAttribute("href")).toBe(target)
-      expect(
-        await page.evaluate(() =>
-          (window as unknown as FixtureWindow).fixture.nativeEvents
-            .filter((event) => event.type === "contextmenu")
-            .at(-1),
-        ),
-      ).toMatchObject({
-        type: "contextmenu",
-        prevented: false,
-        href: target,
-      })
-      await page.keyboard.press("Escape")
-      expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
-      expect((await facts()).calls).toEqual([])
-      expect((await facts()).tabs).toEqual([])
     }
-    await load()
-    await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
-    await page.locator("#native-link").click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] })
-    await page.waitForFunction(() =>
-      (window as unknown as FixtureWindow).fixture.tabs().some((tab) => tab.panelId === "browser"),
-    )
+    await link.click({ modifiers: [process.platform === "darwin" ? "Control" : "Meta"] })
     expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1))).toMatchObject({
-      prevented: true,
+      prevented: false,
       href: target,
     })
+    await page.keyboard.press("Escape")
+    await link.click({ button: "right" })
+    expect(await link.getAttribute("href")).toBe(target)
+    expect(
+      await page.evaluate(() =>
+        (window as unknown as FixtureWindow).fixture.nativeEvents
+          .filter((event) => event.type === "contextmenu")
+          .at(-1),
+      ),
+    ).toMatchObject({
+      type: "contextmenu",
+      prevented: false,
+      href: target,
+    })
+    await page.keyboard.press("Escape")
     expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
-  } finally {
-    await page.context().unroute("https://example.test/**")
+    expect((await facts()).calls).toEqual([])
+    expect((await facts()).tabs).toEqual([])
   }
+  await load()
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
+  await page.locator("#native-link").click({ modifiers: [process.platform === "darwin" ? "Meta" : "Control"] })
+  await page.waitForFunction(() =>
+    (window as unknown as FixtureWindow).fixture.tabs().some((tab) => tab.panelId === "browser"),
+  )
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.nativeEvents.at(-1))).toMatchObject({
+    prevented: true,
+    href: target,
+  })
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([])
 })
 
 test("a slow message URL open cannot add a Browser tab to a later human selection or Session", async () => {

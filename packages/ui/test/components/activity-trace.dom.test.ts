@@ -136,6 +136,7 @@ beforeAll(async () => {
     HTMLHeadElement: window.HTMLHeadElement,
     SVGElement: window.SVGElement,
     customElements: window.customElements,
+    CSSStyleSheet: window.CSSStyleSheet,
     MutationObserver: window.MutationObserver,
     ResizeObserver: window.ResizeObserver,
     getComputedStyle: window.getComputedStyle.bind(window),

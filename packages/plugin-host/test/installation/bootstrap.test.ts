@@ -5,6 +5,7 @@ import path from "node:path"
 import { prepareInstalledLaunch } from "../../src/installation/bootstrap"
 import { InstallationGenerations } from "../../src/installation/generations"
 import { seedInstalledCore } from "../../src/installation/seed"
+import { upgradeInstallationRoots } from "../../src/installation/upgrade"
 
 const name = (id: string) => `@ericsanchezok/synergy-${id}`
 
@@ -47,6 +48,7 @@ async function fixture() {
       "channel-blueprint",
       "channel-light-loop",
       "channel-lattice",
+      "browser-runtime",
     ]) {
       await Bun.write(path.join(modules, name(id), "component.js"), 'throw new Error("No bootstrap component imports")')
       await write(id, {
@@ -154,6 +156,24 @@ test("an existing core selection remains minimal when a full launcher is install
   expect(upgraded.hostVersion).toBe("2.1.0")
   expect(upgraded.roots).toEqual({})
   expect(Object.keys(upgraded.packages)).toEqual([name("cli")])
+})
+
+test("a bundled Desktop upgrade advances its separately selected Browser without registry resolution", async () => {
+  await using temp = await fixture()
+  const roots = { [name("web")]: "2.0.0", [name("browser-runtime")]: "2.0.0", "third-party": "^1.7.0" }
+  const first = await seedInstalledCore(temp.root, await temp.release("2.0.0"), "2.0.0", { roots })
+  const next = { ...roots, [name("web")]: "2.1.0", [name("browser-runtime")]: "2.1.0" }
+  expect(upgradeInstallationRoots(first, "2.1.0")).toEqual(next)
+  const seed = await seedInstalledCore(path.join(temp.directory, "seed"), await temp.release("2.1.0"), "2.1.0", {
+    roots: next,
+  })
+  const options = { version: "2.1.0", seed: seed.directory }
+  const upgraded = await prepareInstalledLaunch(temp.root, options)
+  expect(upgraded.roots).toEqual(next)
+  expect(upgraded.packages[name("browser-runtime")].version).toBe("2.1.0")
+  expect(upgraded.packages["third-party"].version).toBe("1.7.0")
+  expect((await prepareInstalledLaunch(temp.root, options)).id).toBe(upgraded.id)
+  expect((await InstallationGenerations.pin(temp.root, { id: first.id, sha256: first.sha256 })).roots).toEqual(roots)
 })
 
 test("a fresh aggregate preset selection retains its current declared closure", async () => {

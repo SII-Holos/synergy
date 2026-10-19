@@ -60,6 +60,9 @@ async function run() {
   assert(redirectAddress && typeof redirectAddress !== "string")
   redirectOrigin = `http://127.0.0.1:${redirectAddress.port}`
   const window = new BrowserWindow({ width: 1000, height: 720, show: false })
+  const background = process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1"
+  let activations = 0
+  window.on("focus", () => activations++)
   const pool = new BrowserNativePagePool({ captureWindow: () => window })
   const popups: BrowserNativePageHandle[] = []
   const events: string[] = []
@@ -103,7 +106,7 @@ async function run() {
   const views = pages.map((page) => pool.attach(window, base.ownerKey, page.state().id))
   assert.equal(new Set(views.map((view) => view.webContents.id)).size, 8)
   pool.attach(window, base.ownerKey, "page-0")
-  window.show()
+  if (!background) window.show()
   const first = views[0]!.webContents
   assert.equal(
     (await runBrowserPageAction(first, { type: "find", text: "/0", forward: true, next: false })).type,
@@ -227,7 +230,7 @@ async function run() {
       return sendCommand(method, ...args)
     }
   })
-  first.focus()
+  if (!background) first.focus()
   console.log("Native popup regression: redirect during adoption")
   const attachedBeforePopup = window.contentView.children
   await evaluate(
@@ -345,6 +348,10 @@ async function run() {
     page: { ...pages[0]!.state(), id: "temp-c", url: `${url}/temp-c` },
   })
   assert.equal(await evaluate(tempC, "document.cookie"), "")
+  if (background) {
+    assert.equal(window.isVisible(), false)
+    assert.equal(activations, 0)
+  }
   await pool.destroy()
   window.destroy()
   server.close()

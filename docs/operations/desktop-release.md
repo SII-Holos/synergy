@@ -11,6 +11,8 @@ Stable desktop updates use `electron-updater` against the GitHub Release metadat
 
 On first launch after an upgrade, Desktop displays saved-data migration progress and waits for advancing work before opening the application. Optional database rewrites require an explicit maintenance action in Settings → Storage or the recovery page. Managed Desktop refuses maintenance while work is active, stops only its own server, uses the matching bundled CLI, and restarts after the format commits. Return to Synergy cancels at a durable boundary and opens the committed data. External-server mode provides host-side instructions. Failed launches offer Retry, Continue maintenance and Export diagnostics; diagnostic export does not open storage. Verify both a fresh install and an upgrade that exceeds the ordinary startup deadline; see [startup waiting limits](../reference/development.md#development-modes).
 
+Managed launcher module verification and offline upgrades report an installation stage before Runtime initialization. This stage uses the existing five-minute inactivity budget; the ordinary thirty-second health deadline must not terminate a working module upgrade before it can announce Runtime readiness.
+
 Runtime environment:
 
 - `SYNERGY_DESKTOP_CHANNEL=dev|stable`
@@ -70,7 +72,7 @@ The curl installer downloads the CLI checksum asset beside the selected archive 
 
 musl Linux archives (`synergy-linux-*-musl`) intentionally exclude the glibc-only ast-grep and sqlite-vec platform packages because no musl-compatible release assets exist for them; their module seeds omit those packages. Every Linux target, glibc or musl, ships its matching watcher binding through a distinct native package. glibc Linux, macOS, and Windows archives require all native helpers and fail packaging when any of them is missing.
 
-Linux watcher assets are built from pinned Parcel 2.5.6 source with the EINTR patch and checked for the `parcel-2.5.6-eintr-1` marker at load time. Upgrade the executable and its matching assets together: a new executable with an old unpatched binding refuses file watching. Reinstall the matching runtime distribution to repair an incomplete installed upgrade; source checkouts use `bun dev prepare` with Docker available.
+Linux watcher assets are built from pinned Parcel 2.6.0 source with the EINTR patch and checked for the `parcel-2.6.0-eintr-1` marker at load time. Upgrade the executable and its matching assets together: a new executable with an old unpatched binding refuses file watching. Reinstall the matching runtime distribution to repair an incomplete installed upgrade; source checkouts use `bun dev prepare` with Docker available.
 
 All Linux watcher targets require the system C++ runtime libraries listed in the [watcher build reference](../../packages/local-runtime/script/watcher/README.md). Keep the glibc x64/arm64 Bun coexistence and signal-recovery checks passing before publishing the built bindings.
 

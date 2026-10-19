@@ -13,7 +13,8 @@ import {
   type PermissionOption,
   type PlanEntry,
   type PromptRequest,
-  type SetSessionModelRequest,
+  type SetSessionConfigOptionRequest,
+  type SessionConfigOption,
   type SetSessionModeRequest,
   type SetSessionModeResponse,
   type ToolCallContent,
@@ -371,6 +372,8 @@ export namespace ACP {
     }
 
     private async requireMcp(servers: NewSessionRequest["mcpServers"]) {
+      if (servers.some((server) => "type" in server && server.type === "acp"))
+        throw RequestError.invalidParams(undefined, "ACP MCP transport is not supported")
       if (servers.length && !(await this.mcpAvailable()))
         throw RequestError.invalidParams(undefined, "MCP is not available in this Runtime")
     }
@@ -443,7 +446,7 @@ export namespace ACP {
 
         return {
           sessionId,
-          models: load.models,
+          configOptions: load.configOptions,
           modes: load.modes,
           _meta: {},
         }
@@ -732,26 +735,32 @@ export namespace ACP {
       }
     }
 
+    private async modelConfig(session: ACPSessionState) {
+      const providers = await this.sdk.config.providers({ directory: session.cwd }).then((x) => x.data!.providers)
+      const options = providers
+        .toSorted((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()))
+        .flatMap((provider) =>
+          Provider.sort(Object.values(provider.models).filter(Provider.isSelectableModel)).map((model) => ({
+            value: `${provider.id}/${model.id}`,
+            name: `${provider.name}/${model.name}`,
+          })),
+        )
+      const model = session.model ?? (await defaultModel(this.config, session.cwd))
+      return {
+        id: "model",
+        name: "Model",
+        category: "model",
+        type: "select",
+        currentValue: model ? `${model.providerID}/${model.modelID}` : (options[0]?.value ?? ""),
+        options,
+      } satisfies SessionConfigOption
+    }
+
     private async loadSessionMode(params: LoadSessionRequest) {
       const directory = params.cwd
-      const model = await defaultModel(this.config, directory)
       const sessionId = params.sessionId
-
-      const providers = await this.sdk.config.providers({ directory }).then((x) => x.data!.providers)
-      const entries = providers.sort((a, b) => {
-        const nameA = a.name.toLowerCase()
-        const nameB = b.name.toLowerCase()
-        if (nameA < nameB) return -1
-        if (nameA > nameB) return 1
-        return 0
-      })
-      const availableModels = entries.flatMap((provider) => {
-        const models = Provider.sort(Object.values(provider.models).filter(Provider.isSelectableModel))
-        return models.map((model) => ({
-          modelId: `${provider.id}/${model.id}`,
-          name: `${provider.name}/${model.name}`,
-        }))
-      })
+      const session = this.sessionManager.get(sessionId)
+      const modelConfig = await this.modelConfig(session)
 
       const agents = await this.config.sdk.app
         .agents(
@@ -791,11 +800,16 @@ export namespace ACP {
         }))
 
       const defaultAgentName = await AgentModule.defaultAgent()
-      const currentModeId = availableModes.find((m) => m.name === defaultAgentName)?.id ?? availableModes[0].id
+      const currentModeId =
+        availableModes.find((m) => m.id === (session.modeId ?? defaultAgentName))?.id ??
+        availableModes[0]?.id ??
+        defaultAgentName
 
       const mcpServers: Record<string, McpLocalConfig | McpRemoteConfig> = {}
       for (const server of params.mcpServers) {
-        if ("type" in server) {
+        if ("type" in server && server.type === "acp") {
+          throw RequestError.invalidParams(undefined, "ACP MCP transport is not supported")
+        } else if ("type" in server) {
           mcpServers[server.name] = {
             url: server.url,
             headers: server.headers.reduce<Record<string, string>>((acc, { name, value }) => {
@@ -841,10 +855,7 @@ export namespace ACP {
 
       return {
         sessionId,
-        models: {
-          currentModelId: model ? `${model.providerID}/${model.modelID}` : (availableModels[0]?.modelId ?? ""),
-          availableModels,
-        },
+        configOptions: [modelConfig],
         modes: {
           availableModes,
           currentModeId,
@@ -853,19 +864,15 @@ export namespace ACP {
       }
     }
 
-    async setSessionModel(params: SetSessionModelRequest) {
+    async setSessionConfigOption(params: SetSessionConfigOptionRequest) {
       const session = this.sessionManager.get(params.sessionId)
-
-      const model = Provider.parseModel(params.modelId)
-
-      this.sessionManager.setModel(session.id, {
-        providerID: model.providerID,
-        modelID: model.modelID,
-      })
-
-      return {
-        _meta: {},
-      }
+      if (params.configId !== "model" || typeof params.value !== "string")
+        throw RequestError.invalidParams(undefined, `Unsupported configuration option: ${params.configId}`)
+      const option = await this.modelConfig(session)
+      if (!option.options.some((item) => item.value === params.value))
+        throw RequestError.invalidParams(undefined, `Unknown model: ${params.value}`)
+      this.sessionManager.setModel(session.id, Provider.parseModel(params.value))
+      return { configOptions: [{ ...option, currentValue: params.value }] }
     }
 
     async setSessionMode(params: SetSessionModeRequest): Promise<SetSessionModeResponse | void> {

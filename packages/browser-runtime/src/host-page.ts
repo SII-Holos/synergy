@@ -1,6 +1,8 @@
 import {
   BrowserProtocolError,
   isSafeBrowserObservation,
+  type BrowserPage,
+  type BrowserNavigation,
   type BrowserBackendCommand,
   type BrowserBackendResult,
   type BrowserHostPageEvent,
@@ -18,6 +20,7 @@ export class BrowserHostPage implements BrowserPageBackend {
   url: string
   title = ""
   loading = false
+  navigation?: BrowserNavigation
   lastActiveAt: number | null = null
   private _hostStatus: BrowserHostStatus = "pending"
   private unsubscribe: () => void
@@ -107,7 +110,16 @@ export class BrowserHostPage implements BrowserPageBackend {
     this.applyPage(result.page)
   }
 
-  private applyPage(page: { url: string; title: string; isLoading: boolean; lastActiveAt: number | null }): void {
+  private applyPage(page: BrowserPage): void {
+    if (
+      this.navigation &&
+      page.navigation &&
+      (page.navigation.generation < this.navigation.generation ||
+        (page.navigation.generation === this.navigation.generation &&
+          page.navigation.revision < this.navigation.revision))
+    )
+      return
+    this.navigation = page.navigation
     this.url = page.url
     this.title = page.title
     this.loading = page.isLoading
@@ -142,8 +154,16 @@ export class BrowserHostPage implements BrowserPageBackend {
       return
     }
     if (event.type === "page.error") {
+      if (
+        event.navigation &&
+        this.navigation &&
+        (event.navigation.generation < this.navigation.generation ||
+          (event.navigation.generation === this.navigation.generation &&
+            event.navigation.revision < this.navigation.revision))
+      )
+        return
       this.loading = false
-      this.events.onError?.(this, event.message)
+      this.events.onError?.(this, event.message, event.navigation)
       return
     }
     if (event.type === "dialog.opened") {
@@ -163,7 +183,7 @@ export class BrowserHostPage implements BrowserPageBackend {
       })
       return
     }
-    this.events.onDownload?.(this, event.entry)
+    if (event.type === "download.updated") this.events.onDownload?.(this, event.entry)
   }
 }
 

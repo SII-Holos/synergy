@@ -227,7 +227,7 @@ test("broker registers native capability and keeps command queues page-scoped", 
     if (command.type === "reload") await held.promise
   })
   f.send(command("held", "first", { type: "reload" }))
-  f.send(command("queued", "first", { type: "stop" }))
+  f.send(command("queued", "first", { type: "setViewport", width: 800, height: 600 }))
   f.send(command("independent", "second", { type: "stop" }))
   expect((await f.result("independent")).result).toEqual({ type: "void" })
   expect(f.executed.filter((entry) => entry.pageId === "first").map((entry) => entry.command.type)).toEqual(["reload"])
@@ -235,8 +235,26 @@ test("broker registers native capability and keeps command queues page-scoped", 
   await f.result("queued")
   expect(f.executed.filter((entry) => entry.pageId === "first").map((entry) => entry.command.type)).toEqual([
     "reload",
-    "stop",
+    "setViewport",
   ])
+})
+
+test("stop and close remain available while an Agent command is waiting", async () => {
+  const f = await fixture()
+  f.send(create("slow-page"))
+  await f.result("slow-page")
+  const held = Promise.withResolvers<void>()
+  f.interceptExecution(async (command) => {
+    if (command.type === "reload") await held.promise
+  })
+  f.send(command("held", "slow-page", { type: "reload" }))
+  await until(() => f.executed.length === 1)
+  f.send(command("stop", "slow-page", { type: "stop" }))
+  expect((await f.result("stop")).result).toEqual({ type: "void" })
+  f.send({ type: "page.close", protocolVersion, requestId: "close", ownerKey, pageId: "slow-page" })
+  expect((await f.result("close")).result).toEqual({ type: "void" })
+  held.resolve()
+  await f.result("held")
 })
 
 test("dialog replies unblock a pending command on the same page", async () => {

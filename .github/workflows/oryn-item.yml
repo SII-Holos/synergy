@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 65
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source-ref }}
           persist-credentials: false
@@ -42,7 +42,7 @@ jobs:
         with:
           client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
           private-key: ${{ secrets.ORYN_APP_PRIVATE_KEY }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: plan
           path: .oryn-runtime/.artifacts/plan
@@ -55,9 +55,9 @@ jobs:
         run: |
           bun -e 'const j = await Bun.file(".artifacts/result/job.json").json(); console.log("repair=" + (j.mode === "repair"));' >> "$GITHUB_OUTPUT"
       - if: steps.validation.outputs.repair == 'true'
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: "26.12.0"
       - if: steps.validation.outputs.repair == 'true'
         name: Prepare trusted validation host
         working-directory: .
@@ -77,7 +77,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y bubblewrap ripgrep
       - if: inputs.runtime
         run: bun run core:install
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: target
         with:
           client-id: ${{ vars.ORYN_APP_CLIENT_ID }}
@@ -103,7 +103,7 @@ jobs:
           ORYN_BOT_LOGIN: ${{ steps.target.outputs.app-slug }}[bot]
       - if: always()
         id: result
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: result-${{ inputs.slug }}-${{ inputs.number }}-attempt-${{ github.run_attempt }}
           path: .oryn-runtime/.artifacts/result/
@@ -118,7 +118,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source-ref }}
           persist-credentials: false
@@ -130,12 +130,12 @@ jobs:
         run: |
           echo "::error::The producing execution has no result artifact ID."
           exit 1
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           artifact-ids: ${{ needs.run.outputs.result-artifact }}
           merge-multiple: true
           path: .oryn-runtime/.artifacts/result
-      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: target
         with:
           client-id: ${{ vars.ORYN_APP_CLIENT_ID }}

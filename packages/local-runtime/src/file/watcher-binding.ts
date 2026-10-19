@@ -65,7 +65,7 @@ export namespace FileWatcherBinding {
       ]) {
         if (!file || !existsSync(file)) continue
         const binding = require(file)
-        if (binding.synergyWatcherPatch !== "parcel-2.5.6-eintr-1")
+        if (binding.synergyWatcherPatch !== "parcel-2.6.0-eintr-1")
           throw new Error("Linux watcher binding has no verified EINTR fix")
         return binding
       }

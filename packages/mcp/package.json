@@ -21,35 +21,35 @@
     "./http": "./src/http.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/mcp",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@clack/prompts": "1.0.0-alpha.1",
+    "@clack/prompts": "1.8.1",
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-plugin-host": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@hono/standard-validator": "^0.2.0",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@hono/standard-validator": "0.4.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "ai": "catalog:",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
-    "open": "10.1.2",
+    "open": "11.0.4",
     "remeda": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@ai-sdk/provider": "4.0.29",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   },
   "peerDependencies": {

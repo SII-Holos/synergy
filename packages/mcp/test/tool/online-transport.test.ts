@@ -62,7 +62,7 @@ test("a real same-name MCP connection keeps its source, schema, bearer transport
           expect(presented.inputSchema).toEqual({ ...schema, additionalProperties: false })
           const result = await presented.tool.execute!(
             { query: "fixture query" },
-            { toolCallId: "fixture", messages: [] },
+            { toolCallId: "fixture", messages: [], context: {} },
           )
           expect(result).toMatchObject({ content: [{ type: "text", text: "verified source" }] })
           expect(calls).toEqual([{ name: "search", arguments: { query: "fixture query" } }])

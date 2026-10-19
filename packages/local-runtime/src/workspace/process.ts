@@ -34,8 +34,7 @@ export namespace WorktreeProcess {
     ])
     let lease: WorkspaceAccess.Lease | undefined
     let owned:
-      | { child: ProcessHandle; activate(): Promise<void>; completion: Promise<void>; stop(): Promise<void> }
-      | undefined
+      { child: ProcessHandle; activate(): Promise<void>; completion: Promise<void>; stop(): Promise<void> } | undefined
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
     let bytes = 0

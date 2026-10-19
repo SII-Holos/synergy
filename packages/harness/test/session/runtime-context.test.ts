@@ -139,7 +139,7 @@ describe("durable advisory observations", () => {
     expect(RuntimeAdvisory.prepare({ scope: "a", sources: [warning], previous: [first.metadata] })).toBeUndefined()
   })
 
-  test("a modified old observation does not invalidate unrelated knowledge or a later repair", () => {
+  test("a modified old observation does not invalidate unrelated knowledge or a later repair", async () => {
     const sources = [{ ...memory, kind: "knowledge" as const }, warning]
     const first = RuntimeAdvisory.prepare({ scope: "a", sources, previous: [] })!
     const root: MessageV2.User = {
@@ -175,7 +175,7 @@ describe("durable advisory observations", () => {
       RuntimeAdvisory.prepare({ scope: "a", sources, previous: RuntimeAdvisory.history([changed, repaired]) }),
     ).toBeUndefined()
 
-    const projection = MessageV2.projectModelMessages([original])
+    const projection = await MessageV2.projectModelMessages([original])
     const index = ContextUsage.sourceIndex({
       messages: projection.messages,
       system: [],

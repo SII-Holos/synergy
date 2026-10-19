@@ -3,9 +3,8 @@ import { electronMockState, registerElectronMock } from "./electron-mock"
 
 registerElectronMock()
 
-const { enforceProductionLoading, installSessionSecurity, installWindowSecurity, openExternalSafely } = await import(
-  "../src/security.js"
-)
+const { enforceProductionLoading, installSessionSecurity, installWindowSecurity, openExternalSafely } =
+  await import("../src/security.js")
 
 describe("desktop session security", () => {
   test("denies every renderer permission request except microphone-only media", () => {

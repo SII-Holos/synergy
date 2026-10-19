@@ -40,6 +40,7 @@ export function createDisclosureMotion(
   const cancel = () => {
     if (!animation) return
     animation.onfinish = null
+    void animation.finished.catch(() => undefined)
     animation.cancel()
     animation = undefined
     animationTarget = undefined

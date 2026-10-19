@@ -110,7 +110,7 @@ describe("session.message-v2.compareStorageOrder", () => {
 
 describe("session.message-v2.toModelMessage", () => {
   test("filters out messages with no parts", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const input: MessageV2.WithParts[] = [
         {
           info: userInfo("m-empty"),
@@ -128,7 +128,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "hello" }],
@@ -137,7 +137,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("excludes messages marked includeInContext: false", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       // Part-level model exclusion was removed (issue #281 §4.4); the only
       // model-context switch is the message-level includeInContext flag.
       const input: MessageV2.WithParts[] = [
@@ -153,15 +153,15 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([])
-      const projection = MessageV2.projectModelMessages(input)
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([])
+      const projection = await MessageV2.projectModelMessages(input)
       expect(projection.messages).toStrictEqual([])
       expect(projection.provenance.categories.userMessages).toStrictEqual([])
       expect(projection.provenance.items.userMessages).toBe(0)
     }))
 
   test("includes synthetic text parts", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-user"
 
       const input: MessageV2.WithParts[] = [
@@ -189,7 +189,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "hello" }],
@@ -202,7 +202,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("converts user text/attachment parts and filters special parts", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-user"
 
       const input: MessageV2.WithParts[] = [
@@ -247,7 +247,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [
@@ -256,13 +256,13 @@ describe("session.message-v2.toModelMessage", () => {
               type: "file",
               mediaType: "image/png",
               filename: "img.png",
-              data: "https://example.com/img.png",
+              data: { type: "url", url: new URL("https://example.com/img.png") },
             },
             {
               type: "file",
               mediaType: "text/plain",
               filename: "note.txt",
-              data: "https://example.com/note.txt",
+              data: { type: "url", url: new URL("https://example.com/note.txt") },
             },
             {
               type: "text",
@@ -273,7 +273,7 @@ describe("session.message-v2.toModelMessage", () => {
       ])
     }))
   test("uses explicit content instead of sending data text attachments", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-user"
       const input: MessageV2.WithParts[] = [
         {
@@ -297,7 +297,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "this is the note content" }],
@@ -306,7 +306,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("passes through provider-file text attachments with https URLs", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-user"
       const input: MessageV2.WithParts[] = [
         {
@@ -324,7 +324,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [
@@ -332,7 +332,7 @@ describe("session.message-v2.toModelMessage", () => {
               type: "file",
               mediaType: "text/plain",
               filename: "doc.txt",
-              data: "https://example.com/doc.txt",
+              data: { type: "url", url: new URL("https://example.com/doc.txt") },
             },
           ],
         },
@@ -340,7 +340,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("summarizes invalid asset references instead of passing them to the provider", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-user"
       const input: MessageV2.WithParts[] = [
         {
@@ -358,13 +358,13 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "[Attachment: file.ts (text/plain)]" }],
         },
       ])
-      const projection = MessageV2.projectModelMessages(input)
+      const projection = await MessageV2.projectModelMessages(input)
       expect(projection.provenance.categories.attachments).toMatchObject([
         { text: "[Attachment: file.ts (text/plain)]" },
       ])
@@ -372,9 +372,9 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("valid asset images expose a reusable reference and retain provider-file input", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const reference = "asset://0123456789abcdef.png"
-      const messages = MessageV2.toModelMessage([
+      const messages = await MessageV2.toModelMessage([
         {
           info: userInfo("m-user"),
           parts: [
@@ -392,11 +392,20 @@ describe("session.message-v2.toModelMessage", () => {
       const content = messages[0].content
       if (typeof content === "string") throw new Error("Expected multimodal content")
       expect(content.some((part) => part.type === "text" && part.text.includes(`Reference: ${reference}`))).toBe(true)
-      expect(content.some((part) => part.type === "file" && String(part.data) === reference)).toBe(true)
+      expect(
+        content.some(
+          (part) =>
+            part.type === "file" &&
+            typeof part.data === "object" &&
+            "type" in part.data &&
+            part.data.type === "url" &&
+            String(part.data.url) === reference,
+        ),
+      ).toBe(true)
     }))
 
   test("uses attachment model policy for data text, https text, and images", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-user"
       const input: MessageV2.WithParts[] = [
         {
@@ -435,7 +444,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [
@@ -444,13 +453,13 @@ describe("session.message-v2.toModelMessage", () => {
               type: "file",
               mediaType: "text/plain",
               filename: "doc.txt",
-              data: "https://example.com/doc.txt",
+              data: { type: "url", url: new URL("https://example.com/doc.txt") },
             },
             {
               type: "file",
               mediaType: "image/png",
               filename: "photo.png",
-              data: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+              data: { type: "url", url: new URL("data:image/png;base64,ZmFrZS1pbWFnZQ==") },
             },
           ],
         },
@@ -458,7 +467,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("converts assistant tool completion into tool-call + tool-result messages and emits attachment message", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
 
@@ -511,7 +520,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "run tool" }],
@@ -553,7 +562,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("replaces compacted tool output with placeholder", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
 
@@ -589,7 +598,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "run tool" }],
@@ -621,7 +630,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("converts assistant tool error into error-text tool result", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
 
@@ -657,7 +666,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "run tool" }],
@@ -691,7 +700,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("deduplicates terminal tool parts by call ID and prefers the execution outcome", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
 
@@ -746,7 +755,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "read file" }],
@@ -775,7 +784,7 @@ describe("session.message-v2.toModelMessage", () => {
           ],
         },
       ])
-      const projection = MessageV2.projectModelMessages(input)
+      const projection = await MessageV2.projectModelMessages(input)
       expect(projection.provenance.categories.assistantMessages).toMatchObject([
         { text: JSON.stringify({ path: "missing.txt" }) },
       ])
@@ -784,7 +793,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("replays encrypted Codex reasoning only for the producing profile and wire model", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
       const input: MessageV2.WithParts[] = [
@@ -832,7 +841,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      const codex = MessageV2.toModelMessage(input, {
+      const codex = await MessageV2.toModelMessage(input, {
         model: {
           providerID: "codex-work",
           modelID: "different-alias",
@@ -860,15 +869,15 @@ describe("session.message-v2.toModelMessage", () => {
         { providerID: "codex-personal", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5" },
         { providerID: "openai", modelID: "alias", profileID: "openai", apiModelID: "gpt-5" },
       ]) {
-        expect(JSON.stringify(MessageV2.toModelMessage(input, { model }))).not.toContain("opaque")
-        expect(JSON.stringify(MessageV2.toModelMessage(input, { model }))).not.toContain("rs_shared")
+        expect(JSON.stringify(await MessageV2.toModelMessage(input, { model }))).not.toContain("opaque")
+        expect(JSON.stringify(await MessageV2.toModelMessage(input, { model }))).not.toContain("rs_shared")
       }
       const incomplete = [
         { ...input[1].info, profileID: undefined },
         { ...input[1].info, apiModelID: undefined },
       ]
       for (const assistant of incomplete) {
-        const projected = MessageV2.toModelMessage(
+        const projected = await MessageV2.toModelMessage(
           [{ ...input[0] }, { ...input[1], info: assistant }] as MessageV2.WithParts[],
           {
             model: { providerID: "codex-work", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5" },
@@ -881,7 +890,7 @@ describe("session.message-v2.toModelMessage", () => {
         { ...input[0] },
         { ...input[1], info: { ...input[1].info, profileID: undefined, apiModelID: undefined } },
       ] as MessageV2.WithParts[]
-      const projection = MessageV2.toModelMessage(historical, {
+      const projection = await MessageV2.toModelMessage(historical, {
         model: { providerID: "codex-work", modelID: "alias", profileID: "openai-codex", apiModelID: "gpt-5" },
       })
       expect(JSON.stringify(projection)).toContain("last summary")
@@ -890,7 +899,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("removes OpenAI response item references from model provider metadata", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
 
@@ -957,7 +966,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "user",
           content: [{ type: "text", text: "continue" }],
@@ -1006,7 +1015,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("filters assistant messages with non-abort errors", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const assistantID = "m-assistant"
 
       const input: MessageV2.WithParts[] = [
@@ -1026,15 +1035,15 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([])
-      const projection = MessageV2.projectModelMessages(input)
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([])
+      const projection = await MessageV2.projectModelMessages(input)
       expect(projection.messages).toStrictEqual([])
       expect(projection.provenance.categories.userMessages).toStrictEqual([])
       expect(projection.provenance.items.userMessages).toBe(0)
     }))
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const assistantID1 = "m-assistant-1"
       const assistantID2 = "m-assistant-2"
 
@@ -1074,7 +1083,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "assistant",
           content: [
@@ -1086,7 +1095,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("splits assistant messages on step-start boundaries", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const assistantID = "m-assistant"
 
       const input: MessageV2.WithParts[] = [
@@ -1111,7 +1120,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([
         {
           role: "assistant",
           content: [{ type: "text", text: "first" }],
@@ -1124,7 +1133,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("drops messages that only contain step-start parts", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const assistantID = "m-assistant"
 
       const input: MessageV2.WithParts[] = [
@@ -1139,11 +1148,11 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual([])
     }))
 
   test("projects durable and provider-managed attachment paths", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-attachments"
       const assetID = "0123456789abcdef.bin"
       const assetPath = Asset.resolvePath(assetID)!
@@ -1175,7 +1184,7 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      const projection = MessageV2.projectModelMessages(input)
+      const projection = await MessageV2.projectModelMessages(input)
       const serialized = JSON.stringify(projection.messages)
 
       expect(serialized).toContain(
@@ -1194,7 +1203,7 @@ describe("session.message-v2.toModelMessage", () => {
     }))
 
   test("does not duplicate a fallback attachment path", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const messageID = "m-fallback-attachment"
       const assetID = "fedcba9876543210.bin"
       const assetPath = Asset.resolvePath(assetID)!
@@ -1214,13 +1223,13 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(JSON.stringify(MessageV2.projectModelMessages(input).messages)).toContain(
+      expect(JSON.stringify((await MessageV2.projectModelMessages(input)).messages)).toContain(
         `[Attachment: trace.bin (application/octet-stream). Reference: asset://${assetID}. Local path: ${assetPath}. Attached as-is; use file tools to inspect]`,
       )
     }))
 
   test("keeps the compatibility wrapper equivalent to canonical projection", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const input: MessageV2.WithParts[] = [
         {
           info: userInfo("m-user"),
@@ -1244,7 +1253,9 @@ describe("session.message-v2.toModelMessage", () => {
         },
       ]
 
-      expect(MessageV2.toModelMessage(input)).toStrictEqual(MessageV2.projectModelMessages(input).messages)
+      expect(await MessageV2.toModelMessage(input)).toStrictEqual(
+        (await MessageV2.projectModelMessages(input)).messages,
+      )
     }))
 })
 
@@ -1315,8 +1326,8 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
   }
 
   test("drops undefined-valued metadata keys that break model prompt validation", () =>
-    runtime.run(() => {
-      const messages = MessageV2.toModelMessage(pollutedTurn())
+    runtime.run(async () => {
+      const messages = await MessageV2.toModelMessage(pollutedTurn())
 
       const reasoningDetail = { type: "reasoning.text", text: ".", format: "unknown", index: 0 }
       const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
@@ -1335,7 +1346,7 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
     }))
 
   test("pins sanitization semantics for non-JSON-safe metadata values", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
       const input: MessageV2.WithParts[] = [
@@ -1381,7 +1392,7 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
         },
       ]
 
-      expect(firstToolCall(MessageV2.toModelMessage(input)).providerOptions).toStrictEqual({
+      expect(firstToolCall(await MessageV2.toModelMessage(input)).providerOptions).toStrictEqual({
         provider: {
           nan: null,
           infinity: null,
@@ -1394,7 +1405,7 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
     }))
 
   test("leaves clean metadata unchanged", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
       const cleanMetadata = {
@@ -1436,13 +1447,13 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
         },
       ]
 
-      expect(JSON.stringify(firstToolCall(MessageV2.toModelMessage(input)).providerOptions)).toBe(
+      expect(JSON.stringify(firstToolCall(await MessageV2.toModelMessage(input)).providerOptions)).toBe(
         JSON.stringify(cleanMetadata),
       )
     }))
 
   test("keeps absent metadata absent", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
       const input: MessageV2.WithParts[] = [
@@ -1469,7 +1480,7 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
         },
       ]
 
-      const messages = MessageV2.toModelMessage(input)
+      const messages = await MessageV2.toModelMessage(input)
       const assistant = messages.find((msg) => msg.role === "assistant") as { content: Array<Record<string, any>> }
       const reasoning = assistant.content[0]
       expect(reasoning.providerOptions).toBeUndefined()
@@ -1515,8 +1526,8 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
       ]
 
       let messages: ModelMessage[]
-      expect(() => {
-        messages = MessageV2.toModelMessage(input)
+      expect(async () => {
+        messages = await MessageV2.toModelMessage(input)
       }).not.toThrow()
       expect(firstToolCall(messages!).providerOptions).toBeUndefined()
     }))
@@ -1572,9 +1583,9 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
         },
       ]
 
-      let projection: ReturnType<typeof MessageV2.projectModelMessages>
-      expect(() => {
-        projection = MessageV2.projectModelMessages(input)
+      let projection: Awaited<ReturnType<typeof MessageV2.projectModelMessages>>
+      expect(async () => {
+        projection = await MessageV2.projectModelMessages(input)
       }).not.toThrow()
 
       const assistant = projection!.messages.find((msg) => msg.role === "assistant") as {
@@ -1594,7 +1605,7 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
     }))
 
   test("reports sanitization counts for observability", () =>
-    runtime.run(() => {
+    runtime.run(async () => {
       const userID = "m-user"
       const assistantID = "m-assistant"
       const circularMetadata: Record<string, any> = { self: {} }
@@ -1641,7 +1652,7 @@ describe("session.message-v2.model prompt metadata sanitization", () => {
         },
       ]
 
-      const projection = MessageV2.projectModelMessages(input)
+      const projection = await MessageV2.projectModelMessages(input)
       expect(projection.sanitization).toStrictEqual({ converted: 2, dropped: 1, failed: 1 })
     }))
 })

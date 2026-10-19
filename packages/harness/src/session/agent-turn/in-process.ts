@@ -18,7 +18,7 @@ export async function runInProcessStream(input: AgentTurnInput): Promise<AgentTu
     tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
   })
   const contextUsageDraft = startContextUsageDraft(input, input.system, contextUsageProvenance)
-  const usage = result.usage?.catch(() => undefined) ?? Promise.resolve(undefined)
+  const usage = Promise.resolve(result.usage).catch(() => undefined)
   if (!result.fullStream) {
     if (!result.textStream && result.text) {
       return {

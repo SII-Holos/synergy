@@ -143,7 +143,7 @@ function modelMsg(role: "user" | "assistant", content: ModelMessage["content"]):
 // ---------------------------------------------------------------------------
 
 describe("session.message-v2.toModelMessage image limit", () => {
-  test("all images sent as base64 when maxHistoryImages is not provided (backward compatible)", () => {
+  test("all images sent as base64 when maxHistoryImages is not provided (backward compatible)", async () => {
     const urls = Array.from({ length: 10 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
@@ -153,7 +153,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
     })
 
     // Single-arg call — works today, should continue working
-    const result = MessageV2.toModelMessage(msgs)
+    const result = await MessageV2.toModelMessage(msgs)
     const providerFileParts = collectProviderFileParts(result)
 
     expect(providerFileParts).toHaveLength(10)
@@ -163,7 +163,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
     expect(collectImagePlaceholders(result)).toHaveLength(0)
   })
 
-  test("limits to last N unique images when maxHistoryImages is set to 5", () => {
+  test("limits to last N unique images when maxHistoryImages is set to 5", async () => {
     const urls = Array.from({ length: 10 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
@@ -174,7 +174,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
 
     // Two-arg call — will compile via `as any` cast; fails at runtime
     // because current toModelMessage ignores the config and returns all 10.
-    const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 5 })
+    const result = await (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 5 })
     const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
@@ -192,14 +192,14 @@ describe("session.message-v2.toModelMessage image limit", () => {
       expect(placeholders[i]).toContain("previously shared")
     }
 
-    const projection = MessageV2.projectModelMessages(msgs, { maxHistoryImages: 5 })
+    const projection = await MessageV2.projectModelMessages(msgs, { maxHistoryImages: 5 })
     expect(projection.provenance.categories.attachments.filter((entry) => entry.text)).toMatchObject(
       placeholders.map((text) => ({ text })),
     )
     expect(projection.provenance.items.attachments).toBe(10)
   })
 
-  test("replaces all images with placeholders when maxHistoryImages is 0", () => {
+  test("replaces all images with placeholders when maxHistoryImages is 0", async () => {
     const urls = Array.from({ length: 3 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
@@ -208,21 +208,21 @@ describe("session.message-v2.toModelMessage image limit", () => {
       ])
     })
 
-    const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 0 })
+    const result = await (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 0 })
     const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
     expect(providerFileParts).toHaveLength(0)
     expect(placeholders).toHaveLength(3)
 
-    const projection = MessageV2.projectModelMessages(msgs, { maxHistoryImages: 0 })
+    const projection = await MessageV2.projectModelMessages(msgs, { maxHistoryImages: 0 })
     expect(projection.provenance.categories.attachments.filter((entry) => entry.text)).toMatchObject(
       placeholders.map((text) => ({ text })),
     )
     expect(projection.provenance.items.attachments).toBe(3)
   })
 
-  test("text files are not affected by image limit", () => {
+  test("text files are not affected by image limit", async () => {
     const urls = Array.from({ length: 3 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
@@ -237,7 +237,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
       ])
     })
 
-    const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 2 })
+    const result = await (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 2 })
     const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
@@ -257,7 +257,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
 // ---------------------------------------------------------------------------
 
 describe("session.message-v2.toModelMessage image dedup", () => {
-  test("identical images (same URL) count as one unique image toward the limit", () => {
+  test("identical images (same URL) count as one unique image toward the limit", async () => {
     const dupURL = imageDataUrl("duplicate")
 
     // 3 identical images (same URL → same hash → 1 unique)
@@ -278,7 +278,7 @@ describe("session.message-v2.toModelMessage image dedup", () => {
     const msgs = allParts.map((p, i) => userMsgWithParts(`msg-${i}`, [p]))
 
     // 3 dup (1 unique) + 2 unique = 3 unique total. Limit 3 → all kept.
-    const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 3 })
+    const result = await (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 3 })
     const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
@@ -286,7 +286,7 @@ describe("session.message-v2.toModelMessage image dedup", () => {
     expect(placeholders).toHaveLength(0)
   })
 
-  test("different images with same filename count as separate unique images", () => {
+  test("different images with same filename count as separate unique images", async () => {
     const urlA = imageDataUrl("content-A")
     const urlB = imageDataUrl("content-B")
     const urlC = imageDataUrl("content-C")
@@ -299,7 +299,7 @@ describe("session.message-v2.toModelMessage image dedup", () => {
     })
 
     // 3 unique images, limit 2 → oldest gets replaced
-    const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 2 })
+    const result = await (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 2 })
     const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 

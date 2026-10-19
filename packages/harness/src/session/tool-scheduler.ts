@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { ExecutionCapacity } from "./execution-capacity"
 import { RuntimeContext } from "../lifecycle/context"
-import type { ModelMessage, Tool as AITool, ToolCallOptions } from "ai"
+import type { ModelMessage, Tool as AITool, ToolExecutionOptions } from "ai"
 import { availableParallelism } from "os"
 import { Log } from "../util/log"
 import { ObservabilityMetrics } from "../observability/metrics"
@@ -423,7 +423,8 @@ export class ToolTaskScheduler {
         toolCallId: task.input.callID,
         messages: [] as ModelMessage[],
         abortSignal: signal,
-      } satisfies ToolCallOptions
+        context: {},
+      } satisfies ToolExecutionOptions<Record<string, unknown>>
       await ExecutionCapacity.tool(this.capacityOwner(task), async () => {
         signal.throwIfAborted()
         return await execute(task.input.input, options)

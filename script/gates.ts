@@ -53,7 +53,7 @@ const LOCAL_GATES: Gate[] = [
   },
   {
     id: "ci-types:check",
-    run: "bun packages/testing/node_modules/.bin/tsgo --project script/ci/tsconfig.json",
+    run: "bun packages/testing/node_modules/.bin/tsc --project script/ci/tsconfig.json",
     needs: [],
   },
   { id: "secrets:check", run: "bun run secrets:check", needs: [] },

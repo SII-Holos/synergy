@@ -99,6 +99,10 @@ class MockWebContents extends EventEmitter {
 class MockWebContentsView {
   readonly webContents = new MockWebContents()
   visible = true
+  background = ""
+  setBackgroundColor(value: string) {
+    this.background = value
+  }
 
   constructor(options: { webPreferences?: { partition?: string } }) {
     viewCreationAttempts++
@@ -308,7 +312,9 @@ describe("Browser native page pool", () => {
     nextDiagnosticsError = new Error("fixture diagnostics failed")
     const child = response.createWindow!({})
     try {
-      await until(() => events.some((event) => event.message === "Popup could not open: fixture diagnostics failed"))
+      await until(() =>
+        events.some((event) => event.message === "Popup could not open: The browser page could not be prepared."),
+      )
       expect(child.isDestroyed()).toBe(true)
       expect(popups).toEqual([])
       expect(parentView.webContents.isDestroyed()).toBe(false)
@@ -388,49 +394,82 @@ describe("Browser native page pool", () => {
     await pool.destroy()
   })
 
-  test("returns a retryable restarting error and rebuilds after a typed CDP timeout", async () => {
+  test("retains a healthy page when a CDP command times out with unknown outcome", async () => {
     views.length = 0
     const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0] })
     const handle = await pool.create(input("cdp-timeout"))
-    nextControlError = new Error("CDP command Runtime.evaluate timed out after 5 seconds.")
-
-    await expect(handle.execute({ type: "reload" })).rejects.toMatchObject({
-      code: "browser_native_restarting",
-      retryable: true,
-    })
-    await until(() => views.length === 2)
-
+    const failure = new Error("CDP command Runtime.evaluate timed out after 5 seconds.")
+    nextControlError = failure
+    await expect(handle.execute({ type: "reload" })).rejects.toBe(failure)
+    await Bun.sleep(10)
+    expect(views).toHaveLength(1)
     expect(handle.isAlive()).toBe(true)
+    expect(views[0]!.webContents.destroyed).toBe(false)
     await pool.destroy()
   })
 
-  test("rebuilds after a sustained unresponsive renderer fails its CDP liveness probe", async () => {
+  test("preserves an unresponsive renderer until the user requests recovery", async () => {
     views.length = 0
+    const events: any[] = []
     const pool = new BrowserNativePagePool({ recoveryDelaysMs: [0], unresponsiveGraceMs: 1 })
-    await pool.create(input("unresponsive"))
+    await pool.create(input("unresponsive", (event) => events.push(event)))
     const first = views.at(-1)!
     first.webContents.debugger.rejectCommands = true
-
     first.webContents.emit("unresponsive")
-    await until(() => views.length === 2)
-
-    expect(first.webContents.destroyed).toBe(true)
+    await until(() => events.some((event) => event.type === "page.updated" && event.page.navigation?.slow))
+    expect(views).toHaveLength(1)
+    expect(first.webContents.destroyed).toBe(false)
+    expect(first.webContents.reloads).toBe(0)
+    first.webContents.emit("responsive")
+    expect(pool.find("unresponsive", "page-unresponsive")?.state().navigation?.slow).toBe(false)
     await pool.destroy()
   })
 
-  test("turns a repeated main-document timeout into an explicit error without destroying a healthy renderer", async () => {
+  test("reports a slow navigation without stopping or replaying it", async () => {
     views.length = 0
     const events: any[] = []
     const pool = new BrowserNativePagePool({ navigationTimeoutMs: 2 })
     await pool.create(input("navigation", (event) => events.push(event)))
     const contents = views.at(-1)!.webContents
-
     contents.emit("did-start-loading")
-    await until(() => contents.reloads === 1)
-    await until(() => events.some((event) => event.type === "page.error" && /automatic retry/.test(event.message)))
-
-    expect(contents.stopped).toBe(2)
+    await until(() => events.some((event) => event.type === "page.updated" && event.page.navigation?.slow))
+    expect(contents.stopped).toBe(0)
+    expect(contents.reloads).toBe(0)
     expect(contents.destroyed).toBe(false)
+    await pool.destroy()
+  })
+
+  test("subframe failures and cancelled navigation never replace the main page with an error", async () => {
+    views.length = 0
+    const events: any[] = []
+    const pool = new BrowserNativePagePool()
+    await pool.create(input("failure", (event) => events.push(event)))
+    const contents = views.at(-1)!.webContents
+    contents.emit("did-fail-load", {}, -105, "ERR_NAME_NOT_RESOLVED", "https://frame.test", false)
+    contents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "https://example.com", true)
+    expect(events.filter((event) => event.type === "page.error")).toHaveLength(0)
+    contents.emit("did-fail-load", {}, -105, "ERR_NAME_NOT_RESOLVED", "https://example.com", true)
+    expect(events.filter((event) => event.type === "page.error")).toHaveLength(1)
+    await pool.destroy()
+  })
+
+  test("a superseded load failure cannot replace a newer main-frame navigation", async () => {
+    views.length = 0
+    const events: Array<{ type: string }> = []
+    const pool = new BrowserNativePagePool()
+    const handle = await pool.create(input("superseded", (event) => events.push(event)))
+    const contents = views.at(-1)!.webContents
+    contents.emit("did-start-navigation", {}, "https://first.test", false, true)
+    const first = handle.state().navigation!.id
+    contents.emit("did-start-navigation", {}, "https://second.test", false, true)
+    expect(handle.state().navigation!.id).not.toBe(first)
+    expect(handle.state().navigation!.requestedURL).toBe("https://second.test")
+    contents.emit("did-fail-load", {}, -105, "ERR_NAME_NOT_RESOLVED", "https://first.test", true)
+    expect(handle.state().navigation!.phase).toBe("loading")
+    expect(events.filter((event) => event.type === "page.error")).toHaveLength(0)
+    contents.emit("did-redirect-navigation", {}, "https://redirect.test", false, true)
+    contents.emit("did-fail-load", {}, -105, "ERR_NAME_NOT_RESOLVED", "https://redirect.test", true)
+    expect(handle.state().navigation!.phase).toBe("failed")
     await pool.destroy()
   })
 
@@ -472,32 +511,6 @@ describe("Browser native page pool", () => {
     failNewViews = false
     await expect(handle.execute({ type: "close" })).resolves.toEqual({ type: "void" })
     expect(viewCreationAttempts).toBe(attemptsAtFailure)
-    await pool.destroy()
-  })
-  test("bounds the healthy-reload path so a wedged renderer cannot reload forever", async () => {
-    views.length = 0
-    const events: any[] = []
-    const pool = new BrowserNativePagePool({ unresponsiveGraceMs: 1 })
-    await pool.create(input("healthy-reload", (event) => events.push(event)))
-    const contents = views.at(-1)!.webContents
-
-    // Each unresponsive episode succeeds its CDP probe (healthy path), so the
-    // pool reloads. Repeat until the shared recovery budget is exhausted.
-    for (let i = 0; i <= MAX_RECOVERY_BUDGET; i++) {
-      contents.emit("unresponsive")
-      await until(
-        () =>
-          contents.reloads === i + 1 ||
-          events.some((event) => event.type === "host.status" && event.status === "failed"),
-      )
-      if (events.some((event) => event.type === "host.status" && event.status === "failed")) break
-      contents.emit("responsive")
-    }
-
-    await until(() => events.some((event) => event.type === "host.status" && event.status === "failed"))
-    expect(contents.reloads).toBeLessThanOrEqual(MAX_RECOVERY_BUDGET)
-    expect(events.filter((event) => event.type === "host.status" && event.status === "failed")).toHaveLength(1)
-    expect(events.some((event) => event.type === "page.error" && /unresponsive/.test(event.message))).toBe(true)
     await pool.destroy()
   })
   test("resume on a healthy page returns state without replacing its generation", async () => {
@@ -598,26 +611,6 @@ describe("Browser native page pool", () => {
     await pool.destroy()
   })
 
-  test("does not reset the navigation retry budget on mid-navigation loading events", async () => {
-    views.length = 0
-    const events: any[] = []
-    const pool = new BrowserNativePagePool({ navigationTimeoutMs: 2 })
-    await pool.create(input("redirect-loop", (event) => events.push(event)))
-    const contents = views.at(-1)!.webContents
-
-    // A redirect fires multiple did-start-loading events; the retry counter
-    // must survive them so the watchdog reloads only once.
-    contents.emit("did-start-loading")
-    contents.emit("did-start-loading")
-    await until(() => contents.reloads === 1)
-    contents.emit("did-start-loading")
-    await until(() => events.some((event) => event.type === "page.error" && /automatic retry/.test(event.message)))
-
-    expect(contents.reloads).toBe(1)
-    expect(contents.destroyed).toBe(false)
-    await pool.destroy()
-  })
-
   test("stops rebuilding after the recovery budget even when new generations succeed", async () => {
     views.length = 0
     const events: any[] = []
@@ -663,4 +656,45 @@ describe("Browser native page pool", () => {
     ])
     await pool.destroy()
   })
+})
+
+test("records correlated native stages without website secrets and updates the blank canvas theme", async () => {
+  let color = "#111111"
+  const events: import("@ericsanchezok/synergy-browser-core").BrowserHostPageEvent[] = []
+  const pool = new BrowserNativePagePool({ backgroundColor: () => color })
+  const config = input("stages", (event) => events.push(event))
+  config.page.url = "https://user:secret@example.com/?token=private#secret"
+  const page = await pool.create(config)
+  const view = views.at(-1)!
+  expect(view.background).toBe(color)
+  color = "#eeeeee"
+  pool.refreshTheme()
+  expect(view.background).toBe(color)
+  view.webContents.url = config.page.url
+  view.webContents.emit("did-start-navigation", {}, config.page.url, false, true)
+  pool.attach({ contentView: { addChildView() {} } } as never, config.ownerKey, config.page.id)
+  view.webContents.emit("did-navigate", {}, config.page.url)
+  view.webContents.emit("dom-ready")
+  view.webContents.emit("did-finish-load")
+  const stages = events.filter((event) => event.type === "page.stage")
+  expect(stages.map((event) => event.stage)).toEqual(
+    expect.arrayContaining([
+      "received",
+      "native.proxy",
+      "native.bootstrap",
+      "native.guards",
+      "native.viewport",
+      "ready",
+      "dispatched",
+      "mounted",
+      "committed",
+      "dom-ready",
+      "completed",
+    ]),
+  )
+  expect(
+    stages.every((event) => event.elapsedMs >= 0 && event.requestId && event.navigationId && event.generation === 1),
+  ).toBe(true)
+  expect(JSON.stringify(stages)).not.toMatch(/example|secret|private|token=/)
+  await page.destroy()
 })

@@ -248,10 +248,9 @@ describe("retired scope index", () => {
       const check = new Database(filename, { readonly: true })
       try {
         const row = check
-          .query<
-            { n: number },
-            []
-          >("SELECT count(*) AS n FROM sqlite_master WHERE type='index' AND name='storage_records_scope'")
+          .query<{ n: number }, []>(
+            "SELECT count(*) AS n FROM sqlite_master WHERE type='index' AND name='storage_records_scope'",
+          )
           .get()!
         expect(row.n).toBe(0)
       } finally {
@@ -275,10 +274,9 @@ describe("retired scope index", () => {
         const check = new Database(filename, { readonly: true })
         try {
           return check
-            .query<
-              { n: number },
-              []
-            >("SELECT count(*) AS n FROM sqlite_master WHERE type='index' AND name='storage_records_scope'")
+            .query<{ n: number }, []>(
+              "SELECT count(*) AS n FROM sqlite_master WHERE type='index' AND name='storage_records_scope'",
+            )
             .get()!.n
         } finally {
           check.close(false)

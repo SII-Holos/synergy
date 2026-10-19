@@ -84,7 +84,8 @@ class BenchmarkTrial(Trial):
             return
         super()._maybe_populate_agent_context(agent_result)
 
-    async def _verify_with_retry(self) -> None:
+    # Pier decorates this method; this override preserves one verification attempt.
+    async def _verify_with_retry(self) -> None:  # type: ignore[override]
         try:
             self.result.verifier_result = (
                 await self._verify_once(step_cfg=None)

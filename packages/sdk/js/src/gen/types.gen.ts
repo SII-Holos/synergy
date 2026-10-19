@@ -2018,13 +2018,7 @@ export type PerfTimelineQuality = {
 }
 
 export type PerfResourceOwnerKind =
-  | "control_plane"
-  | "agent"
-  | "policy"
-  | "plugin"
-  | "browser"
-  | "mcp"
-  | "local_process"
+  "control_plane" | "agent" | "policy" | "plugin" | "browser" | "mcp" | "local_process"
 
 export type PerfResourceRecovery = {
   action: "gc" | "recycle" | "idle_retire" | "close"
@@ -2975,9 +2969,6 @@ export type ChannelInfo = {
   createdAt?: number
 }
 
-/**
- * Endpoint context if created from a session endpoint
- */
 export type SessionEndpoint = {
   kind: "channel"
   channel: ChannelInfo
@@ -2996,6 +2987,9 @@ export type AgendaOrigin = {
    * Workspace captured when the item was created
    */
   workspaceID?: string | null
+  /**
+   * Endpoint context if created from a session endpoint
+   */
   endpoint?: SessionEndpoint
 }
 
@@ -4442,6 +4436,9 @@ export type AgentConfig = {
    */
   maxSteps?: number
   permission?: PermissionConfig
+  /**
+   * Control profile for this agent's enforcement gate
+   */
   controlProfile?: ControlProfileId
   /**
    * Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.
@@ -6925,6 +6922,9 @@ export type Config = {
   }
   sandbox?: SandboxConfig
   observability?: ObservabilityConfig
+  /**
+   * Default control profile applied to all agents
+   */
   controlProfile?: ControlProfileId
   /**
    * Control profile for sessions created by non-interactive sources (Channels and Agenda) that have no explicit profile of their own. Default: autonomous. Changes apply to sessions created after the change; an existing bound Channel session keeps the profile it was created with.
@@ -7418,11 +7418,7 @@ export type ConfigIssue = {
    * Stable machine-readable issue code
    */
   code:
-    | "config.json_syntax"
-    | "config.root_type"
-    | "config.unknown_key"
-    | "config.load_failed"
-    | "config.migration_failed"
+    "config.json_syntax" | "config.root_type" | "config.unknown_key" | "config.load_failed" | "config.migration_failed"
   /**
    * Whether the offending file was moved aside
    */
@@ -7556,9 +7552,7 @@ export type ConfigExportSecretsRejectedError = {
 }
 
 export type ConfigExportBadRequestError =
-  | BadRequestError
-  | ConfigImportProjectScopeRequiredError
-  | ConfigExportSecretsRejectedError
+  BadRequestError | ConfigImportProjectScopeRequiredError | ConfigExportSecretsRejectedError
 
 export type ConfigImportDiagnostic = {
   severity: "warning" | "info"
@@ -8319,15 +8313,7 @@ export type ExecutionSummary = {
     title: string
     started: number
     status:
-      | "running"
-      | "completed"
-      | "failed"
-      | "cancelled"
-      | "interrupted"
-      | "unknown"
-      | "queued"
-      | "paused"
-      | "waiting"
+      "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
     elapsedMs: number | null
     elapsedActive: boolean
     elapsedLowerBound: boolean
@@ -8520,15 +8506,7 @@ export type ExecutionNodeDetail = {
   node: ExecutionTrajectoryNode
   execution?: {
     status:
-      | "running"
-      | "completed"
-      | "failed"
-      | "cancelled"
-      | "interrupted"
-      | "unknown"
-      | "queued"
-      | "paused"
-      | "waiting"
+      "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
     elapsedMs: number | null
     elapsedActive: boolean
     elapsedLowerBound: boolean
@@ -12817,6 +12795,18 @@ export type BrowserApiSessionPage = {
   title: string
   isLoading: boolean
   lastActiveAt: number | null
+  navigation?: {
+    id: string
+    generation: number
+    revision: number
+    requestedURL: string
+    phase: "loading" | "committed" | "completed" | "failed" | "stopped"
+    slow: boolean
+    error?: {
+      code: string
+      message: string
+    }
+  }
   profileId: string
   openerId?: string
   createdBySessionID?: string
@@ -12870,7 +12860,7 @@ export type BrowserManageProfile =
     }
 
 export type BrowserAnnotationResponse = {
-  protocolVersion: 7
+  protocolVersion: 8
   annotation: {
     id: string
     pageURL: string
@@ -12886,7 +12876,7 @@ export type BrowserAnnotationResponse = {
 }
 
 export type BrowserAnnotationRequest = {
-  protocolVersion: 7
+  protocolVersion: 8
   pageId: string
   x: number
   y: number
@@ -12897,14 +12887,14 @@ export type BrowserAnnotationRequest = {
 }
 
 export type BrowserDiagnosticsResponse = {
-  protocolVersion: 7
+  protocolVersion: 8
   pageId: string
   action: string
   data: unknown
 }
 
 export type BrowserDiagnosticsRequest = {
-  protocolVersion: 7
+  protocolVersion: 8
   pageId: string
   commandId: string
   action: "console" | "network" | "elements" | "assets" | "downloads" | "clear"
@@ -12913,7 +12903,7 @@ export type BrowserDiagnosticsRequest = {
 
 export type BrowserApiSessionState = {
   type: "session.state"
-  protocolVersion: 7
+  protocolVersion: 8
   ownerKey: string
   status: "empty" | "suspended" | "active" | "failed"
   agentActivities?: Array<{
@@ -12928,7 +12918,7 @@ export type BrowserApiSessionState = {
     completed?: boolean
   }>
   presentation: {
-    protocolVersion: 7
+    protocolVersion: 8
     kind: "native"
     capabilities: {
       native: boolean
@@ -12936,15 +12926,7 @@ export type BrowserApiSessionState = {
     reason: "desktop-local" | "requested"
   } | null
   hostStatus:
-    | "unavailable"
-    | "installing"
-    | "starting"
-    | "pending"
-    | "ready"
-    | "detached"
-    | "restarting"
-    | "idle"
-    | "failed"
+    "unavailable" | "installing" | "starting" | "pending" | "ready" | "detached" | "restarting" | "idle" | "failed"
   seq: number
   epoch: string
   error?: BrowserApiError
@@ -12953,7 +12935,7 @@ export type BrowserApiSessionState = {
 
 export type BrowserControlResponse = {
   type: "control.result"
-  protocolVersion: 7
+  protocolVersion: 8
   result:
     | {
         userChanges?: string
@@ -12968,6 +12950,18 @@ export type BrowserControlResponse = {
           title: string
           isLoading: boolean
           lastActiveAt: number | null
+          navigation?: {
+            id: string
+            generation: number
+            revision: number
+            requestedURL: string
+            phase: "loading" | "committed" | "completed" | "failed" | "stopped"
+            slow: boolean
+            error?: {
+              code: string
+              message: string
+            }
+          }
         }
       }
     | {
@@ -12979,6 +12973,18 @@ export type BrowserControlResponse = {
           title: string
           isLoading: boolean
           lastActiveAt: number | null
+          navigation?: {
+            id: string
+            generation: number
+            revision: number
+            requestedURL: string
+            phase: "loading" | "committed" | "completed" | "failed" | "stopped"
+            slow: boolean
+            error?: {
+              code: string
+              message: string
+            }
+          }
         }
         snapshot?: unknown
         settled?: boolean
@@ -13013,6 +13019,18 @@ export type BrowserControlResponse = {
           title: string
           isLoading: boolean
           lastActiveAt: number | null
+          navigation?: {
+            id: string
+            generation: number
+            revision: number
+            requestedURL: string
+            phase: "loading" | "committed" | "completed" | "failed" | "stopped"
+            slow: boolean
+            error?: {
+              code: string
+              message: string
+            }
+          }
         }
         settled?: boolean
         settleReason?: "networkquiet" | "load" | "none" | "timeout" | "interrupted"
@@ -13031,6 +13049,18 @@ export type BrowserControlResponse = {
           title: string
           isLoading: boolean
           lastActiveAt: number | null
+          navigation?: {
+            id: string
+            generation: number
+            revision: number
+            requestedURL: string
+            phase: "loading" | "committed" | "completed" | "failed" | "stopped"
+            slow: boolean
+            error?: {
+              code: string
+              message: string
+            }
+          }
         }
       }
     | {
@@ -13057,7 +13087,7 @@ export type BrowserControlResponse = {
 
 export type BrowserControlRequest = {
   pageId: string
-  protocolVersion: 7
+  protocolVersion: 8
   command:
     | {
         type: "navigate"
@@ -16265,16 +16295,7 @@ export type PerformanceTracesListData = {
     limit?: number
     cursor?: string
     kind?:
-      | "request"
-      | "session"
-      | "tool"
-      | "provider"
-      | "runtime"
-      | "storage"
-      | "frontend"
-      | "mcp"
-      | "plugin"
-      | "channel"
+      "request" | "session" | "tool" | "provider" | "runtime" | "storage" | "frontend" | "mcp" | "plugin" | "channel"
     status?: PerfSpanStatus
     minDurationMs?: number
     scopeID?: string
@@ -24007,14 +24028,14 @@ export type CommandListResponse = CommandListResponses[keyof CommandListResponse
 export type ProviderCatalogPageData = {
   body?: never
   path?: never
-  query: {
+  query?: {
     directory?: string
     scopeID?: string
     cursor?: string
     limit?: number
     query?: string
     providerID?: string
-    connectedOnly: boolean
+    connectedOnly?: boolean
   }
   url: "/provider/catalog-page"
 }

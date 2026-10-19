@@ -148,7 +148,13 @@ describe("session.getUsage", () => {
       model.api.npm = "@ai-sdk/openai"
       const result = Session.getUsage({
         model,
-        usage: { inputTokens: 1000, outputTokens: 500, reasoningTokens: 100, totalTokens: 1500 },
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: 100 },
+        },
       })
 
       expect(result.tokens.output).toBe(500)
@@ -156,7 +162,7 @@ describe("session.getUsage", () => {
       expect(result.cost).toBe(0.0105)
     }))
 
-  test("includes separately reported Google reasoning in normalized output", () =>
+  test("uses Google output totals that already include reasoning", () =>
     runtime.run(() => {
       const model = createModel({
         context: 100_000,
@@ -166,7 +172,13 @@ describe("session.getUsage", () => {
       model.api.npm = "@ai-sdk/google"
       const result = Session.getUsage({
         model,
-        usage: { inputTokens: 1000, outputTokens: 400, reasoningTokens: 100, totalTokens: 1500 },
+        usage: {
+          inputTokens: 1000,
+          outputTokens: 500,
+          totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: 100 },
+        },
       })
 
       expect(result.tokens.output).toBe(500)
@@ -193,6 +205,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
       })
 
@@ -212,7 +226,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cachedInputTokens: 200,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 200, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
       })
 
@@ -229,6 +244,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           openaiCompatible: {
@@ -253,6 +270,8 @@ describe("session.getUsage", () => {
           totalTokens: 1500,
           prompt_cache_hit_tokens: 384,
           prompt_cache_miss_tokens: 616,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         } as Parameters<typeof Session.getUsage>[0]["usage"],
       })
 
@@ -269,6 +288,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           openai: {
@@ -291,6 +312,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           deepseek: {
@@ -313,6 +336,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           "openai-compatible": {
@@ -326,7 +351,7 @@ describe("session.getUsage", () => {
       expect(result.tokens.cache.read).toBe(64)
     }))
 
-  test("handles Bedrock cache write metadata without subtracting cached reads from input", () =>
+  test("subtracts Bedrock cache reads and writes from the inclusive SDK input", () =>
     runtime.run(() => {
       const model = createModel({ context: 100_000, output: 32_000 })
       const result = Session.getUsage({
@@ -335,7 +360,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cachedInputTokens: 150,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 150, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           bedrock: {
@@ -346,7 +372,7 @@ describe("session.getUsage", () => {
         },
       })
 
-      expect(result.tokens.input).toBe(1000)
+      expect(result.tokens.input).toBe(625)
       expect(result.tokens.cache.read).toBe(150)
       expect(result.tokens.cache.write).toBe(225)
     }))
@@ -360,6 +386,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           anthropic: {
@@ -371,7 +399,7 @@ describe("session.getUsage", () => {
       expect(result.tokens.cache.write).toBe(300)
     }))
 
-  test("does not subtract cached tokens for anthropic provider", () =>
+  test("subtracts Anthropic cache reads from the inclusive SDK input", () =>
     runtime.run(() => {
       const model = createModel({ context: 100_000, output: 32_000 })
       const result = Session.getUsage({
@@ -380,14 +408,15 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          cachedInputTokens: 200,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: 200, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
         metadata: {
           anthropic: {},
         },
       })
 
-      expect(result.tokens.input).toBe(1000)
+      expect(result.tokens.input).toBe(800)
       expect(result.tokens.cache.read).toBe(200)
     }))
 
@@ -400,7 +429,8 @@ describe("session.getUsage", () => {
           inputTokens: 1000,
           outputTokens: 500,
           totalTokens: 1500,
-          reasoningTokens: 100,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: 100 },
         },
       })
 
@@ -416,6 +446,8 @@ describe("session.getUsage", () => {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
       })
 
@@ -444,6 +476,8 @@ describe("session.getUsage", () => {
           inputTokens: 1_000_000,
           outputTokens: 100_000,
           totalTokens: 1_100_000,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
         },
       })
 

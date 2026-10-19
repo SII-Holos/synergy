@@ -10681,6 +10681,42 @@ msgid "browser.downloads.waiting"
 msgstr "待确认"
 
 #. js-lingui-explicit-id
+msgid "browser.failure.address"
+msgstr "无法找到该网站。请检查地址后重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.certificate"
+msgstr "无法建立安全连接。请检查网站地址以及设备的日期和时间。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.denied"
+msgstr "当前浏览器权限不允许打开此地址。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.details"
+msgstr "诊断详情"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.offline"
+msgstr "网络似乎已断开。请检查连接后重试此页面。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.proxy"
+msgstr "代理连接失败。请检查代理设置后重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.request"
+msgstr "页面未能完成此请求。请检查页面后重试。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.unavailable"
+msgstr "浏览器页面暂不可用。请重试打开。"
+
+#. js-lingui-explicit-id
+msgid "browser.failure.uncertain"
+msgstr "操作等待时间过长。页面仍然可用，请先检查页面，再决定是否重试。"
+
+#. js-lingui-explicit-id
 msgid "browser.identities.access"
 msgstr "访问"
 
@@ -10959,6 +10995,18 @@ msgstr "超时"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "browser.label.unsettled"
 msgstr "未稳定"
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.opening"
+msgstr "正在打开页面…"
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.slow"
+msgstr "页面加载较慢，你可以继续等待或停止加载。"
+
+#. js-lingui-explicit-id
+msgid "browser.navigation.stop"
+msgstr "停止加载"
 
 #. js-lingui-explicit-id
 msgid "browser.page.back"

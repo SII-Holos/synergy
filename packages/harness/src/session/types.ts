@@ -214,22 +214,23 @@ export const CompletionNotice = z
   .meta({ ref: "SessionCompletionNotice" })
 export type CompletionNotice = z.infer<typeof CompletionNotice>
 
-const BaseInfo = z.preprocess(
-  (data: any) => {
-    if (data && typeof data === "object") {
-      if (data.projectID && !data.scopeID) {
-        data.scopeID = data.projectID
-        delete data.projectID
-      }
-      if (data.completionNotice && typeof data.completionNotice === "object") {
-        const notice = data.completionNotice as Record<string, unknown>
-        if (notice.unreadCount === undefined) {
-          notice.unreadCount = notice.unread === true && notice.silent !== true ? 1 : 0
-        }
+const BaseInfoInput = z.transform((data: any) => {
+  if (data && typeof data === "object") {
+    if (data.projectID && !data.scopeID) {
+      data.scopeID = data.projectID
+      delete data.projectID
+    }
+    if (data.completionNotice && typeof data.completionNotice === "object") {
+      const notice = data.completionNotice as Record<string, unknown>
+      if (notice.unreadCount === undefined) {
+        notice.unreadCount = notice.unread === true && notice.silent !== true ? 1 : 0
       }
     }
-    return data
-  },
+  }
+  return data
+})
+
+const BaseInfo = BaseInfoInput.pipe(
   z.object({
     id: Identifier.schema("session"),
     scope: ScopeField,
@@ -317,7 +318,7 @@ const BaseInfo = z.preprocess(
 
 export const Info = z
   .preprocess(
-    (input) => SessionSchemaRegistry.projectInput(BaseInfo.in.parse(input)),
+    (input) => SessionSchemaRegistry.projectInput(BaseInfoInput.parse(input)),
     SessionSchemaRegistry.compose(BaseInfo.out),
   )
   .meta({ ref: "Session" })
@@ -331,7 +332,7 @@ export function independentExecutionInfo(input: Info): Info {
   ) as Info
 }
 
-export const PersistedInfo = BaseInfo.in.pipe(BaseInfo.out.omit({ workflow: true }).passthrough())
+export const PersistedInfo = BaseInfoInput.pipe(BaseInfo.out.omit({ workflow: true }).passthrough())
 export type PersistedInfo = z.infer<typeof PersistedInfo>
 export const StatusInfo = z
   .union([

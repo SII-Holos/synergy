@@ -114,7 +114,7 @@ test("native covers keep the newest image and discard failed or inactive capture
     export const [page,setPage]=createSignal({id:'page',url:'https://example.test',status:'active',isLoading:false})
     export const calls=[],pending=[]
     let listener
-    export const emit=event=>listener?.({...event,pageId:page().id,protocolVersion:7})
+    export const emit=event=>listener?.({...event,pageId:page().id,protocolVersion:8})
     export const useBrowser=()=>({presentation:()=>({kind:'native'}),page,pageId:()=>page().id,hostStatus:()=>'ready',fileChooserRequest:()=>null,dialogRequest:()=>null,controlsOpen:()=>false,addressSuggestionsOpen:()=>false,browserError:()=>null,annotationTarget:()=>null,setBrowserError(){}})
     export const useDialog=()=>({active:false})
     export const usePlatform=()=>({browserNative:{

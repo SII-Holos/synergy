@@ -4,6 +4,23 @@ import { DesktopServerStartup } from "../src/server-startup.js"
 const line = (value: unknown) => `SYNERGY_STARTUP_V1 ${JSON.stringify(value)}\n`
 
 describe("managed startup progress", () => {
+  test("installed module preparation has a bounded stage before Runtime initialization", () => {
+    let now = 0
+    const startup = new DesktopServerStartup({ now: () => now })
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "installation" }))
+    now = 31_000
+    expect(startup.remainingMs()).toBe(269_000)
+    expect(startup.isReady()).toBe(false)
+    expect(startup.status().detail).toBe("Preparing installed modules.")
+    now = 300_000
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "installation" }))
+    expect(startup.remainingMs()).toBe(0)
+    expect(startup.timeoutError().message).toContain("installation")
+    startup.receive(line({ phase: "runtime", state: "opening", stage: "initializing" }))
+    expect(startup.remainingMs()).toBe(300_000)
+    expect(startup.status().detail).toBe("Preparing the runtime.")
+  })
+
   test("only Runtime readiness can finish startup after subsystem completion", () => {
     let now = 0
     const startup = new DesktopServerStartup({ now: () => now })

@@ -2,9 +2,9 @@
 
 ## Solid ordered row retention
 
-Provenance: [Solid 1.9.15 DOM renderer](https://unpkg.com/solid-js@1.9.15/web/dist/web.js) and its upstream [DOM array reconciliation](https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js).
+Provenance: [Solid 1.9.17 DOM renderer](https://unpkg.com/solid-js@1.9.17/web/dist/web.js) and its upstream [DOM array reconciliation](https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js).
 
-Local adaptation: [the pinned patch](solid-js@1.9.15.patch) checks shared nodes' relative order in linear time. When that order is unchanged, it removes obsolete nodes and inserts only newly admitted nodes around the shared nodes. Shared rows never detach, preserving native focus and text selection when virtual paging changes its overscan direction or adds a disjoint range. Actual node permutations use the original reconciler. Development/production ESM and CommonJS entrypoints share the correction; SSR entrypoints and licenses remain unchanged.
+Local adaptation: [the pinned patch](solid-js@1.9.17.patch) checks shared nodes' relative order in linear time. When that order is unchanged, it removes obsolete nodes and inserts only newly admitted nodes around the shared nodes. Shared rows never detach, preserving native focus and text selection when virtual paging changes its overscan direction or adds a disjoint range. Actual node permutations use the original reconciler. Development/production ESM and CommonJS entrypoints share the correction; SSR entrypoints and licenses remain unchanged.
 
 [DOM regressions](../packages/ui/test/solid-ordered-rows.test.ts) cover focus, selection, ordered admission/removal and all five-row permutations through all four published entrypoints. [Conversation browser regressions](../apps/web/test/components/session/conversation-process.dom.test.ts) exercise real native paging, retained link focus and subsequent body growth or history backfill. Keep the patch until an upgraded dependency passes these cases without it, then remove it. Verify a fresh frozen-lockfile install before accepting an upgrade.
 
@@ -20,15 +20,15 @@ Local adaptation: [the pinned patch](virtua@0.42.3.patch) queues the latest noti
 
 Provenance: Kobalte utils 0.9.1, including its pinned [tabbable traversal](https://github.com/kobaltedev/kobalte/blob/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/utils/src/tabbable.ts) and [active element lookup](https://github.com/kobaltedev/kobalte/blob/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/utils/src/dom.ts).
 
-Local adaptation: [the pinned patch](@kobalte%252Futils@0.9.1.patch) preserves loading iframe focus until its document body exists and checks element visibility against the owning window's constructors. Both published ESM and CommonJS entrypoints carry the same correction. This prevents preview loading from breaking menu focus and includes loaded iframe controls in keyboard traversal.
+Local adaptation: [the pinned patch](@kobalte%252Futils@0.9.2.patch) preserves loading iframe focus until its document body exists and checks element visibility against the owning window's constructors. Both published ESM and CommonJS entrypoints carry the same correction. This prevents preview loading from breaking menu focus and includes loaded iframe controls in keyboard traversal.
 
 [Real browser regression](../packages/ui/test/components/iframe-focus.browser.test.ts) streams a same-origin document without a body, checks pending focus, then completes the document and verifies native keyboard navigation. Keep the patch until an upgraded dependency passes this regression without it; verify a fresh frozen-lockfile install before accepting an upgrade.
 
 ## Kobalte collection keys
 
-Provenance: [Kobalte core 0.13.11 source](https://github.com/kobaltedev/kobalte/tree/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/core/src), including its [list keyboard delegate](https://github.com/kobaltedev/kobalte/blob/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/core/src/list/list-keyboard-delegate.ts).
+Provenance: [Kobalte core 0.13.14 source](https://github.com/kobaltedev/kobalte/tree/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/core/src), including its [list keyboard delegate](https://github.com/kobaltedev/kobalte/blob/1bd4aaa7ad782b7ad03a9e4fd94565310dce08a0/packages/core/src/list/list-keyboard-delegate.ts).
 
-Local adaptation: [the pinned patch](@kobalte%252Fcore@0.13.11.patch) escapes opaque collection keys before attribute-selector lookup in selection, keyboard navigation, Tabs and Combobox. Native selectable-item focus also marks its collection active so Accordion arrow keys move DOM focus without redirecting focus from editable content. Both published JavaScript and JSX entrypoints carry the same corrections. Public values, callbacks, DOM attributes and persisted resource identities remain unchanged; the package's licenses remain intact.
+Local adaptation: [the pinned patch](@kobalte%252Fcore@0.13.14.patch) escapes opaque collection keys before attribute-selector lookup in selection, keyboard navigation, Tabs and Combobox. Native selectable-item focus also marks its collection active so Accordion arrow keys move DOM focus without redirecting focus from editable content. Both published JavaScript and JSX entrypoints carry the same corrections. Dialog teardown releases its accessibility hiding synchronously; delayed hide callbacks check current ownership so an unmounted dialog cannot leave unrelated controls hidden. Public values, callbacks, DOM attributes and persisted resource identities remain unchanged; the package's licenses remain intact.
 
 [Real browser regressions](../packages/ui/test/components/collection-key-navigation.browser.test.ts) exercise both entrypoints through shared Accordion and Tabs, including controlled updates, uncontrolled defaults, pointer activation and keyboard focus. Keep the patch until a replacement dependency passes these cases without it. Verify a fresh frozen-lockfile install before accepting an upgrade.
 

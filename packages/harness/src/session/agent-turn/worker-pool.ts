@@ -169,12 +169,7 @@ interface ReleasedRequest {
 type MemoryRecycleReason = "rss_soft" | "heap_soft"
 
 type RecycleReason =
-  | "max_turns"
-  | MemoryRecycleReason
-  | "idle_rss_growth"
-  | "idle_external_growth"
-  | "idle_timeout"
-  | "pool_resize"
+  "max_turns" | MemoryRecycleReason | "idle_rss_growth" | "idle_external_growth" | "idle_timeout" | "pool_resize"
 
 type HardMemoryReason = "rss_hard" | "heap_hard"
 

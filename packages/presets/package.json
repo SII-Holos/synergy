@@ -24,14 +24,14 @@
   },
   "scripts": {
     "acceptance": "bun script/acceptance.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/presets dist/modules",
     "test:ci": "bun ../testing/script/test-ci.ts",
     "test:coverage": "bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
-    "@clack/prompts": "1.0.0-alpha.1",
+    "@clack/prompts": "1.8.1",
     "@ericsanchezok/synergy-acp": "workspace:*",
     "@ericsanchezok/synergy-agenda": "workspace:*",
     "@ericsanchezok/synergy-agenda-blueprint": "workspace:*",
@@ -76,8 +76,8 @@
     "@ericsanchezok/synergy-workbench": "workspace:*",
     "@ericsanchezok/synergy-workflows": "workspace:*",
     "hono": "catalog:",
-    "open": "10.1.2",
-    "yargs": "18.0.0",
+    "open": "11.0.4",
+    "yargs": "18.2.0",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -86,16 +86,15 @@
     "@ericsanchezok/synergy-light-loop": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@types/yargs": "17.0.33",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
-    "@zip.js/zip.js": "2.8.26",
+    "@types/yargs": "17.0.35",
+    "@zip.js/zip.js": "2.24.0",
     "ai": "catalog:",
     "jsonc-parser": "3.3.1",
-    "playwright-core": "1.61.0",
+    "playwright-core": "1.64.1",
     "remeda": "catalog:",
     "typescript": "catalog:"
   },

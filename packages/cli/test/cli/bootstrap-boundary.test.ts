@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 
 test("CLI worker dispatch entry has no eager runtime imports", async () => {
   const entry = new URL("../../src/index.ts", import.meta.url)

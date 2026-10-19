@@ -58,6 +58,13 @@ export function createMarkdownParser() {
     new Marked().use(
       {
         tokenizer: {
+          // Provenance: https://github.com/markedjs/marked/blob/v18.1.1/src/Tokenizer.ts
+          // Preserve consumed references until rendering so reading anchors retain their full source span.
+          inlineText(source) {
+            const token = Tokenizer.prototype.inlineText.call(this, source)
+            if (token) token.text = token.raw
+            return token
+          },
           url(source) {
             const token = Tokenizer.prototype.url.call(this, source)
             if (!token || !/^(?:https?:\/\/|www\.)/i.test(token.raw)) return token

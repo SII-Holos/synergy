@@ -90,7 +90,7 @@ pub mod ffi {
 
         let original = GetThreadDesktop(GetCurrentThreadId());
         if original.is_null() {
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "GetThreadDesktop failed"));
         }
 
@@ -104,13 +104,13 @@ pub mod ffi {
         );
 
         if hdesk.is_null() {
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "CreateDesktopW failed"));
         }
 
         if SetThreadDesktop(hdesk) == 0 {
             CloseDesktop(hdesk);
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "SetThreadDesktop failed"));
         }
 
@@ -120,7 +120,7 @@ pub mod ffi {
     /// Switch the calling thread to a different desktop.
     pub unsafe fn switch_to_desktop(hdesk: HDESK) -> windows_result::Result<()> {
         if SetThreadDesktop(hdesk) == 0 {
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "SetThreadDesktop failed"));
         }
         Ok(())
@@ -129,7 +129,7 @@ pub mod ffi {
     /// Close a desktop handle.
     pub unsafe fn close_desktop(hdesk: HDESK) -> windows_result::Result<()> {
         if CloseDesktop(hdesk) == 0 {
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "CloseDesktop failed"));
         }
         Ok(())

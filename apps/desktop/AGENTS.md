@@ -19,7 +19,9 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 
 Run `bun run typecheck` and the focused test under `test/`, then `bun run desktop:test`. For Browser changes, run `test:runtime` and the relevant core/Web tests. Exercise the affected external or managed mode through an isolated home, and finish with root `bun run quality:quick`.
 
-For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` and verify an isolated managed upgrade longer than the ordinary health deadline.
+For background-only Browser checks use `SYNERGY_DESKTOP_RUNTIME_TEST=1 SYNERGY_DESKTOP_BACKGROUND_TEST=1 bun test test/browser-runtime-smoke.test.ts`; visible-window and focus-dependent fixtures are explicitly skipped and remain unverified.
+
+For startup progress changes, also run `SYNERGY_DESKTOP_RUNTIME_TEST=1 bun test test/startup-progress-runtime.test.ts` and verify an isolated managed upgrade longer than the ordinary health deadline. Add `SYNERGY_DESKTOP_BACKGROUND_TEST=1` to keep this fixture hidden and disable native focus requests.
 
 Update the Browser architecture, Web product contract, or Desktop release runbook when their durable behavior changes.
 

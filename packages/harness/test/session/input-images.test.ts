@@ -22,6 +22,15 @@ test("final provider file parts preserve image proof without admitting documents
     ]),
   ).toEqual([{ sha256: InputImages.digest(data), status: "included" }])
   expect(InputImages.compare([], [{ content: [{ type: "file", data, mediaType: "application/pdf" }] }])).toEqual([])
+  for (const value of [
+    { type: "data", data },
+    { type: "data", data: data.toString("base64") },
+    { type: "url", url: new URL(url) },
+  ]) {
+    expect(InputImages.compare(before, [{ content: [{ type: "file", data: value, mediaType: "image/png" }] }])).toEqual(
+      [{ sha256: InputImages.digest(data), status: "included" }],
+    )
+  }
 })
 
 test("final SDK tool-result image parts carry exact image proof", () => {

@@ -94,7 +94,7 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
 
   const files = new Map<string, WorkspaceFile.StatusSummary["files"][number]>()
   const names = nameStatus.split("\0")
-  for (let i = 0; i < names.length - 1; ) {
+  for (let i = 0; i < names.length - 1;) {
     const status = parseStatus(names[i++]!)
     const oldPath = names[i++] ?? ""
     const filepath = cleanRelative(status === "renamed" ? (names[i++] ?? "") : oldPath)

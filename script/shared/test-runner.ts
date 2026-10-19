@@ -89,6 +89,8 @@ export async function runBatchedTests(options: TestRunnerOptions) {
         [
           process.execPath,
           "test",
+          // Solid DOM fixtures provide their own compiler; prop-only fixtures use React.createElement.
+          "--jsx-runtime=classic",
           "--timeout",
           String(batch.timeout ?? timeoutMs),
           "--reporter=junit",

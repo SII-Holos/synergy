@@ -362,7 +362,13 @@ describe("AgentCall", () => {
   test("returns usage and the resolved model", () =>
     runtime.run(async () => {
       installAgent()
-      const usage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 }
+      const usage = {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+        outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+      }
       ;(LLM.stream as any) = mock(async () => ({
         textStream: (async function* () {
           yield "answer"

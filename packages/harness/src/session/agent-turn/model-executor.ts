@@ -97,7 +97,7 @@ export class InProcessModelExecutor {
                   }
                   await owned?.dispose()
                   // Reading SDK usage early starts an eager tee consumer and defeats stream backpressure.
-                  usage.resolve(complete ? await result?.usage.catch(() => undefined) : undefined)
+                  usage.resolve(complete ? await Promise.resolve(result?.usage).catch(() => undefined) : undefined)
                   done.resolve()
                 } catch (error) {
                   this.stopping = true

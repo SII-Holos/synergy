@@ -20,7 +20,7 @@ describe("native platform build packages", () => {
   test("keeps non-platform dependencies out of the force-extraction list", () => {
     const names = nativePlatformPackageNames({
       "sqlite-vec": "0.1.7-alpha.2",
-      "@parcel/watcher": "2.5.6",
+      "@parcel/watcher": "2.6.0",
       "@ast-grep/cli": "0.40.5",
       "some-regular-dep": "1.0.0",
     })
@@ -32,7 +32,7 @@ describe("native platform build packages", () => {
     const names = nativePlatformPackageNames({
       "@ast-grep/cli-win32-x64-msvc": "0.40.5",
       "sqlite-vec-windows-x64": "0.1.7-alpha.2",
-      "@parcel/watcher-darwin-arm64": "2.5.6",
+      "@parcel/watcher-darwin-arm64": "2.6.0",
       "unrelated-platform-tool": "1.0.0",
     })
 

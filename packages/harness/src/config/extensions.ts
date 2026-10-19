@@ -131,6 +131,7 @@ export namespace ConfigExtensions {
       }
       const view = new Proxy(original, {
         get(target, property) {
+          if (property === "parent") return undefined
           return property === "processJSONSchema" ? processor : Reflect.get(target, property)
         },
       })
@@ -243,8 +244,7 @@ export namespace ConfigExtensions {
       const cached = instance.fields.get(key)
       if (cached?.generation === instance.generation) return cached.schema
       const owner = [...instance.contributions.values()].find((contribution) => contribution.shape[key])?.shape[key] as
-        | z.ZodType
-        | undefined
+        z.ZodType | undefined
       const metadata = { ...owner?.meta() }
       delete metadata.id
       const schema = owner

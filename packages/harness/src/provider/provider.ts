@@ -6,7 +6,8 @@ import { ProviderPricing } from "./pricing"
 import z from "zod"
 import type { Config } from "../config/config"
 import { mapValues, mergeDeep, omit, pickBy, sortBy } from "remeda"
-import { NoSuchModelError, type Provider as SDK } from "ai"
+import { NoSuchModelError } from "ai"
+import type { ProviderSDK as SDK } from "./sdk-source"
 import { Log } from "../util/log"
 import { ModelsDev } from "./models-schemas"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
@@ -18,7 +19,9 @@ import { iife } from "../util/iife"
 import net from "node:net"
 import tls from "node:tls"
 import { MODEL_ROLE_FALLBACK_FIELDS, ModelRole as ModelRoleSchema, type ModelRole as ModelRoleType } from "./model-role"
-import type { LanguageModelV2 } from "@ai-sdk/provider"
+import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from "@ai-sdk/provider"
+
+type LanguageModel = LanguageModelV2 | LanguageModelV3 | LanguageModelV4
 import { ProviderTransform } from "./transform"
 import { ProviderProfile } from "./profile"
 import { ProviderAuthRecovery } from "./auth-recovery"
@@ -763,7 +766,7 @@ export namespace Provider {
     authoritativeProviders: new Set<string>(),
     lastSettledProviders: undefined as Record<string, Info> | undefined,
     workerState: {
-      models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+      models: new Map<string, { instance: LanguageModel; createdAt: number }>(),
       providers: {} as Record<string, Info>,
       // Unfiltered, redacted config snapshot for client visibility only; runtime code must use providers.
       configuredForClient: {} as Record<string, Info>,
@@ -793,7 +796,7 @@ export namespace Provider {
             throw new Error("Host-owned model identities do not match their provider")
       }
       return {
-        models: new Map<string, { instance: LanguageModelV2; createdAt: number }>(),
+        models: new Map<string, { instance: LanguageModel; createdAt: number }>(),
         providers,
         configuredForClient: mapValues(providers, redactedClientInfo),
         sdk: new Map<number, { instance: SDK; createdAt: number }>(),
@@ -823,7 +826,7 @@ export namespace Provider {
     const database = mapValues(modelsDev, fromModelsDevProvider)
 
     const providers: { [providerID: string]: Info } = {}
-    const models = new Map<string, { instance: LanguageModelV2; createdAt: number }>()
+    const models = new Map<string, { instance: LanguageModel; createdAt: number }>()
     const modelLoaders: {
       [providerID: string]: CustomModelLoader
     } = {}
@@ -1316,7 +1319,7 @@ export namespace Provider {
       auth?: Auth.Info
       catalogProvider?: ModelsDev.Provider
     },
-  ): Promise<LanguageModelV2> {
+  ): Promise<LanguageModel> {
     const { registerBuiltinProviderProfiles } = await import("./builtin")
     if (!isAuthoritative(model.providerID)) registerBuiltinProviderProfiles()
 
@@ -1348,10 +1351,10 @@ export namespace Provider {
         sdk,
         modelID: model.api.id,
         options,
-      }) as LanguageModelV2
+      }) as LanguageModel
     }
     if (model.api.npm === "@ai-sdk/openai") return (sdk as any).responses(model.api.id)
-    return sdk.languageModel(model.api.id) as LanguageModelV2
+    return sdk.languageModel(model.api.id) as LanguageModel
   }
 
   export async function requestTimeouts(
@@ -1473,7 +1476,7 @@ export namespace Provider {
     return info
   }
 
-  export async function getLanguage(model: Model, plan?: WorkerPlan): Promise<LanguageModelV2> {
+  export async function getLanguage(model: Model, plan?: WorkerPlan): Promise<LanguageModel> {
     const s = await state()
     const provider = plan
       ? { ...s.providers[model.providerID], key: plan.key, options: plan.options }

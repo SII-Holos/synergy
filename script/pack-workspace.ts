@@ -142,7 +142,7 @@ export async function packWorkspace(
           files: ["src", nested ? "dist/modules" : "dist", "README.md", "AGENTS.md"],
           // Provenance: https://github.com/oven-sh/bun/issues/36223
           // Local adaptation: require the verified stable runtime whose server-side WebSocket close drains on shutdown.
-          engines: { bun: ">=1.4.2" },
+          engines: { bun: ">=1.4.3" },
         }
         if (["packages/harness", "packages/local-runtime"].includes(pkg.directory))
           manifest.optionalDependencies = {

@@ -1,9 +1,9 @@
-// Provenance: https://github.com/trycua/cua/tree/bf6c76786d938070f4ecf1e44004752f69f518b8/libs/cua-driver
+// Provenance: https://github.com/trycua/cua/tree/d752c6a63e412f42ec1c7a1bdf098eb7f8b67c91/libs/cua-driver
 // Local adaptation: pinned MIT worker plus exact-window proof and dispatch guards; no upstream agent prompts.
 export const CUA_DRIVER_RELEASE = {
-  version: "0.30.4",
-  commit: "bf6c76786d938070f4ecf1e44004752f69f518b8",
-  sourceSha256: "7da3b460e55f3e4d9f79952f29ddb726373c025e15c258c9943a319435b0798b",
-  rust: "1.97.1",
+  version: "0.36.0",
+  commit: "d752c6a63e412f42ec1c7a1bdf098eb7f8b67c91",
+  sourceSha256: "0be487681a0f23cd96f7ed82cbc4c3d4e07aed5f79b02b59786532225823c334",
+  rust: "1.99.1",
   maxBytes: 256 * 1024 * 1024,
 } as const

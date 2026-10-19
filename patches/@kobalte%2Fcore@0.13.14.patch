@@ -1,0 +1,188 @@
+--- a/dist/chunk/RFN6X5VH.jsx
++++ b/dist/chunk/RFN6X5VH.jsx
+@@ -423,7 +423,7 @@
+         scrollEl.scrollTop = scrollPos.top;
+         scrollEl.scrollLeft = scrollPos.left;
+         const element = scrollEl.querySelector(
+-          `[data-key="${manager.focusedKey()}"]`
++          `[data-key="${CSS.escape(manager.focusedKey())}"]`
+         );
+         if (element) {
+           focusWithoutScrolling(element);
+@@ -489,7 +489,7 @@
+         } else {
+           if (focusedKey && scrollEl) {
+             const element = scrollEl.querySelector(
+-              `[data-key="${focusedKey}"]`
++              `[data-key="${CSS.escape(focusedKey)}"]`
+             );
+             if (element) {
+               scrollIntoView(scrollEl, element);
+@@ -597,6 +597,7 @@
+     }
+     if (e.target === refEl) {
+       manager().setFocusedKey(key());
++      manager().setFocused(true);
+     }
+   };
+   const tabIndex = createMemo3(() => {
+--- a/dist/chunk/PTWD4LYA.jsx
++++ b/dist/chunk/PTWD4LYA.jsx
+@@ -237,7 +237,7 @@
+       return;
+     }
+     const selectedTab = ref.querySelector(
+-      `[data-key="${context.listState().selectedKey()}"]`
++      `[data-key="${CSS.escape(context.listState().selectedKey())}"]`
+     );
+     if (selectedTab != null) {
+       context.setSelectedTab(selectedTab);
+--- a/dist/chunk/BDJEWKR2.jsx
++++ b/dist/chunk/BDJEWKR2.jsx
+@@ -56,7 +56,7 @@
+     }
+   }
+   getItem(key) {
+-    return this.ref?.()?.querySelector(`[data-key="${key}"]`) ?? null;
++    return this.ref?.()?.querySelector(`[data-key="${CSS.escape(key)}"]`) ?? null;
+   }
+   // TODO: not working correctly
+   getKeyPageAbove(key) {
+--- a/dist/chunk/VXJSV7WD.jsx
++++ b/dist/chunk/VXJSV7WD.jsx
+@@ -827,7 +827,7 @@
+   const activeDescendant = createMemo(() => {
+     const focusedKey = listState.selectionManager().focusedKey();
+     if (focusedKey) {
+-      return listboxRef()?.querySelector(`[data-key="${focusedKey}"]`)?.id;
++      return listboxRef()?.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)?.id;
+     }
+     return void 0;
+   });
+--- a/dist/chunk/I2LBZHJH.js
++++ b/dist/chunk/I2LBZHJH.js
+@@ -54,7 +54,7 @@
+     }
+   }
+   getItem(key) {
+-    return this.ref?.()?.querySelector(`[data-key="${key}"]`) ?? null;
++    return this.ref?.()?.querySelector(`[data-key="${CSS.escape(key)}"]`) ?? null;
+   }
+   // TODO: not working correctly
+   getKeyPageAbove(key) {
+--- a/dist/chunk/7DPKSDZL.js
++++ b/dist/chunk/7DPKSDZL.js
+@@ -190,7 +190,7 @@
+     if (ref == null) {
+       return;
+     }
+-    const selectedTab = ref.querySelector(`[data-key="${context.listState().selectedKey()}"]`);
++    const selectedTab = ref.querySelector(`[data-key="${CSS.escape(context.listState().selectedKey())}"]`);
+     if (selectedTab != null) {
+       context.setSelectedTab(selectedTab);
+     }
+--- a/dist/chunk/3D6FM2PJ.js
++++ b/dist/chunk/3D6FM2PJ.js
+@@ -391,7 +391,7 @@
+         scrollEl.scrollTop = scrollPos.top;
+         scrollEl.scrollLeft = scrollPos.left;
+         const element = scrollEl.querySelector(
+-          `[data-key="${manager.focusedKey()}"]`
++          `[data-key="${CSS.escape(manager.focusedKey())}"]`
+         );
+         if (element) {
+           focusWithoutScrolling(element);
+@@ -457,7 +457,7 @@
+         } else {
+           if (focusedKey && scrollEl) {
+             const element = scrollEl.querySelector(
+-              `[data-key="${focusedKey}"]`
++              `[data-key="${CSS.escape(focusedKey)}"]`
+             );
+             if (element) {
+               scrollIntoView(scrollEl, element);
+@@ -554,6 +554,7 @@
+     }
+     if (e.target === refEl) {
+       manager().setFocusedKey(key());
++      manager().setFocused(true);
+     }
+   };
+   const tabIndex = createMemo(() => {
+--- a/dist/chunk/7PPKSFAQ.js
++++ b/dist/chunk/7PPKSFAQ.js
+@@ -698,7 +698,7 @@
+   const activeDescendant = createMemo(() => {
+     const focusedKey = listState.selectionManager().focusedKey();
+     if (focusedKey) {
+-      return listboxRef()?.querySelector(`[data-key="${focusedKey}"]`)?.id;
++      return listboxRef()?.querySelector(`[data-key="${CSS.escape(focusedKey)}"]`)?.id;
+     }
+     return void 0;
+   });
+--- a/dist/chunk/2FYCRCMB.js
++++ b/dist/chunk/2FYCRCMB.js
+@@ -55,7 +55,9 @@
+     }
+     if (refCount === 0) {
+       setTimeout(
+-        () => requestAnimationFrame(() => node.setAttribute("aria-hidden", "true"))
++        () => requestAnimationFrame(() => {
++          if ((refCountMap.get(node) ?? 0) > 0) node.setAttribute("aria-hidden", "true");
++        })
+       );
+     }
+     hiddenNodes.add(node);
+@@ -107,17 +109,8 @@
+         return;
+       }
+       if (count === 1) {
+-        setTimeout(
+-          () => requestAnimationFrame(() => {
+-            const currentCount = refCountMap.get(node);
+-            if (currentCount === 1) {
+-              node.removeAttribute("aria-hidden");
+-              refCountMap.delete(node);
+-            } else if (currentCount != null && currentCount > 1) {
+-              refCountMap.set(node, currentCount - 1);
+-            }
+-          })
+-        );
++        node.removeAttribute("aria-hidden");
++        refCountMap.delete(node);
+       } else {
+         refCountMap.set(node, count - 1);
+       }
+--- a/dist/chunk/TDEUK6C2.jsx
++++ b/dist/chunk/TDEUK6C2.jsx
+@@ -60,7 +60,9 @@
+     }
+     if (refCount === 0) {
+       setTimeout(
+-        () => requestAnimationFrame(() => node.setAttribute("aria-hidden", "true"))
++        () => requestAnimationFrame(() => {
++          if ((refCountMap.get(node) ?? 0) > 0) node.setAttribute("aria-hidden", "true");
++        })
+       );
+     }
+     hiddenNodes.add(node);
+@@ -112,17 +114,8 @@
+         return;
+       }
+       if (count === 1) {
+-        setTimeout(
+-          () => requestAnimationFrame(() => {
+-            const currentCount = refCountMap.get(node);
+-            if (currentCount === 1) {
+-              node.removeAttribute("aria-hidden");
+-              refCountMap.delete(node);
+-            } else if (currentCount != null && currentCount > 1) {
+-              refCountMap.set(node, currentCount - 1);
+-            }
+-          })
+-        );
++        node.removeAttribute("aria-hidden");
++        refCountMap.delete(node);
+       } else {
+         refCountMap.set(node, count - 1);
+       }

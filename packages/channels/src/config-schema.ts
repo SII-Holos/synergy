@@ -37,7 +37,7 @@ export namespace ChannelConfigRegistry {
 }
 export const ConfigShape = {
   channel: z
-    .record(z.string(), ConfigExtensions.dynamicSchema(ChannelConfigRegistry.schema))
+    .lazy(() => z.record(z.string(), ConfigExtensions.dynamicSchema(ChannelConfigRegistry.schema)))
     .optional()
     .describe("Channel configurations for selected messaging providers"),
 }

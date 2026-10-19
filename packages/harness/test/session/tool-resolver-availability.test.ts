@@ -372,7 +372,7 @@ test("expand_tools catalog factors only MCP prefixes and keeps every authorized 
         for (const entry of mcpEntries.filter((entry) => entry.id !== deniedID && entry.id !== userDisabledID)) {
           const definition = after.visible.find((definition) => definition.id === entry.id)!
           expect(definition.inputSchema).toBe(entry.inputSchema)
-          expect(definition.description).toBe(entry.tool.description!)
+          expect(definition.description).toBe(String(entry.tool.description))
         }
         expect(after.visible.some((definition) => definition.id === deniedID || definition.id === userDisabledID)).toBe(
           false,

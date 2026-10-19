@@ -53,6 +53,7 @@ function SyncState(props: { catalog: BrowserCatalog; knownPageIds: ReadonlySet<s
             id: page.id,
             title: page.title,
             url: page.url,
+            navigation: page.navigation,
             openerId: page.openerId,
             createdBySessionID: page.createdBySessionID,
           })),

@@ -12,7 +12,7 @@ export async function loadBundledProvider(packageName: string): Promise<Factory 
     case "@ai-sdk/azure":
       return (await import("@ai-sdk/azure")).createAzure as Factory
     case "@ai-sdk/google":
-      return (await import("@ai-sdk/google")).createGoogleGenerativeAI as Factory
+      return (await import("@ai-sdk/google")).createGoogle as Factory
     case "@ai-sdk/google-vertex":
       return (await import("@ai-sdk/google-vertex")).createVertex as Factory
     case "@ai-sdk/google-vertex/anthropic":
@@ -55,7 +55,7 @@ export function loadBundledProviderSync(packageName: string): Factory | undefine
     case "@ai-sdk/azure":
       return require("@ai-sdk/azure").createAzure as Factory
     case "@ai-sdk/google":
-      return require("@ai-sdk/google").createGoogleGenerativeAI as Factory
+      return require("@ai-sdk/google").createGoogle as Factory
     case "@ai-sdk/google-vertex":
       return require("@ai-sdk/google-vertex").createVertex as Factory
     case "@ai-sdk/google-vertex/anthropic":

@@ -64,7 +64,7 @@ const resolveWasm = (asset: string) => {
 
 const parser = lazy(async () => {
   const { Parser } = await import("web-tree-sitter")
-  const { default: treeWasm } = await import("web-tree-sitter/tree-sitter.wasm" as string, {
+  const { default: treeWasm } = await import("web-tree-sitter/web-tree-sitter.wasm" as string, {
     with: { type: "wasm" },
   })
   const treePath = resolveWasm(treeWasm)
@@ -364,8 +364,7 @@ export namespace LocalBashBackend {
               mime: item.mime,
               size: (
                 (item.metadata as Record<string, unknown> | undefined)?.attachment as
-                  | Record<string, unknown>
-                  | undefined
+                  Record<string, unknown> | undefined
               )?.size,
               url: item.url,
             })),

@@ -7,6 +7,7 @@ import {
   BrowserEventSchema,
   BrowserDownloadEntrySchema,
   BrowserHostMessageSchema,
+  BrowserHostPageEventSchema,
   BrowserHostDownloadEntrySchema,
   BrowserLocatorSchema,
   BrowserNativeAttachRequestSchema,
@@ -22,7 +23,29 @@ import {
   selectBrowserPresentation,
 } from "../src/protocol"
 
-describe("browser protocol v7", () => {
+describe("browser protocol v8", () => {
+  test("stage diagnostics accept only bounded identifiers and classifications", () => {
+    const stage = {
+      type: "page.stage",
+      pageId: "page-1",
+      requestId: "request-1",
+      navigationId: "navigation-1",
+      generation: 1,
+      stage: "failed",
+      elapsedMs: 123.5,
+      errorCode: "browser_native_init_failed",
+      failurePhase: "native.guards",
+    }
+    expect(BrowserHostPageEventSchema.safeParse(stage).success).toBe(true)
+    for (const patch of [
+      { url: "https://example.com/?secret=value" },
+      { errorCode: "error containing private input" },
+      { elapsedMs: -1 },
+      { elapsedMs: Infinity },
+      { requestId: "x".repeat(129) },
+    ])
+      expect(BrowserHostPageEventSchema.safeParse({ ...stage, ...patch }).success).toBe(false)
+  })
   test("shared activity identifies the initiating task and operation", () => {
     const event = {
       type: "agent.activity",
@@ -53,7 +76,7 @@ describe("browser protocol v7", () => {
     ).toBe("file:///workspace/index.html")
   })
   test("uses a versioned strict protocol", () => {
-    expect(BROWSER_PROTOCOL_VERSION).toBe(7)
+    expect(BROWSER_PROTOCOL_VERSION).toBe(8)
     expect(
       BrowserSessionStateSchema.parse({
         type: "session.state",
@@ -311,11 +334,10 @@ describe("browser protocol v7", () => {
     ).toBe(false)
     expect(
       BrowserNativeViewEventSchema.safeParse({
-        type: "native.loaded",
+        type: "native.page",
         protocolVersion: BROWSER_PROTOCOL_VERSION,
         pageId: "page-1",
-        url: "https://example.com/",
-        title: "Example",
+        page: { id: "page-1", url: "https://example.com/", title: "Example", isLoading: false, lastActiveAt: null },
       }).success,
     ).toBe(true)
   })

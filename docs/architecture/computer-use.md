@@ -22,6 +22,8 @@ Exact-element text uses Cua's AX insertion when the control supports it. If AX i
 
 The private worker runs Cua's AppKit loop without its cursor overlay. Desktop owns permission and progress presentation.
 
+Desktop explicitly requests both structured elements and the rendered tree from Cua. The structured list admits returned element indices; actions translate those indices into snapshot-bound `element_token` values. The model receives one bounded tree, without a duplicate structured representation. Cua's compact default alone omits the admission list and cannot replace this host contract.
+
 ## Concurrency and lifecycle
 
 Independent applications may run concurrently. An in-flight operation excludes another operation targeting the same process; it does not reserve the desktop or app for an entire task. An explicit foreground operation excludes other input for its duration because physical input and focus are desktop-wide; background input can run concurrently in different applications. Cua additionally serializes native background mutations per process. New observations invalidate older references for the same window across tasks. Shared application state remains shared with the user and other tasks.
@@ -32,7 +34,7 @@ The host process belongs to Desktop and is closed with its broker connection. Th
 
 ## Distribution
 
-Desktop builds Cua 0.30.4 from a checksum-verified immutable source archive with the owned observation patch and pinned Rust toolchain. The build receipt binds source, patch, architecture and executable digest. The executable and MIT notice are copied into `Resources/computer`; the macOS signing configuration includes the nested executable. The matching pinned TypeScript SDK stays external to the JavaScript bundle; its complete Cua and UniFFI packages are unpacked from ASAR. Desktop imports the SDK from the physical unpacked entry so Rust resolves sibling dynamic libraries outside the virtual archive. Development can supply `SYNERGY_COMPUTER_DRIVER_PATH` explicitly. Other platforms and remote server connections do not provide native Computer Use.
+Desktop builds Cua 0.36.0 from a checksum-verified immutable source archive with the owned observation patch and pinned Rust toolchain. The build receipt binds source, patch, architecture and executable digest. The executable and MIT notice are copied into `Resources/computer`; the macOS signing configuration includes the nested executable. The matching pinned TypeScript SDK stays external to the JavaScript bundle; its complete Cua and UniFFI packages are unpacked from ASAR. Desktop imports the SDK from the physical unpacked entry so Rust resolves sibling dynamic libraries outside the virtual archive. Development can supply `SYNERGY_COMPUTER_DRIVER_PATH` explicitly. Other platforms and remote server connections do not provide native Computer Use.
 
 The [decision record](../decisions/implemented/feature/2026-09-07-first-party-computer-use.md) records the concurrency and embedding tradeoffs. [Desktop release](../operations/desktop-release.md) owns packaging procedures.
 

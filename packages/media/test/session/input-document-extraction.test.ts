@@ -45,8 +45,8 @@ for (const [extension, mime, make] of [
                 model,
                 parts: [{ id: partID, type: "attachment", url, filename, mime, presentation: { renderer: "file" } }],
               })
-              expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
-              expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain(filename)
+              expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
+              expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain(filename)
               const saved = await MessageV2.get({ sessionID: session.id, messageID: message.info.id })
               const attachment = saved.parts.find((part) => part.id === partID)
               expect(attachment).toMatchObject({
@@ -58,7 +58,7 @@ for (const [extension, mime, make] of [
               if (attachment?.type !== "attachment") throw new Error("The original document was not retained")
               expect(attachment.url).toStartWith("asset://")
               expect(await Bun.file(attachment.localPath!).bytes()).toEqual(new Uint8Array(bytes))
-              expect(JSON.stringify(MessageV2.toModelMessage([saved]))).not.toContain(bytes.toString("base64"))
+              expect(JSON.stringify(await MessageV2.toModelMessage([saved]))).not.toContain(bytes.toString("base64"))
             }
           },
         }),
@@ -108,7 +108,7 @@ for (const source of ["asset", "data", "file"] as const) {
             expect(outcome.status).toBe(valid ? "materialized" : "failed")
             if (valid) {
               const message = await MessageV2.get({ sessionID: session.id, messageID: item.messageID })
-              expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
+              expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain("DOCUMENTCONTENTMARKER")
               const attachment = message.parts.find((part) => part.type === "attachment" && part.filename === filename)
               expect(attachment?.type).toBe("attachment")
               if (attachment?.type !== "attachment") throw new Error("The original slides were not retained")
@@ -151,7 +151,7 @@ test("audio and structured text preserve their original attachment with the docu
           expect(await realpath(attachment!.localPath!)).toBe(await realpath(Asset.resolvePath(id)!))
           expect(await Bun.file(attachment!.localPath!).text()).toBe(content)
           if (filename.endsWith("csv") || filename.endsWith("json"))
-            expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("TEXT_MARKER")
+            expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain("TEXT_MARKER")
         }
       },
     }),

@@ -10,7 +10,7 @@ export type Data = {
     [sessionID: string]: FileDiff[]
   }
   session_diff_preload?: {
-    [sessionID: string]: PreloadMultiFileDiffResult<any>[]
+    [sessionID: string]: PreloadMultiFileDiffResult<unknown, undefined>[]
   }
   message: {
     [sessionID: string]: Message[]

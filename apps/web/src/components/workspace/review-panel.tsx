@@ -177,11 +177,11 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       )
     },
   )
-  const items = createMemo<CodeViewItem[]>((previous) => {
+  const items = createMemo<CodeViewItem<undefined>[]>((previous) => {
     const prior = new Map(previous.map((item) => [item.id, item]))
     const live = new Set(data.rows().map(reviewFileKey))
     for (const id of metadataCache.keys()) if (!live.has(id)) metadataCache.delete(id)
-    const next = data.rows().map((row): CodeViewItem => {
+    const next = data.rows().map((row): CodeViewItem<undefined> => {
       const id = reviewFileKey(row),
         value = data.content(id)
       const range = imports() ? importRanges()?.get(id) : undefined,
@@ -205,7 +205,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
         metadataCache.set(id, cached)
       }
       const metadata = cached.metadata
-      const item: CodeViewItem = {
+      const item: CodeViewItem<undefined> = {
         id,
         type: "diff",
         fileDiff: metadata,

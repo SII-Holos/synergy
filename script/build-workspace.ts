@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import path from "node:path"
 import { mkdir, readdir, readFile, rm, copyFile } from "node:fs/promises"
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 import { prepareBuildModelsCatalog } from "./release/shared/build/models-catalog"
 
 const repository = path.resolve(import.meta.dir, "..")

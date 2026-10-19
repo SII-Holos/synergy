@@ -77,9 +77,8 @@ mock.module("../../src/plugin/host", () => ({
 }))
 
 const { PluginThemeConfigBridge } = await import("../../src/plugin/bridge")
-const { recordThemeSelection, settleThemeSelection, readThemeSelection, resetThemeSelection } = await import(
-  "../../src/plugin/theme-selection"
-)
+const { recordThemeSelection, settleThemeSelection, readThemeSelection, resetThemeSelection } =
+  await import("../../src/plugin/theme-selection")
 
 function mountBridge(): () => void {
   let disposeRoot = () => {}

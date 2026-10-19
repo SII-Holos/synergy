@@ -1,5 +1,13 @@
 import { updateBrowserActivities, type BrowserAgentActivity } from "@ericsanchezok/synergy-browser-core"
-import { createContext, createMemo, createSignal, useContext, type Accessor, type ParentProps } from "solid-js"
+import {
+  createComponent,
+  createContext,
+  createMemo,
+  createSignal,
+  useContext,
+  type Accessor,
+  type ParentProps,
+} from "solid-js"
 import type {
   BrowserDownloadEntry,
   BrowserEvent as BrowserProtocolEvent,
@@ -53,6 +61,7 @@ export type DialogRequest = Pick<DialogEvent, "pageId" | "requestId" | "message"
 }
 
 export interface BrowserErrorState {
+  navigation?: BrowserProtocolPage["navigation"]
   pageId?: string
   severity: "warning" | "error" | "critical"
   message: string
@@ -102,9 +111,24 @@ export function createBrowserStore() {
   let sender: BrowserSender | undefined
 
   function replacePages(pages: BrowserPage[]) {
-    setSession("pages", reconcile(pages, { key: "id" }))
+    const merged = pages.map((next) => {
+      const current = session.pages.find((page) => page.id === next.id)
+      return current && olderNavigation(next, current) ? current : next
+    })
+    setSession("pages", reconcile(merged, { key: "id" }))
   }
   function setBrowserError(error: BrowserErrorState | null) {
+    if (error?.code === "browser_command_cancelled") return
+    if (error?.navigation) {
+      const current = session.pages.find((page) => page.id === error.pageId)?.navigation
+      if (
+        current &&
+        (current.generation !== error.navigation.generation ||
+          current.id !== error.navigation.id ||
+          current.phase !== "failed")
+      )
+        return
+    }
     setPageErrors(error?.pageId ?? "global", error ?? undefined)
   }
   function clearPageError(id: string) {
@@ -132,8 +156,17 @@ export function createBrowserStore() {
   function upsertPage(next: BrowserProtocolPage | BrowserPage | null | undefined) {
     if (!next) return
     const index = session.pages.findIndex((page) => page.id === next.id)
-    if (index >= 0) setSession("pages", index, next)
-    else if ("profileId" in next) setSession("pages", [...session.pages, next])
+    if (index >= 0) {
+      const current = session.pages[index]!.navigation
+      const incoming = next.navigation
+      if (olderNavigation(next, session.pages[index]!)) return
+      if (
+        incoming &&
+        (incoming.id !== current?.id || (incoming.phase === "completed" && current?.phase !== "completed"))
+      )
+        clearPageError(next.id)
+      setSession("pages", index, reconcile({ ...session.pages[index], ...next }, { key: null }))
+    } else if ("profileId" in next) setSession("pages", [...session.pages, next])
   }
   function removePage(id: string | null | undefined) {
     if (!id) return
@@ -335,10 +368,28 @@ export type BrowserStoreAPI = ReturnType<typeof createBrowserStore>
 export type BrowserPageStoreAPI = ReturnType<BrowserStoreAPI["forPage"]>
 const BrowserContext = createContext<BrowserPageStoreAPI>()
 export function BrowserStoreProvider(props: ParentProps & { store: BrowserPageStoreAPI }) {
-  return <BrowserContext.Provider value={props.store}>{props.children}</BrowserContext.Provider>
+  return createComponent(BrowserContext.Provider, {
+    get value() {
+      return props.store
+    },
+    get children() {
+      return props.children
+    },
+  })
 }
 export function useBrowser() {
   const ctx = useContext(BrowserContext)
   if (!ctx) throw new Error("useBrowser must be used within BrowserStoreProvider")
   return ctx
+}
+
+function olderNavigation(next: BrowserProtocolPage, current: BrowserProtocolPage): boolean {
+  const incoming = next.navigation
+  const previous = current.navigation
+  return Boolean(
+    previous &&
+    incoming &&
+    (incoming.generation < previous.generation ||
+      (incoming.generation === previous.generation && incoming.revision < previous.revision)),
+  )
 }

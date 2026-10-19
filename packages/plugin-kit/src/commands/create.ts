@@ -7,14 +7,7 @@ import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
 export type TemplateName =
-  | "tool-ui"
-  | "workbench-panel"
-  | "navigation"
-  | "api-connector"
-  | "theme-icon"
-  | "slot"
-  | "shell"
-  | "skin"
+  "tool-ui" | "workbench-panel" | "navigation" | "api-connector" | "theme-icon" | "slot" | "shell" | "skin"
 
 export const PLUGIN_TEMPLATES: readonly TemplateName[] = [
   "tool-ui",

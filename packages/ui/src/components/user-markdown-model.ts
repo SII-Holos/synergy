@@ -7,6 +7,7 @@ import { toHast } from "mdast-util-to-hast"
 import { toHtml } from "hast-util-to-html"
 import { decodeString } from "micromark-util-decode-string"
 import type { Nodes, Text } from "mdast"
+import type { Properties } from "hast"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { isBareUrlBoundary } from "@ericsanchezok/synergy-util/markdown-link"
 
@@ -101,7 +102,7 @@ export function userMarkdownImageUrl(value: string) {
     : undefined
 }
 
-function linkProperties(value: string, title?: string | null, bare = false) {
+function linkProperties(value: string, title?: string | null, bare = false): Properties {
   const target = ResourceReference.parse(value)
   return {
     ...(title ? { title } : {}),

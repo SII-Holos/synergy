@@ -1,6 +1,6 @@
 //! Synergy's observation proof extends Cua's native per-PID admission and immutable captures.
-//! Upstream: trycua/cua bf6c76786d938070f4ecf1e44004752f69f518b8 (MIT).
-use crate::ax::{bindings::*, cache::RetainedElement};
+//! Upstream: trycua/cua d752c6a63e412f42ec1c7a1bdf098eb7f8b67c91 (MIT).
+use crate::ax::{bindings::*, snapshot::RetainedElement};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use core_foundation::base::{CFEqual, CFRelease, CFTypeRef};

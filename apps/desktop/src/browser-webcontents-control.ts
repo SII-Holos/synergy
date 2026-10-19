@@ -31,6 +31,7 @@ export interface BrowserWebContentsControlTarget {
   initialNavigationURL?: string
   onWindowOpen?(details: Electron.HandlerDetails): Electron.WindowOpenHandlerResponse
   onNavigationBlocked?(url: string, reason: string): void
+  onNavigationRequested?(url: string): void
 }
 
 class ElectronCdpTransport implements CdpTransport {
@@ -366,9 +367,43 @@ export class BrowserWebContentsControl {
     const diagnostics = this.target.diagnostics?.()
 
     if (command.type === "navigate") {
-      this.humanNavigationUntil = 0
-      this.initialNavigation = null
-      this.navigation.begin(command.url, command.source)
+      this.beginNavigation(command.url, command.source)
+      if (command.source === "user") {
+        this.controller.cancelPending()
+        // loadURL resolves after document loading; human navigation only waits for dispatch.
+        // https://www.electronjs.org/docs/latest/api/web-contents#contentsloadurlurl-options
+        void this.requireContents()
+          .loadURL(command.url)
+          .catch(() => undefined)
+        return { type: "navigation", page: this.target.pageState(), settleReason: "none" }
+      }
+    }
+    if (command.type === "stop") {
+      this.controller.cancelPending()
+      this.requireContents().stop()
+      return { type: "void" }
+    }
+    if (command.type === "history" && command.source === "user") {
+      this.controller.cancelPending()
+      const contents = this.requireContents()
+      const history = contents.navigationHistory
+      const offset = command.direction === "back" ? -1 : 1
+      if (history.canGoToOffset(offset)) {
+        const entry = history.getEntryAtIndex(history.getActiveIndex() + offset)
+        if (entry) {
+          this.beginNavigation(entry.url, "user")
+          history.goToOffset(offset)
+        }
+      }
+      return { type: "navigation", page: this.target.pageState(), settleReason: "none" }
+    }
+    if (command.type === "reload" && command.source === "user") {
+      this.controller.cancelPending()
+      const contents = this.requireContents()
+      this.beginNavigation(contents.getURL(), "user")
+      if (command.ignoreCache) contents.reloadIgnoringCache()
+      else contents.reload()
+      return { type: "navigation", page: this.target.pageState(), settleReason: "none" }
     }
     if (command.type === "checkpoint" && command.action === "restore") {
       if (!command.checkpoint) throw new Error("checkpoint is required for restore.")
@@ -384,13 +419,11 @@ export class BrowserWebContentsControl {
     if (command.type === "filechooser.select") {
       await diagnostics?.respondToFileChooser(
         command.requestId,
-        command.files.map(
-          (file): BrowserHostUploadFile => ({
-            name: file.name,
-            mimeType: file.mimeType,
-            data: file.dataBase64,
-          }),
-        ),
+        command.files.map((file): BrowserHostUploadFile => ({
+          name: file.name,
+          mimeType: file.mimeType,
+          data: file.dataBase64,
+        })),
       )
       return { type: "void" }
     }
@@ -426,6 +459,23 @@ export class BrowserWebContentsControl {
     } finally {
       this.commandInFlight = false
     }
+  }
+
+  private beginNavigation(url: string, source: "agent" | "user"): void {
+    this.humanNavigationUntil = 0
+    this.initialNavigation = null
+    this.navigation.begin(url, source)
+    const decision = this.navigation.decide(url)
+    if (!decision.allowed) {
+      throw new BrowserProtocolError({
+        code: "browser_navigation_denied",
+        message: decision.reason ?? "Browser navigation policy denied the request.",
+        retryable: false,
+        pageId: this.target.pageId,
+        url,
+      })
+    }
+    this.target.onNavigationRequested?.(url)
   }
 
   async dispose(): Promise<void> {

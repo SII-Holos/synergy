@@ -11,7 +11,7 @@ import { resolveWorkspaceModule } from "./shared"
 
 import path from "node:path"
 import { readdir, readFile } from "node:fs/promises"
-import ts from "typescript"
+import ts from "@typescript/typescript6"
 import { ToolIntent } from "../../packages/harness/src/session/tool-intent"
 import {
   findAssign,

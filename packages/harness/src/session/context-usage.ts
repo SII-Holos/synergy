@@ -89,7 +89,8 @@ export namespace ContextUsage {
         if (part.type === "file" || part.type === "image") {
           provenance.items.attachments++
           const data = part.type === "file" ? part.data : part.image
-          const index = native.findIndex((entry) => entry.nativeURL === String(data))
+          const url = data && typeof data === "object" && "type" in data && data.type === "url" ? data.url : data
+          const index = native.findIndex((entry) => entry.nativeURL === String(url))
           const match = index >= 0 ? native.splice(index, 1)[0] : undefined
           provenance.categories.attachments.push({
             ...match,

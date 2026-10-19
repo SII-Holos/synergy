@@ -25,6 +25,7 @@ interface Fixture extends Window {
     finish(): void
     fail(structured?: boolean): void
     open(forceNew?: boolean): Promise<void>
+    openURL(url: string): Promise<void>
     close(id: string): Promise<void>
     dataRequests: Array<{ pageId: string; action: { type: string } }>
     collapse(): void
@@ -100,14 +101,14 @@ beforeAll(async () => {
       pending.push({resolve,reject,operation,index:attempts.length})
     })
     registerWorkbenchPanel({id:"resource-home",label:"New tab",icon:"file",surface:"side",cardinality:"multi",launchable:false,component:() => <div>Resources</div>})
-    registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",title:tab => tab.title ?? "Browser",tabIcon:tab => <BrowserTabIcon activity={activity(tab)} />,tabDescription:tab => browserTabDescription(i18n,activity(tab)),createTab:create,restoreTab:operation => create(undefined,operation),openingComponent:props => <BrowserPreparingPanel tab={props.tab} />,loader:async () => ({default:() => <div><input aria-label="Ready browser" /></div>})})
+    registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",title:tab => tab.title ?? "Browser",tabIcon:tab => <BrowserTabIcon activity={activity(tab)} />,tabDescription:tab => browserTabDescription(i18n,activity(tab)),createTab:create,resolveTab:(init,operation) => init.resourceId ? init : create(init,operation),restoreTab:operation => create(undefined,operation),openingComponent:props => <BrowserPreparingPanel tab={props.tab} />,loader:async () => ({default:() => <div><input aria-label="Ready browser" /></div>})})
     function Harness() {
       const workbench=useWorkbenchPanels(),navigate=useNavigate()
       window.fixture={attempts,cancelled,dataRequests:window.dataRequests,
         activity:item => window.store.applyAgentActivity(item), counts:() => ({requests:window.requests,connections:window.connections}),
         finish:() => {const item=pending.shift();const init={resourceId:item.index===1 ? "page-one" : "page-"+item.index,title:"Ready browser"};window.pages.push({id:init.resourceId,title:init.title,url:"about:blank",status:"active",profileId:"personal"});item.operation?.onCancel(() => {cancelled.push(init.resourceId)});item.resolve(init)},
         fail:structured => pending.shift().reject(structured ? {code:"browser_native_ticket_rejected",message:"Desktop ticket unavailable",retryable:true} : new Error("Browser unavailable")),
-        open:forceNew => workbench.openPanel("browser",{forceNew}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:(id="other") => navigate("/home/session/"+id),scope:() => navigate("/other"),
+        open:forceNew => workbench.openPanel("browser",{forceNew}),openURL:url => workbench.openPanel("browser",{forceNew:true,init:{state:{url}}}),close:id => workbench.closeTab(id),collapse:() => workbench.surface("side").close(),session:(id="other") => navigate("/home/session/"+id),scope:() => navigate("/other"),
         publish:pages => {window.pages=pages.map(page => ({status:"active",profileId:"personal",...page}));window.deliverPages(window.pages)},tabs:() => workbench.surface("side").tabs(),saved:() => surface(workbench.sessionKey(),"side").tabs(),active:() => workbench.surface("side").active(),opened:() => workbench.surface("side").opened()
       }
       return <div style="height:600px"><button onClick={() => workbench.surface("side").toggle()}>Workspace</button><button onClick={() => workbench.openPanel("resource-home")}>Other resource</button><WorkbenchSurface surface="side" />{location.search==="?sync" && <BrowserWorkbenchSync route={{mode:"scope",scopeID:"home",path_directory:"home"}} />}</div>
@@ -198,6 +199,39 @@ test("Workspace shows an unpersisted Browser tab and frame before asynchronous c
   expect(after).toHaveLength(1)
   expect(after[0]).toMatchObject({ id: before.tabs[0]!.id, resourceId: "page-one" })
   expect(errors).toEqual([])
+})
+
+test("opening a URL shows its address in the first frame without a new-tab interstitial", async () => {
+  const first = await page.evaluate(() => {
+    void (window as unknown as Fixture).fixture.openURL("https://example.test/slow")
+    return new Promise<{
+      address: string | undefined
+      newTab: boolean
+      preparing: boolean
+      progress: boolean
+      tabs: number
+    }>((resolve) =>
+      requestAnimationFrame(() =>
+        resolve({
+          address: document.querySelector<HTMLInputElement>(".browser-address-input")?.value,
+          newTab: Boolean(document.querySelector(".browser-new-tab-footer")),
+          preparing: Boolean(document.querySelector(".browser-preparing-status")),
+          progress: Boolean(document.querySelector('[role="progressbar"]')),
+          tabs: document.querySelectorAll('[role="tab"]').length,
+        }),
+      ),
+    )
+  })
+  expect(first).toEqual({
+    address: "https://example.test/slow",
+    newTab: false,
+    preparing: false,
+    progress: true,
+    tabs: 1,
+  })
+  await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
+  await page.getByRole("textbox", { name: "Ready browser", exact: true }).waitFor()
+  expect(await page.getByRole("tab").count()).toBe(1)
 })
 
 test("catalog events before the open response cannot duplicate the preparing tab or steal selection", async () => {
@@ -403,7 +437,7 @@ test("structured native failures retain a visible reason and an explicit Retry a
 test("preparation has a bounded deadline and a late result cannot silently replace its error", async () => {
   await page.clock.install()
   await page.getByRole("button", { name: "Workspace", exact: true }).click()
-  await page.clock.runFor(15_001)
+  await page.clock.runFor(40_001)
   await page.getByRole("alert").filter({ hasText: "Browser preparation timed out" }).waitFor()
   await page.evaluate(() => (window as unknown as Fixture).fixture.finish())
   expect(await page.evaluate(() => (window as unknown as Fixture).fixture.saved())).toEqual([])

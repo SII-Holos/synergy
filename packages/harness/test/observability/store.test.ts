@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { mkdirSync, statSync } from "fs"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityEvents } from "../../src/observability/events"
@@ -84,27 +84,31 @@ describe("ObservabilityStore", () => {
     }))
 
   test("storage queue depth retains the last value and peak without sharding by request", () =>
-    runtime.run(async () => {
+    runtime.run(() => {
+      let now = performance.now()
+      using clock = spyOn(performance, "now").mockImplementation(() => now)
+      const rowsForQueue = () =>
+        ObservabilityStore.queryMetrics({
+          since: 0,
+          names: ["storage.queue.depth", "storage.queue.depth.peak"],
+        }).filter((row) => JSON.parse(row.labels_json).queue === "test-reader")
       for (const [index, value] of [1, 7, 3, 0].entries()) {
         ObservabilityMetrics.record({
           name: "storage.queue.depth",
           value,
           unit: "count",
           module: "storage",
-          labels: { queue: "reader" },
+          labels: { queue: "test-reader" },
           sessionID: `session-${index}`,
           scopeID: `scope-${index}`,
           traceId: `trace-${index}`,
         })
       }
       ObservabilityStore.flush()
-      expect(ObservabilityStore.queryMetrics({ since: 0, names: ["storage.queue.depth"] })).toHaveLength(0)
-      await Bun.sleep(1050)
+      expect(rowsForQueue()).toHaveLength(0)
+      now += 1_000
       ObservabilityStore.flush()
-      const rows = ObservabilityStore.queryMetrics({
-        since: 0,
-        names: ["storage.queue.depth", "storage.queue.depth.peak"],
-      }).filter((row) => JSON.parse(row.labels_json).queue === "reader")
+      const rows = rowsForQueue()
       expect(rows).toHaveLength(2)
       expect(rows.find((row) => row.name === "storage.queue.depth")?.value).toBe(0)
       expect(rows.find((row) => row.name === "storage.queue.depth.peak")?.value).toBe(7)

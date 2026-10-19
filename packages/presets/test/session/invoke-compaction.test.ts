@@ -429,7 +429,7 @@ async function runCompactionProcessCase(input: {
                   system: ["stable system"],
                   systemCacheBreakpoint: 1,
                   lateSystem: ["runtime context"],
-                  messages: MessageV2.toModelMessage(before),
+                  messages: await MessageV2.toModelMessage(before),
                   toolDefinitions: [{ id: "fixture_tool", description: "Fixture", inputSchema: { type: "object" } }],
                   activeToolIDs: ["fixture_tool"],
                   ...(input.cold ? {} : { prepared }),
@@ -1481,7 +1481,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       expect(compacted.find((msg) => msg.info.id === "msg_summary_1")?.info.includeInContext).toBe(false)
       expect(compacted.find((msg) => msg.info.id === "msg_summary_2")?.info.includeInContext).toBeUndefined()
       expect(SessionCompaction.hasPendingCompaction(root.parts, compacted, root.info.id)).toBe(false)
-      const projection = MessageV2.projectModelMessages(compacted)
+      const projection = await MessageV2.projectModelMessages(compacted)
       expect(projection.provenance.categories.userMessages.map((item) => item.text)).toEqual([
         "Implement the compact boundary fix.",
       ])

@@ -185,9 +185,8 @@ test("attributes import and render errors and recovers when a shell is replaced"
 })
 
 test("a Shell without its required outlet falls back and reports the missing contract", async () => {
-  const { createExtensionOutlets, ExtensionOutletsProvider } = await import(
-    "@ericsanchezok/synergy-ui/context/extension-outlet"
-  )
+  const { createExtensionOutlets, ExtensionOutletsProvider } =
+    await import("@ericsanchezok/synergy-ui/context/extension-outlet")
   const target = document.createElement("div")
   const errors: Array<{ message: string }> = []
   const entry: ShellEntry = {

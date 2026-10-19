@@ -413,7 +413,7 @@ describe("prompt-budgeter decision", () => {
           ],
         },
       ]
-      const projection = MessageV2.projectModelMessages(history, {
+      const projection = await MessageV2.projectModelMessages(history, {
         model: {
           providerID: "codex-connection",
           modelID: model.id,
@@ -430,7 +430,7 @@ describe("prompt-budgeter decision", () => {
       expect(fallback.shouldCompact).toBe(false)
       expect(usage.shouldCompact).toBe(true)
 
-      const incompatible = MessageV2.projectModelMessages(history, {
+      const incompatible = await MessageV2.projectModelMessages(history, {
         model: { providerID: "codex-connection", modelID: model.id, profileID: "openai-codex", apiModelID: "other" },
       })
       expect(

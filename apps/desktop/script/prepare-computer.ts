@@ -96,6 +96,7 @@ export async function prepareComputerDriver() {
       JSON.stringify({
         ...release,
         arch: "universal",
+        builder: await hashFile(import.meta.filename),
         patch: await hashFile(path.join(native, "observation.patch")),
         module: await hashFile(path.join(native, "synergy.rs")),
       }),
@@ -128,7 +129,19 @@ export async function prepareComputerDriver() {
   const source = path.join(cache, `cua-${release.commit}/libs/cua-driver/rust`)
   if (!(await Bun.file(path.join(source, ".synergy-patched")).exists())) {
     await progress.step("Extracting source", () =>
-      run(["tar", "-xzf", archive, "-C", cache, `cua-${release.commit}/libs/cua-driver`], root),
+      run(
+        [
+          "tar",
+          "-xzf",
+          archive,
+          "-C",
+          cache,
+          `cua-${release.commit}/libs/cua-driver`,
+          `cua-${release.commit}/libs/cua`,
+          `cua-${release.commit}/libs/images/sandbox-images.json`,
+        ],
+        root,
+      ),
     )
     await progress.step("Applying native patch", async () => {
       await run(["patch", "-p1", "-N", "-f", "-i", path.join(native, "observation.patch")], source)

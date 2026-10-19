@@ -47,7 +47,7 @@ jobs:
       macos_count: ${{ steps.plan.outputs.macos_count }}
       diagnostic: ${{ steps.plan.outputs.diagnostic }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'schedule' && 'dev' || github.sha }}
           persist-credentials: false
@@ -65,7 +65,7 @@ jobs:
           if [ -n "$PACKAGE" ]; then args+=(--package "$PACKAGE"); fi
           if [ -n "$FILE" ]; then args+=(--file "$FILE"); fi
           bun script/ci.ts plan "${args[@]}"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-plan-${{ github.run_attempt }}
           path: .artifacts/ci/plan.json
@@ -82,11 +82,11 @@ jobs:
     env:
       SYNERGY_CI_SANDBOX_BUNDLE: ${{ needs.plan.outputs.sandbox }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-plan-${{ github.run_attempt }}
           path: .artifacts/ci
@@ -94,7 +94,7 @@ jobs:
       - name: Resolve build toolchain identity
         id: build-key
         run: bun script/ci.ts build-key
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: cache
         if: github.event_name != 'schedule'
         with:
@@ -110,7 +110,7 @@ jobs:
             bun script/ci.ts prepare
           fi
           tar -cf .artifacts/ci/build.tar -C .artifacts/ci build
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-build-${{ github.run_attempt }}
           path: .artifacts/ci/build.tar
@@ -120,7 +120,7 @@ jobs:
       - name: Prepare selected distributions
         if: needs.plan.outputs.core == 'true' || needs.plan.outputs.full == 'true'
         run: bun script/ci.ts prepare-distributions
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: needs.plan.outputs.core == 'true'
         with:
           name: ci-distribution-core-${{ github.run_attempt }}
@@ -129,7 +129,7 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 3
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: needs.plan.outputs.full == 'true'
         with:
           name: ci-distribution-full-${{ github.run_attempt }}
@@ -146,11 +146,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-plan-${{ github.run_attempt }}
           path: .artifacts/ci
@@ -159,7 +159,7 @@ jobs:
           dependencies: "false"
       - run: bun script/ci.ts run --unit benchmark-prepare
       - run: tar -I 'zstd -T2 -3' -cf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci benchmark/prepared
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-benchmark-prepared-${{ github.run_attempt }}
           path: .artifacts/ci/benchmark.tar.zst
@@ -167,7 +167,7 @@ jobs:
           if-no-files-found: error
           include-hidden-files: true
           retention-days: 3
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ci-results-benchmark-prepare-${{ github.run_attempt }}
@@ -199,18 +199,18 @@ jobs:
         ports: [5432:5432]
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ci-plan-${{ github.run_attempt }}
           path: .artifacts/ci
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          bun-version: "1.4.2"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+          bun-version: "1.4.3"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.build
         with:
           name: ci-build-${{ github.run_attempt }}
@@ -221,7 +221,7 @@ jobs:
         run: |
           tar -xf .artifacts/ci/build.tar -C .artifacts/ci
           bun script/ci.ts restore
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.benchmark
         with:
           name: ci-benchmark-prepared-${{ github.run_attempt }}
@@ -230,7 +230,7 @@ jobs:
         if: matrix.benchmark
         shell: bash
         run: tar --zstd -xf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.core
         with:
           name: ci-distribution-core-${{ github.run_attempt }}
@@ -238,7 +238,7 @@ jobs:
       - name: Unpack core distribution
         if: matrix.core
         run: tar --zstd -xpf .artifacts/ci/distributions/core.tar.zst -C .artifacts/ci/distributions
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: matrix.full
         with:
           name: ci-distribution-full-${{ github.run_attempt }}
@@ -257,7 +257,7 @@ jobs:
         env:
           CI_UNIT: ${{ matrix.id }}
         run: bun script/ci.ts run --unit "$CI_UNIT"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: ci-results-${{ matrix.id }}-${{ github.run_attempt }}

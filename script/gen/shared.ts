@@ -169,6 +169,8 @@ export function resolveIdentifier(source: string, identifier: string): string | 
 
 export function zodTypeOf(expr: string): string | null {
   const trimmed = expr.trim()
+  const lazy = trimmed.match(/^z\s*\.\s*lazy\s*\(\s*\(\s*\)\s*=>\s*(z\b[\s\S]+|[A-Za-z_][\w.]*)/)
+  if (lazy) return zodTypeOf(lazy[1]!)
   // A field's type is its outermost constructor. Probing anywhere in the
   // expression reports a nested child's type instead, so every probe is
   // anchored: an object holding a `z.enum` is still an object.

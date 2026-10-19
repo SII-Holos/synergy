@@ -10,7 +10,7 @@ async function fixture() {
   const backup = path.join(root, "backup")
   const restored = path.join(root, "restored")
   await fs.mkdir(source)
-  const values = new Map<string, Buffer>()
+  const values = new Map<string, Buffer<ArrayBuffer>>()
   for (let n = 0; n < 2100; n++)
     values.set(
       `notes/${String(n).padStart(5, "0")}.json`,

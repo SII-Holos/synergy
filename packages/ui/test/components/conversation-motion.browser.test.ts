@@ -114,7 +114,7 @@ test("collection animates outward while restored reasoning has no entrance", asy
       result.push({
         old: old.getBoundingClientRect().height,
         next: document.querySelector('[data-slot="activity-reasoning"]')?.getBoundingClientRect().height ?? 0,
-        hidden: old.hidden,
+        hidden: Boolean(old.hidden),
       })
     }
     return result

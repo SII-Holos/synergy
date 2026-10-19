@@ -9,7 +9,7 @@
     "url": "https://github.com/SII-Holos/synergy.git"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "build": "bun ./script/build.ts"
   },
   "exports": {
@@ -41,8 +41,7 @@
     "@hey-api/openapi-ts": "0.88.1",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "publishConfig": {
     "directory": "dist",

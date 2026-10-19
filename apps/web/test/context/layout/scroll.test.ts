@@ -28,7 +28,10 @@ describe("createScrollPersistence", () => {
           sessionView: {} as Record<string, { scroll: Record<string, { x: number; y: number }> }>,
         })
 
-        const [store, setStore] = makePersisted([raw, setRaw], { name: key, storage })
+        const [store, setStore] = makePersisted<typeof raw, [typeof raw, typeof setRaw]>([raw, setRaw], {
+          name: key,
+          storage,
+        })
 
         const scroll = createScrollPersistence({
           debounceMs: 30,

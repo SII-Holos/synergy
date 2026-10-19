@@ -133,7 +133,7 @@ test("workspace file content policy preserves native selected-line reading", () 
               },
             ],
           })
-          const projected = JSON.stringify(MessageV2.toModelMessage([message]))
+          const projected = JSON.stringify(await MessageV2.toModelMessage([message]))
           expect(projected).toContain("SELECTED_CONTENT")
           expect(projected).not.toContain("BEFORE_SELECTION")
           expect(projected).not.toContain("AFTER_SELECTION")

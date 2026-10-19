@@ -39,6 +39,7 @@
     }
   ],
   "mac": {
+    "minimumSystemVersion": "13.0",
     "artifactName": "Synergy-darwin-${arch}-${version}.${ext}",
     "bundleVersion": "${version}",
     "category": "public.app-category.developer-tools",

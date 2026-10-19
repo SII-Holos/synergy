@@ -108,7 +108,7 @@ export async function performHolosLogin(options?: {
     clearTimeout(timeout)
 
     if (params.state !== state) {
-      spinner?.stop("State mismatch — possible CSRF attack", 1)
+      spinner?.error("State mismatch — possible CSRF attack")
       return null
     }
 
@@ -135,7 +135,7 @@ export async function performHolosLogin(options?: {
 
     return { agentId }
   } catch (err) {
-    spinner?.stop(`Login failed: ${err instanceof Error ? err.message : String(err)}`, 1)
+    spinner?.error(`Login failed: ${err instanceof Error ? err.message : String(err)}`)
     return null
   } finally {
     server.stop()

@@ -351,7 +351,7 @@ describe("session input attachment extraction", () => {
             expect(attachment?.url.startsWith("asset://")).toBe(true)
             const assetPath = attachment ? Asset.resolvePath(attachment.url.slice("asset://".length)) : undefined
             expect(attachment?.localPath).toBe(filepath)
-            const modelInput = JSON.stringify(MessageV2.toModelMessage([created]))
+            const modelInput = JSON.stringify(await MessageV2.toModelMessage([created]))
             expect(modelInput).toContain(assetPath!)
             expect(modelInput).toContain(attachment!.url)
             expect(modelInput).not.toContain(filepath)

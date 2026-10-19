@@ -28,7 +28,7 @@
     "./worker": "./src/worker.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/channel-clarus",
     "test:ci": "bun ../testing/script/test-ci.ts",
@@ -50,7 +50,6 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
   },
   "synergy": {

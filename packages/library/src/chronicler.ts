@@ -33,7 +33,7 @@ export namespace Chronicler {
     const messages = await SessionHistory.detachedModelMessages({ sessionID: ctx.sessionID, signal: ctx.abort })
     if (messages.length === 0) return
 
-    const modelMessages = MessageV2.toModelMessage(messages)
+    const modelMessages = await MessageV2.toModelMessage(messages)
     const conversationText = modelMessages
       .map((msg) => {
         const role = msg.role

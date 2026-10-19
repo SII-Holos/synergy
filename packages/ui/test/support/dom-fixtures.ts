@@ -97,6 +97,7 @@ if (import.meta.main) {
   if (!staging) throw new Error("UI fixture builder requires an output directory")
   const [{ build }, { default: solidPlugin }] = await Promise.all([import("vite"), import("vite-plugin-solid")])
   await build({
+    base: "./",
     configFile: false,
     logLevel: "silent",
     plugins: [solidPlugin()],

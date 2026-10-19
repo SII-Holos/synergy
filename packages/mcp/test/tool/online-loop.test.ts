@@ -1,5 +1,6 @@
+import type { LanguageModelV2, ProviderV2 } from "@ai-sdk/provider"
 import { expect, spyOn, test } from "bun:test"
-import { jsonSchema, simulateReadableStream, type JSONSchema7, type LanguageModel, type Provider } from "ai"
+import { jsonSchema, simulateReadableStream, type JSONSchema7 } from "ai"
 import { z } from "zod"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -20,7 +21,7 @@ import { registerConfig } from "../../src/config-schema"
 import { registerMcpToolSource } from "../../src/tool-source"
 import definitions from "../fixtures/scholight-tools.json"
 
-type FixtureModel = Exclude<LanguageModel, string>
+type FixtureModel = LanguageModelV2
 type ModelRequest = Pick<Parameters<FixtureModel["doStream"]>[0], "prompt" | "tools" | "toolChoice">
 type StreamPart =
   Awaited<ReturnType<FixtureModel["doStream"]>>["stream"] extends ReadableStream<infer Part> ? Part : never
@@ -139,7 +140,7 @@ test("deterministic model boundary auto-expands online, executes once and retain
       },
     },
   }
-  const sdk: Provider = {
+  const sdk: ProviderV2 = {
     languageModel(id) {
       const model = models[id]
       if (!model) throw new Error(`Unexpected fixture model: ${id}`)
@@ -257,7 +258,7 @@ test("deterministic model boundary auto-expands online, executes once and retain
             const definition = request.tools?.find((tool) => tool.name === toolID)
             expect(definition?.type).toBe("function")
             if (!definition || definition.type !== "function") throw new Error("Online tool missing at model boundary")
-            expect(definition.description).toBe(entry.tool.description)
+            expect(definition.description).toBe(String(entry.tool.description))
             expect(definition.inputSchema).toEqual({
               ...originalSchema,
               properties: {

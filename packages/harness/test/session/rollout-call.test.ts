@@ -113,7 +113,13 @@ describe("rollout call stream", () => {
           yield { type: "text-delta" as const, id: "text", text: "hello" }
         })(),
         contextUsageDraft: draft.promise,
-        usage: Promise.resolve({ inputTokens: 100, outputTokens: 1, totalTokens: 101 }),
+        usage: Promise.resolve({
+          inputTokens: 100,
+          outputTokens: 1,
+          totalTokens: 101,
+          inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+          outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+        }),
         async dispose() {
           disposed = true
         },
@@ -255,7 +261,13 @@ describe("rollout call stream", () => {
           fullStream: (async function* () {
             yield { type: "text-delta" as const, id: "text", text: "hello" }
           })(),
-          usage: Promise.resolve({ inputTokens: 5, outputTokens: 1, totalTokens: 6 }),
+          usage: Promise.resolve({
+            inputTokens: 5,
+            outputTokens: 1,
+            totalTokens: 6,
+            inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+            outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+          }),
           async dispose() {
             disposed = true
           },
@@ -265,7 +277,13 @@ describe("rollout call stream", () => {
       await stream.dispose()
       const [call] = await RolloutLedger.calls(args.owner, args.runID)
       expect(call.status).toBe("completed")
-      expect(call.sdkUsage).toEqual({ inputTokens: 5, outputTokens: 1, totalTokens: 6 })
+      expect(call.sdkUsage).toEqual({
+        inputTokens: 5,
+        outputTokens: 1,
+        totalTokens: 6,
+        inputTokenDetails: {},
+        outputTokenDetails: {},
+      })
       expect(call.transportCaptured).toBe(false)
       expect(disposed).toBe(true)
       const chunks: Uint8Array[] = []

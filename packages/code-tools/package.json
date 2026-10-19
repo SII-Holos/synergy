@@ -12,7 +12,7 @@
     "./component": "./src/component.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/code-tools",
     "test:ci": "bun ../testing/script/test-ci.ts",
@@ -29,7 +29,6 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:",
     "typescript": "catalog:"
   },
   "synergy": {
@@ -48,10 +47,10 @@
     }
   },
   "optionalDependencies": {
-    "@ast-grep/cli-darwin-arm64": "0.40.5",
-    "@ast-grep/cli-darwin-x64": "0.40.5",
-    "@ast-grep/cli-linux-arm64-gnu": "0.40.5",
-    "@ast-grep/cli-linux-x64-gnu": "0.40.5",
-    "@ast-grep/cli-win32-x64-msvc": "0.40.5"
+    "@ast-grep/cli-darwin-arm64": "0.51.0",
+    "@ast-grep/cli-darwin-x64": "0.51.0",
+    "@ast-grep/cli-linux-arm64-gnu": "0.51.0",
+    "@ast-grep/cli-linux-x64-gnu": "0.51.0",
+    "@ast-grep/cli-win32-x64-msvc": "0.51.0"
   }
 }

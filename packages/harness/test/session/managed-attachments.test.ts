@@ -47,7 +47,7 @@ test("text uploads retain replacement decoding for legacy byte sequences", () =>
               model,
               parts: [{ type: "attachment", url, filename, mime }],
             })
-            expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("LEGACY_CONTENT,�\\nEND")
+            expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain("LEGACY_CONTENT,�\\nEND")
             const attachment = message.parts.find((part) => part.type === "attachment")!
             expect(await Bun.file(attachment.localPath!).bytes()).toEqual(new Uint8Array(bytes))
           }
@@ -71,7 +71,7 @@ test("content policy without embedded text still extracts uploaded and inline te
             model,
             parts: [{ type: "attachment", url, filename: "notes.txt", mime: "text/plain", model: { mode: "content" } }],
           })
-          expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("CONTENT_TO_EXTRACT")
+          expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain("CONTENT_TO_EXTRACT")
         }
       },
     }),
@@ -139,7 +139,7 @@ for (const context of ["home", "project", "workspace"] as const) {
               expect(attachment?.localPath).toBeString()
               expect(await Bun.file(attachment!.localPath!).bytes()).toEqual(new Uint8Array(fixture.bytes))
               if (fixture.filename.match(/\.(txt|md|json|csv)$/)) {
-                expect(JSON.stringify(MessageV2.toModelMessage([message]))).toContain("ATTACHMENT_MARKER")
+                expect(JSON.stringify(await MessageV2.toModelMessage([message]))).toContain("ATTACHMENT_MARKER")
               }
             }
           },
@@ -186,7 +186,7 @@ for (const source of ["asset", "data"] as const) {
             expect(attachment?.model).toEqual(policy)
             expect(attachment?.presentation).toEqual({ hidden: true })
             expect(attachment?.metadata?.caption).toBe("keep metadata")
-            const projected = MessageV2.toModelMessage([message])
+            const projected = await MessageV2.toModelMessage([message])
             if (policy.mode === "none") expect(projected).toEqual([])
             if (policy.mode === "content") expect(JSON.stringify(projected)).toContain("custom content")
           }
@@ -215,7 +215,7 @@ test("excluded text attachments do not leak extracted text into model input", ()
             },
           ],
         })
-        expect(MessageV2.toModelMessage([message])).toEqual([])
+        expect(await MessageV2.toModelMessage([message])).toEqual([])
       },
     }),
   ))

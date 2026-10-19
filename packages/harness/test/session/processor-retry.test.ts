@@ -53,7 +53,13 @@ function testModel(): Provider.Model {
   }
 }
 
-const testUsage = { inputTokens: 1, outputTokens: 0, totalTokens: 1 }
+const testUsage = {
+  inputTokens: 1,
+  outputTokens: 0,
+  totalTokens: 1,
+  inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+  outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+}
 
 async function run(
   mode:
@@ -357,7 +363,9 @@ test.each([
       "valid answer",
     ])
     expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
-    expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
+    expect(JSON.stringify((await MessageV2.projectModelMessages([result.message])).messages)).not.toContain(
+      "discard this",
+    )
   }),
 )
 
@@ -389,7 +397,9 @@ test(
     expect(result.message.parts.filter((part) => part.type === "reasoning").map((part) => part.text)).toEqual([
       "valid reasoning",
     ])
-    expect(JSON.stringify(MessageV2.projectModelMessages([result.message]).messages)).not.toContain("discard this")
+    expect(JSON.stringify((await MessageV2.projectModelMessages([result.message])).messages)).not.toContain(
+      "discard this",
+    )
   }),
 )
 

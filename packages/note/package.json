@@ -25,7 +25,7 @@
     "./tools/note-search": "./src/tools/note-search.ts"
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/note",
     "test:ci": "bun ../testing/script/test-ci.ts",
@@ -34,7 +34,7 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
-    "@hono/standard-validator": "^0.2.0",
+    "@hono/standard-validator": "0.4.0",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
     "remeda": "catalog:",
@@ -47,7 +47,6 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "7.0.0-dev.20251207.1",
     "typescript": "catalog:"
   },
   "peerDependencies": {

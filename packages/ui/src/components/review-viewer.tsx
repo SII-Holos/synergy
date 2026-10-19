@@ -7,7 +7,7 @@ import { getWorkerPool } from "../pierre/worker"
 import { useLingui } from "@lingui/solid"
 
 export interface ReviewViewerProps {
-  items: CodeViewItem[]
+  items: CodeViewItem<undefined>[]
   style: "unified" | "split"
   wrap: boolean
   words: boolean
@@ -29,7 +29,7 @@ export function ReviewViewer(props: ReviewViewerProps) {
   const [viewer, setViewer] = createSignal<CodeView>()
   const headers = new Map<string, { element: HTMLDivElement; dispose: () => void }>()
   const interactions = new Map<HTMLElement, () => void>()
-  const options = createMemo<CodeViewOptions<undefined>>(() => {
+  const options = createMemo<CodeViewOptions<undefined, undefined>>(() => {
     const expandContext = _({ id: "ui.review.expandContext", message: "Expand unchanged context" })
     const expandAllContext = _({ id: "ui.review.expandAllContext", message: "Expand all context" })
     const before = _({ id: "ui.review.before", message: "before" }),

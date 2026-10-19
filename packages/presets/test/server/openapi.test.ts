@@ -215,8 +215,7 @@ describe("OpenAPI spec generation", () => {
       const apply = spec.paths["/config/import/apply"]?.post
       const responseSchema = (operation: typeof plan, status: string) => {
         const response = operation?.responses?.[status] as
-          | { content?: Record<string, { schema?: unknown }> }
-          | undefined
+          { content?: Record<string, { schema?: unknown }> } | undefined
         return response?.content?.["application/json"]?.schema
       }
 

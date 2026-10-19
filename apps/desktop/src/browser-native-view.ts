@@ -15,14 +15,33 @@ export class BrowserNativeViewManager {
   private view: WebContentsView | null = null
   private eventCleanup: (() => void) | null = null
   private generationCleanup: (() => void) | null = null
+  private documentReady = true
 
   constructor(
     private window: BrowserWindow,
     private pool: BrowserNativePagePool,
     private readonly sendEvent: (event: BrowserNativeViewEvent) => void,
-  ) {}
+  ) {
+    window.webContents.on("did-start-navigation", this.onNavigation)
+    window.webContents.on("render-process-gone", this.releaseDocument)
+    window.webContents.on("dom-ready", this.onDocumentReady)
+  }
+
+  private readonly onNavigation = (event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => {
+    if (event.isMainFrame && !event.isSameDocument) this.releaseDocument()
+  }
+
+  private readonly releaseDocument = () => {
+    this.documentReady = false
+    if (this.ownerKey && this.pageId) this.detach(this.ownerKey, this.pageId)
+  }
+
+  private readonly onDocumentReady = () => {
+    this.documentReady = true
+  }
 
   async attach(input: BrowserNativeAttachRequest): Promise<void> {
+    if (!this.documentReady) throw new Error("The application document is not ready for browser presentation.")
     if (this.pageId && (this.ownerKey !== input.ownerKey || this.pageId !== input.pageId)) {
       this.detach(this.ownerKey!, this.pageId)
     }
@@ -106,7 +125,10 @@ export class BrowserNativeViewManager {
   }
 
   destroy(): void {
-    if (this.ownerKey && this.pageId) this.detach(this.ownerKey, this.pageId)
+    this.releaseDocument()
+    this.window.webContents.off("did-start-navigation", this.onNavigation)
+    this.window.webContents.off("render-process-gone", this.releaseDocument)
+    this.window.webContents.off("dom-ready", this.onDocumentReady)
   }
 
   private bindEvents(pageId: string, view: WebContentsView): () => void {
@@ -118,52 +140,26 @@ export class BrowserNativeViewManager {
       this.window.webContents.focus()
       this.sendEvent({ type: "native.shortcut", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId, action })
     }
-    const emit = (event: BrowserNativeViewEvent) => {
-      this.sendEvent(event)
+    const updated = () => {
+      if (!this.ownerKey) return
+      const page = this.pool.find(this.ownerKey, pageId)?.state()
+      if (page) this.sendEvent({ type: "native.page", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId, page })
     }
-    const loading = () =>
-      emit({
-        type: "native.loading",
-        protocolVersion: BROWSER_PROTOCOL_VERSION,
-        pageId,
-        url: boundedURL(contents.getURL()),
-      })
-    const loaded = () =>
-      emit({
-        type: "native.loaded",
-        protocolVersion: BROWSER_PROTOCOL_VERSION,
-        pageId,
-        url: boundedURL(contents.getURL()),
-        title: contents.getTitle().slice(0, 20_000),
-      })
-    const navigated = (_event: Electron.Event, url: string) =>
-      emit({ type: "native.navigated", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId, url: boundedURL(url) })
-    const titled = (_event: Electron.Event, title: string) =>
-      emit({ type: "native.title", protocolVersion: BROWSER_PROTOCOL_VERSION, pageId, title: title.slice(0, 20_000) })
-    const failed = (_event: Electron.Event, code: number, message: string, url: string) =>
-      emit({
-        type: "native.error",
-        protocolVersion: BROWSER_PROTOCOL_VERSION,
-        pageId,
-        code,
-        message: message.slice(0, 100_000),
-        url: boundedURL(url),
-      })
-    contents.on("did-start-loading", loading)
+    contents.on("did-start-loading", updated)
     contents.on("before-input-event", shortcut)
-    contents.on("did-stop-loading", loaded)
-    contents.on("did-navigate", navigated)
-    contents.on("did-navigate-in-page", navigated)
-    contents.on("page-title-updated", titled)
-    contents.on("did-fail-load", failed)
+    contents.on("did-stop-loading", updated)
+    contents.on("did-navigate", updated)
+    contents.on("did-navigate-in-page", updated)
+    contents.on("page-title-updated", updated)
+    contents.on("did-fail-load", updated)
     return () => {
-      contents.off("did-start-loading", loading)
+      contents.off("did-start-loading", updated)
       contents.off("before-input-event", shortcut)
-      contents.off("did-stop-loading", loaded)
-      contents.off("did-navigate", navigated)
-      contents.off("did-navigate-in-page", navigated)
-      contents.off("page-title-updated", titled)
-      contents.off("did-fail-load", failed)
+      contents.off("did-stop-loading", updated)
+      contents.off("did-navigate", updated)
+      contents.off("did-navigate-in-page", updated)
+      contents.off("page-title-updated", updated)
+      contents.off("did-fail-load", updated)
     }
   }
 }

@@ -132,7 +132,7 @@ unsafe fn apply_deny_acl(
                     }
                     Err(existence_code) => {
                         rollback_saved(&mut saved);
-                        let hr = HRESULT::from_win32(existence_code);
+                        let hr = windows_result::WIN32_ERROR(existence_code).to_hresult();
                         return Err(Error::new(
                             hr,
                             format!(
@@ -144,7 +144,7 @@ unsafe fn apply_deny_acl(
                 }
             }
             rollback_saved(&mut saved);
-            let hr = HRESULT::from_win32(code);
+            let hr = windows_result::WIN32_ERROR(code).to_hresult();
             return Err(Error::new(
                 hr,
                 format!(
@@ -156,7 +156,7 @@ unsafe fn apply_deny_acl(
 
         if original_sd.is_null() {
             rollback_saved(&mut saved);
-            let hr = HRESULT::from_win32(87); // ERROR_INVALID_PARAMETER
+            let hr = windows_result::WIN32_ERROR(87).to_hresult(); // ERROR_INVALID_PARAMETER
             return Err(Error::new(
                 hr,
                 format!("GetNamedSecurityInfoW returned no descriptor for {}", path),
@@ -184,7 +184,7 @@ unsafe fn apply_deny_acl(
         if ok == 0 {
             clean_sd(saved_original);
             rollback_saved(&mut saved);
-            let hr = HRESULT::from_win32(GetLastError());
+            let hr = windows_result::WIN32_ERROR(GetLastError()).to_hresult();
             return Err(Error::new(hr, "AllocateAndInitializeSid for World failed"));
         }
 
@@ -214,7 +214,7 @@ unsafe fn apply_deny_acl(
             clean_acl(new_dacl);
             clean_sd(saved_original);
             rollback_saved(&mut saved);
-            let hr = HRESULT::from_win32(code);
+            let hr = windows_result::WIN32_ERROR(code).to_hresult();
             return Err(Error::new(
                 hr,
                 format!(
@@ -238,7 +238,7 @@ unsafe fn apply_deny_acl(
         if code != 0 {
             clean_sd(saved_original);
             rollback_saved(&mut saved);
-            let hr = HRESULT::from_win32(code);
+            let hr = windows_result::WIN32_ERROR(code).to_hresult();
             return Err(Error::new(
                 hr,
                 format!(

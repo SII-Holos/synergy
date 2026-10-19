@@ -180,18 +180,16 @@ export namespace SkillManifest {
       manifest: unknown
     },
   ) {
-    return issues.map(
-      (issue): Diagnostic => ({
-        code: "skill.manifest_invalid",
-        severity: input.severity,
-        name: input.name,
-        source: input.source,
-        path: input.entryFile,
-        field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-        reason: issueReason(issue, input.manifest),
-        message: issueMessage(issue, input.manifest),
-      }),
-    )
+    return issues.map((issue): Diagnostic => ({
+      code: "skill.manifest_invalid",
+      severity: input.severity,
+      name: input.name,
+      source: input.source,
+      path: input.entryFile,
+      field: issue.path.length > 0 ? issue.path.join(".") : undefined,
+      reason: issueReason(issue, input.manifest),
+      message: issueMessage(issue, input.manifest),
+    }))
   }
 
   export function validateDirectory(entryFile: string, manifest: Parsed) {
@@ -244,17 +242,15 @@ export namespace SkillManifest {
     }
     const result = (input.source === "plugin" ? ProgrammaticSchema : Schema).safeParse(manifestInput)
     if (!result.success) {
-      const diagnostics = result.error.issues.map(
-        (issue): Diagnostic => ({
-          code: "skill.manifest_invalid",
-          severity: "error",
-          name: input.manifest.name,
-          source: input.source,
-          field: issue.path.length > 0 ? issue.path.join(".") : undefined,
-          reason: issueReason(issue, manifestInput),
-          message: issueMessage(issue, manifestInput),
-        }),
-      )
+      const diagnostics = result.error.issues.map((issue): Diagnostic => ({
+        code: "skill.manifest_invalid",
+        severity: "error",
+        name: input.manifest.name,
+        source: input.source,
+        field: issue.path.length > 0 ? issue.path.join(".") : undefined,
+        reason: issueReason(issue, manifestInput),
+        message: issueMessage(issue, manifestInput),
+      }))
       return { diagnostics }
     }
     const value = normalized(result.data, "", [])

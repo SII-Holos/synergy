@@ -14,59 +14,56 @@ export async function withinBrowserOwner<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   BrowserOwner.assertValid(owner)
-  return SessionWorkspaceRuntime.withBinding(
-    owner.sessionID ?? `browser-scope:${owner.scopeID}`,
-    async () => {
-      signal?.throwIfAborted()
-      const session = owner.mode === "session" ? await Session.get(owner.sessionID!) : undefined
-      if (session) {
-        const environment = session.environmentID
-          ? await Environment.get(session.environmentID, session.scope.id)
-          : undefined
-        if (environment?.provider !== "native")
-          throw new BrowserProtocolError({
-            code: "browser_environment_unavailable",
-            message:
-              "Browser is available only with the native Environment. The selected Environment has no Browser provider.",
-            retryable: false,
-          })
-      }
-      const scope = session?.scope ?? (await Scope.resolve({ scopeID: owner.scopeID }))
-      const workspaceID = session
-        ? session.workspaceID
-        : owner.workspaceID !== undefined
-          ? owner.workspaceID
-          : ScopeContext.tryScope()?.id === scope.id
-            ? ScopeContext.tryWorkspace()?.id
-            : null
-      const workspace = workspaceID ? await WorkspaceBinding.validate(workspaceID, scope.id, owner.generation) : null
-      if (
-        scope.id !== owner.scopeID ||
-        owner.directory !== (workspace?.path ?? null) ||
-        (owner.workspaceID !== undefined && owner.workspaceID !== (workspaceID ?? null))
-      ) {
+  const enter = async () => {
+    signal?.throwIfAborted()
+    const session = owner.mode === "session" ? await Session.get(owner.sessionID!) : undefined
+    if (session) {
+      const environment = session.environmentID
+        ? await Environment.get(session.environmentID, session.scope.id)
+        : undefined
+      if (environment?.provider !== "native")
         throw new BrowserProtocolError({
-          code: "browser_workspace_changed",
-          message: "The Browser Workspace changed. Refresh the session before issuing another command.",
-          retryable: true,
+          code: "browser_environment_unavailable",
+          message:
+            "Browser is available only with the native Environment. The selected Environment has no Browser provider.",
+          retryable: false,
         })
-      }
-      const resolved: BrowserOwner.Info = {
-        ...owner,
-        workspaceID: workspaceID ?? null,
-        generation: workspace?.generation,
-      }
-      return ScopeContext.provide({
-        scope,
-        workspace,
-        fn: () =>
-          WorkspaceAccess.withinTask(async () => {
-            if (workspace) await WorkspaceAccess.use([workspace])
-            signal?.throwIfAborted()
-            return fn(resolved)
-          }, signal),
+    }
+    const scope = session?.scope ?? (await Scope.resolve({ scopeID: owner.scopeID }))
+    const workspaceID = session
+      ? session.workspaceID
+      : owner.workspaceID !== undefined
+        ? owner.workspaceID
+        : ScopeContext.tryScope()?.id === scope.id
+          ? ScopeContext.tryWorkspace()?.id
+          : null
+    const workspace = workspaceID ? await WorkspaceBinding.validate(workspaceID, scope.id, owner.generation) : null
+    if (
+      scope.id !== owner.scopeID ||
+      owner.directory !== (workspace?.path ?? null) ||
+      (owner.workspaceID !== undefined && owner.workspaceID !== (workspaceID ?? null))
+    ) {
+      throw new BrowserProtocolError({
+        code: "browser_workspace_changed",
+        message: "The Browser Workspace changed. Refresh the session before issuing another command.",
+        retryable: true,
       })
-    },
-    signal,
-  )
+    }
+    const resolved: BrowserOwner.Info = {
+      ...owner,
+      workspaceID: workspaceID ?? null,
+      generation: workspace?.generation,
+    }
+    return ScopeContext.provide({
+      scope,
+      workspace,
+      fn: () =>
+        WorkspaceAccess.withinTask(async () => {
+          if (workspace) await WorkspaceAccess.use([workspace])
+          signal?.throwIfAborted()
+          return fn(resolved)
+        }, signal),
+    })
+  }
+  return owner.mode === "session" ? SessionWorkspaceRuntime.withBinding(owner.sessionID!, enter, signal) : enter()
 }

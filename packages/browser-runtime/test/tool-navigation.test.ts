@@ -3,7 +3,12 @@ import { BrowserCommandService } from "../src/command-service"
 import { BrowserSessionImpl } from "../src/session"
 import { BrowserProfiles } from "../src/profiles"
 import { BrowserControl } from "../src/control"
-import type { BrowserBackendCommand, BrowserBackendResult } from "@ericsanchezok/synergy-browser-core"
+import { BrowserWorkspace } from "../src/workspace"
+import type {
+  BrowserBackendCommand,
+  BrowserBackendResult,
+  BrowserUserCommand,
+} from "@ericsanchezok/synergy-browser-core"
 import { testRuntime } from "./support/runtime"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -23,6 +28,7 @@ async function setup(
   ) => Promise<BrowserBackendResult> = async () => ({
     type: "void",
   }),
+  close: () => Promise<void> = async () => {},
 ) {
   const session = new BrowserSessionImpl(owner, async ({ id, url }) => ({
     id,
@@ -32,7 +38,7 @@ async function setup(
     loading: false,
     lastActiveAt: null,
     isAlive: () => true,
-    close: async () => {},
+    close,
     execute: (command, agentSessionID) => execute(id, command, agentSessionID),
   }))
   const page = await session.openPage({})
@@ -180,13 +186,66 @@ test("one page serializes commands while other pages make progress", () =>
     const other = await session.openPage({})
     const first = BrowserCommandService.execute(owner, { pageId, commandId: "1", command: { type: "reload" } })
     await started
-    const second = BrowserCommandService.execute(owner, { pageId, commandId: "2", command: { type: "stop" } })
+    const second = BrowserCommandService.execute(owner, { pageId, commandId: "2", command: { type: "snapshot" } })
     await BrowserCommandService.execute(owner, { pageId: other.id, commandId: "3", command: { type: "stop" } })
     expect(order).toEqual([`${pageId}:reload`, `${other.id}:stop`])
     release()
     await Promise.all([first, second])
-    expect(order.at(-1)).toBe(`${pageId}:stop`)
+    expect(order.at(-1)).toBe(`${pageId}:snapshot`)
   }))
+
+for (const command of [
+  { type: "stop" },
+  { type: "navigate", source: "user", url: "https://example.com/next" },
+  { type: "history", source: "user", direction: "back" },
+  { type: "reload", source: "user" },
+  { type: "close" },
+] satisfies BrowserUserCommand[]) {
+  test(`user ${command.type} interrupts a pending Agent command and deduplicates concurrent retries`, () =>
+    runtime.run(async () => {
+      const started = Promise.withResolvers<void>()
+      const waiting = Promise.withResolvers<void>()
+      let deliveries = 0
+      const { pageId } = await setup(
+        async (_id, received) => {
+          if (received.type === "reload" && received.source === "agent") {
+            started.resolve()
+            await waiting.promise
+          } else deliveries++
+          return { type: "void" }
+        },
+        async () => {
+          deliveries++
+        },
+      )
+      const active = BrowserCommandService.execute(owner, {
+        pageId,
+        commandId: "pending-agent",
+        agentSessionID: "reader",
+        command: { type: "reload", source: "agent" },
+      })
+      await started.promise
+      const state: BrowserWorkspace.State = {
+        directory: "home",
+        owner,
+        presentation: null,
+        requestedPresentation: "native",
+        nativePresentation: true,
+      }
+      const request = { pageId, commandId: "human-interrupt", command }
+      const controls = Promise.all([
+        BrowserWorkspace.executeControl(state, request, "http://localhost"),
+        BrowserWorkspace.executeControl(state, request, "http://localhost"),
+      ])
+      try {
+        expect(await Promise.race([controls.then(() => true), Bun.sleep(300).then(() => false)])).toBe(true)
+        expect(deliveries).toBe(1)
+      } finally {
+        waiting.resolve()
+        await Promise.allSettled([active, controls])
+      }
+    }))
+}
 
 test("cancelling a queued task cannot stop another task's active page operation", () =>
   runtime.run(async () => {
@@ -218,6 +277,47 @@ test("cancelling a queued task cannot stop another task's active page operation"
     await first
     await expect(second).rejects.toMatchObject({ code: "browser_command_aborted" })
     expect(commands).toEqual(["reload"])
+  }))
+test("ordinary commands and disposal wait for an in-flight interrupt after the Agent releases", () =>
+  runtime.run(async () => {
+    const activeStarted = Promise.withResolvers<void>()
+    const releaseActive = Promise.withResolvers<void>()
+    const interruptStarted = Promise.withResolvers<void>()
+    const releaseInterrupt = Promise.withResolvers<void>()
+    const commands: string[] = []
+    const { session, pageId } = await setup(async (_id, command) => {
+      commands.push(command.type)
+      if (command.type === "reload") {
+        activeStarted.resolve()
+        await releaseActive.promise
+      }
+      if (command.type === "stop") {
+        interruptStarted.resolve()
+        await releaseInterrupt.promise
+      }
+      return { type: "void" }
+    })
+    const active = BrowserCommandService.execute(owner, { pageId, commandId: "active", command: { type: "reload" } })
+    await activeStarted.promise
+    const stop = BrowserCommandService.execute(owner, { pageId, commandId: "stop", command: { type: "stop" } })
+    await interruptStarted.promise
+    const next = BrowserCommandService.execute(owner, { pageId, commandId: "next", command: { type: "snapshot" } })
+    releaseActive.resolve()
+    await active
+    let disposed = false
+    const disposal = BrowserCommandService.disposeOwner(owner, async () => {
+      await session.dispose()
+      disposed = true
+    })
+    try {
+      expect(commands).toEqual(["reload", "stop"])
+      expect(disposed).toBe(false)
+    } finally {
+      releaseInterrupt.resolve()
+      await Promise.all([stop, next, disposal])
+    }
+    expect(commands).toEqual(["reload", "stop", "snapshot"])
+    expect(disposed).toBe(true)
   }))
 test("dialog response bypasses its blocked page command and disposal drains all pages", () =>
   runtime.run(async () => {

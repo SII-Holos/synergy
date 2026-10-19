@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "bun test --config /dev/null test/*.test.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test:python": "uv run --locked pytest",
     "check:python": "uv run --locked ruff check . && uv run --locked mypy src/synergy_bench"
   },
@@ -21,6 +21,6 @@
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@typescript/native-preview": "catalog:"
+    "typescript": "catalog:"
   }
 }

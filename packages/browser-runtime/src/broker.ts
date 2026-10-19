@@ -1,9 +1,7 @@
+import { BROWSER_PAGE_CREATE_TIMEOUT_MS, browserBackendCommandTimeoutMs } from "@ericsanchezok/synergy-browser-core"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto"
 import {
-  BROWSER_ACTION_SETTLE_TIMEOUT_MS,
-  BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS,
-  BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS,
   BROWSER_PROTOCOL_VERSION,
   BROWSER_DATA_CONTEXT_TTL_MS,
   BrowserBackendCommandSchema,
@@ -265,6 +263,14 @@ export namespace BrowserBroker {
       }
       if (eventPageId(message.event) !== message.pageId) {
         instanceState.connection.socket.close(1008, "Browser Host event page does not match its envelope")
+        return
+      }
+      if (message.event.type === "page.stage") {
+        ObservabilityBrowserTelemetry.emitBrowserEvent(
+          "browser.navigation.stage",
+          instanceState.preferences.get(message.ownerKey)?.owner,
+          message.event,
+        )
         return
       }
       if (message.event.type === "host.status") {
@@ -725,22 +731,9 @@ function request(message: BrokerRequest): Promise<BrowserBackendResult> {
 }
 
 function requestTimeout(message: BrokerRequest): number {
-  if (message.type !== "page.command") return 35_000
-  const command = message.command
-  if (command.type === "evaluate") return Math.min(125_000, (command.timeoutMs ?? 30_000) + 5_000)
-  if (command.type === "wait") return command.timeoutMs + 5_000
-  if (command.type === "action") {
-    const settleMs = command.action.settleTimeoutMs ?? BROWSER_ACTION_SETTLE_TIMEOUT_MS
-    // Include the post-settle best-effort snapshot budget so the controller's
-    // settle + snapshot work cannot outrun the broker deadline and turn a
-    // successful action into a spurious unknown-outcome timeout.
-    return (command.action.timeoutMs ?? 5_000) + settleMs + BROWSER_BEST_EFFORT_SNAPSHOT_TIMEOUT_MS + 5_000
-  }
-  if (command.type === "navigate" || command.type === "history" || command.type === "reload") {
-    const settleMs = command.settleTimeoutMs ?? BROWSER_NAVIGATION_SETTLE_TIMEOUT_MS
-    return settleMs + 10_000
-  }
-  return 35_000
+  return message.type === "page.command"
+    ? browserBackendCommandTimeoutMs(message.command)
+    : BROWSER_PAGE_CREATE_TIMEOUT_MS
 }
 
 function disconnect(active: Connection, error: Error): () => void {

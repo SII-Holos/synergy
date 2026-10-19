@@ -311,7 +311,8 @@ export function HostConnectionRoute(input: {
                 upstream.onopen = () => {
                   if (admission.signal.aborted) return close()
                   clearTimeout(timeout)
-                  for (const message of queued) upstream?.send(message)
+                  for (const message of queued)
+                    upstream?.send(message instanceof SharedArrayBuffer ? new Uint8Array(message).slice() : message)
                   queued.length = 0
                   queuedBytes = 0
                 }
@@ -341,7 +342,7 @@ export function HostConnectionRoute(input: {
                 }
                 if (!upstream || upstream.readyState !== WebSocket.OPEN || upstream.bufferedAmount > 4 * 1024 * 1024)
                   return close()
-                upstream.send(event.data)
+                upstream.send(event.data instanceof SharedArrayBuffer ? new Uint8Array(event.data).slice() : event.data)
               },
               onClose: close,
               onError: close,

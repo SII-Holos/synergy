@@ -1,8 +1,12 @@
 import { RuntimeContext } from "../lifecycle/context"
+import type { ProviderV2, ProviderV3, ProviderV4 } from "@ai-sdk/provider"
+
 import type { Provider as SDK } from "ai"
 
+export type ProviderSDK = SDK | ProviderV2 | ProviderV3 | ProviderV4
+
 export namespace ProviderSdkSource {
-  export type Factory = (options: Record<string, unknown>) => SDK
+  export type Factory = (options: Record<string, unknown>) => ProviderSDK
 
   export interface Source {
     load(packageName: string): Promise<Factory | undefined>
