@@ -1,6 +1,7 @@
 import type { ProviderConnection } from "@ericsanchezok/synergy-sdk/client"
 import { createStore } from "solid-js/store"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { customProviderSignature, type CustomProviderFields } from "../settings/panels/custom-provider-model"
 
 type ProviderAccountFields = { name: string; endpoint: string; enabled?: boolean }
 
@@ -16,6 +17,8 @@ export type ProviderSetupDraft = {
   targetID?: string
   credentialsSaved?: boolean
   credentialsStarted?: boolean
+  custom?: CustomProviderFields
+  customBaseline?: string
 }
 
 export function nextProviderAccountName(names: string[], format: (number: number) => string) {
@@ -31,6 +34,7 @@ export function createProviderSetupDrafts() {
     selectedID: undefined as string | undefined,
     addingSourceID: undefined as string | undefined,
     catalogOpen: false,
+    customOpen: false,
     addingAdditional: false,
     query: "",
     accountQuery: "",
@@ -46,7 +50,11 @@ export function createProviderSetupDrafts() {
       (draft.name !== draft.baseline?.name ||
         draft.endpoint !== draft.baseline?.endpoint ||
         draft.enabled !== draft.baseline?.enabled)
-    return credentials || metadata
+    const custom =
+      !draft.savedConnection &&
+      draft.custom !== undefined &&
+      customProviderSignature(draft.custom) !== draft.customBaseline
+    return credentials || metadata || custom
   }
   return {
     view,
@@ -77,6 +85,7 @@ export function createProviderSetupDrafts() {
         selectedID: undefined,
         addingSourceID: undefined,
         catalogOpen: false,
+        customOpen: false,
         addingAdditional: false,
         query: "",
         accountQuery: "",

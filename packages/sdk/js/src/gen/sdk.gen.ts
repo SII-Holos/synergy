@@ -552,9 +552,12 @@ import type {
   ProviderAuthResponses,
   ProviderCatalogPageErrors,
   ProviderCatalogPageResponses,
+  ProviderConnectionCreateCustomErrors,
+  ProviderConnectionCreateCustomResponses,
   ProviderConnectionCreateErrors,
   ProviderConnectionCreateInput,
   ProviderConnectionCreateResponses,
+  ProviderConnectionCustomInput,
   ProviderConnectionRemoveErrors,
   ProviderConnectionRemoveResponses,
   ProviderConnectionUpdateErrors,
@@ -11076,6 +11079,47 @@ export class Connection extends HeyApiClient {
       ThrowOnError
     >({
       url: "/provider/connections",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Create custom model provider connection
+   *
+   * Create an endpoint-backed provider connection with a manually declared model list. Credentials are connected separately.
+   */
+  public createCustom<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      providerConnectionCustomInput?: ProviderConnectionCustomInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "providerConnectionCustomInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderConnectionCreateCustomResponses,
+      ProviderConnectionCreateCustomErrors,
+      ThrowOnError
+    >({
+      url: "/provider/connections/custom",
       ...options,
       ...params,
       headers: {

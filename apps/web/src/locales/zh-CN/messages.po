@@ -23196,8 +23196,12 @@ msgid "settings.providers.accounts.search"
 msgstr "搜索已连接账户"
 
 #. js-lingui-explicit-id
-msgid "settings.providers.addService"
-msgstr "添加模型服务"
+msgid "settings.providers.addCustom"
+msgstr "添加自定义模型 API"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.addThirdParty"
+msgstr "添加第三方模型供应商"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.back"
@@ -23250,6 +23254,142 @@ msgstr "连接已保存，但账户状态刷新失败。"
 #. js-lingui-explicit-id
 msgid "settings.providers.connection.title"
 msgstr "连接 {provider}"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.addModel"
+msgstr "添加模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.context"
+msgstr "上下文窗口（token）"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.create"
+msgstr "创建供应商"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.endpoint"
+msgstr "API 基础地址"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.endpointPlaceholder"
+msgstr "https://gateway.example.com/v1"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.existingKey"
+msgstr "留空保留已保存的密钥。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.id"
+msgstr "供应商 ID"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.idPlaceholder"
+msgstr "my-gateway"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.image"
+msgstr "图片输入"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.key"
+msgstr "API 密钥"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.keyPlaceholder"
+msgstr "可选"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.modelID"
+msgstr "模型 ID"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.modelNumber"
+msgstr "模型 {number}"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.modelPlaceholder"
+msgstr "model-id"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.models"
+msgstr "模型目录"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.name"
+msgstr "显示名称"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.namePlaceholder"
+msgstr "我的模型网关"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.output"
+msgstr "最大输出（token）"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol"
+msgstr "API 协议"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol.anthropic"
+msgstr "Anthropic Messages"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol.chat"
+msgstr "OpenAI Chat Completions"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.protocol.responses"
+msgstr "OpenAI Responses"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.reasoning"
+msgstr "思考能力"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.removeModel"
+msgstr "移除模型 {number}"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.retry"
+msgstr "继续完成配置"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.saved"
+msgstr "供应商配置已保存。重试以完成密钥保存或刷新列表。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.title"
+msgstr "自定义模型 API"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.tools"
+msgstr "工具调用"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.capacity"
+msgstr "请为模型的上下文和输出上限填写正整数。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.duplicate"
+msgstr "同一供应商下的模型 ID 不能重复。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.endpoint"
+msgstr "请输入有效的 HTTP 或 HTTPS 基础地址。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.id"
+msgstr "供应商 ID 需为 2–64 位小写字母、数字、点、连字符或下划线。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.model"
+msgstr "请填写至少一个非空的模型 ID。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.custom.validation.taken"
+msgstr "此供应商 ID 已被使用，请换一个。"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.empty.description"

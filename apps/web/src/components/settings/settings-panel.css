@@ -4442,6 +4442,95 @@
   padding-block: 24px;
 }
 
+.providers-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.providers-custom-heading {
+  margin-block: 0 20px;
+  font-size: var(--settings-type-control-size);
+  font-weight: var(--font-weight-medium);
+}
+.custom-provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.custom-provider-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.custom-provider-protocol {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 8px;
+  font-size: var(--settings-type-control-size);
+}
+.custom-provider-protocol > label {
+  color: var(--text-weak);
+  line-height: var(--settings-type-control-line-height);
+  font-weight: var(--font-weight-medium);
+}
+.custom-provider-protocol .menu-field-trigger {
+  width: 100%;
+}
+.custom-provider-models {
+  border-top: 1px solid var(--settings-border);
+  padding-top: 20px;
+}
+.custom-provider-models-heading,
+.custom-provider-model-heading,
+.custom-provider-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.custom-provider-models-heading h2,
+.custom-provider-model-title {
+  font-size: var(--settings-type-control-size);
+  font-weight: var(--font-weight-medium);
+}
+.custom-provider-model {
+  border: 0;
+  margin: 0;
+  padding: 16px 0 0;
+  min-width: 0;
+}
+.custom-provider-model + .custom-provider-model {
+  border-top: 1px solid var(--settings-border);
+  margin-top: 20px;
+}
+.custom-provider-model-heading {
+  margin-block-end: 16px;
+}
+.custom-provider-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+  padding-top: 16px;
+}
+.custom-provider-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--settings-border);
+  padding-block: 20px 8px;
+}
+@container (max-width: 600px) {
+  .providers-add-actions {
+    justify-content: flex-start;
+  }
+  .custom-provider-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .custom-provider-capabilities {
+    flex-direction: column;
+  }
+}
+
 .settings-panel-content .ds-content-header > div:last-child {
   min-width: 0;
 }

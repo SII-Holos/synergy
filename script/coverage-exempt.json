@@ -595,6 +595,10 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
+          "glob": "src/components/settings/panels/CustomProviderEditor.tsx",
+          "reason": "test/components/settings/settings-resource-flows.dom.test.tsx mounts the real editor in Chromium and verifies independent custom creation, explicit limits and capabilities, retained drafts, disabled-account recovery, and credential/read retries without duplicate config writes. Browser execution does not contribute to Bun LCOV; custom-provider-model.ts and provider-setup-drafts.ts remain measured by unit tests."
+        },
+        {
           "glob": "src/components/settings/panels/DevicePushBlock.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },

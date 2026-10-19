@@ -20,6 +20,7 @@ import { disconnectProviderConfirm } from "@/components/dialog/confirm-copy"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { ProviderAccountSetup } from "./ProviderAdditionalAccountSetup"
 import { ProviderAccountEditor } from "./ProviderAccountEditor"
+import { CustomProviderEditor } from "./CustomProviderEditor"
 import { createProviderSetupDrafts, type ProviderSetupDrafts } from "@/components/provider/provider-setup-drafts"
 import { providerCatalogPresentation } from "@/components/provider/provider-catalog-presentation"
 import { useLocale } from "@/context/locale"
@@ -102,6 +103,7 @@ export function ProvidersPanel(props: {
   const confirm = useConfirm()
   const overlayLayer = useOverlayLayer()
   const catalogOpen = () => drafts.view.catalogOpen
+  const customOpen = () => drafts.view.customOpen
   const setCatalogOpen = (value: boolean) => drafts.setView("catalogOpen", value)
   const creatingAccountFor = () => props.summaries.find((item) => item.id === drafts.view.addingSourceID)
   let closeGuard: (() => Promise<boolean>) | undefined
@@ -191,7 +193,7 @@ export function ProvidersPanel(props: {
   }
   function chooseProvider(id: string) {
     rememberOrigin(id)
-    drafts.setView({ selectedID: id, addingSourceID: undefined, catalogOpen: false })
+    drafts.setView({ selectedID: id, addingSourceID: undefined, catalogOpen: false, customOpen: false })
   }
   function chooseService(id: string, additional?: boolean) {
     const source = summaries().find((item) => item.id === id)
@@ -202,6 +204,7 @@ export function ProvidersPanel(props: {
       addingAdditional:
         additional ?? Boolean(source?.connected || source?.removable || providerNeedsAction(source?.health)),
       catalogOpen: false,
+      customOpen: false,
     })
   }
   async function back() {
@@ -218,9 +221,11 @@ export function ProvidersPanel(props: {
       if (!discard) return
     }
     if (sourceID) drafts.remove(`setup:${sourceID}`)
+    const wasCustom = customOpen()
+    drafts.setView("customOpen", false)
     setSelectedID(undefined)
     drafts.setView("addingSourceID", undefined)
-    setCatalogOpen(origin()?.catalog ?? false)
+    setCatalogOpen(wasCustom ? false : (origin()?.catalog ?? false))
     const version = ++restoration
     requestAnimationFrame(async () => {
       const content = body()
@@ -323,19 +328,32 @@ export function ProvidersPanel(props: {
       title={_(pageTitle)}
       actions={
         <Show
-          when={selected() || catalogOpen()}
+          when={selected() || catalogOpen() || customOpen()}
           fallback={
-            <Button
-              data-add-service
-              variant="secondary"
-              icon={getSemanticIcon("action.add")}
-              onClick={() => {
-                rememberOrigin()
-                setCatalogOpen(true)
-              }}
-            >
-              {_({ id: "settings.providers.addService", message: "Add model service" })}
-            </Button>
+            <div class="providers-add-actions">
+              <Button
+                data-add-service
+                variant="secondary"
+                icon={getSemanticIcon("action.add")}
+                onClick={() => {
+                  rememberOrigin()
+                  setCatalogOpen(true)
+                }}
+              >
+                {_({ id: "settings.providers.addThirdParty", message: "Add third-party provider" })}
+              </Button>
+              <Button
+                data-add-custom
+                variant="secondary"
+                icon={getSemanticIcon("action.add")}
+                onClick={() => {
+                  rememberOrigin()
+                  drafts.setView("customOpen", true)
+                }}
+              >
+                {_({ id: "settings.providers.addCustom", message: "Add custom model API" })}
+              </Button>
+            </div>
           }
         >
           <Button
@@ -353,7 +371,7 @@ export function ProvidersPanel(props: {
         </Show>
       }
     >
-      <Show when={!selected() && !catalogOpen()}>
+      <Show when={!selected() && !catalogOpen() && !customOpen()}>
         <TextField
           hideLabel
           label={_({ id: "settings.providers.accounts.search", message: "Search connected accounts" })}
@@ -461,6 +479,27 @@ export function ProvidersPanel(props: {
         </div>
       </Show>
       <div class="providers-workspace">
+        <Show when={customOpen()}>
+          <div class="providers-custom-heading">
+            <h2>{_({ id: "settings.providers.custom.title", message: "Custom model API" })}</h2>
+          </div>
+          <CustomProviderEditor
+            occupiedIDs={props.summaries.map((item) => item.id)}
+            drafts={drafts}
+            registerCloseGuard={(guard) => {
+              closeGuard = guard
+            }}
+            onCancel={() => void back()}
+            onSaved={(providerID) => {
+              drafts.setView({
+                customOpen: false,
+                selectedID: providerID,
+                origin: { catalog: false, scroll: 0, providerID },
+              })
+              drafts.remove("custom:new")
+            }}
+          />
+        </Show>
         <Show when={catalogOpen() && !selected()}>
           <div class="providers-directory">
             <div class="providers-search">
@@ -606,16 +645,34 @@ export function ProvidersPanel(props: {
                         {catalogError()?.message}
                       </p>
                     </Show>
-                    <ProviderAccountEditor
-                      connection={provider()}
-                      allowEndpoint={props.authMethods[provider().id]?.some((method) => method.type === "api") ?? false}
-                      drafts={drafts}
-                      onSaved={() => globalSync.refreshProviders()}
-                      registerCloseGuard={(guard) => {
-                        closeGuard = guard
-                      }}
-                      onCancel={() => void back()}
-                    />
+                    <Show
+                      when={provider().protocol}
+                      fallback={
+                        <ProviderAccountEditor
+                          connection={provider()}
+                          allowEndpoint={
+                            props.authMethods[provider().id]?.some((method) => method.type === "api") ?? false
+                          }
+                          drafts={drafts}
+                          onSaved={() => globalSync.refreshProviders()}
+                          registerCloseGuard={(guard) => {
+                            closeGuard = guard
+                          }}
+                          onCancel={() => void back()}
+                        />
+                      }
+                    >
+                      <CustomProviderEditor
+                        connection={provider()}
+                        occupiedIDs={props.summaries.map((item) => item.id)}
+                        drafts={drafts}
+                        onSaved={() => {}}
+                        registerCloseGuard={(guard) => {
+                          closeGuard = guard
+                        }}
+                        onCancel={() => void back()}
+                      />
+                    </Show>
                   </Show>
                   <Show when={creatingAccountFor()}>
                     {(source) => (
