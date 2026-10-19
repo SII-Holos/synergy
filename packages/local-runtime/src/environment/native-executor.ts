@@ -50,6 +50,7 @@ type Operation = {
   bytes: number
   sandboxID?: string
   cooperative?: boolean
+  waiters: Set<() => void>
 }
 
 export class NativeExecutor implements Executor {
@@ -205,6 +206,7 @@ export class NativeExecutor implements Executor {
       bytes: 0,
       sandboxID: request.command.sandboxID,
       cooperative: request.command.cooperative,
+      waiters: new Set(),
     }
     this.operations.set(request.id, operation)
     await this.persist(operation)
@@ -370,6 +372,7 @@ export class NativeExecutor implements Executor {
         )
         operation.writes = write
         await write
+        for (const wake of operation.waiters) wake()
       }
     }
   }
@@ -390,6 +393,33 @@ export class NativeExecutor implements Executor {
     if (!ExecutionProtocol.terminal(receipt.status))
       return { ...receipt.status, state: "unknown", treeDrained: false, streamsDrained: false }
     return receipt.status
+  }
+
+  async waitForChange(id: string, observed: ExecutionProtocol.Status, timeoutMs: number) {
+    ExecutionProtocol.ID.parse(id)
+    this.assertTarget(observed.target)
+    const operation = this.operations.get(id)
+    if (!operation) return
+    this.assertDigest(operation.status, observed.digest)
+    await new Promise<void>((resolve) => {
+      const done = () => {
+        clearTimeout(timer)
+        operation.waiters.delete(done)
+        resolve()
+      }
+      const timer = setTimeout(done, Math.max(0, Math.min(timeoutMs, 250)))
+      operation.waiters.add(done)
+      const keys = new Set([...Object.keys(operation.status), ...Object.keys(observed)])
+      if (
+        [...keys].some(
+          (key) =>
+            key !== "contended" &&
+            JSON.stringify(operation.status[key as keyof ExecutionProtocol.Status]) !==
+              JSON.stringify(observed[key as keyof ExecutionProtocol.Status]),
+        )
+      )
+        done()
+    })
   }
 
   async output(id: string, after: number, limit: number) {
@@ -520,6 +550,7 @@ export class NativeExecutor implements Executor {
     )
     operation.writes = write
     await write
+    for (const wake of operation.waiters) wake()
   }
 
   private async read(id: string) {

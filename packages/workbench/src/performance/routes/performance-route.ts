@@ -277,11 +277,11 @@ export const PerformanceRoute = () =>
       }),
       performanceValidator("query", PerformanceSchema.TimelineQuery, "PERF_INVALID_QUERY"),
       (c) =>
-        handlePerformanceError(c, () => {
+        handlePerformanceError(c, async () => {
           ensureStorageAvailable()
           return (
             rateLimit(c, "timeline", ObservabilityConfig.current().rateLimits.timelinePerMinute) ??
-            c.json(PerformanceTimeline.get(c.req.valid("query")))
+            c.json(await PerformanceTimeline.get(c.req.valid("query")))
           )
         }),
     )

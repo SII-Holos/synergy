@@ -1,11 +1,12 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import { Environment } from "../../src/environment"
 import { EnvironmentExecution } from "../../src/environment/execution"
 import { EnvironmentProviders } from "../../src/environment/provider"
 import type { Executor, ExecutionProtocol } from "../../src/environment/executor"
 import { testRuntime } from "../support/runtime"
+import { Storage } from "../../src/storage/storage"
 
-function fixture() {
+function fixture(state: "running" | "exited" = "exited") {
   let starts = 0
   let releases = 0
   let loseResponse = false
@@ -18,11 +19,11 @@ function fixture() {
         id: request.id,
         target: request.target,
         digest: request.digest,
-        state: "exited",
+        state,
         exitCode: 0,
         cursor: 0,
-        treeDrained: true,
-        streamsDrained: true,
+        treeDrained: state === "exited",
+        streamsDrained: state === "exited",
       }
       operations.set(request.id, status)
       if (loseResponse) throw new Error("ack lost")
@@ -57,6 +58,46 @@ function fixture() {
 }
 
 const command = { command: "example", args: ["one"], cwd: "/workspace", env: {}, useRoots: ["/workspace"] }
+
+test("unchanged execution observation does not enter the writer queue and cancellation still settles", async () => {
+  const f = fixture("running")
+  await using runtime = await testRuntime({
+    register: () =>
+      EnvironmentProviders.register({
+        id: "observation",
+        allocate: async (request) => ({ id: request.requestID, capabilities: ["exec"] }),
+        inspect: async (request) => ({ state: "ready", allocation: { id: request.requestID, capabilities: ["exec"] } }),
+        async deallocate() {},
+        connect: async () => f.executor,
+      }),
+  })
+  await runtime.run(async () => {
+    const environment = await Environment.bind({
+      scopeID: "scope",
+      ownerID: "owner",
+      provider: "observation",
+      spec: {},
+    })
+    const initial = await EnvironmentExecution.start({
+      id: "observed",
+      scopeID: "scope",
+      environmentID: environment.id,
+      command,
+    })
+    const writes = spyOn(Storage, "transaction")
+    try {
+      for (let i = 0; i < 10; i++) expect(await EnvironmentExecution.reconcile("observed", "scope")).toEqual(initial)
+      expect(writes).not.toHaveBeenCalled()
+    } finally {
+      writes.mockRestore()
+    }
+    await EnvironmentExecution.cancel("observed", "scope")
+    expect((await EnvironmentExecution.get("observed", "scope")).state).toBe("exited")
+    await EnvironmentExecution.complete("observed", "scope", async () => ({}))
+    expect((await EnvironmentExecution.get("observed", "scope")).state).toBe("completed")
+    expect(f.starts()).toBe(1)
+  })
+})
 
 test("reconciliation refreshes a moved endpoint without changing allocation identity or repeating execution", async () => {
   const f = fixture()
