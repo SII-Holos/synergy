@@ -578,7 +578,7 @@ beforeAll(async () => {
           find: /^lucide-solid$/,
           replacement: path.resolve(
             import.meta.dir,
-            "../../../../../packages/ui/node_modules/lucide-solid/dist/esm/lucide-solid.js",
+            "../../../../../packages/ui/node_modules/lucide-solid/dist/esm/lucide-solid.mjs",
           ),
         },
         { find: "@/utils/error", replacement: path.resolve(import.meta.dir, "../../../src/utils/error.ts") },

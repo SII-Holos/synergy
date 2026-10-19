@@ -158,7 +158,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
 
     expect(providerFileParts).toHaveLength(10)
     for (let i = 0; i < 10; i++) {
-      expect(providerFileParts[i].data).toBe(urls[i])
+      expect(providerFileParts[i].data).toEqual({ type: "url", url: new URL(urls[i]!) })
     }
     expect(collectImagePlaceholders(result)).toHaveLength(0)
   })
@@ -181,7 +181,7 @@ describe("session.message-v2.toModelMessage image limit", () => {
     // Last 5 images (messages 5–9) should have base64 data
     expect(providerFileParts).toHaveLength(5)
     for (let i = 0; i < 5; i++) {
-      expect(providerFileParts[i].data).toBe(urls[5 + i])
+      expect(providerFileParts[i].data).toEqual({ type: "url", url: new URL(urls[5 + i]!) })
     }
 
     // First 5 images (messages 0–4) should be placeholders
@@ -309,8 +309,8 @@ describe("session.message-v2.toModelMessage image dedup", () => {
     expect(placeholders).toHaveLength(1)
     expect(placeholders[0]).toContain("photo.png")
     // The two file parts should be urlB and urlC (messages 1 and 2)
-    expect(providerFileParts[0].data).toBe(urlB)
-    expect(providerFileParts[1].data).toBe(urlC)
+    expect(providerFileParts[0].data).toEqual({ type: "url", url: new URL(urlB) })
+    expect(providerFileParts[1].data).toEqual({ type: "url", url: new URL(urlC) })
   })
 })
 

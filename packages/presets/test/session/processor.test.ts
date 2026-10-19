@@ -1,6 +1,6 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
-import { APICallError } from "ai"
+import { APICallError, type LanguageModelUsage } from "ai"
 import { TimeoutConfig } from "@ericsanchezok/synergy-harness/util/timeout-config"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { ExperienceEncoder } from "@ericsanchezok/synergy-library/experience-encoder"
@@ -24,6 +24,21 @@ import { clearObservabilityState, resetObservabilityState } from "../../../harne
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
+
+function sdkUsage(
+  inputTokens: number | undefined,
+  outputTokens: number,
+  cacheReadTokens?: number,
+  reasoningTokens?: number,
+): LanguageModelUsage {
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: inputTokens === undefined ? undefined : inputTokens + outputTokens,
+    inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens, cacheWriteTokens: undefined },
+    outputTokenDetails: { textTokens: undefined, reasoningTokens },
+  }
+}
 
 function toolPart(
   callID: string,
@@ -244,7 +259,7 @@ test("read-only model steps carry no filesystem attribution", () =>
       messageID: "msg_read_only_attribution",
       async *stream() {
         yield { type: "start-step" }
-        yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } }
+        yield { type: "finish-step", finishReason: "stop", usage: sdkUsage(1, 1) }
         yield { type: "finish" }
       },
     })
@@ -515,7 +530,7 @@ test("assistant and step projections use the committed attempt accounting", () =
           persisted = structuredClone(message)
         },
         async *stream() {
-          yield { type: "finish-step", finishReason: "stop", usage: { inputTokens: 3, outputTokens: 2 } }
+          yield { type: "finish-step", finishReason: "stop", usage: sdkUsage(3, 2) }
         },
       })
       expect(persisted?.cost).toBeCloseTo(0.0105)
@@ -558,7 +573,7 @@ describe("SessionProcessor context usage persistence", () => {
           yield {
             type: "finish-step",
             finishReason: "stop",
-            usage: { inputTokens: 12, cachedInputTokens: 3, outputTokens: 2, reasoningTokens: 1 },
+            usage: sdkUsage(12, 2, 3, 1),
           }
         },
       })
@@ -586,7 +601,7 @@ describe("SessionProcessor context usage persistence", () => {
             yield {
               type: "finish-step",
               finishReason: "stop",
-              usage: { inputTokens: 93_898, outputTokens: 306 },
+              usage: sdkUsage(93_898, 306),
             }
           },
         })
@@ -613,7 +628,7 @@ describe("SessionProcessor context usage persistence", () => {
           yield {
             type: "finish-step",
             finishReason: "stop",
-            usage: { outputTokens: 2, reasoningTokens: 1 },
+            usage: sdkUsage(undefined, 2, undefined, 1),
           }
         },
       })
@@ -633,7 +648,7 @@ describe("SessionProcessor context usage persistence", () => {
           yield {
             type: "finish-step",
             finishReason: "stop",
-            usage: { outputTokens: 2 },
+            usage: sdkUsage(undefined, 2),
             providerMetadata: { anthropic: { cacheCreationInputTokens: 8 } },
           }
         },
@@ -659,7 +674,7 @@ describe("SessionProcessor context usage persistence", () => {
           yield {
             type: "finish-step",
             finishReason: "stop",
-            usage: { inputTokens: 12, outputTokens: 2 },
+            usage: sdkUsage(12, 2),
           }
         },
       })

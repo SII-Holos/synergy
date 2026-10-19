@@ -1584,6 +1584,7 @@
     "ghostty-web@0.4.0": "patches/ghostty-web@0.4.0.patch",
     "@pierre/diffs@1.5.2": "patches/@pierre%2Fdiffs@1.5.2.patch",
     "virtua@0.42.3": "patches/virtua@0.42.3.patch",
+    "@ai-sdk/openai@4.0.96": "patches/@ai-sdk%2Fopenai@4.0.96.patch",
     "streaming-markdown@0.2.15": "patches/streaming-markdown@0.2.15.patch",
     "solid-js@1.9.17": "patches/solid-js@1.9.17.patch",
   },

@@ -143,9 +143,7 @@ test("catalog synchronization retains the requested title before the document co
     })
   })
   await page.getByRole("tab", { name: "old", exact: true }).waitFor({ state: "hidden" })
-  expect(await page.getByRole("tab", { name: "loading", exact: true }).getAttribute("title")).toBe(
-    "https://example.com/slow",
-  )
+  expect(await page.getByRole("tab", { name: "loading", exact: true }).getAttribute("title")).toBe("example.com")
 })
 
 test("Agent-created pages reconcile silently on bootstrap, task switching and navigation", async () => {

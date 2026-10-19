@@ -1,6 +1,6 @@
 import { expect, spyOn, test } from "bun:test"
 import { simulateReadableStream } from "ai"
-import type { LanguageModelV2, LanguageModelV2StreamPart, ProviderV2 } from "@ai-sdk/provider"
+import type { LanguageModelV4, LanguageModelV4StreamPart, ProviderV4 } from "@ai-sdk/provider"
 import { z } from "zod"
 import { ProviderSdkSource } from "../../src/provider/sdk-source"
 import { Provider } from "../../src/provider/provider"
@@ -55,11 +55,11 @@ for (const scenario of [
   test(
     scenario.name,
     async () => {
-      const prompts: Parameters<LanguageModelV2["doStream"]>[0]["prompt"][] = []
+      const prompts: Parameters<LanguageModelV4["doStream"]>[0]["prompt"][] = []
       const compactionPrompts: typeof prompts = []
       let mainCalls = 0
       let toolCalls = 0
-      const stream = (chunks: LanguageModelV2StreamPart[]) => ({
+      const stream = (chunks: LanguageModelV4StreamPart[]) => ({
         stream: simulateReadableStream({ chunks, initialDelayInMs: null, chunkDelayInMs: null }),
       })
       const reply = (text: string) =>
@@ -69,12 +69,15 @@ for (const scenario of [
           { type: "text-end", id: "reply" },
           {
             type: "finish",
-            finishReason: "stop",
-            usage: { inputTokens: 1000, outputTokens: 5, totalTokens: 1005, cachedInputTokens: 0, reasoningTokens: 0 },
+            finishReason: { unified: "stop", raw: "stop" },
+            usage: {
+              inputTokens: { total: 1000, noCache: 1000, cacheRead: 0, cacheWrite: 0 },
+              outputTokens: { total: 5, text: 5, reasoning: 0 },
+            },
           },
         ])
-      const model: LanguageModelV2 = {
-        specificationVersion: "v2",
+      const model: LanguageModelV4 = {
+        specificationVersion: "v4",
         provider: "fixture",
         modelId: "fixture",
         supportedUrls: {},
@@ -92,13 +95,15 @@ for (const scenario of [
               { type: "tool-call", toolCallId: "continue", toolName: "fixture_step", input: "{}" },
               {
                 type: "finish",
-                finishReason: "tool-calls",
+                finishReason: { unified: "tool-calls", raw: "tool_calls" },
                 usage: {
-                  inputTokens: "continuation" in scenario ? 100000 : 180000,
-                  outputTokens: 5,
-                  totalTokens: "continuation" in scenario ? 100005 : 180005,
-                  cachedInputTokens: 0,
-                  reasoningTokens: 0,
+                  inputTokens: {
+                    total: "continuation" in scenario ? 100000 : 180000,
+                    noCache: "continuation" in scenario ? 100000 : 180000,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                  },
+                  outputTokens: { total: 5, text: 5, reasoning: 0 },
                 },
               },
             ])
@@ -106,17 +111,18 @@ for (const scenario of [
           return reply("Finished the fixture task.")
         },
       }
-      const auxiliary: LanguageModelV2 = {
+      const auxiliary: LanguageModelV4 = {
         ...model,
         modelId: "auxiliary",
         async doStream() {
           return reply("## Goal\nContinue the fixture task.\n## Completed\nEarlier evidence was inspected.")
         },
       }
-      const sdk: ProviderV2 & { responses: (id: string) => LanguageModelV2 } = {
+      const sdk: ProviderV4 & { responses: (id: string) => LanguageModelV4 } = {
+        specificationVersion: "v4",
         languageModel: (id) => (id === "auxiliary" ? auxiliary : model),
         responses: (id) => (id === "auxiliary" ? auxiliary : model),
-        textEmbeddingModel() {
+        embeddingModel() {
           throw new Error("Unexpected embedding")
         },
         imageModel() {
@@ -405,7 +411,11 @@ for (const scenario of [
             }
             if (shouldPrune && !shouldSummarize) {
               const result = prompts[0]!.flatMap((message) =>
-                message.role === "tool" ? message.content.filter((part) => part.toolCallId === "old-evidence-0") : [],
+                message.role === "tool"
+                  ? message.content.filter(
+                      (part) => part.type === "tool-result" && part.toolCallId === "old-evidence-0",
+                    )
+                  : [],
               )
               expect(JSON.stringify(result).includes("[Old tool result content cleared]")).toBe(true)
               expect(JSON.stringify(result).includes(evidence)).toBe(false)

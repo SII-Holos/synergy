@@ -1,5 +1,13 @@
 # Dependency patches
 
+## OpenAI stream-start failures
+
+Provenance: [OpenAI adapter 4.0.96 stream-error probe](https://unpkg.com/@ai-sdk/openai@4.0.96/src/openai-stream-error.ts).
+
+Local adaptation: [the pinned patch](@ai-sdk%252Fopenai@4.0.96.patch) keeps the original parsed failure frame when the adapter rejects a stream before its first output. It cancels both branches of the peeked stream instead of draining a failed response indefinitely, then releases its reader. Source and the published ESM entrypoint share the correction. The host's existing Responses middleware classifies these early exceptions and later raw failures through the same retry policy; no new retry owner is introduced.
+
+[Responses regressions](../packages/local-runtime/test/provider/responses-retry.test.ts) exercise the real adapter with retained retry hints, terminal quota and policy failures, a held-open failed response, cancellation and exclusion of raw chunks from consumer output. Remove the patch when a replacement adapter preserves that evidence and releases the failed response without it. Verify a fresh frozen-lockfile install before accepting an upgrade.
+
 ## Solid ordered row retention
 
 Provenance: [Solid 1.9.17 DOM renderer](https://unpkg.com/solid-js@1.9.17/web/dist/web.js) and its upstream [DOM array reconciliation](https://github.com/ryansolid/dom-expressions/blob/27a88bea8ffa97400bbcc66d380e40daed9e1cf1/packages/dom-expressions/src/reconcile.js).

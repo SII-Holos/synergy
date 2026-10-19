@@ -30,7 +30,7 @@ test("POST and PATCH /session preserve normalized tags", () =>
         const created = (await createdResponse.json()) as Session.Info
         expect(created.tags).toEqual(["focus"])
 
-        const filteredResponse = await app.request("/session?tag=#focus&parentOnly=true")
+        const filteredResponse = await app.request("/session?tag=%23focus&parentOnly=true")
         expect(filteredResponse.status).toBe(200)
         const filtered = (await filteredResponse.json()) as { total: number; data: Session.Info[] }
         expect(filtered.total).toBe(1)

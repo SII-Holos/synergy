@@ -220,6 +220,7 @@
     "@kobalte/core@0.13.14": "patches/@kobalte%2Fcore@0.13.14.patch",
     "ghostty-web@0.4.0": "patches/ghostty-web@0.4.0.patch",
     "@hey-api/openapi-ts@0.88.1": "patches/@hey-api%2Fopenapi-ts@0.88.1.patch",
-    "@kobalte/utils@0.9.2": "patches/@kobalte%2Futils@0.9.2.patch"
+    "@kobalte/utils@0.9.2": "patches/@kobalte%2Futils@0.9.2.patch",
+    "@ai-sdk/openai@4.0.96": "patches/@ai-sdk%2Fopenai@4.0.96.patch"
   }
 }

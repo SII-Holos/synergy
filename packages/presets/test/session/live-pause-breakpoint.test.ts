@@ -81,7 +81,13 @@ async function* completedTurn() {
   yield {
     type: "finish-step",
     finishReason: "stop",
-    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    usage: {
+      inputTokens: 1,
+      outputTokens: 1,
+      totalTokens: 2,
+      inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
+      outputTokenDetails: { textTokens: 1, reasoningTokens: 0 },
+    },
   }
   yield { type: "finish" }
 }

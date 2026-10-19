@@ -93,4 +93,4 @@ def test_compiled_watcher_survives_a_real_interrupted_poll(tmp_path: Path) -> No
         ],
         timeout=90,
     )
-    assert json.loads(observed) == {"poll": "EINTR", "event": "observed", "patch": "parcel-2.5.6-eintr-1"}
+    assert json.loads(observed) == {"poll": "EINTR", "event": "observed", "patch": "parcel-2.6.0-eintr-1"}

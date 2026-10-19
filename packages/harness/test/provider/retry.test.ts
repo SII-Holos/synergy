@@ -11,6 +11,8 @@ import { RolloutRecordingError } from "../../src/session/rollout/error"
 import { SessionProcessor } from "../../src/session/processor"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionRetry } from "../../src/session/retry"
+import { AgentTurnProtocol } from "../../src/session/agent-turn/protocol"
+import { InvalidResponseDataError } from "@ai-sdk/provider"
 
 const model: Provider.Model = {
   id: "test",
@@ -35,6 +37,24 @@ const model: Provider.Model = {
   release_date: "2026-01-01",
 }
 const originalLanguage = Provider.getLanguage
+
+test("a truncated SDK stream remains retryable through worker serialization", () => {
+  const source = new InvalidResponseDataError({
+    data: undefined,
+    message: "Response stream ended without a finish reason.",
+  })
+  for (const error of [source, AgentTurnProtocol.deserializeError(AgentTurnProtocol.serializeError(source))]) {
+    expect(providerRetryable(error)).toBe(true)
+    const projected = MessageV2.fromError(error, { providerID: "fixture" })
+    expect(projected).toMatchObject({ name: "APIError", data: { isRetryable: true } })
+    expect(SessionRetry.retryable(projected)?.maxAttempts).toBe(10)
+  }
+  expect(
+    providerRetryable(new InvalidResponseDataError({ data: undefined, message: "Invalid content" })),
+  ).toBeUndefined()
+  expect(providerRetryable(new Error(source.message))).toBeUndefined()
+  expect(providerRetryable(Object.assign(source, { code: "invalid_prompt" }))).toBe(false)
+})
 
 test.each(["server_is_overloaded", "server_overloaded", "service_unavailable_error", "slow_down"])(
   "classifies the Responses transient code %s",
