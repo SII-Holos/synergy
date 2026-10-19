@@ -29,10 +29,11 @@ let dom: JSDOM
 let harness: ActivityDomHarness
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-async function rendered(selector: string) {
+async function rendered(target: string | (() => boolean)) {
+  const present = typeof target === "string" ? () => !!document.querySelector(target) : target
   const deadline = Date.now() + 2000
-  while (!document.querySelector(selector) && Date.now() < deadline) await wait(5)
-  expect(document.querySelector(selector)).not.toBeNull()
+  while (!present() && Date.now() < deadline) await wait(5)
+  expect(present()).toBe(true)
 }
 const reducedMotion = { current: false }
 
@@ -67,18 +68,34 @@ test("successful patches present one result without repeating the model output",
 })
 
 function patchPreviews(host: Element) {
-  return Array.from(host.querySelectorAll('[data-component="tool-patch-preview"]'), (preview) => ({
-    path: preview.querySelector('[data-slot="tool-patch-path"]')?.textContent?.replaceAll("\u200e", ""),
-    rows: Array.from(preview.querySelectorAll('[data-slot="tool-patch-line"]'), (row) => ({
-      kind: row.getAttribute("data-kind"),
-      text: row.querySelector("code")?.textContent,
-    })),
-  }))
+  return Array.from(host.querySelectorAll('[data-component="tool-patch-preview"]'), (preview) => {
+    const highlighted = preview
+      .querySelector("diffs-container")
+      ?.shadowRoot?.querySelectorAll("[data-line][data-line-type]")
+    return {
+      path: preview.querySelector('[data-slot="tool-patch-path"]')?.textContent?.replaceAll("\u200e", ""),
+      rows: highlighted?.length
+        ? Array.from(highlighted, (row) => {
+            const kind = row.getAttribute("data-line-type")
+            return {
+              kind: kind === "change-addition" ? "add" : kind === "change-deletion" ? "delete" : kind,
+              text: row.textContent,
+            }
+          })
+        : Array.from(preview.querySelectorAll('[data-slot="tool-patch-line"]'), (row) => ({
+            kind: row.getAttribute("data-kind"),
+            text: row.querySelector("code")?.textContent,
+          })),
+    }
+  })
 }
 
 test("successful Moves render exactly the recorded destination replacement and source deletion", async () => {
-  await rendered('#patch-move-applied [data-slot="tool-patch-line"]')
   const host = document.getElementById("patch-move-applied")!
+  await rendered(() => {
+    const previews = patchPreviews(host)
+    return previews.length === 2 && previews.every((preview) => preview.rows.length > 0)
+  })
   expect(host.querySelectorAll('[data-component="diff-patch"]')).toHaveLength(2)
   expect(patchPreviews(host)).toEqual([
     {
@@ -96,8 +113,11 @@ test("successful Moves render exactly the recorded destination replacement and s
 })
 
 test("partial Moves with failed source removal render only the recorded destination diff", async () => {
-  await rendered('#patch-move-partial [data-slot="tool-patch-line"]')
   const host = document.getElementById("patch-move-partial")!
+  await rendered(() => {
+    const previews = patchPreviews(host)
+    return previews.length === 1 && previews[0].rows.length > 0
+  })
   expect(patchPreviews(host)).toEqual([
     {
       path: "nested/destination.ts",
