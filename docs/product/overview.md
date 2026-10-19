@@ -34,7 +34,7 @@ Clients connect to the server and supply the context needed for the work they st
 
 This client-server model lets one runtime serve more than one project and more than one client while keeping each task attached to an explicit workspace context.
 
-## Core Product Objects
+## Product Objects
 
 ### Scope
 

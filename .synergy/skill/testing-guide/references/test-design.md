@@ -74,7 +74,7 @@ For byte-bounded queues, hold a worker busy and admit several individually valid
 - session/LLM loop: real session state with deterministic provider/model fixtures
 - Web/UI: component/context behavior plus the smallest browser or integration check needed
 - external agent adapters: execute a deterministic protocol fixture as a real child through the public Adapter interface; verify stdin, event framing, tool errors, usage, thread isolation/resume, credential filtering and shutdown rather than only private argument builders
-- package/release: build, pack, and validate the published artifact rather than source layout alone. Core owns standalone tool execution and installed-package task completion; full owns the six result cases, the complete import/export check and component lifecycle described in [CI verification](../../../../docs/operations/ci.md). Help and health checks do not validate product lifecycle delegation.
+- package/release: build, pack, and validate the published artifact rather than source layout alone. The `core` artifact checks cover standalone tool execution and installed-package task completion; full owns the six result cases, the complete import/export check and component lifecycle described in [CI verification](../../../../docs/operations/ci.md). Help and health checks do not validate product lifecycle delegation.
 
 After splitting a package, evaluate each new owner against aggregate coverage; the former combined percentage can hide an uncovered protocol or lifecycle branch. Exercise worker registrars in an isolated Runtime context as well as through real IPC. Keep process-only coverage exclusions limited to exact entry files with named executable tests; do not exclude reusable registrars or lower the new package floor.
 

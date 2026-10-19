@@ -209,7 +209,7 @@ The existing `@ericsanchezok/synergy` distribution and Desktop installer retain 
 
 Local performance experiments use the [benchmark workspace](benchmark/README.md): independent harness/model matrices, frozen inputs, native rollout evidence and paired reports. Task solving, reference execution and verification each have a fixed three-hour budget. Run `bun bench run benchmark/configs/local24-boyue.yaml` after configuring its model endpoint and credential reference. Formal tasks start directly in unattended sessions. Adaptive working-set reservations keep independent cells running within live resource limits; reports retain per-task failures and unknown usage. The local-24 preset uses GLM 5.3 Flash with explicit low reasoning.
 
-Core runtime tests run from `packages/harness`:
+Harness runtime tests run from `packages/harness`:
 
 ```bash
 cd packages/harness
@@ -259,7 +259,7 @@ synergy-plugin validate --runtime-discovery
 
 UI API 6 supports replaceable workbenches, typed frontend services and structured Skins. `synergy-plugin preview` runs an isolated production host for authoring.
 
-Approved connection providers can discover and pair devices for [manual paused-task migration](docs/architecture/session-transfer.md), with [Core-owned device authorization](docs/architecture/host-connections.md).
+Approved connection providers can discover and pair devices for [manual paused-task migration](docs/architecture/session-transfer.md), with [Harness-owned device authorization](docs/architecture/host-connections.md).
 
 Start with the [plugin documentation](docs/plugins/README.md) and the [`@ericsanchezok/synergy-plugin` API reference](packages/plugin/README.md).
 
