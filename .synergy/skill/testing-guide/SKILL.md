@@ -55,9 +55,9 @@ Read [the domain guidance](references/isolation.md#use-real-isolation) when this
 
 Read [the domain guidance](references/local-verification.md#local-performance-experiments) when this area is affected.
 
-## Run Core Suites Through the Orchestrators
+## Run Harness Suites Through the Orchestrators
 
-Read [the domain guidance](references/local-verification.md#run-core-suites-through-the-orchestrators) when this area is affected.
+Read [the domain guidance](references/local-verification.md#run-harness-suites-through-the-orchestrators) when this area is affected.
 
 ## Run Narrow to Broad
 

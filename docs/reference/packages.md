@@ -2,6 +2,8 @@
 
 The root `package.json` selects workspace packages. Each package manifest owns its name, dependencies and public exports. The [architecture ownership map](../architecture/README.md#ownership-map) describes the complete directory layout and responsibilities.
 
+Use package names for runtime ownership: Harness owns generic Agent execution, Agent Runtime opens explicit component compositions, Local Runtime supplies local host implementations, and Plugin Host runs plugins. The installation preset `core` is a selection of packages, not a package name or a synonym for Harness. Use `core` when referring to that preset or its release artifact.
+
 ## Runtime entry points
 
 `@ericsanchezok/synergy-harness` exposes programmatic execution and lifecycle APIs. `@ericsanchezok/synergy-local-runtime` registers the default local host and provides `openLocalRuntime`. The single CLI implementation lives in `packages/cli`; `packages/presets` invokes that same CLI with full product capabilities. Both entry points use the command name `synergy`, and `createRuntimeCli()` derives available commands from the selected components.
@@ -46,7 +48,7 @@ Worker entries register the same selected owner and integrations as the foregrou
 
 ## Package builds
 
-Run `bun script/build-workspace.ts packages/harness` from the repository root to build its importable modules. `bun script/pack-workspace.ts packages/cli .artifacts/packages` builds and packs the CLI workspace dependency closure. Archives contain compiled module exports and normal dependency versions. Packing compiles the existing HTTP SDK without regenerating the complete product API; run the root generator explicitly after API changes. Core archives do not include optional Browser, Library, MCP or UI packages.
+Run `bun script/build-workspace.ts packages/harness` from the repository root to build its importable modules. `bun script/pack-workspace.ts packages/cli .artifacts/packages` builds and packs the CLI workspace dependency closure. Archives contain compiled module exports and normal dependency versions. Packing compiles the existing HTTP SDK without regenerating the complete product API; run the root generator explicitly after API changes. Minimal CLI archives do not include optional Browser, Library, MCP or UI packages.
 
 Harness and Local Runtime publish platform-independent modules. Their optional `synergy-native-<platform>-<architecture>[-<libc>]` dependencies supply verified SQLite, PTY, watcher and sandbox resources. macOS uses the packaged universal SQLite engine without Homebrew; Linux glibc and musl have distinct package identities. Pass `--target=linux-x64`, `--target=linux-arm64-musl` or `--target=win32-x64` to select a target; Linux and Windows builds require matching helper assets through `SYNERGY_SANDBOX_ASSETS_DIR`. The build verifies the binary format and records its digest in the platform package. Missing required assets fail the build. Darwin uses the operating system sandbox.
 

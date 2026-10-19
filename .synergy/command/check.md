@@ -1,7 +1,7 @@
 Verify the current Synergy changes from narrow checks to repository gates. Interpret `$ARGUMENTS` as a requested scope or additional check.
 
 1. Inspect `git diff --stat` and select the affected package/domain tests.
-2. Run the narrow test first. Core runtime tests run from `packages/harness`.
+2. Run the narrow test first. Harness runtime tests run from `packages/harness`.
 3. Run the default root preflight:
 
 ```bash

@@ -4,7 +4,7 @@ UI API 6 supports host-rendered declarations and approved Solid components. Back
 
 ## Components and services
 
-Every component receives exactly `PluginComponentProps<Context>`: one `context` property. This includes settings, tool cards, text-action results, headless extensions, resource panels, pages, and Shells. Specialization adds typed services inside that context. The [public types](../../packages/plugin/src/ui.ts) are authoritative; generated operation and event types do not require importing the App or Core.
+Every component receives exactly `PluginComponentProps<Context>`: one `context` property. This includes settings, tool cards, text-action results, headless extensions, resource panels, pages, and Shells. Specialization adds typed services inside that context. The [public types](../../packages/plugin/src/ui.ts) are authoritative; generated operation and event types do not require importing the App or Harness.
 
 ```tsx
 import type { PluginComponentProps, PluginWorkbenchSurfaceContext } from "@ericsanchezok/synergy-plugin"

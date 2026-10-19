@@ -108,7 +108,7 @@ Write a failing behavioral test first for new behavior and bug fixes. Test publi
 
 Every test file must live under the `test/` directory of its owning package, mirroring the relevant source domain when useful; repository-level script and policy tests belong under the root `test/` directory. Do not colocate `*.test.*`/`*.spec.*` beside `src/`, `script/`, or implementation directories; `bun run test-layout:check` enforces this.
 
-Core tests run from `packages/harness`:
+Harness tests run from `packages/harness`:
 
 ```bash
 cd packages/harness

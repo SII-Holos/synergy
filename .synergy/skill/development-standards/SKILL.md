@@ -47,7 +47,7 @@ A durable development convention is part of the implementation deliverable, not 
 6. Review `.synergy/command/`, contribution/setup instructions, workspace guides and both ends of renamed symbols or file references when moving an owner. Keep historical evidence and public executable, package, configuration and installed-resource names intact. Validate every changed or added Skill and its links with `bun run skill:check` from the repository root.
 7. Keep one nearest `AGENTS.md` for every root workspace package and validate coverage with `bun run package-guide:check`.
 
-## Preserve Harness-Core Layering
+## Preserve Harness Layering
 
 Package ownership is machine-enforced. Before adding an import, identify both package owners in the [Ownership Map](../../../docs/architecture/README.md#ownership-map).
 
