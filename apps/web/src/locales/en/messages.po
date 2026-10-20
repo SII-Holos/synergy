@@ -18099,6 +18099,10 @@ msgstr "Execution failed"
 msgid "session.process.hideReasoning"
 msgstr "Hide reasoning"
 
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.process.hideReasoningStatus"
+msgstr "Hide reasoning. {state, select, thinking {Thinking} other {Reasoning}}, {count, plural, one {1 generated word} other {# generated words}}"
+
 #. js-lingui-explicit-id
 msgid "session.process.interrupted"
 msgstr "Interrupted"
@@ -18162,6 +18166,10 @@ msgstr "View details: {title}"
 #. js-lingui-explicit-id
 msgid "session.process.viewReasoning"
 msgstr "View reasoning"
+
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.process.viewReasoningStatus"
+msgstr "View reasoning. {state, select, thinking {Thinking} other {Reasoning}}, {count, plural, one {1 generated word} other {# generated words}}"
 
 #. js-lingui-explicit-id
 msgid "session.process.workedDuration"
@@ -18306,6 +18314,10 @@ msgstr "{count, plural, one {# reasoning segment} other {# reasoning segments}}"
 #. js-lingui-explicit-id
 msgid "session.reasoning.title"
 msgstr "Reasoning"
+
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.reasoning.words"
+msgstr "{count, plural, one {generated word} other {generated words}}"
 
 #. js-lingui-explicit-id
 msgid "session.restore.binary"

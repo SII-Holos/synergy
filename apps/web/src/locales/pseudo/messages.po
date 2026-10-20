@@ -18099,6 +18099,10 @@ msgstr ""
 msgid "session.process.hideReasoning"
 msgstr ""
 
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.process.hideReasoningStatus"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "session.process.interrupted"
 msgstr ""
@@ -18161,6 +18165,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.viewReasoning"
+msgstr ""
+
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.process.viewReasoningStatus"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18305,6 +18313,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.reasoning.title"
+msgstr ""
+
+#. ── Reasoning progress ──────────────────────────────────────────────
+msgid "session.reasoning.words"
 msgstr ""
 
 #. js-lingui-explicit-id
