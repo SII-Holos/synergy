@@ -272,6 +272,7 @@ describe("built-in workbench panels", () => {
     try {
       await Bun.sleep(1)
       expect(panelIds().includes("notes")).toBe(true)
+      expect(panelIds()).not.toContain("trajectory")
       expect(panelIds().includes("browser")).toBe(false)
       expect(panelIds().includes("boss")).toBe(false)
       expect(panelIds().includes("file")).toBe(true)
@@ -282,8 +283,12 @@ describe("built-in workbench panels", () => {
         launchable: false,
         loader: expect.any(Function),
       })
+      setSelected(["workbench"])
+      await Bun.sleep(1)
+      expect(panelIds()).toContain("trajectory")
       setSelected(["browser"])
       await Bun.sleep(1)
+      expect(panelIds()).not.toContain("trajectory")
       expect(panelIds().includes("notes")).toBe(false)
       expect(panelIds().includes("browser")).toBe(true)
       expect(listWorkbenchPanels().find((panel) => panel.id === "browser")?.cardinality).toBe("multi")

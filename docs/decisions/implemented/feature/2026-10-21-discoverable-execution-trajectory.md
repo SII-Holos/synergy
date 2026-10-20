@@ -8,7 +8,7 @@ Execution evidence includes multi-turn inputs, model requests, context sources a
 
 ## Decision
 
-The conversation header exposes a labeled Trajectory action and the workbench launcher exposes an Execution trajectory entry. Both open a lazy session-scoped singleton using the existing execution panel, paged event projection and read-only inspector. The panel starts with all recorded events across the task tree. Task details, including Kanban's compact task view, open the same trajectory through their full-trajectory action. The context dashboard remains available for context composition and token analysis.
+The conversation header exposes a labeled Trajectory action and the workbench launcher exposes an Execution trajectory entry. Both open a lazy session-scoped singleton using the existing execution panel, paged event projection and read-only inspector. The panel starts with all recorded events across the task tree. Task details open the same trajectory through their full-trajectory action. Each live Kanban pane offers a session-scoped action that selects its trajectory and opens its conversation while retaining other resource tabs. Workbench capability removal hides the launcher and task actions. The standalone trajectory has no cross-panel back button; the embedded context dashboard keeps its own local return action. The context dashboard remains available for context composition and token analysis.
 
 ## Alternatives considered
 

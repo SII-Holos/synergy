@@ -81,7 +81,7 @@ export function ExecutionPanelBody(
   props: WorkbenchPanelContentProps & {
     runID: string
     scopeLabel: string
-    onBack: () => void
+    onBack?: () => void
     onStateChange: (state: Record<string, unknown>) => void
     snapshot?: (nodeID: string) => ExecutionContextSnapshot | undefined
   },
@@ -544,13 +544,15 @@ export function ExecutionPanelBody(
       }}
     >
       <header class="execution-records-header">
-        <button type="button" class="execution-dashboard-back" onClick={props.onBack}>
-          <Icon name={getSemanticIcon("navigation.back")} size="small" />
-          {_(D.back)}
-        </button>
-        <span class="execution-records-separator" aria-hidden="true">
-          /
-        </span>
+        <Show when={props.onBack}>
+          <button type="button" class="execution-dashboard-back" onClick={() => props.onBack?.()}>
+            <Icon name={getSemanticIcon("navigation.back")} size="small" />
+            {_(D.back)}
+          </button>
+          <span class="execution-records-separator" aria-hidden="true">
+            /
+          </span>
+        </Show>
         <h2>{_(E.recordsTitle)}</h2>
         <span class="execution-records-scope" title={props.scopeLabel}>
           {props.scopeLabel}
@@ -955,7 +957,6 @@ export function ExecutionTrajectoryWorkbenchContent(props: WorkbenchPanelContent
       tab={{ ...props.tab, state: { mode: "records", actor: "all", ...value() } }}
       runID={typeof value().runID === "string" ? (value().runID as string) : ""}
       scopeLabel={_(E.allTasks)}
-      onBack={() => void panels.openPanel("context")}
       onStateChange={(state) => panels.updateTab(props.tab.id, { state })}
     />
   )
