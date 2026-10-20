@@ -2358,8 +2358,8 @@ function SessionPageContent() {
               <SessionConversation
                 context={conversation}
                 onAdmitted={admittedConversation}
-                onHydrated={(id) => {
-                  if (id === conversationSessionID()) setHydratedConversation(id)
+                onHydrationChange={(id, ready) => {
+                  if (id === conversationSessionID()) setHydratedConversation(ready ? id : undefined)
                 }}
                 initialScrollSettled={() =>
                   !!submissionDraft()?.message ||

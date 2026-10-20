@@ -6,6 +6,48 @@ beforeEach(async () => {
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 })
 })
 
+for (const manual of [false, true]) {
+  test(`${manual ? "manual disclosure" : "automatic collection"} interrupted by navigation is settled from the first return frame`, async () => {
+    await page.goto(`${url}?resident&scrolling&motion&content=background`)
+    await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+    await page.evaluate((manual) => {
+      if (manual) window.__conversationProcess.mode("full")
+      window.__conversationProcess.latest()
+    }, manual)
+    await page.waitForFunction(
+      () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+    )
+    const result = await page.evaluate(async (manual) => {
+      const fixture = window.__conversationProcess
+      const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+      const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+      const trigger = [...viewport.querySelectorAll<HTMLButtonElement>('[data-slot="activity-batch-trigger"]')].at(-1)!
+      if (manual) trigger.click()
+      else fixture.terminal()
+      await Promise.resolve()
+      const started = viewport.querySelectorAll("[data-motion-changing]").length
+      fixture.select("peer")
+      await settle()
+      fixture.select("session")
+      const samples = []
+      for (let frame = 0; frame < 6; frame++) {
+        await settle()
+        samples.push({
+          visible: viewport.checkVisibility(),
+          changing: viewport.querySelectorAll("[data-motion-changing]").length,
+          open: manual
+            ? trigger.getAttribute("aria-expanded") === "true"
+            : !!viewport.querySelector('[data-slot="turn-process-trigger"][aria-expanded="true"]'),
+        })
+      }
+      return { started, samples }
+    }, manual)
+    expect(result.started).toBeGreaterThan(0)
+    expect(result.samples).toEqual(Array.from({ length: 6 }, () => ({ visible: true, changing: 0, open: false })))
+    expect(errors).toEqual([])
+  }, 30000)
+}
+
 for (const ended of [false, true]) {
   test(`background message backlog returns with stable ${ended ? "collected history" : "latest tools"} before summary page validation finishes`, async () => {
     await page.goto(`${url}?resident&scrolling&motion&content=background`)
@@ -55,9 +97,9 @@ for (const ended of [false, true]) {
       }
     }, ended)
     expect(result.hidden).toEqual(result.before)
-    expect(result.samples.slice(4).map((sample) => sample.open)).toEqual(Array(60).fill(ended ? 0 : 1))
+    expect(result.samples.map((sample) => sample.open)).toEqual(Array(64).fill(ended ? 0 : 1))
     expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
-    expect(result.samples.slice(8).every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
+    expect(result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
     if (ended) {
       expect(result.answer).toBe(true)
       expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-"))).toEqual([])
@@ -222,13 +264,18 @@ test("background completion applies automatic process collection without replayi
       await settle()
       samples.push({
         changing: viewport.querySelectorAll("[data-motion-changing]").length,
+        parent: viewport.querySelector('[data-slot="turn-process-trigger"]')?.getAttribute("aria-expanded"),
         gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
         visible: viewport.checkVisibility(),
       })
     }
     return samples
   })
-  expect(samples.every((sample) => sample.changing === 0 && sample.visible && Math.abs(sample.gap) <= 2)).toBe(true)
+  expect(
+    samples.every(
+      (sample) => sample.parent === "false" && sample.changing === 0 && sample.visible && Math.abs(sample.gap) <= 2,
+    ),
+  ).toBe(true)
   expect(errors).toEqual([])
 })
 
@@ -287,6 +334,9 @@ for (const ended of [false, true]) {
               if (i === 8 && delayed) fixture.contentFinish("background-answer")
               const transform = getComputedStyle(surface).transform
               samples.push({
+                frame: i,
+                hydrated: viewport.dataset.hydrated,
+                pending: viewport.querySelectorAll("[data-content-pending], [data-markdown-pending]").length,
                 offset: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42,
                 gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
                 drift: reading ? anchor.getBoundingClientRect().top - before : 0,
@@ -309,7 +359,7 @@ for (const ended of [false, true]) {
         for (const [id, count] of Object.entries(result.readsBefore)) expect(result.readsAfter[id], id).toBe(count)
         expect(result.hiddenAnchor).toBe(true)
         expect(result.samples.filter((sample) => !sample.retained || !sample.visible)).toEqual([])
-        expect(Math.max(...result.samples.map((s) => Math.abs(s.offset)))).toBeLessThanOrEqual(1)
+        expect(result.samples.filter((sample) => Math.abs(sample.offset) > 1)).toEqual([])
         if (reading) expect(Math.max(...result.samples.map((s) => Math.abs(s.drift)))).toBeLessThanOrEqual(1)
         else {
           expect(Math.max(...result.samples.map((s) => Math.abs(s.gap)))).toBeLessThanOrEqual(2)
