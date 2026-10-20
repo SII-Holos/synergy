@@ -130,6 +130,8 @@ Terminate only PIDs launched for this isolated home. Verify the PID/port before 
 
 Report the isolated home label without exposing secrets, chosen mode and ports, reproduction steps, observed result, logs/trace filters used, automated checks, and whether cleanup completed.
 
+For README and documentation imagery, follow [public product screenshots](references/public-product-screenshots.md) to prepare synthetic data, capture the actual UI, verify image encoding and retire screenshot-only schedules.
+
 ## Native Computer Verification
 
 For macOS Computer changes, load [change-computer-runtime](../change-computer-runtime/SKILL.md) for native and real-model fixtures, packaged candidate acceptance and visual checks. Use an isolated Desktop user-data directory as well as `SYNERGY_HOME`. The full `bun dev desktop` orchestrator registers the Computer host; `--attach` alone does not. `SYNERGY_COMPUTER_DRIVER_PATH` may select a verified development binary; candidate acceptance must use its bundled worker. Never replace a missing OS grant with another application's authority.

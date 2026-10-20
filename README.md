@@ -5,10 +5,10 @@
 
   <h1>Synergy</h1>
 
-  <p><strong>Persistent, recoverable AI agent work.</strong></p>
+  <p><strong>Durable agents. Your choice of files and compute.</strong></p>
 
   <p>
-    An open-source workspace for software and knowledge work that keeps sessions, agents, files, Browser, tools, and automation connected in one runtime.
+    An open-source agent platform that separates the Agent Runtime, Workspace, and execution Environment. Run locally, embed agents in your application, or connect a hosted runtime to remote execution resources.
   </p>
 
   <p>
@@ -23,46 +23,92 @@
 
   <p align="center">
     <a href=".github/assets/readme/synergy-workspace.png">
-      <img src=".github/assets/readme/synergy-workspace.png" alt="Synergy workspace: an agent session beside a live in-app Browser preview of the artifact it built" width="100%" />
+      <img src=".github/assets/readme/synergy-workspace.png" alt="Synergy's new-task welcome screen with the playable Falling blocks mini game, model selector, and task composer" width="100%" />
     </a>
   </p>
 
 </div>
 
+<p align="center"><sub>Start with an idea, a model, and a playable mini game on the new-task welcome screen.</sub></p>
+
+## Agent Runtime, Workspace, Environment
+
+The agent does not have to live where its files or commands live. Synergy gives each resource its own identity and lifecycle, so a conversation can persist while execution resources are allocated, released, or replaced.
+
+| Concept           | Responsibility                                                                          | Choices                                                                                            |
+| ----------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| **Agent Runtime** | Model calls, sessions, tool scheduling, permissions, recovery, and durable agent state. | A local service, a hosted Bun process, or an embedded runtime with explicitly selected components. |
+| **Workspace**     | The files a task reads and changes, with versioned bindings and change history.         | A native directory, a Git worktree, or content stored in a local object store, S3, or OSS.         |
+| **Environment**   | The destination that runs commands, terminals, formatters, and language servers.        | Native execution or a managed Docker allocation on a local or remote Docker host.                  |
+
+A Session selects its Workspace and Environment independently. **Scope** owns the project context, configuration, and scoped data; choosing different files or compute does not create a different project. API-only work needs no execution allocation, and dormant object-backed files can be read and edited without starting compute. See [Runtime and Scope](docs/architecture/runtime-and-scope.md), [Workspace and files](docs/architecture/workspace-and-files.md), and [Environments](docs/architecture/environments.md).
+
+```mermaid
+flowchart TB
+  Clients["Web · Desktop · CLI · SDK"] --> Runtime["Agent Runtime<br/>Models · Sessions · Tools · Recovery"]
+  Runtime --> Workspace["Workspace<br/>Durable files"]
+  Runtime --> Environment["Environment<br/>Command execution"]
+  Workspace --> Directory["Native directory / Git worktree"]
+  Workspace --> Objects["Local object store / S3 / OSS"]
+  Environment --> Native["Native host"]
+  Environment --> Docker["Local or remote Docker host"]
+  Workspace -. "attach and checkpoint" .-> Environment
+```
+
+### Deployment across machines
+
+Run everything on one computer for a personal workbench, or host the Agent Runtime on a server and use configured remote Docker Environments for execution. Object-backed Workspaces keep files independent of a disposable container; execution checkpoints save changes before compute is reclaimed. Remote execution uses authenticated transport and TLS. [Resource configuration](docs/reference/configuration-layout.md#locations) describes the supported setup.
+
+For work across personal computers, connect to their Synergy services and use approved device pairing for remote access and manual transfer of paused tasks. Each destination retains its own Runtime and execution authority. This is separate from a single Runtime using remote execution resources; pairing does not continuously replicate Workspaces or provide automatic failover. See [Host connections](docs/architecture/host-connections.md) and [paused-task transfer](docs/architecture/session-transfer.md).
+
+The separation also provides an integration point for additional Environment providers. A cloud Runtime driving arbitrary native laptops through one built-in coordinator is not a packaged deployment mode. Native Browser and Computer Use remain Desktop-local.
+
 ## Work that continues
 
-AI agent work often outlives a single conversation. Synergy treats it as durable workspace state. A task can move between Web, Desktop, CLI, background execution, and specialist agents while preserving its project, history, files, tools, and operating context.
+Use **Atlas** for general work, **Forge** for software engineering, and **Pico** for lightweight tasks. Sessions retain their history, files, tool evidence, and operating context across Web, Desktop, CLI, and background work. Plan produces a durable Blueprint; Light Loop works toward a verified goal; BlueprintLoop adds independent final acceptance. Specialist subagents and Boss Mode support coordinated work.
 
-Choose **Atlas** for general assistance, **Forge** for coding, or **Pico** for lightweight work. Pico is the initial default when no Agent is selected or configured. Their CLI names are `atlas`, `forge`, and `pico`; for example, `synergy send --agent forge "Fix the failing test"`. Existing configurations and conversations [upgrade automatically](docs/migrations/primary-agent-identities.md).
-
-Use Plan to prepare a Blueprint with detail proportional to the task. Light Loop keeps working until the executor verifies the complete goal; BlueprintLoop adds independent final acceptance and preserves reviewer context through rework.
-
-Local Agents share the scoped file interface, with patch editing as the default. Choose the [file read/write tool group](docs/reference/configuration-layout.md#file-readwrite-tool-group) independently of Agent and model; existing permissions still apply. Configurations that previously selected an interface through permission rules should set this group explicitly.
-
-Historical conversations prepare when opened. Full history import and usage rebuilds require an explicit request; [storage admission](docs/architecture/agent-storage.md) documents upgrade and recovery behavior.
-
-Synergy runs as a standalone local workspace. Connecting a Holos agent adds account identity, messaging, and presence without replacing local projects, providers, sessions, or data.
+Build applications, investigate a repository, write documents, or explore an interactive result in the same workbench. Review file changes beside the conversation, open an artifact in Desktop's native Browser, and retain reusable memory and experience in Library. Skills, MCP, plugins, and Channels extend the selected runtime. [The product overview](docs/product/overview.md) covers these workflows.
 
 ## What makes Synergy different
 
 - **Durable by default** — Keep recoverable sessions attached to an explicit home or project Scope, with complete history even when older model context is compacted.
-- **One runtime, every surface** — Use the same sessions and state from the Web workbench, Desktop app, CLI, server API, and SDK.
+- **Shared state across interfaces** — Use the same session and resource APIs from the Web workbench, Desktop app, CLI, server API, and SDK.
 - **First-class agent coordination** — Delegate to specialist subagents, plan durable Blueprints, run independently reviewed BlueprintLoops, keep focused work moving with Light Loop, or orchestrate a tree of persistent specialist workers with Boss Mode.
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
 - **Visual results stay interactive** — Stream native controls and metrics, explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
-- **Local-first and extensible** — Add providers, tools, Skills, commands, MCP servers, plugins and Channels while keeping local ownership of projects and data.
+- **Compose what you need** — Embed Agent Runtime with explicit capability components, or use the full Desktop and CLI product. Unselected capabilities add no tools, UI, or model guidance. See [Embedding](docs/reference/embedding.md).
 
 Read the [product overview](docs/product/overview.md) for the complete product model, including Lattice Pathways, Agenda, Channels, Library, Holos, and extension boundaries.
 
 ## Inside the workspace
 
-|              <img src=".github/assets/readme/synergy-agenda.png" alt="Agenda" width="100%" />              |               <img src=".github/assets/readme/synergy-library.png" alt="Library" width="100%" />               |
-| :--------------------------------------------------------------------------------------------------------: | :------------------------------------------------------------------------------------------------------------: |
-| **Agenda** — schedule recurring and one-off agent runs on Day/Week/Month calendar views, with run history. | **Library** — durable memory and evaluated experiences, with reward-signal analytics per behavioral dimension. |
-|               <img src=".github/assets/readme/synergy-notes.png" alt="Notes" width="100%" />               |               <img src=".github/assets/readme/synergy-plugins.png" alt="Plugins" width="100%" />               |
-|   **Notes** — agents write durable notes and Blueprints as they work, searchable and scoped per project.   |        **Plugins** — extend Synergy with skills, tools, and UI from the official and local registries.         |
+<p align="center">
+  <a href=".github/assets/readme/synergy-browser-demo.png">
+    <img src=".github/assets/readme/synergy-browser-demo.png" alt="Forge's completed session beside a live release-board preview in Desktop's native Browser" width="100%" />
+  </a>
+</p>
+
+**Build, verify, and preview.** Forge builds an offline release board with GPT-6.1 Sol, verifies its interactions, and previews it in Desktop's native Browser. [View the generated HTML](.github/assets/readme/demos/launchpad.html).
+
+<p align="center">
+  <a href=".github/assets/readme/synergy-visual-results.png">
+    <img src=".github/assets/readme/synergy-visual-results.png" alt="Atlas creates an interactive support-capacity planner with three sliders, recalculated metrics, and a workload comparison inside a Synergy conversation" width="100%" />
+  </a>
+</p>
+
+**Interactive results, without allocating compute.** Atlas creates a support-capacity planner in a Session with no Workspace or Environment. Changing a slider recalculates the native controls and chart locally, and the selected parameters persist with the result. The screenshot uses six specialists, twenty tickets per day, and a five-day week: 600 tickets of weekly capacity. [View the render input](.github/assets/readme/demos/support-capacity.json).
+
+Both demonstrations use actual GPT-6.1 Sol responses and synthetic data in an isolated Desktop instance. The [release board](.github/assets/readme/demos/launchpad.html) works offline; the capacity planner uses Synergy's [native visual result catalog](docs/architecture/visual-results.md). These images show local execution and API-only work; they are not evidence of a multi-machine deployment.
+
+|            <img src=".github/assets/readme/synergy-agenda.png" alt="Agenda week view with six sample release-preparation tasks" width="100%" />            | <img src=".github/assets/readme/synergy-library.png" alt="Library with sample project memories and real demo experiences awaiting evaluation" width="100%" /> |
+| :--------------------------------------------------------------------------------------------------------------------------------------------------------: | :-----------------------------------------------------------------------------------------------------------------------------------------------------------: |
+|                               **Agenda** — arrange agent work on a calendar and inspect trigger rules and execution history.                               |                                  **Library** — retain project knowledge and review experience captured from completed work.                                   |
+| <img src=".github/assets/readme/synergy-notes.png" alt="Notes editor showing the Launchpad release brief beside a checklist and Blueprint" width="100%" /> |         <img src=".github/assets/readme/synergy-plugins.png" alt="Current plugin marketplace with official and community extensions" width="100%" />          |
+|                                **Notes and Blueprints** — keep briefs, checklists, and executable plans alongside the task.                                |                                  **Plugins** — discover extensions for research, design, remote access, and other workflows.                                  |
+
+The gallery uses sample project content. Agenda entries were paused after capture; the Library's experience records come from the two actual demo runs and retain their pending-evaluation state.
 
 ## Benchmarks
 
