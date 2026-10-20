@@ -54,7 +54,7 @@ function ConversationColumnResize(props: { column: ConversationColumn }) {
   const { _ } = useLingui()
   const [available, setAvailable] = createSignal(800)
   let root!: HTMLDivElement
-  let gesture: { pointer: number; x: number; width: number } | undefined
+  let gesture: { pointer: number; x: number; width: number; stored: number } | undefined
   const width = () => Math.min(available(), props.column.width())
   const minimum = () => Math.min(480, available())
   const resize = (value: number) => props.column.resize(Math.round(Math.max(minimum(), Math.min(available(), value))))
@@ -62,12 +62,12 @@ function ConversationColumnResize(props: { column: ConversationColumn }) {
     if (event.key !== "Escape" || !gesture) return
     event.preventDefault()
     event.stopPropagation()
-    props.column.resize(gesture.width)
+    props.column.resize(gesture.stored)
     gesture = undefined
   }
   onMount(() => {
     const pane = root.parentElement!
-    const measure = () => setAvailable(Math.min(1920, pane.clientWidth))
+    const measure = () => setAvailable(pane.clientWidth)
     const observer = new ResizeObserver(measure)
     observer.observe(pane)
     measure()
@@ -107,7 +107,7 @@ function ConversationColumnResize(props: { column: ConversationColumn }) {
         onPointerDown={(event) => {
           if (event.button !== 0 || gesture) return
           event.preventDefault()
-          gesture = { pointer: event.pointerId, x: event.clientX, width: width() }
+          gesture = { pointer: event.pointerId, x: event.clientX, width: width(), stored: props.column.width() }
           event.currentTarget.setPointerCapture(event.pointerId)
         }}
         onPointerMove={(event) => {
@@ -118,7 +118,7 @@ function ConversationColumnResize(props: { column: ConversationColumn }) {
           gesture = undefined
         }}
         onPointerCancel={() => {
-          if (gesture) props.column.resize(gesture.width)
+          if (gesture) props.column.resize(gesture.stored)
           gesture = undefined
         }}
         onLostPointerCapture={() => {

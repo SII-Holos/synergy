@@ -1434,11 +1434,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       conversation: {
         width: createMemo(() => {
           const width = store.conversation?.width
-          return typeof width === "number" && Number.isFinite(width) ? Math.max(480, Math.min(1920, width)) : 800
+          return typeof width === "number" && Number.isFinite(width) ? Math.max(480, width) : 800
         }),
         resize(width: number) {
-          if (Number.isFinite(width))
-            setStore("conversation", { width: Math.round(Math.max(480, Math.min(1920, width))) })
+          if (Number.isFinite(width)) setStore("conversation", { width: Math.round(Math.max(480, width)) })
         },
       },
       review: {

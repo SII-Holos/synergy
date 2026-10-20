@@ -184,12 +184,12 @@ beforeAll(async () => {
       if (location.search === "?toolbar") {
         const history = createMemoryHistory()
         history.set({ value: "/aG9tZQ/session/fixture" })
-        return <MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <div style="height:100dvh"><DefaultShell context={{ shell: { render: part => part === "navigation" && innerWidth >= 768 ? <aside class="sb-root sb-integrated sb-expanded" style="width:260px" /> : part === "route" ? <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <ConversationPresentation owner={["server","home","fixture"]} ready><SessionTopBar /><div style="padding-top:58px"><button>Conversation action</button></div></ConversationPresentation> : view === "composer" ? <input aria-label="Composer draft" /> : null } }} /> : null } }} /></div>} /></MemoryRouter>
+        return <MemoryRouter history={history}><Route path="/:dir/session/:id" component={() => <div style="height:100dvh"><DefaultShell context={{ shell: { render: part => part === "navigation" && innerWidth >= 768 ? <aside class="sb-root sb-integrated sb-expanded" style="width:260px" /> : part === "route" ? <DefaultSession column={{width:()=>800,resize:width=>{window.columnWidth=width}}} context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <ConversationPresentation owner={["server","home","fixture"]} ready><SessionTopBar /><div style="padding-top:58px"><button>Conversation action</button></div></ConversationPresentation> : view === "composer" ? <input aria-label="Composer draft" /> : null } }} /> : null } }} /></div>} /></MemoryRouter>
       }
       if (location.search === "?composed") return <div style="height:100dvh;display:flex;flex-direction:column">
         <DefaultShell context={{ shell: { render: part => part === "navigation" ?
           <div data-plugin-ui="synergy" style="display:contents"><aside class="sb-root sb-integrated sb-expanded" style="width:260px"><div class="sb-navigation"><button>Navigation</button></div></aside></div> : part === "route" ?
-          <DefaultSession context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
+          <DefaultSession column={{width:()=>800,resize:width=>{window.columnWidth=width}}} context={{ layout: { minimumWidth: () => 350, promptHeight: () => 120, render: view => view === "workbench.side" ? <WorkbenchSurface surface="side" /> : view === "conversation" ? <WorkspaceToggleProbe /> : view === "composer" ? <div style="position:absolute;bottom:0;left:0;right:0;z-index:50"><input aria-label="Composer draft" /></div> : null } }} /> : null }}} />
       </div>
       if (location.search && location.search !== "?restored" && location.search !== "?workspace-navigation" && location.search !== "?plugin-residency" && location.search !== "?native-browser") return <NavigatorProbe />
       return <>
@@ -1290,4 +1290,37 @@ test("visiting more than the panel budget evicts old instances and keeps the act
     )
   expect(await page.locator("[data-resident-panel]").count()).toBe(8)
   expect(await page.getByRole("textbox", { name: "side draft" }).count()).toBe(1)
+})
+
+test("the workbench divider retains pointer ownership beside a constrained conversation column", async () => {
+  await page.goto(baseUrl + "?composed")
+  await page.waitForFunction(() => Boolean(Reflect.get(window, "fixture")))
+  await page.evaluate(() => Reflect.get(window, "fixture").open("side"))
+  const surface = page.locator(".workbench-surface--side")
+  const handle = surface.locator('[data-component="resize-handle"]').first()
+  await handle.waitFor()
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.waitForFunction(() => {
+    const pane = document.querySelector(".session-workbench-pane")!.getBoundingClientRect()
+    const surface = document.querySelector(".workbench-surface--side")!.getBoundingClientRect()
+    return Math.abs(pane.right - surface.left) < 1
+  })
+  const box = await handle.boundingBox()
+  const before = (await surface.boundingBox())!.width
+  const point = { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 }
+  const target = await page.evaluate((point) => {
+    const element = document.elementFromPoint(point.x, point.y)
+    return {
+      tag: element?.tagName,
+      className: element?.className,
+      workbench: Boolean(element?.closest(".workbench-surface--side")),
+    }
+  }, point)
+  expect(target).toMatchObject({ workbench: true })
+  await page.mouse.move(point.x, point.y)
+  await page.mouse.down()
+  await page.mouse.move(point.x - 60, point.y)
+  await page.mouse.up()
+  expect((await surface.boundingBox())!.width).toBeGreaterThan(before)
+  expect(await page.evaluate(() => Reflect.get(window, "columnWidth"))).toBeUndefined()
 })

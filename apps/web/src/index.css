@@ -1857,7 +1857,7 @@ a {
   padding: 0;
   position: absolute;
   inset-block: 0;
-  inset-inline-end: 0;
+  inset-inline-end: 8px;
   width: 16px;
   cursor: ew-resize;
   touch-action: none;

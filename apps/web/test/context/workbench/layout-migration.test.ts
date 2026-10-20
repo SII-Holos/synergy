@@ -259,3 +259,12 @@ test("v2 preserves resource order, presentation and historical browser owners", 
   })
   expect(migrateWorkbenchLayout(migrated)).toEqual(migrated)
 })
+
+test("conversation width survives reload and repeated legacy layout migration", () => {
+  for (const version of [undefined, 1, 2]) {
+    const saved = { version, conversation: { width: 2400 }, sidebar: { opened: true } }
+    const migrated = migrateWorkbenchLayout(saved)
+    expect(migrated).toMatchObject({ conversation: { width: 2400 } })
+    expect(migrateWorkbenchLayout(migrated)).toEqual(migrated)
+  }
+})
