@@ -3,6 +3,7 @@ import { retry, retryAfterMs } from "../src/retry"
 
 describe("retry", () => {
   test.each([
+    "ENOTFOUND",
     "ETIMEOUT",
     "EAI_AGAIN",
     "ESERVFAIL",
@@ -28,7 +29,7 @@ describe("retry", () => {
     expect(calls).toBe(2)
   })
 
-  test.each(["ENOTFOUND", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "ERR_INVALID_URL", "UND_ERR_ABORTED"])(
+  test.each(["ENONAME", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "ERR_INVALID_URL", "UND_ERR_ABORTED"])(
     "does not hide a permanent or cancelled %s behind fetch failed",
     async (code) => {
       let calls = 0
@@ -105,19 +106,23 @@ describe("retry", () => {
     expect(calls).toBe(3)
   })
 
-  test("gives up after the attempt budget and rethrows the last error", async () => {
-    let calls = 0
-    await expect(
-      retry(
-        async () => {
-          calls++
-          throw new Error("network connection was lost")
-        },
-        { attempts: 2, delay: 1 },
-      ),
-    ).rejects.toThrow("connection was lost")
-    expect(calls).toBe(2)
-  })
+  test.each(["network connection was lost", "getaddrinfo ENOTFOUND provider.invalid"])(
+    "gives up after the attempt budget for %s and rethrows the last error",
+    async (message) => {
+      let calls = 0
+      const error = new Error(message)
+      await expect(
+        retry(
+          async () => {
+            calls++
+            throw error
+          },
+          { attempts: 2, delay: 1 },
+        ),
+      ).rejects.toBe(error)
+      expect(calls).toBe(2)
+    },
+  )
 
   test("matches a wide range of transient error classes by message", async () => {
     for (const message of [

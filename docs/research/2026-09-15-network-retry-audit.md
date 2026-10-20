@@ -30,6 +30,8 @@
 
 `ENOTFOUND` 在这套策略中停止自动重试，是为了避免把无效域名当成短暂故障；这不等价于断言它永远不能恢复。Node 官方也说明，同一错误码可能涵盖其他系统解析失败。无法观察具体原因的浏览器通用 fetch 错误仍只做有限重试，不能保证区分 CORS、离线和网络抖动。
 
+The historical `ENOTFOUND` policy above is superseded by [ambiguous DNS lookup recovery](../decisions/implemented/bug-fix/2026-10-20-retry-ambiguous-dns-lookups.md). Current callers may retry that code within their existing budgets; definitive address errors remain terminal. The rest of this audit's cancellation, accounting and replay boundaries still apply.
+
 ## 恢复边界与保留策略
 
 | 路径         | 交付行为与边界                                                                                                                                                                                                                                                                                         |
