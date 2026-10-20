@@ -26,7 +26,7 @@ export function ProviderAccountEditor(props: {
 }) {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
 
   return (
     <Show keyed when={props.connection.id}>

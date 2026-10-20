@@ -114,7 +114,7 @@ export function BrowserProfileDataDialog(props: { section: "import" | "passwords
     <Dialog
       title={_(props.section === "import" ? browserSettingsCopy.import : browserSettingsCopy.manage)}
       size="form"
-      class="browser-import-dialog"
+      class="browser-import-dialog settings-control-scope"
     >
       <Show
         when={target()}
@@ -141,12 +141,17 @@ export function BrowserProfileDataDialog(props: { section: "import" | "passwords
                 resolveTarget={Object.assign(async () => destination, { current: destination.current })}
                 signal={preparation.signal}
                 destination={<TargetPicker />}
+                confirmationClass="settings-control-scope"
               />
             </Suspense>
           ) : (
             <div class="browser-import-body browser-profile-data-body">
               <TargetPicker />
-              <BrowserDataSettings managementTarget={destination} section="passwords" />
+              <BrowserDataSettings
+                managementTarget={destination}
+                section="passwords"
+                confirmationClass="settings-control-scope"
+              />
             </div>
           )
         }

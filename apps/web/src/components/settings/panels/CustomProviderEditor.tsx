@@ -103,7 +103,7 @@ export function CustomProviderEditor(props: {
   const protocolID = createUniqueId()
   const sdk = useGlobalSDK()
   const sync = useGlobalSync()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const editing = Boolean(props.connection)
   const key = editing ? `custom:${props.connection!.id}` : "custom:new"
   const draft = props.drafts.get(key, {

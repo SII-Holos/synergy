@@ -486,7 +486,7 @@ function EncodingHealthSection() {
   const { _ } = useLingui()
   const { fmt } = useLocale()
   const globalSDK = useGlobalSDK()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
 
   const [scanning, setScanning] = createSignal(false)
   const [result, setResult] = createSignal<ExperienceDetectResult | null>(null)
@@ -746,19 +746,9 @@ function ExperienceGroupCards(props: {
                     {fmt.number(group.count)}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setExpanded((v) => !v)}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-weaker)",
-                    "font-size": "var(--settings-type-caption-size)",
-                  }}
-                >
+                <Button type="button" variant="secondary" size="small" onClick={() => setExpanded((v) => !v)}>
                   <Show when={group.samples.length > 0}>{_(hideSamplesLabel(expanded()))}</Show>
-                </button>
+                </Button>
               </div>
               <Show when={expanded() && group.samples.length > 0}>
                 <div

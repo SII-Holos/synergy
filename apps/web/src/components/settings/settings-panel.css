@@ -1,3 +1,5 @@
+@import "./settings-controls.css";
+
 .settings-dialog-panel {
   height: 100%;
   min-height: 0;
@@ -35,7 +37,8 @@
   padding: 0;
 }
 
-.settings-panel-frame {
+.settings-panel-frame,
+.settings-control-scope {
   --settings-control-height: 36px;
   --settings-canvas-bg: var(--background-stronger);
   --settings-panel-bg: var(--background-base);
@@ -80,7 +83,9 @@
   --settings-type-caption-size: 0.8125rem;
   --settings-type-caption-line-height: 1.125rem;
   --settings-type-prose-line-height: 1.375rem;
+}
 
+.settings-panel-frame {
   position: relative;
   height: 100%;
   min-height: 0;
@@ -117,8 +122,8 @@
   height: 30px;
   border-radius: 8px;
   color: var(--icon-weak);
-  background: transparent;
-  border: 1px solid transparent;
+  background: var(--settings-control-bg);
+  border: 0;
   transition:
     color 120ms ease,
     background-color 120ms ease,
@@ -128,7 +133,6 @@
 .settings-panel-close:hover {
   color: var(--icon-base);
   background: var(--settings-control-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 56%, transparent);
 }
 
 .settings-popover-layer {
@@ -308,7 +312,7 @@
   padding: 0 9px;
   border-radius: 8px;
   background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border);
+  border: 0;
   color: var(--text-weaker);
 }
 
@@ -574,16 +578,11 @@
 
 .personalize-editor [data-slot="input-wrapper"] {
   border-radius: 10px;
-  border: 1px solid var(--settings-border);
   background: var(--settings-input-bg);
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
     box-shadow 120ms ease;
-}
-
-.personalize-editor [data-component="input"][data-invalid] [data-slot="input-wrapper"] {
-  border-color: var(--text-base);
 }
 
 .personalize-instructions-input {
@@ -680,9 +679,9 @@
 .settings-theme-card {
   min-width: 0;
   padding: 8px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   border-radius: 8px;
-  background: var(--settings-card-bg);
+  background: var(--settings-control-bg);
   color: var(--text-strong);
   text-align: left;
   transition:
@@ -691,8 +690,7 @@
 }
 
 .settings-theme-card:hover {
-  background: var(--settings-card-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
+  background: var(--settings-control-bg-hover);
 }
 
 .settings-theme-card:focus-visible {
@@ -700,8 +698,8 @@
 }
 
 .settings-theme-card-active {
-  border-color: var(--border-interactive-base);
-  box-shadow: inset 0 0 0 1px var(--border-interactive-base);
+  background: var(--settings-selected-bg);
+  box-shadow: none;
 }
 
 .settings-theme-preview {
@@ -784,8 +782,8 @@
   gap: 4px;
   padding: 10px 12px;
   border-radius: 11px;
-  border: 1px solid var(--settings-border);
-  background: var(--settings-card-bg);
+  border: 0;
+  background: var(--settings-control-bg);
   color: var(--text-weak);
   text-align: center;
   transition:
@@ -796,8 +794,7 @@
 }
 
 .settings-color-card:hover {
-  background: var(--settings-card-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 62%, transparent);
+  background: var(--settings-control-bg-hover);
 }
 
 .settings-color-card:active {
@@ -811,7 +808,6 @@
 .settings-color-card-active {
   color: var(--text-strong);
   background: var(--settings-selected-bg);
-  border-color: color-mix(in oklch, var(--text-strong) 34%, transparent);
 }
 
 .settings-color-icon {
@@ -1496,7 +1492,7 @@
   min-height: 34px;
   margin: 0 0 4px;
   padding: 6px 10px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   border-radius: 9px;
   background: var(--settings-control-bg);
 }
@@ -1732,7 +1728,7 @@
   padding: 2px;
   border-radius: 9px;
   background: var(--settings-control-bg);
-  box-shadow: inset 0 0 0 1px var(--settings-border);
+  box-shadow: none;
 }
 
 .ds-segment-item {
@@ -1744,7 +1740,7 @@
   line-height: var(--settings-type-control-line-height);
   color: var(--text-subtle);
   cursor: pointer;
-  background: transparent;
+  background: var(--settings-control-bg);
   border: none;
   transition: all 0.12s ease;
   white-space: nowrap;
@@ -1758,7 +1754,7 @@
 .ds-segment-item-active {
   color: var(--text-strong);
   background: var(--settings-selected-bg);
-  box-shadow: inset 0 0 0 1px var(--settings-border);
+  box-shadow: none;
 }
 
 /* ===== Control profile cards ===== */
@@ -1777,8 +1773,8 @@
   gap: 6px;
   padding: 14px;
   border-radius: 14px;
-  border: 1px solid var(--settings-border);
-  background: var(--settings-card-bg);
+  border: 0;
+  background: var(--settings-control-bg);
   color: var(--text-base);
   text-align: left;
   cursor: pointer;
@@ -1789,14 +1785,12 @@
 }
 
 .ds-profile-card:hover {
-  border-color: color-mix(in oklch, var(--border-base) 70%, transparent);
-  background: var(--settings-card-bg-hover);
+  background: var(--settings-control-bg-hover);
 }
 
 .ds-profile-card-active {
-  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
   background: var(--settings-selected-bg);
-  box-shadow: inset 0 0 0 1px var(--settings-border);
+  box-shadow: none;
 }
 
 .ds-profile-name {
@@ -2187,7 +2181,6 @@
 .settings-integration-shell [data-slot="input-wrapper"] {
   min-height: 40px;
   border-radius: 8px;
-  border: 1px solid var(--settings-border);
   background: var(--settings-input-bg);
   transition:
     border-color 120ms ease,
@@ -2715,7 +2708,6 @@
 .account-profile-form [data-slot="input-wrapper"] {
   border-radius: 10px;
   background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border);
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
@@ -2901,7 +2893,7 @@
   padding: 0 10px;
   border-radius: 9px;
   background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border);
+  border: 0;
   color: var(--text-weaker);
 }
 
@@ -2940,7 +2932,8 @@
   gap: 11px;
   padding: 10px;
   border-radius: 10px;
-  border: 1px solid transparent;
+  border: 0;
+  background: var(--settings-control-bg);
   color: var(--text-base);
   text-align: left;
   transition:
@@ -2950,13 +2943,11 @@
 
 .providers-row:hover,
 .usage-connect-card:hover {
-  background: var(--settings-card-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 34%, transparent);
+  background: var(--settings-control-bg-hover);
 }
 
 .providers-row-active {
   background: var(--settings-selected-bg);
-  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
 }
 
 .providers-row > .ds-inline-badge {
@@ -3155,7 +3146,7 @@
   gap: 7px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   background: var(--settings-control-bg);
   color: var(--text-strong);
   text-decoration: none;
@@ -3169,7 +3160,6 @@
 
 .provider-auth-link:hover {
   background: var(--settings-control-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 58%, transparent);
 }
 
 .providers-connect-section {
@@ -3219,6 +3209,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 8px;
+  background: var(--settings-control-bg);
   color: var(--text-weak);
 }
 
@@ -3257,7 +3248,8 @@
   gap: 10px;
   padding: 10px;
   border-radius: 10px;
-  border: 1px solid transparent;
+  border: 0;
+  background: var(--settings-control-bg);
   color: var(--text-base);
   text-align: left;
   transition:
@@ -3266,18 +3258,15 @@
 }
 
 .provider-method-row:hover {
-  background: var(--settings-card-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 34%, transparent);
+  background: var(--settings-control-bg-hover);
 }
 
 .providers-detail .provider-method-row {
   background: var(--settings-control-bg);
-  border-color: var(--settings-border);
 }
 
 .providers-detail .provider-method-row:hover {
   background: var(--settings-control-bg-hover);
-  border-color: color-mix(in oklch, var(--border-base) 46%, transparent);
 }
 
 .provider-method-icon {
@@ -3654,7 +3643,7 @@
   gap: 7px;
   padding: 0 12px;
   border-radius: 8px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   background: var(--settings-control-bg);
   color: var(--text-strong);
   font-size: var(--settings-type-control-size);
@@ -3683,7 +3672,7 @@
 .ds-import-paste-input {
   min-width: 0;
   border-radius: 8px;
-  border: 1px solid color-mix(in oklch, var(--border-weak-base) 70%, transparent);
+  border: 0;
   background: var(--settings-input-bg);
   color: var(--text-strong);
   font-size: var(--settings-type-control-size);
@@ -3729,7 +3718,7 @@
   gap: 8px;
   padding: 7px 10px;
   border-radius: 8px;
-  border: 1px solid var(--settings-border);
+  border: 0;
   background: var(--settings-control-bg);
   color: var(--text-base);
   font-size: var(--settings-type-control-size);
@@ -4120,10 +4109,13 @@
 }
 .settings-panel-frame [data-slot="input-wrapper"] {
   min-height: 36px;
-  border-radius: 10px;
 }
 .settings-panel-frame [data-component="input"][data-variant="normal"] input[data-slot="input-input"] {
-  height: calc(var(--settings-control-height) - 2px);
+  height: var(--settings-control-height);
+}
+.settings-panel-frame [data-slot="input-label"] {
+  font-size: var(--settings-type-control-size);
+  line-height: var(--settings-type-control-line-height);
 }
 .settings-panel-navigation input {
   min-height: var(--settings-control-height);
@@ -4172,7 +4164,7 @@
   max-width: 100%;
   color: var(--text-base);
   background: var(--settings-input-bg);
-  border: 1px solid var(--settings-border);
+  border: 0;
   padding: 6px 12px;
 }
 .settings-field-action,
@@ -4220,14 +4212,16 @@
 }
 .settings-subviews button {
   min-height: 36px;
-  padding: 0 0 10px;
+  padding: 6px 12px;
   color: var(--text-weak);
-  border-bottom: 2px solid transparent;
+  background: var(--settings-control-bg);
+  border: 0;
+  border-radius: 10px;
   font-size: var(--settings-type-control-size);
 }
 .settings-subviews button[aria-selected="true"] {
   color: var(--text-strong);
-  border-color: var(--text-strong);
+  background: var(--settings-selected-bg);
 }
 .settings-voice-test {
   padding: 16px 0;
@@ -4374,6 +4368,7 @@
   flex: 1;
   text-align: start;
   border-radius: 8px;
+  background: var(--settings-control-bg);
 }
 .providers-row-actions {
   display: flex;
@@ -4389,11 +4384,12 @@
   min-height: 32px;
   color: var(--text-weak);
   border-radius: 6px;
+  background: var(--settings-control-bg);
 }
 .providers-more:hover,
 .providers-connected-open:hover {
   color: var(--text-strong);
-  background: var(--settings-control-bg);
+  background: var(--settings-control-bg-hover);
 }
 .providers-connected-copy > span {
   overflow-wrap: anywhere;
@@ -4560,13 +4556,6 @@
   font-size: var(--settings-type-caption-size);
   line-height: var(--settings-type-caption-line-height);
 }
-.settings-panel-frame .menu-field-trigger {
-  color: var(--text-base);
-  text-align: start;
-  justify-content: space-between;
-  border: 0;
-  box-shadow: none;
-}
 .settings-panel-frame .menu-field-value {
   flex: 1;
   min-width: 0;
@@ -4728,15 +4717,18 @@
   gap: 16px;
   min-height: 36px;
   padding: 8px 12px;
-  border: 1px solid var(--settings-border);
+  border: 0;
+  background: var(--settings-control-bg);
   border-radius: 10px;
   font-size: var(--settings-type-control-size);
   line-height: var(--settings-type-control-line-height);
   cursor: pointer;
 }
 .settings-choice[data-checked] label {
-  background: var(--settings-control-bg);
-  border-color: var(--border-base);
+  background: var(--settings-selected-bg);
+}
+.settings-choice:not([data-checked]) label:hover {
+  background: var(--settings-control-bg-hover);
 }
 .settings-choice:has(:focus-visible) label {
   background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
@@ -4823,12 +4815,11 @@
 }
 .settings-panel-frame .ds-segment-item {
   min-height: 32px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 10px;
 }
 .settings-panel-frame .ds-segment-item-active {
   box-shadow: none;
-  border-color: var(--settings-border);
 }
 .settings-panel-frame [data-slot="input-error"] {
   display: flex;

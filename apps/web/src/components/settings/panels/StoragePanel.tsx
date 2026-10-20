@@ -187,7 +187,7 @@ export function StoragePanel(props: {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const [cleaning, setCleaning] = createSignal(false)
   const [maintenance, setMaintenance] = createSignal<false | "migrate" | "compact">(false)
   const [reclaimControl, setReclaimControl] = createSignal(false)

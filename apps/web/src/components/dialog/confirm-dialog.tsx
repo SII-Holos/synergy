@@ -37,7 +37,7 @@ function resolveContent(content: ConfirmContent, translate: I18n["_"]): string {
   return typeof content === "string" ? content : translateDescriptor(content, { _: translate })
 }
 
-export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
+export function ConfirmDialog(props: ConfirmOptions & { close?: () => void; class?: string }) {
   const { _ } = useLingui()
   const dialogContext = useDialog()
   const [pending, setPending] = createSignal(false)
@@ -78,7 +78,7 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
       initialFocus={() => cancelButton}
       dismissible={!pending()}
       title={resolveContent(props.title, _)}
-      class="confirm-dialog"
+      class={`confirm-dialog ${props.class ?? ""}`}
       footer={
         <div data-slot="dialog-actions" class="confirm-dialog-actions">
           <Button
@@ -143,7 +143,7 @@ export function ConfirmDialog(props: ConfirmOptions & { close?: () => void }) {
   )
 }
 
-export function useConfirm() {
+export function useConfirm(presentation?: { class?: string }) {
   const dialogContext = useDialog()
   const owned = new Set<string>()
   let disposed = false
@@ -171,6 +171,7 @@ export function useConfirm() {
       () => (
         <ConfirmDialog
           {...options}
+          class={presentation?.class}
           close={() => dialogContext.close(id)}
           onConfirm={async () => {
             await options.onConfirm()
