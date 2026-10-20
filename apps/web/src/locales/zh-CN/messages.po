@@ -16036,7 +16036,7 @@ msgstr "测试连接"
 
 #. js-lingui-explicit-id
 msgid "provider.test.authentication"
-msgstr "凭据被拒绝，请检查已保存的 API Key。"
+msgstr "凭据缺失或被拒绝，请检查已保存的 API Key。"
 
 #. js-lingui-explicit-id
 msgid "provider.test.failed"

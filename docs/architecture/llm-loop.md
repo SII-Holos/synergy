@@ -336,6 +336,8 @@ Insufficient pruning leaves the existing automatic summary and hard-overflow rec
 
 ## Streaming and Persistence
 
+Explicit connection-validation probes use independent operations, the provider’s small-request options and a scoped single-request authentication path. The path suppresses nested credential recovery while preserving profile transport behavior. Non-success response bodies and headers are removed before SDK error construction and transport recording; ordinary inference retains its existing recording policy.
+
 Text, reasoning, and tool parts are persisted throughout the step. Streaming text/reasoning writes are coalesced at a short write-behind interval; terminal and discrete updates flush immediately. Before a turn finalizes, pending writes are flushed so a missing terminal callback cannot silently lose accumulated text.
 
 Inside an Agent worker, the `LLM.stream()` consumer takes one owned full stream through the shared `LLM` ownership helper. The helper immediately cancels the residual branch retained by the AI SDK's internal stream tee and settles that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.

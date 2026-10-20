@@ -33,9 +33,9 @@ beforeAll(async () => {
     import {setupI18n} from "@lingui/core"
     import {ProviderConnectionTest} from ${JSON.stringify(`${source}/components/provider/ProviderConnectionFlow.tsx`)}
     import "@ericsanchezok/synergy-ui/styles"
-    function App(){ const [provider,setProvider]=createSignal("first"),[disabled,setDisabled]=createSignal(false)
-      window.selectProvider=setProvider;window.disableTest=setDisabled
-      return <I18nProvider i18n={setupI18n({locale:"en"})}><ProviderConnectionTest providerID={provider()} disabled={disabled()}/></I18nProvider>
+    function App(){ const [provider,setProvider]=createSignal("first"),[disabled,setDisabled]=createSignal(false),[revision,setRevision]=createSignal("first")
+      window.selectProvider=setProvider;window.disableTest=setDisabled;window.changeRevision=setRevision
+      return <I18nProvider i18n={setupI18n({locale:"en"})}><ProviderConnectionTest providerID={provider()} disabled={disabled()} revision={revision()}/></I18nProvider>
     }
     render(()=><App/>,document.getElementById("root"))
   `,
@@ -62,12 +62,16 @@ test("connection results come from the request and stale pending results cannot 
   await button.click()
   expect(await page.getByRole("button", { name: "Testing…" }).isDisabled()).toBe(true)
   await page.evaluate(() => Reflect.get(window, "complete")(false))
-  await page.getByRole("status").filter({ hasText: "Credentials were rejected" }).waitFor()
+  await page.getByRole("status").filter({ hasText: "Credentials are missing or were rejected" }).waitFor()
   expect(await page.getByRole("status").textContent()).toContain("HTTP 401")
   await button.click()
   await page.evaluate(() => Reflect.get(window, "complete")(true))
   await page.getByRole("status").filter({ hasText: "Model request succeeded" }).waitFor()
   expect(await page.getByRole("status").textContent()).toContain("fixture-model")
+  await button.click()
+  await page.evaluate(() => Reflect.get(window, "changeRevision")("updated-models"))
+  await page.evaluate(() => Reflect.get(window, "complete")(true))
+  expect(await page.getByRole("status").count()).toBe(0)
   await button.click()
   await page.evaluate(() => Reflect.get(window, "selectProvider")("second"))
   expect(await page.evaluate(() => Reflect.get(window, "aborted"))).toBe(true)

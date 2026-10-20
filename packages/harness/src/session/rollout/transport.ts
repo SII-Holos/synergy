@@ -33,6 +33,12 @@ export namespace RolloutTransport {
     "window",
   ])
 
+  const redactFailure = Context.create<boolean>("rollout-redact-errors")
+
+  export function redactErrors<T>(action: () => T): T {
+    return redactFailure.provide(true, action)
+  }
+
   export function provide<T>(sink: Sink, action: () => T): T {
     return context.provide({ sink }, action)
   }
@@ -48,7 +54,13 @@ export namespace RolloutTransport {
   export async function fetch(fetchFn: Fetch, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const current = context.tryUse()
     const sink = current?.sink
-    if (!sink) return fetchFn(input, init)
+    const requestResponse: Fetch = async (request, options) => {
+      const response = await fetchFn(request, options)
+      if (!redactFailure.tryUse() || response.ok) return response
+      await response.body?.cancel()
+      return new Response(null, { status: response.status })
+    }
+    if (!sink) return requestResponse(input, init)
     const attemptID = crypto.randomUUID()
     const original = new Request(input, init)
     const endpoint = new URL(original.url)
@@ -326,7 +338,10 @@ export namespace RolloutTransport {
         Object.entries(init ?? {}).filter(([key]) => !requestOptions.has(key)),
       )
       timing.sent()
-      const fetching = fetchFn(request, Object.keys(transportOptions).length ? transportOptions : undefined).then(
+      const fetching = requestResponse(
+        request,
+        Object.keys(transportOptions).length ? transportOptions : undefined,
+      ).then(
         (value) => {
           const mediaType = value.headers.get("content-type") ?? "application/octet-stream"
           timing.headers(false)

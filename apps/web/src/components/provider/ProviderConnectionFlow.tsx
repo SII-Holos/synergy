@@ -600,7 +600,7 @@ function formDataValue(form: FormData, key: string) {
 const failures = {
   authentication: {
     id: "provider.test.authentication",
-    message: "Credentials were rejected. Check the saved API key.",
+    message: "Credentials are missing or were rejected. Check the saved API key.",
   },
   rate_limit: { id: "provider.test.rateLimit", message: "The provider returned a quota or rate limit error." },
   model: { id: "provider.test.model", message: "The model or endpoint was not found." },

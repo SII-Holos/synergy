@@ -1,3 +1,4 @@
+import { LoadAPIKeyError } from "@ai-sdk/provider"
 import { APICallError, generateText } from "ai"
 import { Provider } from "./provider"
 import { ProviderAuthRecovery } from "./auth-recovery"
@@ -369,90 +370,99 @@ export namespace ProviderConnection {
     input: z.infer<typeof TestInput>,
     signal?: AbortSignal,
   ): Promise<z.infer<typeof TestResult>> {
-    const started = performance.now()
-    let modelID = input.modelID
-    const result = (value: Pick<z.infer<typeof TestResult>, "success" | "error">) => ({
-      providerID,
-      modelID,
-      durationMs: Math.round(performance.now() - started),
-      ...value,
-    })
-    try {
-      signal?.throwIfAborted()
-      const provider = await Provider.getProvider(providerID)
-      const model = modelID
-        ? provider?.models[modelID]
-        : Object.values(provider?.models ?? {}).find(
-            (model) => model.capabilities.input.text && model.capabilities.output.text,
+    return ProviderAuthRecovery.withoutRecovery(() =>
+      RolloutTransport.redactErrors(async () => {
+        const started = performance.now()
+        let modelID = input.modelID
+        const result = (value: Pick<z.infer<typeof TestResult>, "success" | "error">) => ({
+          providerID,
+          modelID,
+          durationMs: Math.round(performance.now() - started),
+          ...value,
+        })
+        try {
+          signal?.throwIfAborted()
+          const provider = await Provider.getProvider(providerID)
+          const models = Provider.sort(
+            Object.values(provider?.models ?? {}).filter(
+              (model) =>
+                Provider.isSelectableModel(model) && model.capabilities.input.text && model.capabilities.output.text,
+            ),
           )
-      if (!model) return result({ success: false, error: { kind: "unavailable" } })
-      modelID = model.id
-      const language = await Provider.createLanguageFromSpec(model, {
-        profileID: provider.profileID,
-        key: provider.key,
-        auth: await Auth.get(providerID),
-        options: {
-          ...provider.options,
-          fetch: ProviderAuthRecovery.handled((request, init) =>
-            RolloutTransport.fetch((provider.options?.fetch ?? fetch) as typeof fetch, request, init),
-          ),
-        },
-      })
-      const messages = ProviderTransform.message(
-        [{ role: "user", content: [{ type: "text", text: "Reply with OK only." }] }],
-        model,
-      )
-      const abortSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000)
-      await RolloutOperation.execute(
-        {
-          independent: true,
-          purpose: "model.validation",
-          kind: "chat",
-          model: {
-            providerID,
-            modelID: model.id,
-            apiModelID: model.api.id,
-            sdk: model.api.npm,
-            pricing: model.pricing ?? null,
-            billingMode: model.billingMode ?? "unknown",
-            limits: model.limit,
-          },
-          request: JSON.parse(JSON.stringify({ messages, maxOutputTokens: 32, maxRetries: 0 })),
-        },
-        async () => {
-          const response = await generateText({
-            model: language,
-            messages,
-            maxOutputTokens: 32,
-            maxRetries: 0,
-            abortSignal,
-            headers: ProviderSessionHeader.forRequest({ model, providerOptions: provider?.options }),
+          const model = modelID ? provider?.models[modelID] : models[0]
+          if (!model || !Provider.isSelectableModel(model))
+            return result({ success: false, error: { kind: "unavailable" } })
+          modelID = model.id
+          const language = await Provider.createLanguageFromSpec(model, {
+            profileID: provider.profileID,
+            key: provider.key,
+            auth: await Auth.get(providerID),
+            options: provider.options,
           })
-          return {
-            value: undefined,
-            response: JSON.parse(JSON.stringify(response.response)),
-            usage: JSON.parse(JSON.stringify(response.usage)),
-          }
-        },
-      )
-      return result({ success: true })
-    } catch (error) {
-      if (findRecordingError(error) || signal?.aborted) throw error
-      const statusCode = APICallError.isInstance(error) ? error.statusCode : undefined
-      const kind =
-        error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)
-          ? "timeout"
-          : statusCode === 401 || statusCode === 403
-            ? "authentication"
-            : statusCode === 429
-              ? "rate_limit"
-              : statusCode === 404
-                ? "model"
-                : statusCode
-                  ? "provider"
-                  : "network"
-      return result({ success: false, error: { kind, ...(statusCode ? { statusCode } : {}) } })
-    }
+          const providerOptions = ProviderTransform.providerOptions(
+            model,
+            ProviderTransform.smallOptions(model, provider.profileID),
+          )
+          const messages = ProviderTransform.message(
+            [{ role: "user", content: [{ type: "text", text: "Reply with OK only." }] }],
+            model,
+          )
+          const abortSignal = signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(12_000)])
+            : AbortSignal.timeout(12_000)
+          await RolloutOperation.execute(
+            {
+              independent: true,
+              purpose: "model.validation",
+              kind: "chat",
+              model: {
+                providerID,
+                modelID: model.id,
+                apiModelID: model.api.id,
+                sdk: model.api.npm,
+                pricing: model.pricing ?? null,
+                billingMode: model.billingMode ?? "unknown",
+                limits: model.limit,
+              },
+              request: JSON.parse(JSON.stringify({ messages, maxOutputTokens: 32, maxRetries: 0, providerOptions })),
+            },
+            async () => {
+              const response = await generateText({
+                model: language,
+                messages,
+                maxOutputTokens: 32,
+                maxRetries: 0,
+                providerOptions,
+                abortSignal,
+                headers: ProviderSessionHeader.forRequest({ model, providerOptions: provider?.options }),
+              })
+              return {
+                value: undefined,
+                response: JSON.parse(JSON.stringify(response.response)),
+                usage: JSON.parse(JSON.stringify(response.usage)),
+              }
+            },
+          )
+          return result({ success: true })
+        } catch (error) {
+          if (findRecordingError(error) || signal?.aborted) throw error
+          const statusCode = APICallError.isInstance(error) ? error.statusCode : undefined
+          const kind =
+            error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)
+              ? "timeout"
+              : LoadAPIKeyError.isInstance(error) || statusCode === 401 || statusCode === 403
+                ? "authentication"
+                : statusCode === 429
+                  ? "rate_limit"
+                  : statusCode === 404
+                    ? "model"
+                    : statusCode
+                      ? "provider"
+                      : "network"
+          return result({ success: false, error: { kind, ...(statusCode ? { statusCode } : {}) } })
+        }
+      }),
+    )
   }
 
   export async function create(input: CreateInput) {

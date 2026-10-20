@@ -8,7 +8,7 @@ Saving a credential does not establish that the credential, endpoint and model w
 
 ## Decision
 
-Provider settings offer an explicit connection test using saved configuration and a short text request. The provider owner resolves the model and authentication through the existing SDK path. The probe has a twelve-second request timeout, no automatic request or credential-recovery retries, no tools and an independent validation recording. It creates no Session. Results identify the observed model, elapsed time and a bounded error category with an HTTP status when available. Provider error bodies and credentials do not enter the result.
+Provider settings offer an explicit connection test using saved configuration and a short text request. The provider owner resolves the model and authentication through the existing SDK path. The probe has a twelve-second request timeout, no automatic request or credential-recovery retries, no tools and an independent validation recording. It creates no Session. Results identify the observed model, elapsed time and a bounded error category with an HTTP status when available. Non-success provider response bodies and headers are removed before transport recording and SDK error construction. Provider error bodies and credentials do not enter the result. The selected model excludes retained and deprecated catalog entries and uses the established small-request options, including disabled remote storage where supported.
 
 Credential presence is labeled configured. Saving credentials reports that the request remains untested. Unsaved edits disable testing; account, connection and draft changes cancel pending presentation and invalidate previous results.
 

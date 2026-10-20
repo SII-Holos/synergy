@@ -16036,7 +16036,7 @@ msgstr "Test connection"
 
 #. js-lingui-explicit-id
 msgid "provider.test.authentication"
-msgstr "Credentials were rejected. Check the saved API key."
+msgstr "Credentials are missing or were rejected. Check the saved API key."
 
 #. js-lingui-explicit-id
 msgid "provider.test.failed"

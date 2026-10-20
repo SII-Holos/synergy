@@ -648,7 +648,15 @@ export function ProvidersPanel(props: {
                     </Show>
                     <ProviderConnectionTest
                       providerID={provider().id}
-                      revision={JSON.stringify([provider().endpoint, provider().enabled, provider().health?.updatedAt])}
+                      revision={JSON.stringify([
+                        provider().endpoint,
+                        provider().enabled,
+                        provider().health?.updatedAt,
+                        provider().profileID,
+                        provider().protocol,
+                        provider().models,
+                        provider().catalog,
+                      ])}
                       disabled={
                         drafts.pending() ||
                         drafts.dirty(`${provider().protocol ? "custom" : "edit"}:${provider().id}`) ||

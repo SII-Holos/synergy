@@ -690,3 +690,30 @@ test("credential cooling uses the same strict retry hints as request recovery", 
   }))
 
 afterRuntimeTests(() => runtime.close())
+
+test("a one-shot probe bypasses nested credential recovery without changing the account", () =>
+  runtime.run(async () => {
+    await Auth.set("test-api-confirm", { type: "api", key: "probe-key" })
+    const before = await Auth.entries()
+    let requests = 0
+    let refreshes = 0
+    const request = () =>
+      ProviderAuthRecovery.execute({
+        providerID: "test-api-confirm",
+        request: async () => {
+          requests++
+          return new Response("rejected", { status: 401 })
+        },
+        refresh: async () => {
+          refreshes++
+          return { type: "api", key: "replacement" }
+        },
+      })
+    const result = await ProviderAuthRecovery.withoutRecovery(() =>
+      ProviderAuthRecovery.execute({ providerID: "test-api-confirm", request }),
+    )
+    expect(result.status).toBe(401)
+    expect(requests).toBe(1)
+    expect(refreshes).toBe(0)
+    expect(await Auth.entries()).toEqual(before)
+  }))
