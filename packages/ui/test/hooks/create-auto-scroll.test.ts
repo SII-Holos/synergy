@@ -67,7 +67,8 @@ function createScrollHarness() {
   }) as typeof requestAnimationFrame
   globalThis.cancelAnimationFrame = ((id: number) => frames.delete(id)) as typeof cancelAnimationFrame
   ;(globalThis as { ResizeObserver?: unknown }).ResizeObserver = FakeResizeObserver as unknown as
-    typeof ResizeObserver | undefined
+    | typeof ResizeObserver
+    | undefined
   ;(globalThis as { MutationObserver?: unknown }).MutationObserver = FakeMutationObserver
   Object.defineProperty(globalThis, "window", {
     configurable: true,

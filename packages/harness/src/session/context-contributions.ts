@@ -88,12 +88,14 @@ export namespace SessionContextContributions {
         const knowledge = entry.result.knowledge
         const entries = [...knowledge.entries].sort((a, b) => a.id.localeCompare(b.id))
         return [
-          ...entries.map((item): RuntimeAdvisory.Source => ({
-            id: `${entry.id}:entry:${item.id}`,
-            kind: "knowledge",
-            state: "present",
-            text: item.text,
-          })),
+          ...entries.map(
+            (item): RuntimeAdvisory.Source => ({
+              id: `${entry.id}:entry:${item.id}`,
+              kind: "knowledge",
+              state: "present",
+              text: item.text,
+            }),
+          ),
           RuntimeAdvisory.present(
             `${entry.id}:selection`,
             [

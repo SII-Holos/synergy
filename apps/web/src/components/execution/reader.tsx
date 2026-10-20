@@ -14,7 +14,7 @@ import { E } from "./i18n"
 type Row = { offset: number; text: string }
 function lines(text: string, offset: number) {
   const result: Row[] = []
-  for (let start = 0; start < text.length;) {
+  for (let start = 0; start < text.length; ) {
     let end = Math.min(text.length, start + 1024)
     let last = start
     for (let line = 0; line < 32; line++) {

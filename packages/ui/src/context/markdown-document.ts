@@ -34,7 +34,7 @@ function splitText(text: string) {
     ? new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text)[Symbol.iterator]()
     : undefined
   let next = segments?.next()
-  for (let start = 0; start < text.length;) {
+  for (let start = 0; start < text.length; ) {
     let end = Math.min(text.length, start + CHARS)
     const amp = text.lastIndexOf("&", end - 1)
     if (amp >= start && end - amp < 32 && !text.slice(amp, end).includes(";")) end = amp > start ? amp : end
@@ -259,7 +259,7 @@ export async function parseMarkdownDocument(
       const list = token as Tokens.List
       if (list.items.some((item) => item.raw.length > CHARS * 2)) return plain(list.raw, source)
       const output: Token[] = []
-      for (let index = 0; index < list.items.length;) {
+      for (let index = 0; index < list.items.length; ) {
         const start = index
         let bytes = 0
         while (
@@ -298,7 +298,7 @@ export async function parseMarkdownDocument(
       })
       const headerSize = table.header.reduce((sum, cell) => sum + cell.text.length, 0)
       if (!table.rows.length) return [table]
-      for (let index = 0; index < table.rows.length;) {
+      for (let index = 0; index < table.rows.length; ) {
         const start = index
         let chars = headerSize
         while (index < table.rows.length && index - start < 16) {
@@ -486,7 +486,7 @@ export async function parseMarkdownDocument(
   if (hooks) tokens = await hooks.processAllTokens(tokens)
   assign(tokens, { start: 0, end: prepared.markdown.length })
   const expanded = tokens.flatMap(expand)
-  for (let index = 0; index < expanded.length;) {
+  for (let index = 0; index < expanded.length; ) {
     if (cancelled()) throw new DOMException("Markdown document cancelled", "AbortError")
     const group: Token[] = []
     let chars = 0

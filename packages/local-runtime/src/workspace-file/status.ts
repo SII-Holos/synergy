@@ -75,7 +75,7 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
   ])
   const files = new Map<string, WorkspaceFile.StatusSummary["files"][number]>()
   const records = diff.split("\0")
-  for (let i = 0; i < records.length;) {
+  for (let i = 0; i < records.length; ) {
     const record = records[i++]!
     if (record.startsWith(":")) {
       const code = record.slice(record.lastIndexOf(" ") + 1)

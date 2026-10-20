@@ -259,7 +259,7 @@ export async function buildApprovalReview(target: ApprovalTarget): Promise<Appro
     : "broadened"
   const publisherChanged = Boolean(
     resolved.oldApproval &&
-    (resolved.oldApproval.source !== resolved.source || resolved.oldApproval.signer !== resolved.signer),
+      (resolved.oldApproval.source !== resolved.source || resolved.oldApproval.signer !== resolved.signer),
   )
   const requiresConfirmation = !resolved.oldApproval || publisherChanged || accessChange === "broadened"
   const confirmationReason = !requiresConfirmation

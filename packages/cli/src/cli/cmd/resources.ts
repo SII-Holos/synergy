@@ -306,7 +306,7 @@ export const WorkspaceExportCommand = cmd({
         await result.data.pipeTo(
           new WritableStream<Uint8Array>({
             async write(bytes) {
-              for (let offset = 0; offset < bytes.length;) {
+              for (let offset = 0; offset < bytes.length; ) {
                 const { bytesWritten } = await file.write(bytes, offset, bytes.length - offset)
                 if (!bytesWritten) throw new Error("Archive write made no progress")
                 offset += bytesWritten

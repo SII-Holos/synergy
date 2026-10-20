@@ -77,7 +77,14 @@ export type DesktopThemeBridge = {
 
 export type DesktopUpdateMode = "auto" | "notify" | "manual" | "none"
 export type DesktopUpdatePhase =
-  "disabled" | "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "error"
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "installing"
+  | "error"
 
 export type DesktopUpdateStatus = {
   channel: "dev" | "stable"

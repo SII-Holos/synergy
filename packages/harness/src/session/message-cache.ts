@@ -253,7 +253,7 @@ export namespace SessionMessageCache {
     const budget = byteBudget()
     if (state().totalBytes <= budget) return
     if ((state().sizes.get(protect) ?? 0) > budget) drop(protect)
-    for (let i = 0; i < state().lru.length && state().totalBytes > budget;) {
+    for (let i = 0; i < state().lru.length && state().totalBytes > budget; ) {
       const victim = state().lru[i]
       if (victim === protect) {
         i++

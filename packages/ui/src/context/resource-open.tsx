@@ -23,7 +23,8 @@ export interface ResourceOpenOptions {
 }
 
 export type ResourceOpenResult =
-  { status: "opened" | "dispatched" | "cancelled" } | { status: "unavailable"; reason: string }
+  | { status: "opened" | "dispatched" | "cancelled" }
+  | { status: "unavailable"; reason: string }
 
 export interface ResourcePreview {
   title: string

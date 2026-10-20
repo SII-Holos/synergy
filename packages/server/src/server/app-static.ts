@@ -3,7 +3,9 @@ import { Server } from "./server"
 import path from "node:path"
 
 export type AppStaticRequest =
-  { type: "file"; path: string; immutable: boolean } | { type: "missing" } | { type: "spa" }
+  | { type: "file"; path: string; immutable: boolean }
+  | { type: "missing" }
+  | { type: "spa" }
 
 export async function resolveAppStaticRequest(appDist: string, reqPath: string): Promise<AppStaticRequest> {
   const exact = path.join(appDist, reqPath)

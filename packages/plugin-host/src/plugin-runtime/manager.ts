@@ -14,7 +14,11 @@ import { pluginAgentCallRuntime } from "./agent-call-runtime.js"
 import { resolvePluginRuntimeLimits } from "./runtime-limits.js"
 
 export type PluginRuntimeErrorCode =
-  "PLUGIN_UNAVAILABLE" | "TIMEOUT" | "CANCELLED" | "RUNTIME_ERROR" | "STALE_GENERATION"
+  | "PLUGIN_UNAVAILABLE"
+  | "TIMEOUT"
+  | "CANCELLED"
+  | "RUNTIME_ERROR"
+  | "STALE_GENERATION"
 
 export class PluginRuntimeError extends Error {
   constructor(

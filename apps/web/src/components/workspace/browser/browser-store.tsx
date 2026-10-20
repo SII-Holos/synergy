@@ -388,8 +388,8 @@ function olderNavigation(next: BrowserProtocolPage, current: BrowserProtocolPage
   const previous = current.navigation
   return Boolean(
     previous &&
-    incoming &&
-    (incoming.generation < previous.generation ||
-      (incoming.generation === previous.generation && incoming.revision < previous.revision)),
+      incoming &&
+      (incoming.generation < previous.generation ||
+        (incoming.generation === previous.generation && incoming.revision < previous.revision)),
   )
 }

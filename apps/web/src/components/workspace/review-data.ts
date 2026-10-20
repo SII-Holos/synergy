@@ -291,9 +291,9 @@ export function useReviewData(input: {
     canOpen: (row: FileDiff) =>
       Boolean(
         file.workspace &&
-        row.workspace?.id === file.workspace.id &&
-        row.workspace?.generation === file.workspace.generation &&
-        row.workspace?.root === file.workspace.path,
+          row.workspace?.id === file.workspace.id &&
+          row.workspace?.generation === file.workspace.generation &&
+          row.workspace?.root === file.workspace.path,
       ),
   }
 }

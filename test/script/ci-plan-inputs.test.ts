@@ -22,15 +22,17 @@ async function revisionFixture() {
     }).trim()
   const tasks: Task[] = [
     { id: "policy", kind: "policy", pool: "linux", owners: [], needs: [], seconds: 1 },
-    ...["complete", "dynamic"].map((id): Task => ({
-      id,
-      kind: "rollout",
-      pool: "linux",
-      owners: ["packages/core"],
-      needs: [],
-      seconds: 1,
-      inputs: [`packages/core/test/${id}.test.ts`],
-    })),
+    ...["complete", "dynamic"].map(
+      (id): Task => ({
+        id,
+        kind: "rollout",
+        pool: "linux",
+        owners: ["packages/core"],
+        needs: [],
+        seconds: 1,
+        inputs: [`packages/core/test/${id}.test.ts`],
+      }),
+    ),
   ]
   try {
     for (const [file, content] of Object.entries({

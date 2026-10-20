@@ -161,7 +161,8 @@ export namespace ExperienceEncoder {
   export async function loadLearning(): Promise<Required<LibraryConfigSchema.Learning>> {
     const config = await Config.current()
     const library = (config as any).library as
-      { experience?: { encode?: boolean; learning?: LibraryConfigSchema.Learning } } | undefined
+      | { experience?: { encode?: boolean; learning?: LibraryConfigSchema.Learning } }
+      | undefined
     return {
       ...LibraryConfigSchema.LEARNING_DEFAULTS,
       ...library?.experience?.learning,
@@ -316,7 +317,8 @@ export namespace ExperienceEncoder {
     const config = options.learning ? undefined : await Config.current()
     const library = config
       ? ((config as any).library as
-          { experience?: { encode?: boolean; learning?: LibraryConfigSchema.Learning } } | undefined)
+          | { experience?: { encode?: boolean; learning?: LibraryConfigSchema.Learning } }
+          | undefined)
       : undefined
     if (!options.force && library?.experience?.encode === false) return { encoded: false, skipped: true }
 
@@ -387,7 +389,8 @@ export namespace ExperienceEncoder {
       const retrievedIDs = ExperienceRecall.consumeRetrieval(sessionID, options.capturedRetrieval)
 
       const assistantInfo = turn.assistants.find((m) => m.info.role === "assistant")?.info as
-        MessageV2.Assistant | undefined
+        | MessageV2.Assistant
+        | undefined
       const scriptModel = assistantInfo
         ? await Provider.getModel(assistantInfo.providerID, assistantInfo.modelID)
         : undefined
@@ -536,7 +539,8 @@ export namespace ExperienceEncoder {
 
     const config = await Config.current()
     const library = (config as any).library as
-      { experience?: { encode?: boolean; learning?: LibraryConfigSchema.Learning } } | undefined
+      | { experience?: { encode?: boolean; learning?: LibraryConfigSchema.Learning } }
+      | undefined
     if (library?.experience?.encode === false) return
 
     const learning = {
@@ -582,7 +586,8 @@ export namespace ExperienceEncoder {
     const turn = turns[turnIdx]
     const userMsg = turn.user.info as MessageV2.User
     const assistantMsg = turn.assistants.find((m) => m.info.role === "assistant")?.info as
-      MessageV2.Assistant | undefined
+      | MessageV2.Assistant
+      | undefined
     const model = assistantMsg ? await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID) : undefined
 
     const rewardContent = buildRewardContent(msgs, turns, turnIdx)

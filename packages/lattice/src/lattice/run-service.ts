@@ -36,7 +36,8 @@ export namespace LatticeRunService {
 
   const runtimeState = RuntimeContext.state(() => ({
     reconcileDirectFn: undefined as
-      ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>) | undefined,
+      | ((scopeID: string, sessionID: string, reason: DirectReason) => Promise<void>)
+      | undefined,
   }))
 
   /** LatticeController owns reconciliation; it registers its forwarder at module

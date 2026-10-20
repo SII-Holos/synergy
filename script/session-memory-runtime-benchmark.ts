@@ -15,7 +15,13 @@ import {
 type PresetName = keyof typeof presets
 type Scenario = "trajectory" | "parallel" | "sequential"
 type Phase =
-  "idle" | "trajectory-root" | "parallel-primary" | "parallel-subagents" | "sequential-primary" | "terminal" | "release"
+  | "idle"
+  | "trajectory-root"
+  | "parallel-primary"
+  | "parallel-subagents"
+  | "sequential-primary"
+  | "terminal"
+  | "release"
 
 interface TrajectoryFixture {
   schemaVersion: number

@@ -165,7 +165,8 @@ export namespace SqliteMaintenance {
     for (const table of tables) {
       const where = table.where ? `WHERE ${table.where}` : ""
       const row = getRow(db, `SELECT MIN(${table.orderBy}) AS time FROM ${table.table} ${where}`) as
-        { time?: number | null } | undefined
+        | { time?: number | null }
+        | undefined
       if (row?.time === null || row?.time === undefined) continue
       if (!selected || row.time < selected.time) selected = { table, time: row.time }
     }

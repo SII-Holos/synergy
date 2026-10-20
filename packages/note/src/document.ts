@@ -27,7 +27,9 @@ export namespace NoteDocument {
   }
 
   export type ContentInput =
-    { format: "text"; text: string } | { format: "markdown"; text: string } | { format: "json"; json: unknown }
+    | { format: "text"; text: string }
+    | { format: "markdown"; text: string }
+    | { format: "json"; json: unknown }
 
   const INLINE_TYPES = new Set(["text", "hardBreak", "inlineMath", "mathInline", "image"])
   const BLOCK_TYPES = new Set([

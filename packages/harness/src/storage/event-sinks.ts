@@ -22,7 +22,9 @@ export namespace StorageEventSinks {
     capture(
       event: Readonly<StoredEvent>,
     ):
-      { partition: string; payload: unknown } | undefined | Promise<{ partition: string; payload: unknown } | undefined>
+      | { partition: string; payload: unknown }
+      | undefined
+      | Promise<{ partition: string; payload: unknown } | undefined>
     /** Optional transaction-local host receipt after sequence allocation; no external effects. */
     captured?(delivery: Readonly<Delivery>): void | Promise<void>
     /** Acknowledges durable acceptance. Receivers deduplicate by eventID and sinkID. */

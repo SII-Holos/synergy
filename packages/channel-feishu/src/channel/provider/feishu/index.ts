@@ -431,10 +431,9 @@ export function filterInboundMessage(input: MessageFilterInput): MessageFilterRe
   return { accepted: true, isGroup, wasMentioned, needsBotOpenIdResolution: false }
 }
 
-export class FeishuProvider implements ChannelTypes.Provider<
-  ConnectionsConfigSchema.ChannelFeishuAccount,
-  ConnectionsConfigSchema.ChannelFeishu
-> {
+export class FeishuProvider
+  implements ChannelTypes.Provider<ConnectionsConfigSchema.ChannelFeishuAccount, ConnectionsConfigSchema.ChannelFeishu>
+{
   readonly type = "feishu"
   readonly lifecycle = "self_connected" as const
   readonly conversation = {

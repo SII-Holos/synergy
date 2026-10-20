@@ -102,7 +102,7 @@ export function installCapture({ root, endpoint }) {
       }
       if (!streaming) return
       pending = pending.replace(/\r\n/g, "\n")
-      for (let index; (index = pending.indexOf("\n\n")) >= 0;) {
+      for (let index; (index = pending.indexOf("\n\n")) >= 0; ) {
         const frame = pending.slice(0, index)
         pending = pending.slice(index + 2)
         const lines = frame

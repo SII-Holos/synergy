@@ -218,7 +218,7 @@ test.skipIf(process.platform === "win32")("user shell records full output before
           const stream = Buffer.concat(chunks)
           let stdout = 0,
             stderr = 0
-          for (let offset = 0; offset < stream.length;) {
+          for (let offset = 0; offset < stream.length; ) {
             const length = stream.readUInt32BE(offset + 1)
             if (stream[offset] === 1) stdout += length
             else stderr += length

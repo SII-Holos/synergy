@@ -683,7 +683,8 @@ async function fetchWithTimeout(
 }
 
 type ChildProcessFailure =
-  { kind: "error"; error: Error } | { kind: "exit"; code: number | null; signal: NodeJS.Signals | null }
+  | { kind: "error"; error: Error }
+  | { kind: "exit"; code: number | null; signal: NodeJS.Signals | null }
 
 class ChildProcessHealthError extends Error {
   constructor(failure: ChildProcessFailure, lastError: unknown) {

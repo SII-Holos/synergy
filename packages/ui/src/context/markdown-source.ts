@@ -170,7 +170,7 @@ function codeRanges(raw: string): MarkdownSourceRange[] {
   const end = fence ? start + (fence[3]?.length ?? 0) : raw.length
   const indent = fence ? (/^(\s+)(?:```)/.exec(raw)?.[1].length ?? 0) : undefined
   const ranges: MarkdownSourceRange[] = []
-  for (let line = start; line < end;) {
+  for (let line = start; line < end; ) {
     const newline = raw.indexOf("\n", line)
     const finish = newline < 0 ? end : Math.min(end, newline + 1)
     const text = raw.slice(line, finish)
