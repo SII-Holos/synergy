@@ -119,6 +119,7 @@ mock.module("../../../src/components/workspace/browser/browser-workbench-api", (
 const { BuiltinWorkbenchPanelsProvider } = await import("../../../src/components/workspace/builtin-workbench-panels")
 
 const BUILTIN_PANEL_IDS = [
+  "trajectory",
   "resource-home",
   "notes",
   "context",
@@ -317,4 +318,18 @@ describe("built-in workbench panels", () => {
       dispose()
     }
   })
+})
+
+test("the trajectory is a session-scoped lazy workbench entry", () => {
+  const dispose = createRoot((done) => {
+    BuiltinWorkbenchPanelsProvider({ children: null })
+    return done
+  })
+  try {
+    const panel = listWorkbenchPanels().find((panel) => panel.id === "trajectory")
+    expect(panel).toMatchObject({ requiresSession: true, cardinality: "singleton", surface: "side" })
+    expect(panel?.loader).toBeFunction()
+  } finally {
+    dispose()
+  }
 })

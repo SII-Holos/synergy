@@ -21,6 +21,7 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useWorkbenchPanels } from "@/context/workbench"
 import { useExecution } from "@/context/execution"
 import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
@@ -940,5 +941,22 @@ export function ExecutionPanelBody(
         </Show>
       </div>
     </div>
+  )
+}
+
+export function ExecutionTrajectoryWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const panels = useWorkbenchPanels()
+  const { _ } = useLingui()
+  const value = () =>
+    props.tab.state && typeof props.tab.state === "object" ? (props.tab.state as Record<string, unknown>) : {}
+  return (
+    <ExecutionPanelBody
+      {...props}
+      tab={{ ...props.tab, state: { mode: "records", actor: "all", ...value() } }}
+      runID={typeof value().runID === "string" ? (value().runID as string) : ""}
+      scopeLabel={_(E.allTasks)}
+      onBack={() => void panels.openPanel("context")}
+      onStateChange={(state) => panels.updateTab(props.tab.id, { state })}
+    />
   )
 }

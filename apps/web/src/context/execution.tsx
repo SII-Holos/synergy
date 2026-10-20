@@ -98,6 +98,8 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
             }
           : undefined
       },
+      openTrajectory: (runID?: string, nodeID?: string) =>
+        panels.openPanel("trajectory", runID || nodeID ? { init: { state: { runID, nodeID } } } : undefined),
       open: (runID?: string, nodeID?: string) =>
         panels.openPanel("context", runID || nodeID ? { init: { state: { runID, nodeID } } } : undefined),
     }

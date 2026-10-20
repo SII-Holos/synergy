@@ -111,6 +111,8 @@ Cold latest navigation and return-to-latest establish viewport-owned follow inte
 
 For horizontally windowed execution charts, include viewport widths that do not divide evenly into the column count. Exercise native scrolling after a prepend while retaining keyboard focus; rounding at a column boundary must not add an extra visible request or move its anchor.
 
+For trajectory entry changes, exercise the conversation header, workbench launcher and compact task details against the same session-scoped panel. Reuse the execution projection and inspector; preserve lazy loading, filters, paging, historical gaps and verified request/tool source reads.
+
 ## Execution details
 
 When a structured file-change result already represents its receipt, render it once using the shared Review diff renderer: file headers, change counts, line numbers and syntax highlighting. Keep bounded code readable during highlighter startup. Use separately recorded per-file diffs for multi-file tools; do not reconstruct actual effects from requested edits or invent line positions across synthetic files. Omit per-file outcome prose and operation ledgers from Result. Preserve partial and unconfirmed outcomes in the header and keep complete receipts, execution metadata and diagnostics copyable in Parameters and diagnostics. Historical diffs may use their recorded file identity, never a guessed destination. Verify edit, revise_file and apply_patch, including partial/error, missing preview, long content and narrow layouts through the real renderer and App shell.

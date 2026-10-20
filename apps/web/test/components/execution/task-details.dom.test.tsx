@@ -48,7 +48,7 @@ beforeAll(async () => {
       return {data:{sessionID:q.sessionID,items:items.slice(start,start+q.limit),count:Math.min(q.limit,items.length-start),total:items.length,offset:start,limit:q.limit,hasMore:start+q.limit<items.length,hasActiveAgenda:true}}
     },inboxRemoved:async(q,options)=>{(window.removedRequests??=[]).push(options.signal);window.removedReads=(window.removedReads||0)+1;if(window.removedDelay)await new Promise(r=>setTimeout(r,window.removedDelay));return {data:removed}},inboxGuide:async(q)=>{window.guided=q.itemID},inboxRetry:async(q)=>{window.retried=q.itemID},inboxRemove:async(q)=>{const item=data.inbox.root.find(i=>i.id===q.itemID);removed.push(item);setData("inbox","root",data.inbox.root.filter(i=>i.id!==q.itemID));return {data:item}},inboxRestore:async(q)=>{const i=removed.findIndex(i=>i.id===q.itemID);setData("inbox","root",[...data.inbox.root,removed.splice(i,1)[0]]);return {data:true}}},cortex:{cancel:async(q)=>{window.cancelledTask=q.taskID;return {data:true}}}}}
     const [executionState,setExecutionState]=createStore({summary,error:undefined})
-    export const useExecution=()=>({retain() {}, advance:()=>0,connected:()=>true,state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"}})
+    export const useExecution=()=>({retain() {}, advance:()=>0,connected:()=>true,state:executionState,available:()=>!location.search.includes("minimal"),refresh:async()=>{window.refreshed=true},open:async(runID,nodeID)=>{window.openedNode=nodeID||"all"},openTrajectory:async(runID,nodeID)=>{window.openedNode=nodeID||"trajectory"}})
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     export const useSync=()=>({data,session:{get:()=>session,refresh:async()=>{}}})
@@ -553,4 +553,11 @@ test("execution time displays its lower bound without a tooltip and hides empty 
   expect(await page.getByRole("tooltip").count()).toBe(0)
   await page.evaluate(() => Reflect.get(window, "updateUsage")({ elapsedMs: null }))
   expect(await page.locator(".execution-compact-metric").filter({ hasText: "00:00" }).count()).toBe(0)
+})
+
+test("the conversation opens the full trajectory directly without opening task details", async () => {
+  const trajectory = page.getByRole("button", { name: "Execution trajectory", exact: true })
+  await trajectory.click()
+  expect(await page.evaluate(() => Reflect.get(window, "openedNode"))).toBe("trajectory")
+  expect(await page.locator(".execution-popover").isVisible()).toBe(false)
 })
