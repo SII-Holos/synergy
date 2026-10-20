@@ -208,6 +208,7 @@ export function KanbanPanel() {
     batch(() => {
       target.setTabs(next.tabs)
       target.setActive(next.active)
+      target.setReveal({ ...target.reveal(), interacted: true })
       target.open()
     })
     openSession(pane)

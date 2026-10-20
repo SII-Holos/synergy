@@ -51,7 +51,15 @@ afterAll(() => {
 let config: Record<string, unknown> = {}
 const configWrites: unknown[] = []
 const navigations: string[] = []
-const surfaces = new Map<string, { tabs: Array<{ id: string; panelId: string }>; active?: string; opened?: boolean }>()
+const surfaces = new Map<
+  string,
+  {
+    tabs: Array<{ id: string; panelId: string }>
+    active?: string
+    opened?: boolean
+    reveal?: { interacted?: boolean; consumed?: boolean }
+  }
+>()
 const sessionWrites: Array<{ sessionID: string; controlProfile: string; resolvePendingPermissions?: boolean }> = []
 
 mock.module("../../../src/context/global-sync", () => ({
@@ -137,6 +145,10 @@ mock.module("../../../src/context/layout", () => ({
       surfaces.set(key, state)
       return {
         tabs: () => state.tabs,
+        reveal: () => state.reveal,
+        setReveal: (value: { interacted?: boolean; consumed?: boolean }) => {
+          state.reveal = value
+        },
         setTabs: (tabs: Array<{ id: string; panelId: string }>) => {
           state.tabs = tabs
         },
@@ -338,6 +350,7 @@ test("a Kanban task opens its own trajectory without replacing another resource 
     expect(navigations).toEqual(["/aG9tZQ/session/ses_board"])
     expect(surfaces.get("aG9tZQ/ses_board")).toMatchObject({
       opened: true,
+      reveal: { interacted: true },
       tabs: [{ id: "draft", panelId: "notes" }, { panelId: "trajectory" }],
     })
     trigger!.click()
