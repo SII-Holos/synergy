@@ -1,5 +1,13 @@
+import { APICallError, generateText } from "ai"
+import { Provider } from "./provider"
+import { ProviderAuthRecovery } from "./auth-recovery"
+import { RolloutTransport } from "../session/rollout/transport"
+import { ProviderTransform } from "./transform"
+import { ProviderSessionHeader } from "./session-header"
+import { RolloutOperation } from "../session/rollout/operation"
+import { findRecordingError } from "../session/rollout/error"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import z from "zod"
+import { z } from "zod"
 import { Config } from "../config/config"
 import { ConfigExtensions } from "../config/extensions"
 import type { ModelsDev } from "./models-schemas"
@@ -335,6 +343,116 @@ export namespace ProviderConnection {
     }
     result.push(...ConfigExtensions.references(config, providerID))
     return result
+  }
+
+  export const TestInput = z
+    .object({ modelID: z.string().min(1).optional() })
+    .strict()
+    .meta({ ref: "ProviderConnectionTestInput" })
+  export const TestResult = z
+    .object({
+      providerID: z.string(),
+      modelID: z.string().optional(),
+      success: z.boolean(),
+      durationMs: z.number(),
+      error: z
+        .object({
+          kind: z.enum(["authentication", "rate_limit", "model", "network", "timeout", "unavailable", "provider"]),
+          statusCode: z.number().optional(),
+        })
+        .optional(),
+    })
+    .meta({ ref: "ProviderConnectionTestResult" })
+
+  export async function testConnection(
+    providerID: string,
+    input: z.infer<typeof TestInput>,
+    signal?: AbortSignal,
+  ): Promise<z.infer<typeof TestResult>> {
+    const started = performance.now()
+    let modelID = input.modelID
+    const result = (value: Pick<z.infer<typeof TestResult>, "success" | "error">) => ({
+      providerID,
+      modelID,
+      durationMs: Math.round(performance.now() - started),
+      ...value,
+    })
+    try {
+      signal?.throwIfAborted()
+      const provider = await Provider.getProvider(providerID)
+      const model = modelID
+        ? provider?.models[modelID]
+        : Object.values(provider?.models ?? {}).find(
+            (model) => model.capabilities.input.text && model.capabilities.output.text,
+          )
+      if (!model) return result({ success: false, error: { kind: "unavailable" } })
+      modelID = model.id
+      const language = await Provider.createLanguageFromSpec(model, {
+        profileID: provider.profileID,
+        key: provider.key,
+        auth: await Auth.get(providerID),
+        options: {
+          ...provider.options,
+          fetch: ProviderAuthRecovery.handled((request, init) =>
+            RolloutTransport.fetch((provider.options?.fetch ?? fetch) as typeof fetch, request, init),
+          ),
+        },
+      })
+      const messages = ProviderTransform.message(
+        [{ role: "user", content: [{ type: "text", text: "Reply with OK only." }] }],
+        model,
+      )
+      const abortSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000)
+      await RolloutOperation.execute(
+        {
+          independent: true,
+          purpose: "model.validation",
+          kind: "chat",
+          model: {
+            providerID,
+            modelID: model.id,
+            apiModelID: model.api.id,
+            sdk: model.api.npm,
+            pricing: model.pricing ?? null,
+            billingMode: model.billingMode ?? "unknown",
+            limits: model.limit,
+          },
+          request: JSON.parse(JSON.stringify({ messages, maxOutputTokens: 32, maxRetries: 0 })),
+        },
+        async () => {
+          const response = await generateText({
+            model: language,
+            messages,
+            maxOutputTokens: 32,
+            maxRetries: 0,
+            abortSignal,
+            headers: ProviderSessionHeader.forRequest({ model, providerOptions: provider?.options }),
+          })
+          return {
+            value: undefined,
+            response: JSON.parse(JSON.stringify(response.response)),
+            usage: JSON.parse(JSON.stringify(response.usage)),
+          }
+        },
+      )
+      return result({ success: true })
+    } catch (error) {
+      if (findRecordingError(error) || signal?.aborted) throw error
+      const statusCode = APICallError.isInstance(error) ? error.statusCode : undefined
+      const kind =
+        error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name)
+          ? "timeout"
+          : statusCode === 401 || statusCode === 403
+            ? "authentication"
+            : statusCode === 429
+              ? "rate_limit"
+              : statusCode === 404
+                ? "model"
+                : statusCode
+                  ? "provider"
+                  : "network"
+      return result({ success: false, error: { kind, ...(statusCode ? { statusCode } : {}) } })
+    }
   }
 
   export async function create(input: CreateInput) {

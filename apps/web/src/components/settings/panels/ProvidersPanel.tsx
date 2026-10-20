@@ -18,6 +18,7 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { createEffect, createMemo, createSignal, For, Show, onCleanup } from "solid-js"
 import { disconnectProviderConfirm } from "@/components/dialog/confirm-copy"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { ProviderConnectionTest } from "@/components/provider/ProviderConnectionFlow"
 import { ProviderAccountSetup } from "./ProviderAdditionalAccountSetup"
 import { ProviderAccountEditor } from "./ProviderAccountEditor"
 import { CustomProviderEditor } from "./CustomProviderEditor"
@@ -645,6 +646,15 @@ export function ProvidersPanel(props: {
                         {catalogError()?.message}
                       </p>
                     </Show>
+                    <ProviderConnectionTest
+                      providerID={provider().id}
+                      revision={JSON.stringify([provider().endpoint, provider().enabled, provider().health?.updatedAt])}
+                      disabled={
+                        drafts.pending() ||
+                        drafts.dirty(`${provider().protocol ? "custom" : "edit"}:${provider().id}`) ||
+                        drafts.dirty(`existing:${provider().id}`)
+                      }
+                    />
                     <Show
                       when={provider().protocol}
                       fallback={

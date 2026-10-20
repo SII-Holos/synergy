@@ -8194,6 +8194,14 @@ msgid "app.provider.toast.reconnected"
 msgstr "⟦reconnected⟧"
 
 #. js-lingui-explicit-id
+msgid "app.provider.toast.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.provider.toast.untested"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.rawMessages.back"
 msgstr "⟦Messages⟧"
 
@@ -15995,8 +16003,8 @@ msgid "provider.recovery.updateEnv"
 msgstr "⟦{providerName} rejected credentials from {names}. Update the environment and restart the server.⟧"
 
 #. js-lingui-explicit-id
-msgid "provider.status.connected"
-msgstr "⟦Connected⟧"
+msgid "provider.status.configured"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "provider.status.notConnected"
@@ -16021,6 +16029,54 @@ msgstr "⟦Unavailable⟧"
 #. js-lingui-explicit-id
 msgid "provider.status.updateEnvironment"
 msgstr "⟦Update environment⟧"
+
+#. js-lingui-explicit-id
+msgid "provider.test.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.authentication"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.network"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.provider"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.rateLimit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.saveFirst"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.success"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.timeout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.unavailable"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "provider.usage.available"

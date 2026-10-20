@@ -31,7 +31,7 @@ export function providerStatusLabel(
   if (health?.status === "connected")
     return availability?.available === false
       ? { id: "provider.status.unavailable", message: "Unavailable" }
-      : { id: "provider.status.connected", message: "Connected" }
+      : { id: "provider.status.configured", message: "Configured" }
   return { id: "provider.status.notConnected", message: "Not connected" }
 }
 

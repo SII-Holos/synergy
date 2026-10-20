@@ -6,6 +6,9 @@ import { Auth } from "@ericsanchezok/synergy-harness/provider/api-key"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { registerLocalProviderSdks } from "@ericsanchezok/synergy-local-runtime/provider/sdk-registry"
+import { ProviderConnection } from "@ericsanchezok/synergy-harness/provider/connection"
+import { Session } from "@ericsanchezok/synergy-harness/session"
 import { createProviderRoute } from "../../src/server/provider"
 
 test("provider connection PATCH edits a canonical account while preserving validation and removal boundaries", async () => {
@@ -249,4 +252,89 @@ test("mounted provider connection custom operation keeps its OpenAPI contract", 
   expect(operation?.requestBody).toMatchObject({
     content: { "application/json": { schema: { $ref: "#/components/schemas/ProviderConnectionCustomInput" } } },
   })
+})
+
+test("connection testing invokes the saved model, rejects a wrong key and creates no Session", async () => {
+  const requests: string[] = []
+  const endpoint = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    async fetch(request) {
+      requests.push(`${request.method} ${new URL(request.url).pathname} ${request.headers.get("authorization") ?? ""}`)
+      if (request.headers.get("authorization") !== "Bearer fixture-valid")
+        return Response.json(
+          { error: { message: "Invalid API key: fixture-wrong", type: "authentication_error" } },
+          { status: 401 },
+        )
+      return Response.json({
+        id: "probe",
+        object: "chat.completion",
+        created: 1,
+        model: "probe-model",
+        choices: [{ index: 0, message: { role: "assistant", content: "OK" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 4, completion_tokens: 1, total_tokens: 5 },
+      })
+    },
+  })
+  try {
+    await using runtime = await testRuntime({ register: registerLocalProviderSdks })
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await ProviderConnection.createCustom({
+            id: "probe-provider",
+            name: "Probe",
+            endpoint: `http://127.0.0.1:${endpoint.port}/v1`,
+            protocol: "openai-completions",
+            models: [
+              { id: "probe-model", context: 4096, output: 256, toolCall: false, image: false, reasoning: false },
+            ],
+          })
+          await Auth.set("probe-provider", { type: "api", key: "fixture-wrong" })
+          const app = new Hono().route("/provider", createProviderRoute())
+          const failed = await app.request("/provider/connections/probe-provider/test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          })
+          expect(failed.status).toBe(200)
+          const failure = await failed.json()
+          expect(failure).toMatchObject({
+            success: false,
+            providerID: "probe-provider",
+            modelID: "probe-model",
+            error: { kind: "authentication", statusCode: 401 },
+          })
+          expect(JSON.stringify(failure)).not.toContain("fixture-wrong")
+          expect(requests).toEqual(["POST /v1/chat/completions Bearer fixture-wrong"])
+          await Auth.set("probe-provider", { type: "api", key: "fixture-valid" })
+          const passed = await app.request("/provider/connections/probe-provider/test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          })
+          expect(await passed.json()).toMatchObject({
+            success: true,
+            providerID: "probe-provider",
+            modelID: "probe-model",
+          })
+          expect(requests).toEqual([
+            "POST /v1/chat/completions Bearer fixture-wrong",
+            "POST /v1/chat/completions Bearer fixture-valid",
+          ])
+          const unavailable = await app.request("/provider/connections/missing-provider/test", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: "{}",
+          })
+          expect(await unavailable.json()).toMatchObject({ success: false, error: { kind: "unavailable" } })
+          expect(requests).toHaveLength(2)
+          expect((await Session.list()).data).toHaveLength(0)
+        },
+      }),
+    )
+  } finally {
+    endpoint.stop(true)
+  }
 })

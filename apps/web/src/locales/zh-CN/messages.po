@@ -8194,6 +8194,14 @@ msgid "app.provider.toast.reconnected"
 msgstr "已重新连接"
 
 #. js-lingui-explicit-id
+msgid "app.provider.toast.saved"
+msgstr "凭据已保存"
+
+#. js-lingui-explicit-id
+msgid "app.provider.toast.untested"
+msgstr "凭据已保存。请点击“测试连接”验证模型请求。"
+
+#. js-lingui-explicit-id
 msgid "app.rawMessages.back"
 msgstr "消息"
 
@@ -15995,8 +16003,8 @@ msgid "provider.recovery.updateEnv"
 msgstr "{providerName} 拒绝了来自 {names} 的凭据。请更新环境并重启服务器。"
 
 #. js-lingui-explicit-id
-msgid "provider.status.connected"
-msgstr "已连接"
+msgid "provider.status.configured"
+msgstr "已配置"
 
 #. js-lingui-explicit-id
 msgid "provider.status.notConnected"
@@ -16021,6 +16029,54 @@ msgstr "不可用"
 #. js-lingui-explicit-id
 msgid "provider.status.updateEnvironment"
 msgstr "更新环境"
+
+#. js-lingui-explicit-id
+msgid "provider.test.action"
+msgstr "测试连接"
+
+#. js-lingui-explicit-id
+msgid "provider.test.authentication"
+msgstr "凭据被拒绝，请检查已保存的 API Key。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.failed"
+msgstr "连接测试未能完成，请重试。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.model"
+msgstr "未找到模型或接口地址。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.network"
+msgstr "无法连接服务商，请检查接口地址和网络。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.pending"
+msgstr "正在测试…"
+
+#. js-lingui-explicit-id
+msgid "provider.test.provider"
+msgstr "服务商拒绝了模型请求。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.rateLimit"
+msgstr "服务商返回了额度或限流错误。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.saveFirst"
+msgstr "请先保存修改，再测试连接。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.success"
+msgstr "模型请求成功 · {model} · {duration} 毫秒"
+
+#. js-lingui-explicit-id
+msgid "provider.test.timeout"
+msgstr "模型请求超时。"
+
+#. js-lingui-explicit-id
+msgid "provider.test.unavailable"
+msgstr "此账号没有已启用的文本模型。"
 
 #. js-lingui-explicit-id
 msgid "provider.usage.available"
