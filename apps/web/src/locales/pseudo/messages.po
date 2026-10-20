@@ -17277,6 +17277,10 @@ msgid "session.cmd.undoDesc"
 msgstr "⟦Undo the last message turn⟧"
 
 #. js-lingui-explicit-id
+msgid "session.column.resize"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.content.loadFailed"
 msgstr ""
 

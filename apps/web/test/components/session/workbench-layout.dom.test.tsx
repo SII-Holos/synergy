@@ -59,6 +59,7 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/components/session/session-inbox.css`)}
     function App() {
       const [fresh, setFresh] = createSignal(true)
+      const [columnWidth, setColumnWidth] = createSignal(800)
       const [ready, setReady] = createSignal(true)
       window.setComposerReady = setReady
       const [height, setHeight] = createSignal(0)
@@ -76,7 +77,7 @@ beforeAll(async () => {
         readOnly: () => false, isGlobal: () => true, pendingText: () => "", scopeName: () => "Home",
         branch: () => undefined, lastModified: () => undefined, links: () => [],
         render: part => part === "status" ? <button data-status>Connection details</button> : null }
-      return <div style="height:100dvh"><PluginPageOutlet page="session" sessionId={fresh() ? undefined : "created"} fallback={() => <DefaultSession context={{layout: {
+      return <div style="height:100dvh"><PluginPageOutlet page="session" sessionId={fresh() ? undefined : "created"} fallback={() => <DefaultSession column={{ width: columnWidth, resize: setColumnWidth }} context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
           <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
@@ -498,3 +499,52 @@ test("native host controls share the built-in row and retain third-party Shell s
   await page.locator("[data-custom]").waitFor({ state: "attached", timeout: 2000 })
   expect((await bounds("[data-custom]")).top).toBe((await bounds(".desktop-native-titlebar")).bottom)
 }, 20_000)
+
+test("conversation width resizes the transcript and composer together without remounting the draft", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  const editor = page.getByRole("textbox", { name: "Message", exact: true })
+  await editor.fill("Retained draft")
+  await editor.evaluate((el) => (el.dataset.retained = "yes"))
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  await handle.press("ArrowRight")
+  expect((await bounds("[data-message]")).width).toBe(832)
+  expect((await bounds(".session-prompt-dock-content")).width).toBe(832)
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + box!.width / 2 + 100, box!.y + box!.height / 2)
+  await page.mouse.up()
+  expect((await bounds("[data-message]")).width).toBe(1032)
+  expect((await bounds(".session-prompt-dock-content")).width).toBe(1032)
+  expect(await editor.getAttribute("data-retained")).toBe("yes")
+  expect(await editor.textContent()).toBe("Retained draft")
+  await handle.dblclick()
+  expect((await bounds("[data-message]")).width).toBe(800)
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 375)
+  expect(await handle.isVisible()).toBe(false)
+  expect((await bounds(".session-prompt-dock-content")).width).toBe(375)
+})
+
+test("conversation resize supports limits and cancels an active drag", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  await handle.press("End")
+  expect((await bounds("[data-message]")).width).toBe(1440)
+  await handle.press("Home")
+  await handle.press("ArrowLeft")
+  expect((await bounds("[data-message]")).width).toBe(768)
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box!.x + 100, box!.y + box!.height / 2)
+  await page.keyboard.press("Escape")
+  await page.mouse.up()
+  expect((await bounds("[data-message]")).width).toBe(768)
+  await page.setViewportSize({ width: 600, height: 812 })
+  await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 600)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 768)
+})

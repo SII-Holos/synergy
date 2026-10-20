@@ -1431,6 +1431,16 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("sidebar", { width: clampSidebarWidth(width), resized: true })
         },
       },
+      conversation: {
+        width: createMemo(() => {
+          const width = store.conversation?.width
+          return typeof width === "number" && Number.isFinite(width) ? Math.max(480, Math.min(1920, width)) : 800
+        }),
+        resize(width: number) {
+          if (Number.isFinite(width))
+            setStore("conversation", { width: Math.round(Math.max(480, Math.min(1920, width))) })
+        },
+      },
       review: {
         diffStyle: createMemo(() => (store.review?.diffStyle ?? "split") as ReviewDiffStyle),
         setDiffStyle(diffStyle: ReviewDiffStyle) {

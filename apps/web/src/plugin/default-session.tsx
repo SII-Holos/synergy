@@ -1,8 +1,11 @@
 import type { PluginComponentProps, PluginSessionLayoutService } from "@ericsanchezok/synergy-plugin"
-import { createSignal } from "solid-js"
+import { Show, createSignal, onMount, onCleanup } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { SessionPromptDockAnchor, SessionWorkbenchChrome } from "../components/session/workbench-chrome"
 
-export function DefaultSession(props: PluginComponentProps<{ layout: PluginSessionLayoutService }>) {
+export function DefaultSession(
+  props: PluginComponentProps<{ layout: PluginSessionLayoutService }> & { column?: ConversationColumn },
+) {
   const layout = props.context.layout
   const [chrome, setChrome] = createSignal<HTMLElement>()
   const [promptAnchor, setPromptAnchor] = createSignal<HTMLElement>()
@@ -28,11 +31,13 @@ export function DefaultSession(props: PluginComponentProps<{ layout: PluginSessi
               class="session-workbench-pane synergy-workbench-canvas @container relative min-w-0 flex flex-1 flex-col bg-background-stronger pb-0 md:pb-3"
               style={{
                 "min-width": layout.minimumWidth() === undefined ? undefined : `${layout.minimumWidth()}px`,
+                "--session-content-width": props.column ? `${props.column.width()}px` : undefined,
                 "--prompt-height": layout.promptHeight() ? `${layout.promptHeight()}px` : undefined,
               }}
             >
               {layout.render("conversation")}
               {layout.render("composer")}
+              <Show when={props.column}>{(column) => <ConversationColumnResize column={column()} />}</Show>
             </div>
             {layout.render("workbench.side")}
           </div>
@@ -40,5 +45,86 @@ export function DefaultSession(props: PluginComponentProps<{ layout: PluginSessi
         </div>
       </SessionPromptDockAnchor.Provider>
     </SessionWorkbenchChrome.Provider>
+  )
+}
+
+type ConversationColumn = { width: () => number; resize: (width: number) => void }
+
+function ConversationColumnResize(props: { column: ConversationColumn }) {
+  const { _ } = useLingui()
+  const [available, setAvailable] = createSignal(800)
+  let root!: HTMLDivElement
+  let gesture: { pointer: number; x: number; width: number } | undefined
+  const width = () => Math.min(available(), props.column.width())
+  const minimum = () => Math.min(480, available())
+  const resize = (value: number) => props.column.resize(Math.round(Math.max(minimum(), Math.min(available(), value))))
+  const cancel = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || !gesture) return
+    event.preventDefault()
+    event.stopPropagation()
+    props.column.resize(gesture.width)
+    gesture = undefined
+  }
+  onMount(() => {
+    const pane = root.parentElement!
+    const measure = () => setAvailable(Math.min(1920, pane.clientWidth))
+    const observer = new ResizeObserver(measure)
+    observer.observe(pane)
+    measure()
+    document.addEventListener("keydown", cancel, true)
+    onCleanup(() => {
+      observer.disconnect()
+      document.removeEventListener("keydown", cancel, true)
+    })
+  })
+  return (
+    <div ref={root} class="conversation-column-resize">
+      <button
+        type="button"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={_({ id: "session.column.resize", message: "Resize conversation" })}
+        aria-valuemin={minimum()}
+        aria-valuemax={available()}
+        aria-valuenow={width()}
+        class="conversation-column-resize-handle"
+        onDblClick={() => props.column.resize(800)}
+        onKeyDown={(event) => {
+          const next =
+            event.key === "ArrowRight"
+              ? width() + 32
+              : event.key === "ArrowLeft"
+                ? width() - 32
+                : event.key === "Home"
+                  ? 800
+                  : event.key === "End"
+                    ? available()
+                    : undefined
+          if (next === undefined) return
+          event.preventDefault()
+          resize(next)
+        }}
+        onPointerDown={(event) => {
+          if (event.button !== 0 || gesture) return
+          event.preventDefault()
+          gesture = { pointer: event.pointerId, x: event.clientX, width: width() }
+          event.currentTarget.setPointerCapture(event.pointerId)
+        }}
+        onPointerMove={(event) => {
+          if (!gesture || event.pointerId !== gesture.pointer) return
+          resize(gesture.width + 2 * (event.clientX - gesture.x))
+        }}
+        onPointerUp={() => {
+          gesture = undefined
+        }}
+        onPointerCancel={() => {
+          if (gesture) props.column.resize(gesture.width)
+          gesture = undefined
+        }}
+        onLostPointerCapture={() => {
+          gesture = undefined
+        }}
+      />
+    </div>
   )
 }
