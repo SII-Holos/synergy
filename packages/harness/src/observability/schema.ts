@@ -33,6 +33,22 @@ export namespace ObservabilitySchema {
     .meta({ ref: "TelemetryUnit" })
   export type Unit = z.infer<typeof Unit>
 
+  export const ConditionOwner = z.enum([
+    "control-plane",
+    "service",
+    "agent-pool",
+    "policy-pool",
+    "plugin",
+    "browser",
+    "mcp",
+    "local-process",
+  ])
+  export type ConditionOwner = z.infer<typeof ConditionOwner>
+
+  export function conditionFingerprint(input: { scopeID?: string; owner: ConditionOwner; code: string }) {
+    return `condition:${JSON.stringify([input.scopeID ?? null, input.owner, input.code])}`
+  }
+
   export const LabelValue = z
     .union([z.string().max(4096), z.number(), z.boolean(), z.null()])
     .meta({ ref: "TelemetryLabelValue" })

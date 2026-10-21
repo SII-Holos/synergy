@@ -371,6 +371,7 @@ describe("ObservabilityStore", () => {
       using writes = spyOn(ObservabilityDbWrites, "insertIssue")
       using redactions = spyOn(ObservabilityRedaction, "redactRecord")
       using parses = spyOn(ObservabilitySchema.Issue, "parse")
+      using statements = spyOn(ObservabilityStore.open()!, "query")
       for (let index = 0; index < 1000; index++) {
         ObservabilityIssues.raise({
           code: "PERF_TEST_DISCRETE_WORK",
@@ -385,9 +386,13 @@ describe("ObservabilityStore", () => {
       expect(ObservabilityIssues.list({ scopeID: "discrete_work" })).toMatchObject([{ occurrenceCount: 1000 }])
       expect(writes).toHaveBeenCalledTimes(1000)
       expect(redactions).toHaveBeenCalledTimes(1000)
+      expect(
+        statements.mock.calls.filter(([statement]) => /^\s*(INSERT INTO|UPDATE) obs_issues/.test(statement)),
+      ).toHaveLength(1000)
       writes.mockClear()
       redactions.mockClear()
       parses.mockClear()
+      statements.mockClear()
       const events: ObservabilityLiveEvents.Event[] = []
       const unsubscribe = ObservabilityLiveEvents.subscribe((event) => events.push(event))
       const input = {
@@ -428,6 +433,11 @@ describe("ObservabilityStore", () => {
         expect(writes).toHaveBeenCalledTimes(1)
         expect(redactions.mock.calls.length).toBeLessThanOrEqual(2)
         expect(parses).toHaveBeenCalledTimes(3)
+        expect(
+          statements.mock.calls
+            .filter(([statement]) => /^\s*(INSERT INTO|UPDATE) obs_issues/.test(statement))
+            .map(([statement]) => statement.trimStart().split(" ")[0]),
+        ).toEqual(["UPDATE", "INSERT"])
         ObservabilityIssues.observeCondition({ ...input, observedValue: 105 })
         const [second] = ObservabilityIssues.list({ scopeID: input.scopeID })
         expect(second).toMatchObject({
@@ -440,6 +450,9 @@ describe("ObservabilityStore", () => {
         expect(second.sessionID).toBeUndefined()
         expect(second.traceId).toBeUndefined()
         expect(writes).toHaveBeenCalledTimes(2)
+        expect(
+          statements.mock.calls.filter(([statement]) => /^\s*(INSERT INTO|UPDATE) obs_issues/.test(statement)),
+        ).toHaveLength(4)
         expect(events[0]).toMatchObject({
           type: "issue.raised",
           issue: { occurrenceCount: 1, evidence: { observedValue: 100 } },
@@ -609,8 +622,195 @@ describe("ObservabilityStore", () => {
       expect(ObservabilityIssues.list({ status: "resolved", module: "process" })).toMatchObject([
         { issueId: first.issueId, occurrenceCount: 2 },
       ])
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 150 })
+      const [next] = ObservabilityIssues.list({ module: "process" })
+      expect(next.issueId).not.toBe(first.issueId)
+      expect(next).toMatchObject({ occurrenceCount: 1, evidence: { firstObservedValue: 150, peakObservedValue: 150 } })
     })
   })
+
+  test("reentry after a failed recovery transaction does not mix episode identities and evidence", () =>
+    runtime.run(() => {
+      let now = Date.now()
+      using clock = spyOn(ObservabilityClock, "now").mockImplementation(() => now)
+      const input = {
+        code: "PERF_TEST_FAILED_RECOVERY",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Recovery rollback",
+        severity: "warning" as const,
+        state: "active" as const,
+        thresholdValue: 100,
+        observedValue: 120,
+        unit: "bytes" as const,
+      }
+      ObservabilityIssues.observeCondition(input)
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 160 })
+      const [first] = ObservabilityIssues.list({ module: "process" })
+      const conn = ObservabilityStore.open()!
+      conn.exec(
+        "CREATE TRIGGER reject_recovery BEFORE UPDATE OF status ON obs_issues WHEN NEW.status = 'resolved' BEGIN SELECT RAISE(ABORT, 'rejected recovery'); END",
+      )
+      const dropped = ObservabilityStore.stats().dropped
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 20 })
+      ObservabilityStore.flush()
+      expect(ObservabilityStore.stats().dropped).toBe(dropped + 1)
+      conn.exec("DROP TRIGGER reject_recovery")
+      now += 100
+      const events: ObservabilityLiveEvents.Event[] = []
+      const unsubscribe = ObservabilityLiveEvents.subscribe((event) => events.push(event))
+      try {
+        ObservabilityIssues.observeCondition({ ...input, observedValue: 250 })
+        const [next] = ObservabilityIssues.list({ module: "process" })
+        expect(next.issueId).not.toBe(first.issueId)
+        expect(events[0]).toMatchObject({ type: "issue.raised", issue: { issueId: next.issueId } })
+        expect(next).toMatchObject({
+          firstSeenTime: now,
+          occurrenceCount: 1,
+          evidence: { firstObservedValue: 250, peakObservedValue: 250 },
+        })
+        const [superseded] = ObservabilityIssues.list({ status: "suppressed", module: "process" })
+        expect(superseded).toMatchObject({
+          issueId: first.issueId,
+          firstSeenTime: first.firstSeenTime,
+          occurrenceCount: 2,
+          evidence: {
+            firstObservedValue: 120,
+            peakObservedValue: 160,
+            suppressionReason: "condition_episode_superseded_without_persisted_recovery",
+            supersededByIssueId: next.issueId,
+          },
+        })
+        expect(superseded.evidence.resolvedTime).toBeUndefined()
+        expect(superseded.evidence.recoveryObservedValue).toBeUndefined()
+        ObservabilityIssues.observeCondition({ ...input, observedValue: 300 })
+        expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([
+          { issueId: next.issueId, occurrenceCount: 2, evidence: { firstObservedValue: 250, peakObservedValue: 300 } },
+        ])
+        ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 30 })
+        const [resolved] = ObservabilityIssues.list({ status: "resolved", module: "process" })
+        expect(resolved).toMatchObject({ issueId: next.issueId, occurrenceCount: 2 })
+        expect(events[1]).toMatchObject({ type: "issue.resolved", issue: { issueId: resolved.issueId } })
+      } finally {
+        unsubscribe()
+      }
+    }))
+
+  test("suppression and new episode insertion roll back together when the insert fails", () =>
+    runtime.run(() => {
+      ObservabilityIssues.observeCondition({
+        code: "PERF_TEST_SUPERSESSION_ATOMIC",
+        owner: "control-plane",
+        module: "process",
+        title: "Atomic replacement",
+        severity: "warning",
+        state: "active",
+        observedValue: 120,
+        thresholdValue: 100,
+        unit: "bytes",
+      })
+      const [first] = ObservabilityIssues.list({ module: "process" })
+      const conn = ObservabilityStore.open()!
+      conn.exec(
+        "CREATE TRIGGER reject_new_episode BEFORE INSERT ON obs_issues WHEN NEW.issue_id = 'iss_rejected_episode' BEGIN SELECT RAISE(ABORT, 'rejected new episode'); END",
+      )
+      try {
+        const dropped = ObservabilityStore.stats().dropped
+        ObservabilityStore.insertIssue({ ...first, issueId: "iss_rejected_episode", occurrenceCount: 7 })
+        ObservabilityStore.flush()
+        expect(ObservabilityStore.stats().dropped).toBe(dropped + 7)
+        expect(ObservabilityIssues.list({ module: "process" })).toEqual([first])
+        expect(ObservabilityIssues.list({ status: "suppressed", module: "process" })).toEqual([])
+      } finally {
+        conn.exec("DROP TRIGGER reject_new_episode")
+      }
+    }))
+
+  test("reentry after queue eviction of recovery preserves independent episode counts", () =>
+    runtime.run(() => {
+      const input = {
+        code: "PERF_TEST_EVICTED_RECOVERY",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Evicted recovery",
+        severity: "warning" as const,
+        state: "active" as const,
+        observedValue: 120,
+        thresholdValue: 100,
+        unit: "bytes" as const,
+      }
+      ObservabilityIssues.observeCondition(input)
+      const [first] = ObservabilityIssues.list({ module: "process" })
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 20 })
+      const dropped = ObservabilityStore.stats().dropped
+      for (let index = 0; index < 10_000; index++)
+        ObservabilityMetrics.record({ name: "test.fill.queue", value: 1, unit: "count", module: "observability" })
+      expect(ObservabilityStore.stats().dropped).toBe(dropped + 1000)
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 250 })
+      const [next] = ObservabilityIssues.list({ module: "process" })
+      expect(next.issueId).not.toBe(first.issueId)
+      expect(next).toMatchObject({ occurrenceCount: 1, evidence: { firstObservedValue: 250, peakObservedValue: 250 } })
+      expect(ObservabilityIssues.list({ status: "suppressed", module: "process" })).toMatchObject([
+        { issueId: first.issueId, occurrenceCount: 1, evidence: { firstObservedValue: 120, peakObservedValue: 120 } },
+      ])
+    }))
+
+  test("healthy evidence still closes an older condition when the intervening entry and recovery were lost", () =>
+    runtime.run(() => {
+      const input = {
+        code: "PERF_TEST_MISSING_EPISODE_ENTRY",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Missing episode entry",
+        severity: "warning" as const,
+        state: "active" as const,
+        observedValue: 120,
+        thresholdValue: 100,
+        unit: "bytes" as const,
+      }
+      ObservabilityIssues.observeCondition(input)
+      const [first] = ObservabilityIssues.list({ module: "process" })
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 20 })
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 250 })
+      const conn = ObservabilityStore.open()!
+      conn.exec(
+        "CREATE TRIGGER reject_intervening_entry BEFORE INSERT ON obs_issues BEGIN SELECT RAISE(ABORT, 'rejected entry batch'); END",
+      )
+      try {
+        ObservabilityStore.flush()
+      } finally {
+        conn.exec("DROP TRIGGER reject_intervening_entry")
+      }
+      expect(ObservabilityIssues.list({ module: "process" })).toEqual([first])
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 30 })
+      expect(ObservabilityIssues.list({ module: "process" })).toEqual([])
+      expect(ObservabilityIssues.list({ status: "resolved", module: "process" })).toMatchObject([
+        {
+          issueId: first.issueId,
+          occurrenceCount: 1,
+          evidence: { firstObservedValue: 120, recoveryObservedValue: 30 },
+        },
+      ])
+    }))
+
+  test("a noncanonical condition-like fingerprint keeps ordinary discrete upsert semantics", () =>
+    runtime.run(() => {
+      const input = {
+        code: "PERF_TEST_DISCRETE_CONDITION_LIKE",
+        module: "process" as const,
+        title: "Discrete aggregate",
+        message: "Not a canonical condition identity",
+        severity: "warning" as const,
+        fingerprint: "condition:custom-aggregate",
+        evidence: { owner: "control-plane" },
+      }
+      const first = ObservabilityIssues.raise(input)!
+      ObservabilityIssues.raise(input)
+      expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([
+        { issueId: first.issueId, occurrenceCount: 2 },
+      ])
+      expect(ObservabilityIssues.list({ status: "suppressed", module: "process" })).toEqual([])
+    }))
 
   test("accounts for observation weight when the inline queue overflows or its transaction rolls back", () =>
     runtime.run(() => {

@@ -37,7 +37,8 @@ export namespace ObservabilityStore {
     checkpointIntervalMs: undefined as number | undefined,
     retentionIntervalMs: undefined as number | undefined,
     pending: [] as Array<{ run: () => void; observations: number }>,
-    beforeFlushHooks: new Set<() => void>(),
+    beforeFlushHooks: new Set<(force: boolean) => void>(),
+    drainingBuffered: false,
     dataVersionCounter: 0,
     runtimeReady: false,
   }))
@@ -89,7 +90,7 @@ export namespace ObservabilityStore {
   // enqueue: telemetry produced while observability is disabled is dropped,
   // not buffered for a later re-enable.
   function workerEnqueue(row: TelemetryProtocol.BatchRow) {
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     ObservabilityTelemetryClient.enqueue(row)
   }
 
@@ -143,19 +144,33 @@ export namespace ObservabilityStore {
     }
   }
 
-  export function beforeFlush(hook: () => void) {
+  export function beforeFlush(hook: (force: boolean) => void) {
     const instanceState = runtimeState()
 
-    instanceState.beforeFlushHooks.add(hook)
-    const removeWorkerHook = ObservabilityTelemetryClient.beforeFlush(hook)
+    const drain = (force = false) => {
+      const previous = instanceState.drainingBuffered
+      instanceState.drainingBuffered = true
+      try {
+        hook(force)
+      } finally {
+        instanceState.drainingBuffered = previous
+      }
+    }
+    instanceState.beforeFlushHooks.add(drain)
+    const removeWorkerHook = ObservabilityTelemetryClient.beforeFlush(drain)
     return () => {
-      instanceState.beforeFlushHooks.delete(hook)
+      instanceState.beforeFlushHooks.delete(drain)
       removeWorkerHook()
     }
   }
 
   export function accepting() {
     return !runtimeState().stopped && ObservabilityConfig.current().enabled
+  }
+
+  function canEnqueue() {
+    // Flush hooks materialize observations accepted before configuration was disabled.
+    return accepting() || (!runtimeState().stopped && runtimeState().drainingBuffered)
   }
 
   export function requestFlush() {
@@ -200,7 +215,7 @@ export namespace ObservabilityStore {
     }
     if (instanceState.db) return instanceState.db
     const config = ObservabilityConfig.current()
-    if (!config.enabled || !config.storage.sqliteEnabled) return undefined
+    if ((!config.enabled || !config.storage.sqliteEnabled) && !instanceState.drainingBuffered) return undefined
     if (instanceState.openFailed) return undefined
     try {
       instanceState.db = createConnection()
@@ -220,8 +235,7 @@ export namespace ObservabilityStore {
 
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) {
-      close()
-      return
+      return close()
     }
     if (!inlineMode()) {
       if (!instanceState.runtimeReady) return
@@ -260,7 +274,7 @@ export namespace ObservabilityStore {
   }
 
   export function stop() {
-    flush()
+    flush(true)
     runtimeState().stopped = true
     return close()
   }
@@ -270,7 +284,7 @@ export namespace ObservabilityStore {
 
     if (!inlineMode()) {
       clearTimers()
-      flush()
+      flush(true)
       instanceState.readonlyDb?.close(false)
       instanceState.readonlyDb = undefined
       instanceState.clientActive = false
@@ -293,7 +307,7 @@ export namespace ObservabilityStore {
     // strict close report SQLITE_BUSY during shutdown.
     clearTimers()
     try {
-      flush()
+      flush(true)
     } finally {
       // A lazy flush can open the connection and schedule maintenance again.
       clearTimers()
@@ -340,7 +354,7 @@ export namespace ObservabilityStore {
     // Data version must stay frozen while disabled: the dashboard summary
     // cache keys on it, so an increment that never persists would still
     // defeat the cache.
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "metric", row: metric })
@@ -355,7 +369,7 @@ export namespace ObservabilityStore {
   export function insertSpan(span: ObservabilitySchema.Span) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "span", row: span })
@@ -374,7 +388,7 @@ export namespace ObservabilityStore {
   export function insertEvent(event: ObservabilitySchema.Event) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "event", row: event })
@@ -389,7 +403,7 @@ export namespace ObservabilityStore {
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "resource", row: sample })
@@ -404,7 +418,7 @@ export namespace ObservabilityStore {
   export function insertIssue(issue: ObservabilitySchema.Issue) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "issue", row: issue })
@@ -417,7 +431,7 @@ export namespace ObservabilityStore {
   }
 
   export function updateIssueStatus(update: TelemetryProtocol.IssueStatusUpdate) {
-    if (!accepting()) return
+    if (!canEnqueue()) return
     runtimeState().dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "issue-status", row: update })
@@ -446,7 +460,7 @@ export namespace ObservabilityStore {
   }) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "browser-batch", row: input })
@@ -956,39 +970,44 @@ export namespace ObservabilityStore {
     enforceMaxSize(conn, config.storage.maxSqliteBytes)
   }
 
-  export function flush() {
+  export function flush(force = false) {
     const instanceState = runtimeState()
-
-    for (const hook of instanceState.beforeFlushHooks) hook()
-    if (!inlineMode()) {
+    const previous = instanceState.drainingBuffered
+    instanceState.drainingBuffered ||= force
+    try {
+      for (const hook of instanceState.beforeFlushHooks) hook(force)
+      if (!inlineMode()) {
+        if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+        instanceState.flushTimer = undefined
+        ObservabilityTelemetryClient.flushPending()
+        return
+      }
       if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
       instanceState.flushTimer = undefined
-      ObservabilityTelemetryClient.flushPending()
-      return
-    }
-    if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
-    instanceState.flushTimer = undefined
-    if (!instanceState.pending.length) return
-    const conn = open()
-    if (!conn) {
-      instanceState.droppedJobs += instanceState.pending.reduce((total, job) => total + job.observations, 0)
-      instanceState.pending.length = 0
-      return
-    }
-    const jobs = instanceState.pending.splice(0, instanceState.pending.length)
-    try {
-      conn.transaction(() => {
-        for (const job of jobs) job.run()
-      })()
-    } catch {
-      instanceState.droppedJobs += jobs.reduce((total, job) => total + job.observations, 0)
-      return
-    }
-    if (instanceState.retentionQueued) {
-      instanceState.retentionQueued = false
-      retain()
-    } else {
-      enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+      if (!instanceState.pending.length) return
+      const conn = open()
+      if (!conn) {
+        instanceState.droppedJobs += instanceState.pending.reduce((total, job) => total + job.observations, 0)
+        instanceState.pending.length = 0
+        return
+      }
+      const jobs = instanceState.pending.splice(0, instanceState.pending.length)
+      try {
+        conn.transaction(() => {
+          for (const job of jobs) job.run()
+        })()
+      } catch {
+        instanceState.droppedJobs += jobs.reduce((total, job) => total + job.observations, 0)
+        return
+      }
+      if (instanceState.retentionQueued) {
+        instanceState.retentionQueued = false
+        retain()
+      } else {
+        enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+      }
+    } finally {
+      instanceState.drainingBuffered = previous
     }
   }
 
@@ -1049,7 +1068,7 @@ export namespace ObservabilityStore {
   function enqueue(job: () => void, observations = 1) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     if (instanceState.pending.length >= MAX_PENDING) {
       const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
       const dropped = instanceState.pending.splice(0, dropCount)

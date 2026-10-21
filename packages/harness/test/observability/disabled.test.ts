@@ -58,6 +58,82 @@ describe("observability disabled", () => {
       ObservabilityStore.flush()
       expect(ObservabilityStore.queryMetrics({ since: 0, names: ["reenabled.metric"] })).toHaveLength(1)
     }))
+
+  test("disabling drains accepted conditions and gauges without accepting new disabled observations", () =>
+    runtime.run(async () => {
+      const input = {
+        owner: "control-plane" as const,
+        code: "PERF_CONDITION_BEFORE_DISABLE",
+        module: "process" as const,
+        title: "Pressure before disable",
+        severity: "warning" as const,
+        state: "active" as const,
+        observedValue: 200,
+        thresholdValue: 100,
+        unit: "bytes" as const,
+      }
+      for (let index = 0; index < 100; index++) {
+        ObservabilityIssues.observeCondition(input)
+        ObservabilityMetrics.record({
+          name: "storage.queue.depth",
+          value: index,
+          unit: "count",
+          module: "storage",
+          labels: { queue: "disable-drain" },
+        })
+      }
+      const dropped = ObservabilityStore.stats().dropped
+      ObservabilityConfig.refresh({ observability: { performance: { enabled: false } } })
+      await ObservabilityStore.reconfigure()
+      const version = ObservabilityStore.dataVersion()
+      ObservabilityIssues.observeCondition(input)
+      ObservabilityMetrics.record({
+        name: "storage.queue.depth",
+        value: 1000,
+        unit: "count",
+        module: "storage",
+        labels: { queue: "disable-drain" },
+      })
+      ObservabilityStore.flush()
+      expect(ObservabilityStore.dataVersion()).toBe(version)
+      expect(ObservabilityStore.stats().dropped).toBe(dropped)
+      ObservabilityConfig.refresh()
+      ObservabilityStore.reconfigure()
+      expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([
+        { code: input.code, occurrenceCount: 100, evidence: { firstObservedValue: 200 } },
+      ])
+      expect(
+        ObservabilityStore.queryMetrics({ since: 0, names: ["storage.queue.depth", "storage.queue.depth.peak"] })
+          .filter((metric) => JSON.parse(metric.labels_json).queue === "disable-drain")
+          .map((metric) => ({ name: metric.name, value: metric.value })),
+      ).toEqual([
+        { name: "storage.queue.depth", value: 99 },
+        { name: "storage.queue.depth.peak", value: 99 },
+      ])
+    }))
+
+  test("disabling drains a young gauge before its first storage flush", () =>
+    runtime.run(async () => {
+      ObservabilityMetrics.record({
+        name: "storage.queue.depth",
+        value: 7,
+        unit: "count",
+        module: "storage",
+        labels: { queue: "first-disable-drain" },
+      })
+      ObservabilityConfig.refresh({ observability: { performance: { enabled: false } } })
+      await ObservabilityStore.reconfigure()
+      ObservabilityConfig.refresh()
+      ObservabilityStore.reconfigure()
+      expect(
+        ObservabilityStore.queryMetrics({ since: 0, names: ["storage.queue.depth", "storage.queue.depth.peak"] })
+          .filter((metric) => JSON.parse(metric.labels_json).queue === "first-disable-drain")
+          .map((metric) => ({ name: metric.name, value: metric.value })),
+      ).toEqual([
+        { name: "storage.queue.depth", value: 7 },
+        { name: "storage.queue.depth.peak", value: 7 },
+      ])
+    }))
 })
 
 afterRuntimeTests(() => runtime.close())

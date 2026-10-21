@@ -18,8 +18,7 @@ export namespace ObservabilityIssues {
   const PUBLISH_COALESCE_MS = 60_000
   const MAX_PUBLISHED_FINGERPRINTS = 1_000
 
-  export type ConditionOwner =
-    "control-plane" | "service" | "agent-pool" | "policy-pool" | "plugin" | "browser" | "mcp" | "local-process"
+  export type ConditionOwner = ObservabilitySchema.ConditionOwner
 
   export interface ConditionObservation {
     owner: ConditionOwner
@@ -64,7 +63,11 @@ export namespace ObservabilityIssues {
       ...ObservabilityContext.current(),
       scopeID: input.scopeID ?? ObservabilityContext.current().scopeID,
     }
-    const fingerprint = `condition:${JSON.stringify([context.scopeID ?? null, input.owner, input.code])}`
+    const fingerprint = ObservabilitySchema.conditionFingerprint({
+      scopeID: context.scopeID,
+      owner: input.owner,
+      code: input.code,
+    })
     if (!state.conditions.has(fingerprint)) {
       const stored = ObservabilityStore.findPersistedOpenIssue(fingerprint)
       state.conditions.set(fingerprint, stored ? { issue: fromRow(stored), pendingCount: 0 } : null)

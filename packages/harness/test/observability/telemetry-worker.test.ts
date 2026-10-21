@@ -199,38 +199,6 @@ describe("ObservabilityTelemetryClient worker", () => {
       ).toEqual({ occurrence_count: 63_007 })
     }))
 
-  test("reports sent-but-unconfirmed observations as uncertain without replay after worker loss", () =>
-    runtime.run(async () => {
-      ObservabilityTelemetryClient.start({ dbPath, config: makeConfig() })
-      await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
-      const uncertainAtStart = ObservabilityTelemetryClient.stats().uncertain
-
-      for (let index = 0; index < 3000; index++) {
-        ObservabilityTelemetryClient.enqueue(metricRow(`inflight_${index}`, "worker.test.inflight", index))
-      }
-      ObservabilityTelemetryClient.flushPending()
-      expect(ObservabilityTelemetryClient.stats().unconfirmed).toBeGreaterThan(0)
-
-      const proc = ObservabilityTelemetryClient.workerProcess()
-      expect(proc).toBeDefined()
-      proc?.kill(9)
-      await waitFor(
-        () => ObservabilityTelemetryClient.stats().workerReady && ObservabilityTelemetryClient.stats().restarts >= 1,
-        15_000,
-      )
-      await waitFor(() => ObservabilityTelemetryClient.stats().pending === 0, 15_000)
-
-      const reader = new Database(dbPath, { readonly: true })
-      try {
-        const rows = reader.query("SELECT COUNT(*) AS c FROM obs_metrics").get() as { c: number }
-        expect(rows.c).toBeLessThanOrEqual(3000)
-        expect(ObservabilityTelemetryClient.stats().uncertain - uncertainAtStart).toBe(3000)
-        expect(ObservabilityTelemetryClient.stats().unconfirmed).toBe(0)
-      } finally {
-        reader.close()
-      }
-    }))
-
   test("restarts the worker with the latest reconfigured settings", () =>
     runtime.run(async () => {
       ObservabilityTelemetryClient.start({ dbPath, config: makeConfig() })

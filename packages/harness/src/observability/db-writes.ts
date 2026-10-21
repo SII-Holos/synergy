@@ -155,6 +155,27 @@ export namespace ObservabilityDbWrites {
   }
 
   export function insertIssue(conn: Database, issue: ObservabilitySchema.Issue) {
+    const owner = ObservabilitySchema.ConditionOwner.safeParse(issue.evidence.owner)
+    if (
+      issue.status === "open" &&
+      owner.success &&
+      issue.fingerprint ===
+        ObservabilitySchema.conditionFingerprint({ scopeID: issue.scopeID, owner: owner.data, code: issue.code })
+    ) {
+      conn
+        .query(
+          `UPDATE obs_issues SET status = 'suppressed', evidence_json = json_patch(evidence_json, ?)
+           WHERE fingerprint = ? AND status = 'open' AND issue_id <> ?`,
+        )
+        .run(
+          JSON.stringify({
+            suppressionReason: "condition_episode_superseded_without_persisted_recovery",
+            supersededByIssueId: issue.issueId,
+          }),
+          issue.fingerprint,
+          issue.issueId,
+        )
+    }
     conn
       .query(
         `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,correlation_id,trace_id,span_id,scope_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
