@@ -1,0 +1,52 @@
+.file-cards-review {
+  min-height: 100dvh;
+  max-width: 960px;
+  margin-inline: auto;
+  padding: 32px;
+  color: var(--text-base);
+  font-family: var(--font-family-sans);
+}
+.file-cards-review header {
+  margin-bottom: 28px;
+}
+.file-cards-review h1 {
+  font-size: var(--type-ui-page-title-size);
+  line-height: var(--type-ui-page-title-line-height);
+  font-weight: var(--font-weight-semibold);
+}
+.file-cards-review header p {
+  margin-top: 6px;
+  color: var(--text-weak);
+  font-size: var(--type-ui-body-size);
+  line-height: var(--type-ui-body-line-height);
+}
+.file-cards-review section + section {
+  margin-top: 28px;
+}
+.file-cards-review h2 {
+  margin-bottom: 10px;
+  font-size: var(--type-ui-row-title-size);
+  line-height: var(--type-ui-row-title-line-height);
+  font-weight: var(--font-weight-medium);
+}
+.file-cards-review [data-example="standard"] [data-component="attachment-gallery"],
+.file-cards-review [data-example="images"] [data-component="attachment-gallery"] {
+  padding: 0;
+}
+.file-cards-review-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.file-cards-review-narrow {
+  display: none;
+}
+@media (max-width: 600px) {
+  .file-cards-review {
+    padding: 20px 16px;
+  }
+  .file-cards-review section + section {
+    margin-top: 24px;
+  }
+}

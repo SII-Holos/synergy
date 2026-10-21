@@ -2,12 +2,11 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let fixtureDirectory: string
 let url: string
 
@@ -18,7 +17,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+      '<!doctype html><html><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
@@ -35,6 +34,7 @@ beforeAll(async () => {
           status: "uploading",
         })
         const removed: string[] = []
+        const retried: string[] = []
 
         function Harness() {
           return (
@@ -42,32 +42,23 @@ beforeAll(async () => {
               entry={entry()}
               uploadingLabel="Uploading…"
               uploadedLabel="Uploaded"
+              failedLabel="Upload failed"
+              retryLabel="Retry upload"
               removeLabel={"Remove " + entry().filename}
               onRemove={(id) => removed.push(id)}
+              onRetry={(id) => retried.push(id)}
             />
           )
         }
 
         render(Harness, document.querySelector("#root")!)
-        ;(window as any).__card = { setEntry, removed }
+        Object.assign(window, { __card: { setEntry, removed, retried } })
       `,
     ),
   ])
 
-  server = await createServer({
-    configFile: false,
-    root: fixtureDirectory,
-    plugins: [solidPlugin()],
-    server: {
-      host: "127.0.0.1",
-      port: 5232,
-      strictPort: true,
-      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
-    },
-  })
-  await server.listen()
-  url = server.resolvedUrls?.local[0] ?? ""
-  if (!url) throw new Error("Expected Vite test server URL")
+  server = await createBrowserFixture({ root: fixtureDirectory })
+  url = server.url
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 800, height: 600 } })
@@ -89,7 +80,7 @@ describe("pending attachment card upload feedback", () => {
     expect(await card.getAttribute("aria-busy")).toBe("true")
     expect(await card.locator('[data-component="spinner"]').count()).toBe(1)
     expect(await card.locator('[data-slot="attachment-card-filename"]').textContent()).toBe("video.mp4")
-    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("MP4 · 5.0 MB · Uploading…")
+    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("Uploading… · 5.0 MB")
   })
 
   test("switches to the uploaded state with a success icon once the upload settles", async () => {
@@ -110,7 +101,7 @@ describe("pending attachment card upload feedback", () => {
     )
     expect(await card.getAttribute("aria-busy")).toBe("false")
     expect(await card.locator('[data-component="spinner"]').count()).toBe(0)
-    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("MP4 · 5.0 MB · Uploaded")
+    expect(await card.locator('[data-slot="attachment-card-meta"]').textContent()).toBe("Uploaded · 5.0 MB")
   })
 
   test("removing the card reports the pending entry id", async () => {

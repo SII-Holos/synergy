@@ -27,42 +27,44 @@ export function PlanBlueprintOfferControl(props: {
   }
 
   return (
-    <div class="plan-blueprint-offer statusbar-glass" role="status" aria-label={i18n._(PI.planOfferAria)}>
-      <Icon name={getSemanticIcon("blueprint.main")} size="small" class="shrink-0 text-icon-base" />
-      <span class="plan-blueprint-offer-title">{props.offer.title}</span>
-      <Tooltip value={i18n._(PI.planOfferEquipTooltip)} placement="top">
-        <button
-          type="button"
-          class="plan-blueprint-offer-action"
-          disabled={equipping()}
-          aria-label={i18n._(PI.planOfferEquipAria)}
-          onClick={() => void equip()}
-        >
-          <Icon name={getSemanticIcon("prompt.blueprintEquip")} size="small" />
-          <span class="text-12-medium">{i18n._(PI.planOfferEquip)}</span>
-        </button>
-      </Tooltip>
-      <Tooltip value={i18n._(PI.planOfferMuteTooltip)} placement="top">
-        <button
-          type="button"
-          class="plan-blueprint-offer-action"
-          aria-label={i18n._(PI.planOfferMuteAria)}
-          onClick={props.onMute}
-        >
-          <Icon name={getSemanticIcon("action.hide")} size="small" />
-          <span class="text-12-medium">{i18n._(PI.planOfferMute)}</span>
-        </button>
-      </Tooltip>
-      <Tooltip value={i18n._(PI.planOfferDismissTooltip)} placement="top">
-        <button
-          type="button"
-          class="plan-blueprint-offer-icon-button"
-          aria-label={i18n._(PI.planOfferDismissAria)}
-          onClick={props.onDismiss}
-        >
-          <Icon name={getSemanticIcon("action.close")} size="small" />
-        </button>
-      </Tooltip>
+    <div class="plan-blueprint-offer-container">
+      <div class="plan-blueprint-offer statusbar-glass" role="status" aria-label={i18n._(PI.planOfferAria)}>
+        <Icon name={getSemanticIcon("blueprint.main")} size="small" class="shrink-0 text-icon-base" />
+        <span class="plan-blueprint-offer-title">{props.offer.title}</span>
+        <Tooltip value={i18n._(PI.planOfferEquipTooltip)} placement="top" class="shrink-0">
+          <button
+            type="button"
+            class="plan-blueprint-offer-action"
+            disabled={equipping()}
+            aria-label={i18n._(PI.planOfferEquipAria)}
+            onClick={() => void equip()}
+          >
+            <Icon name={getSemanticIcon("prompt.blueprintEquip")} size="small" />
+            <span class="plan-blueprint-offer-action-label text-12-medium">{i18n._(PI.planOfferEquip)}</span>
+          </button>
+        </Tooltip>
+        <Tooltip value={i18n._(PI.planOfferMuteTooltip)} placement="top" class="shrink-0">
+          <button
+            type="button"
+            class="plan-blueprint-offer-action"
+            aria-label={i18n._(PI.planOfferMuteAria)}
+            onClick={props.onMute}
+          >
+            <Icon name={getSemanticIcon("action.hide")} size="small" />
+            <span class="plan-blueprint-offer-action-label text-12-medium">{i18n._(PI.planOfferMute)}</span>
+          </button>
+        </Tooltip>
+        <Tooltip value={i18n._(PI.planOfferDismissTooltip)} placement="top" class="shrink-0">
+          <button
+            type="button"
+            class="plan-blueprint-offer-icon-button"
+            aria-label={i18n._(PI.planOfferDismissAria)}
+            onClick={props.onDismiss}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+          </button>
+        </Tooltip>
+      </div>
     </div>
   )
 }

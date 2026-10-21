@@ -662,6 +662,35 @@ window.__conversationProcess = {
       parts.map((part) => (part.type === "reasoning" && (!partID || part.id === partID) ? { ...part, text } : part)),
     )
   },
+  documents(count, purpose = "evidence") {
+    const tool = part("work", "documents", "tool")
+    if (tool.type !== "tool" || tool.state.status !== "completed") return
+    const state = tool.state
+    batch(() => {
+      setData("message", "session", [root, work])
+      setData("part", "work", [
+        part("work", "progress", "text", "Generated documents are ready."),
+        {
+          ...tool,
+          workBrief: "Generate HTML documents",
+          state: {
+            ...state,
+            attachments: ["content.html", "message.html"].slice(0, count).map((filename, index) => ({
+              id: `document-${index}`,
+              sessionID: "session",
+              messageID: "work",
+              type: "attachment" as const,
+              mime: "text/html",
+              filename,
+              presentation: { purpose },
+              url: `https://example.com/${filename}`,
+            })),
+          },
+        },
+      ])
+      setMode("full")
+    })
+  },
   toolCase(tool, input, metadata, status = "completed") {
     const base = part("work", `case-${++toolCaseSequence}`, "tool")
     if (base.type !== "tool") return
@@ -945,7 +974,10 @@ const resource = {
     window.__processSelection = target
     return true
   },
-  open: async () => ({ status: "cancelled" as const }),
+  open: async (target: unknown) => {
+    window.__processSelection = target
+    return { status: "cancelled" as const }
+  },
 }
 function Scroller(props: ParentProps) {
   const active = useViewActivity()

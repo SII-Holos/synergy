@@ -319,7 +319,12 @@ function FileAttachmentCard(props: {
         <FileIcon node={{ path: props.filename, type: "file" }} />
       </span>
       <span data-slot="attachment-card-body">
-        <span data-slot="attachment-card-filename">{props.filename}</span>
+        <span data-slot="attachment-card-filename" class="attachment-compact-filename" title={props.filename}>
+          <span>
+            {props.filename.includes(".") ? props.filename.slice(0, props.filename.lastIndexOf(".")) : props.filename}
+          </span>
+          <span>{props.filename.includes(".") ? props.filename.slice(props.filename.lastIndexOf(".")) : ""}</span>
+        </span>
         <span data-slot="attachment-card-meta">{props.meta}</span>
       </span>
       <Show when={props.url}>
