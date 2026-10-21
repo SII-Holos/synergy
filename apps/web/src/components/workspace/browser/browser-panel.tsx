@@ -394,7 +394,8 @@ function BrowserPanelInner(props: {
                   size="small"
                   onClick={() => {
                     browser.setBrowserError(null)
-                    browser.navigate(page()?.navigation?.requestedURL ?? page()?.url ?? "about:blank")
+                    if (page()?.status === "suspended") retryNative()
+                    else browser.navigate(page()?.navigation?.requestedURL ?? page()?.url ?? "about:blank")
                   }}
                 >
                   <Trans id={B.retry.id} message={B.retry.message} />

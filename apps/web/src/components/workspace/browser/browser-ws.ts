@@ -349,6 +349,12 @@ export function createBrowserWebSocket(store: BrowserStoreAPI, options: BrowserW
               ? [msg.pageId]
               : store.session.pages.filter((page) => page.status === "active").map((page) => page.id)
             for (const id of ids) store.setHostStatus(id, msg.status)
+            if (!msg.pageId && msg.status === "ready") {
+              for (const page of store.session.pages) {
+                if (page.status === "suspended" && store.hostStatuses[page.id] === "restarting")
+                  store.setHostStatus(page.id, "detached")
+              }
+            }
             if (msg.status === "ready") controlSender.retryNow()
           }
           break

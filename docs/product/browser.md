@@ -38,7 +38,7 @@ Human clicks, typing, scrolling and navigation are combined into a change notice
 
 ## Recovery and evidence
 
-Project and historical task pages restore as suspended after restart. Task completion, cancellation, archiving and Workspace changes preserve shared project pages; explicit page close destroys them. Resume restores the address and identity when available. A failed page offers a local retry without changing other tabs. Slow loading and an automation command timeout preserve the live page; they do not discard its forms by recreating it. Browser storage can preserve a website login; unsaved forms, JavaScript state, navigation history and one-use login transactions are not recovery guarantees.
+Project and historical task pages restore as suspended after restart. Task completion, cancellation, archiving and Workspace changes preserve shared project pages; explicit page close destroys them. After a Browser Host connection is restored, suspended pages offer Resume without automatically repeating website actions. Resume restores the address and identity when available. A failed page offers a local retry without changing other tabs. Slow loading and an automation command timeout preserve the live page; they do not discard its forms by recreating it. Browser storage can preserve a website login; unsaved forms, JavaScript state, navigation history and one-use login transactions are not recovery guarantees.
 
 Page errors appear above the webpage with Dismiss and applicable recovery actions. A failed operation, including a popup that cannot open, does not by itself hide an otherwise usable page. Menus and dialogs still temporarily cover the page until they close.
 
