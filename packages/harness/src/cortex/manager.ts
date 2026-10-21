@@ -1431,17 +1431,32 @@ export namespace Cortex {
         log.info("task compacted", { taskID })
       }
     }, PROMPT_COMPACT_DELAY_MS)
-    const cleanup = setTimeout(() => {
+    const cleanup = () => {
+      const runtime = SessionManager.getRuntime(sessionID)
+      if (
+        state.finalizingTasks.has(taskID) ||
+        state.taskRuns.has(taskID) ||
+        state.acquiredTasks.has(taskID) ||
+        state.capacityOwners.has(taskID) ||
+        state.taskWaiters.get(taskID)?.size ||
+        runtime?.owner ||
+        runtime?.waiters.length
+      ) {
+        const retry = setTimeout(cleanup, PROMPT_COMPACT_DELAY_MS)
+        retry.unref()
+        state.retentionTimers.set(taskID, [compact, retry])
+        return
+      }
       state.retentionTimers.delete(taskID)
       state.tasks.delete(taskID)
       state.taskBudgets.delete(taskID)
-      state.acquiredTasks.delete(taskID)
       SessionManager.unregisterRuntime(sessionID)
       log.info("task cleaned up", { taskID })
-    }, TASK_CLEANUP_DELAY_MS)
+    }
+    const cleanupTimer = setTimeout(cleanup, TASK_CLEANUP_DELAY_MS)
     compact.unref()
-    cleanup.unref()
-    state.retentionTimers.set(taskID, [compact, cleanup])
+    cleanupTimer.unref()
+    state.retentionTimers.set(taskID, [compact, cleanupTimer])
   }
 
   export async function drain(taskID?: string): Promise<void> {

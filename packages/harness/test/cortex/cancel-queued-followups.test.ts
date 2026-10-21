@@ -267,7 +267,14 @@ describe("Cortex cancellation fences queued follow-ups", () => {
           clock.advanceTo(299_999)
           expect(Cortex.get(task.id)?.status).toBe("cancelled")
           expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
+          const owner = fault === "none" ? SessionManager.acquire(task.sessionID) : undefined
           clock.advanceTo(300_000)
+          if (owner) {
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            expect(SessionManager.getRuntime(task.sessionID)?.owner?.lease).toBe(owner)
+            await SessionManager.release(owner, { requestNextWork: false })
+            clock.advanceTo(330_000)
+          }
           expect(Cortex.get(task.id)).toBeUndefined()
           expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
           expect(await Cortex.getVisibleTaskForOutput(parent.id, task.id)).toMatchObject({
@@ -279,7 +286,7 @@ describe("Cortex cancellation fences queued follow-ups", () => {
     }),
   )
 
-  test("concurrent terminal publication owns one cleanup even when its metadata write fails", () =>
+  test("concurrent terminal cleanup waits for finalization and releases capacity once", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir()
       await ScopeContext.provide({
@@ -293,8 +300,20 @@ describe("Cortex cancellation fences queued follow-ups", () => {
             parentSessionID: parent.id,
             parentMessageID: "msg_concurrent_terminal_retention",
             notifyParentOnComplete: false,
+            model: { providerID: "test-provider", modelID: "test-model" },
           })
-          SessionManager.registerChildRuntime(task.sessionID)
+          const started = Promise.withResolvers<void>()
+          const execution = Promise.withResolvers<void>()
+          using invoke = spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            started.resolve()
+            return execution.promise.then(() => {
+              throw new DOMException("Task stopped", "AbortError")
+            })
+          })
+          await Cortex.start(task.id)
+          await started.promise
+          expect(CortexConcurrency.globalStatus().running).toBe(1)
+          using released = spyOn(CortexConcurrency, "release")
           const held = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
           let terminalWrites = 0
@@ -327,13 +346,22 @@ describe("Cortex cancellation fences queued follow-ups", () => {
             expect(await second).toBe(failure)
             expect(Cortex.get(task.id)?.status).toBe("cancelled")
             scheduledBeforeRelease = clock.count()
+            clock.advanceTo(300_000)
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
+            expect(CortexConcurrency.globalStatus().running).toBe(1)
           } finally {
             release.resolve()
             await first
+            execution.resolve()
+            await Cortex.drain(task.id)
           }
           expect(scheduledBeforeRelease).toBe(2)
-          expect(clock.count()).toBe(2)
-          clock.advanceTo(300_000)
+          expect(released).toHaveBeenCalledTimes(1)
+          expect(CortexConcurrency.globalStatus().running).toBe(0)
+          expect(clock.count()).toBe(1)
+          clock.advanceTo(330_000)
+          expect(clock.count()).toBe(0)
           expect(Cortex.get(task.id)).toBeUndefined()
           expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
         },
