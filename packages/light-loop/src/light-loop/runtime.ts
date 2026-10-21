@@ -217,7 +217,9 @@ export namespace LightLoopRuntime {
    * aborts (which take the cancellation path) never pass through here.
    */
   export async function failActiveLoop(sessionID: string, error?: unknown): Promise<void> {
-    const session = await Session.get(sessionID).catch(() => undefined)
+    const session = await Session.get(sessionID).catch((error: unknown) => {
+      if (!(error instanceof Storage.NotFoundError)) throw error
+    })
     if (!session || !isActiveLightLoopWorkflow(session.workflow)) return
     await setTerminalStatus(sessionID, "failed", errorText(error))
   }

@@ -67,10 +67,11 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     if (paused && !idleNoReply) await SessionManager.waitForIdle(input.sessionID)
     const session = await Session.get(input.sessionID)
     const canResume = idleNoReply || (await SessionExecutionOwners.allowsResume(session))
-    const newTask = !canResume && MessageV2.isHumanInput(input)
+    const newTask = !idleNoReply && MessageV2.isHumanInput(input) && (!canResume || paused?.reason === "failed")
     if (!canResume && !newTask) await SessionExecutionOwners.assertResume(session)
     const rolledBack = paused && (await SessionHistory.storedInfo(input.sessionID))?.rollback?.canUnrollback === true
-    const rootID = paused && canResume && !rolledBack ? await SessionInbox.latestRootID(input.sessionID) : undefined
+    const rootID =
+      paused && canResume && !newTask && !rolledBack ? await SessionInbox.latestRootID(input.sessionID) : undefined
     item = await SessionInbox.enqueueUser(
       input,
       idleNoReply
