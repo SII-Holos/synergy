@@ -62,7 +62,20 @@ describe("subsession running classification", () => {
 
   test("surfaces busy and retry child sessions as running", () => {
     expect(childState({ type: "busy" })).toBe("running")
-    expect(childState({ type: "retry", attempt: 1, message: "rate limited", next: 1_000 })).toBe("running")
+    expect(
+      childState({
+        type: "retry",
+        rootID: "retry-root",
+        messageID: "retry-message",
+        phase: "waiting",
+        error: "rate limited",
+        startedAt: 0,
+        canRetry: true,
+        attempt: 1,
+        message: "rate limited",
+        next: 1_000,
+      }),
+    ).toBe("running")
     expect(childState({ type: "paused", reason: "interrupted", since: 1 })).toBe("idle")
   })
 

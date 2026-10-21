@@ -67,8 +67,10 @@ export function sessionStatusFromWorking(working: SessionWorkingInfo): SessionSt
   switch (working.status) {
     case "busy":
       return { type: "busy", description: working.description, activity: working.activity }
-    case "retry":
-      return { type: "retry", attempt: working.attempt, message: working.message, next: working.next }
+    case "retry": {
+      const { status, ...retry } = working
+      return { type: status, ...retry }
+    }
     case "paused":
       return {
         type: "paused",

@@ -26892,6 +26892,10 @@ msgid "ui.errorCard.detailsTitle"
 msgstr "Error details"
 
 #. js-lingui-explicit-id
+msgid "ui.errorCard.showDetails"
+msgstr "View details"
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr "Tool input"
 
@@ -27038,6 +27042,50 @@ msgstr "Generation failed"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "Generating media"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.connecting"
+msgstr "Reconnecting"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdown"
+msgstr "Automatically retrying in {seconds}s"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdownAttempt"
+msgstr "Retry {attempt} · Automatically retrying in {seconds}s"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.failed"
+msgstr "Request failed"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.provider"
+msgstr "Waiting for the model connection to recover"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.reconnect"
+msgstr "Reconnect"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retryNow"
+msgstr "Retry now"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.selectModel"
+msgstr "Choose model"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.starting"
+msgstr "Preparing to retry"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.waitingResponse"
+msgstr "Waiting for a model response"
 
 #. js-lingui-explicit-id
 msgid "ui.resource.close"

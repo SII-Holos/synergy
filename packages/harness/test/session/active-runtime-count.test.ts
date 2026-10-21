@@ -65,6 +65,12 @@ describe("SessionManager.activeRuntimeCount", () => {
           SessionManager.setStatus(busy.id, { type: "busy", description: "working" })
           SessionManager.setStatus(retry.id, {
             type: "retry",
+            rootID: "retry-root",
+            messageID: "retry-message",
+            phase: "waiting",
+            error: "rate limited",
+            startedAt: 0,
+            canRetry: true,
             attempt: 1,
             message: "retrying",
             next: Date.now() + 1000,

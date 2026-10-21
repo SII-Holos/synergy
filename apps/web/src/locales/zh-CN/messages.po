@@ -26892,6 +26892,10 @@ msgid "ui.errorCard.detailsTitle"
 msgstr "错误详情"
 
 #. js-lingui-explicit-id
+msgid "ui.errorCard.showDetails"
+msgstr "查看详情"
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr "工具输入"
 
@@ -27038,6 +27042,50 @@ msgstr "生成失败"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "正在生成"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.connecting"
+msgstr "正在重新连接"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdown"
+msgstr "{seconds} 秒后自动重试"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdownAttempt"
+msgstr "第 {attempt} 次重试 · {seconds} 秒后自动重试"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.failed"
+msgstr "请求失败"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.provider"
+msgstr "正在等待模型连接恢复"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.reconnect"
+msgstr "重新连接"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retryNow"
+msgstr "立即重试"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.selectModel"
+msgstr "选择模型"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.starting"
+msgstr "正在准备重试"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.waitingResponse"
+msgstr "等待模型响应"
 
 #. js-lingui-explicit-id
 msgid "ui.resource.close"

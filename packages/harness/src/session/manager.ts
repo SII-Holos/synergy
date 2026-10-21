@@ -810,11 +810,28 @@ export namespace SessionManager {
     scheduleWakeAttempt(sessionID, reason, 0, 0)
   }
 
-  export function setStatus(sessionID: string, status: StatusInfo): void {
+  export function setStatus(
+    sessionID: string,
+    status: StatusInfo,
+    expected?: { generation: number; rootID?: string },
+  ): boolean {
     const runtime = getRuntime(sessionID)
-    if (!runtime) return
+    if (!runtime) return false
+    if (expected) {
+      const owner = runtime.owner
+      if (
+        !owner ||
+        owner.lease.generation !== expected.generation ||
+        owner.lease.signal.aborted ||
+        owner.phase === "stopping" ||
+        runtime.status.type === "paused"
+      )
+        return false
+      if (expected.rootID !== undefined && owner.rootID !== expected.rootID) return false
+    }
     runtime.status = status
     emitStatus(runtime, status)
+    return true
   }
 
   export function setActivity(

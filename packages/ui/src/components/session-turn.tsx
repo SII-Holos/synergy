@@ -63,6 +63,7 @@ import "./tool-renders"
 import { Icon } from "./icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "./semantic-icon"
 import { ErrorCard } from "./error-card"
+import { SessionRecovery, sessionRecoveryMessage } from "./session-recovery"
 import { Dynamic } from "solid-js/web"
 import { createAutoScroll } from "../hooks"
 import { getSpecialUserMessageRenderer } from "./special-user-message"
@@ -1147,7 +1148,13 @@ export function SessionTurn(
   )
 
   // Compaction failures own their error presentation in the lifecycle card.
-  const error = createMemo(() => assistantMessages().findLast((m) => !isCompactionAssistant(m))?.error)
+  const recoveryMessage = createMemo(() =>
+    sessionRecoveryMessage(
+      assistantMessages().filter((m) => !isCompactionAssistant(m)),
+      partsFor,
+    ),
+  )
+  const error = () => recoveryMessage()?.error
   const errorMessage = createMemo(() => {
     const value = error()
     if (!value) return ""
@@ -1420,7 +1427,9 @@ export function SessionTurn(
       ? { type: "busy" as const, activity: props.submission.activity }
       : view.statusFor(props.sessionID),
   )
-  const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
+  const showCurrentActivity = createMemo(
+    () => sessionStatus()?.type !== "retry" && shouldShowCurrentActivity({ working: working(), hasError: !!error() }),
+  )
   const foregroundOutcome = () => {
     const status = props.executionState?.status
     return status === "completed" || status === "failed" ? status : undefined
@@ -1937,8 +1946,18 @@ export function SessionTurn(
                         </Show>
                       </div>
                     </Show>
-                    <Show when={showFooter() && error() && !stopped()}>
-                      <ErrorCard error={errorMessage()} />
+                    <Show when={showFooter() && !stopped()}>
+                      <SessionRecovery
+                        sessionID={props.sessionID}
+                        rootID={props.rootMessage.rootID ?? props.rootMessage.id}
+                        messageID={recoveryMessage()?.id}
+                        providerID={recoveryMessage()?.providerID}
+                        current={isLastUserMessage()}
+                        status={sessionStatus()}
+                        error={error()}
+                        summary={errorMessage() || undefined}
+                        onAction={data.recoverSession}
+                      />
                     </Show>
                     <Show when={showFooter()}>{renderMessageSlot("message.after-message")}</Show>
                   </Match>

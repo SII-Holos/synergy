@@ -3,6 +3,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 export const testOptions = {
   timeoutMs: 120000,
   isolated: [
+    "test/components/session-recovery.dom.test.ts",
     "test/components/tool/lattice-tool-renders.test.tsx",
     "test/components/tool/browser-tool-renders.test.tsx",
     "test/components/tool/renders/response-card.test.tsx",
@@ -66,6 +67,7 @@ export const testOptions = {
     "test/components/provider-icon.test.ts",
   ],
   browserOnly: [
+    "test/components/session-recovery.test.ts",
     "test/solid-ordered-rows.test.ts",
     "test/components/message-readers.render.test.ts",
     "test/components/setting-row.render.test.ts",

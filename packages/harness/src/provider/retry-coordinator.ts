@@ -6,8 +6,16 @@ type Entry = {
   failures: number
   revision: number
   until: number
+  retryAfter: number
+  error: unknown
   probe?: symbol
   waiters: Set<() => void>
+}
+
+export type ProviderRecoveryWait = { error: unknown; next?: number; retry?: () => boolean }
+export type ProviderRecoveryOptions = {
+  immediate?: boolean
+  onWait?: (state: ProviderRecoveryWait | undefined) => void
 }
 
 type Options = {
@@ -92,21 +100,28 @@ export class ProviderRetryCoordinator {
         if (!value.probe && !value.waiters.size && value.until <= now) this.entries.delete(key)
       }
       if (this.entries.size >= this.options.maxEntries) return
-      entry = { failures: 0, revision: 0, until: now, waiters: new Set() }
+      entry = { failures: 0, revision: 0, until: now, retryAfter: 0, error, waiters: new Set() }
       this.entries.set(key, entry)
     }
     entry.revision++
+    entry.error = error
     entry.failures = Math.min(entry.failures + 1, 5)
     const headers = error && typeof error === "object" && "responseHeaders" in error ? error.responseHeaders : undefined
     const hint =
       headers && typeof headers === "object" ? retryAfterMs(headers as Record<string, string>, now) : undefined
     const delay = hint ?? Math.min(2_000 * 2 ** (entry.failures - 1), 30_000) * (0.5 + this.options.random() / 2)
     entry.until = Math.max(entry.until, now + Math.min(delay, 2_147_483_647))
+    if (hint !== undefined) entry.retryAfter = Math.max(entry.retryAfter, now + Math.min(hint, 2_147_483_647))
     this.wake(entry)
   }
 
-  async stream(key: string, signal: AbortSignal, start: () => Promise<AgentTurnStream>): Promise<AgentTurnStream> {
-    const lease = await this.acquire(key, signal)
+  async stream(
+    key: string,
+    signal: AbortSignal,
+    start: () => Promise<AgentTurnStream>,
+    recovery?: ProviderRecoveryOptions,
+  ): Promise<AgentTurnStream> {
+    const lease = await this.acquire(key, signal, recovery)
     let source: AgentTurnStream
     try {
       signal.throwIfAborted()
@@ -156,10 +171,25 @@ export class ProviderRetryCoordinator {
     }
   }
 
-  async acquire(key: string, signal: AbortSignal) {
+  async acquire(key: string, signal: AbortSignal, recovery?: ProviderRecoveryOptions) {
     const waiting = AbortSignal.any([signal, this.closing.signal])
     const deadline = this.options.now() + this.options.maxWaitMs
     let probe: { entry: Entry; token: symbol; revision: number } | undefined
+    const expedite = (entry: Entry) => {
+      if (
+        waiting.aborted ||
+        this.entries.get(key) !== entry ||
+        entry.probe ||
+        entry.until <= this.options.now() ||
+        entry.retryAfter > this.options.now()
+      )
+        return false
+      entry.until = this.options.now()
+      this.wake(entry)
+      return true
+    }
+    const initial = this.entries.get(key)
+    if (initial && recovery?.immediate) expedite(initial)
     while (true) {
       waiting.throwIfAborted()
       const entry = this.entries.get(key)
@@ -181,6 +211,11 @@ export class ProviderRetryCoordinator {
       const notify = () => changed.abort()
       entry.waiters.add(notify)
       try {
+        recovery?.onWait?.({
+          error: entry.error,
+          next: entry.probe ? undefined : entry.until,
+          retry: !entry.probe && entry.retryAfter <= this.options.now() ? () => expedite(entry) : undefined,
+        })
         await this.options.sleep(
           Math.min(remaining, delay > 0 ? delay : remaining),
           AbortSignal.any([waiting, changed.signal]),
@@ -192,6 +227,7 @@ export class ProviderRetryCoordinator {
         entry.waiters.delete(notify)
       }
     }
+    recovery?.onWait?.(undefined)
     let released = false
     let failed = false
     return {

@@ -3204,10 +3204,16 @@ export type SessionStatus =
       type: "idle"
     }
   | {
-      type: "retry"
+      rootID: string
+      messageID: string
+      phase: "waiting" | "waiting_provider" | "connecting"
       attempt: number
       message: string
-      next: number
+      error: string
+      startedAt: number
+      next?: number
+      canRetry: boolean
+      type: "retry"
     }
   | {
       type: "busy"
@@ -3559,10 +3565,16 @@ export type SessionWorkingInfo =
       activity?: SessionActivity
     }
   | {
-      status: "retry"
+      rootID: string
+      messageID: string
+      phase: "waiting" | "waiting_provider" | "connecting"
       attempt: number
       message: string
-      next: number
+      error: string
+      startedAt: number
+      next?: number
+      canRetry: boolean
+      status: "retry"
     }
   | {
       status: "paused"
@@ -21210,6 +21222,47 @@ export type SessionForkResponses = {
 }
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
+
+export type SessionRetryRequestData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/retry"
+}
+
+export type SessionRetryRequestErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionRetryRequestError = SessionRetryRequestErrors[keyof SessionRetryRequestErrors]
+
+export type SessionRetryRequestResponses = {
+  /**
+   * Retry result
+   */
+  200: {
+    handled: boolean
+  }
+}
+
+export type SessionRetryRequestResponse = SessionRetryRequestResponses[keyof SessionRetryRequestResponses]
 
 export type SessionContinueData = {
   body?: never

@@ -212,7 +212,29 @@ export namespace SessionProcessor {
     const executionPhase = (phase: SessionManager.ExecutionPhase) => {
       if (isCurrent()) SessionManager.setExecutionPhase(input.sessionID, phase)
     }
+    const recovery = SessionRetry.create({
+      sessionID: input.sessionID,
+      rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+      messageID: input.assistantMessage.id,
+      providerID: input.model.providerID,
+      abort: input.abort,
+      publish: (state) =>
+        SessionManager.setStatus(
+          input.sessionID,
+          state,
+          input.generation === undefined
+            ? undefined
+            : {
+                generation: input.generation,
+                rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+              },
+        ),
+    })
     const activity = (phase: Activity["phase"], tool?: Activity["tool"]) => {
+      if (recovery.active()) {
+        if (phase === "preparing_context" || phase === "queued_agent" || phase === "waiting_model") return
+        recovery.finish()
+      }
       if (input.generation === undefined) return
       SessionManager.setActivity(
         input.sessionID,
@@ -1135,6 +1157,7 @@ export namespace SessionProcessor {
                 usageRole: streamInput.usageRole ?? "conversation",
                 retryIndex: attempt,
                 onPhase: runtime.bind((phase) => activity(phase)),
+                recovery: { immediate: recovery.takeImmediate(), onWait: runtime.bind(recovery.providerWait) },
               })
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
@@ -1342,6 +1365,7 @@ export namespace SessionProcessor {
                       break
 
                     case "reasoning-delta":
+                      if (!value.text) break
                       activity("responding")
                       recordFirstDelta("reasoning")
                       observeContent("reasoning", value.text)
@@ -1787,6 +1811,7 @@ export namespace SessionProcessor {
                       break
 
                     case "text-delta":
+                      if (!value.text) break
                       activity("responding")
                       recordFirstDelta("text")
                       observeContent("text", value.text)
@@ -1848,6 +1873,7 @@ export namespace SessionProcessor {
                   }
                 }
                 retryEligible = false
+                if (recovery.active()) activity("finalizing")
                 ObservabilitySpans.end(llmSpan, {
                   attributes: { provider: input.model.providerID, model: input.model.id },
                 })
@@ -2027,15 +2053,12 @@ export namespace SessionProcessor {
                     error,
                   },
                 })
-                SessionManager.setStatus(input.sessionID, {
-                  type: "retry",
-                  attempt,
-                  message: retry.message,
-                  next: Date.now() + delay,
+                await recovery.wait(error, attempt, delay).catch((error) => {
+                  if (!input.abort.aborted) throw error
                 })
-                await SessionRetry.sleep(delay, input.abort).catch(() => {})
                 continue
               }
+              recovery.finish()
               settleModelStream(error)
               // A user stop pauses the session; it does not fail it. Writing the
               // turn's terminal record here — `finish:"error"` plus
@@ -2170,6 +2193,7 @@ export namespace SessionProcessor {
             return "continue"
           }
         } finally {
+          recovery.dispose()
           dispose("process.complete")
         }
       },

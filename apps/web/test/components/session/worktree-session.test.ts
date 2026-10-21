@@ -129,7 +129,18 @@ describe("workspace change disabled state", () => {
   test("disables for busy and retry runtime statuses", () => {
     for (const status of [
       { type: "busy" },
-      { type: "retry", attempt: 1, message: "rate limited", next: 100 },
+      {
+        type: "retry",
+        rootID: "retry-root",
+        messageID: "retry-message",
+        phase: "waiting",
+        error: "rate limited",
+        startedAt: 0,
+        canRetry: true,
+        attempt: 1,
+        message: "rate limited",
+        next: 100,
+      },
     ] as const) {
       expect(isSessionRunningForWorkspaceChange({ status })).toBe(true)
     }

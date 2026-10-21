@@ -11,6 +11,7 @@ import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
+import { SessionRetry } from "@ericsanchezok/synergy-harness/session/retry"
 import { SessionInputProgress } from "@ericsanchezok/synergy-harness/session/input-progress"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -294,6 +295,52 @@ export async function continueSession(sessionID: string): Promise<boolean> {
     ...(interrupted ? { force: true } : {}),
     waitForProcessing: true,
   })
+}
+
+export const RetrySessionRequestInput = z.object({
+  sessionID: Identifier.schema("session"),
+  messageID: Identifier.schema("message"),
+})
+
+export async function retrySessionRequest(
+  input: z.infer<typeof RetrySessionRequestInput>,
+): Promise<{ handled: boolean }> {
+  const { sessionID, messageID } = input
+  {
+    using control = await Lock.write(`session-control:${sessionID}`)
+    const session = await Session.get(sessionID)
+    if (SessionManager.isRunning(sessionID)) return { handled: SessionRetry.now(sessionID, messageID) }
+    if (session.paused && session.paused.reason !== "failed") return { handled: false }
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    const latest = messages.at(-1)?.info
+    const root = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)?.info
+    if (
+      !root ||
+      latest?.role !== "assistant" ||
+      latest.id !== messageID ||
+      latest.rootID !== root.id ||
+      !latest.error ||
+      !SessionRetry.retryable(latest.error)
+    )
+      return { handled: false }
+    if (await SessionInbox.hasRunnableItem(sessionID)) return { handled: false }
+    await SessionExecutionOwners.assertResume(session)
+    const delivery = await SessionInbox.deliverUnique({
+      sessionID,
+      deliveryKey: `retry:${messageID}`,
+      mode: "steer",
+      message: {
+        role: "user",
+        visible: false,
+        origin: { type: "user", detail: "retry" },
+        parts: [{ type: "text", text: "Retry the failed request and continue the current task." }],
+      },
+    })
+    if (!delivery.created) return { handled: false }
+    await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), root.id)
+    await SessionLifecycle.clear(sessionID)
+  }
+  return { handled: await SessionDrive.request(sessionID, "user-retry") }
 }
 
 /**
