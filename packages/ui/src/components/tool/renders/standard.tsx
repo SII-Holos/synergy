@@ -1235,7 +1235,9 @@ ToolRegistry.register({
       <BlueprintLoopTool
         {...props}
         icon="circle-pause"
-        title={TOOL_TITLE_DESC["blueprint_loop_stop"]}
+        title={
+          props.input.action === "pause" ? TOOL_TITLE_DESC["session_pause"] : TOOL_TITLE_DESC["blueprint_loop_stop"]
+        }
         subtitle={(props.input.summary as string) || ""}
       />
     )

@@ -28,7 +28,7 @@ function reasoningPart(text: string): PartType {
   } as PartType
 }
 
-function toolPart(tool: string, status = "running"): PartType {
+function toolPart(tool: string, status = "running", input: unknown = {}): PartType {
   return {
     id: "t1",
     sessionID: "s",
@@ -36,7 +36,7 @@ function toolPart(tool: string, status = "running"): PartType {
     type: "tool",
     callID: "call-1",
     tool,
-    state: { status, input: {}, metadata: {} },
+    state: { status, input, metadata: {} },
   } as PartType
 }
 
@@ -104,6 +104,31 @@ describe("session-status i18n", () => {
     expect(computeStatusFromPart(toolPart("look_at"), i18n)).toBe("ZZZ Analyzing files")
     expect(computeStatusFromPart(toolPart("task_output"), i18n)).toBe("ZZZ Managing tasks")
     expect(computeStatusFromPart(toolPart("email_send"), i18n)).toBe("ZZZ Sending email")
+  })
+
+  test("Blueprint pause describes pausing the session without changing review defaults", () => {
+    const i18n = createI18n({
+      "session-status.pausing-session": "暂停会话中",
+      "session-status.reviewing-blueprint": "蓝图评审中",
+    })
+    for (const status of ["running", "completed"]) {
+      expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action: "pause" }))).toBe(
+        "Pausing session",
+      )
+      expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action: "pause" }), i18n)).toBe(
+        "暂停会话中",
+      )
+      for (const action of [undefined, "request_review"]) {
+        expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action }))).toBe("Reviewing Blueprint")
+        expect(computeStatusFromPart(toolPart("blueprint_loop_stop", status, { action }), i18n)).toBe("蓝图评审中")
+      }
+    }
+    expect(computeStatusFromPart(toolPart("blueprint_loop_stop", "generating", { action: "pause" }))).toBe(
+      "Generating input",
+    )
+    for (const input of [null, "pause", ["pause"], 1, false]) {
+      expect(computeStatusFromPart(toolPart("blueprint_loop_stop", "pending", input))).toBe("Reviewing Blueprint")
+    }
   })
 
   test("computeStatusFromPart returns undefined for unknown tool", () => {

@@ -105,6 +105,8 @@ This single-writer rule supports:
 
 The durable session can outlive its in-memory runtime. Runtime state is reconstructed from persisted messages, the `paused` latch, workflow records, BlueprintLoop state, and recovery metadata after restart. A restart never resumes work: every session that ended abnormally is recorded as paused and waits for an explicit Continue or Abandon.
 
+Stopping an execution or replying to its pending question or permission request is a control operation, not another execution turn. These operations bind the target Scope and Workspace without acquiring a second loop lease. An agent abort request carries its caller's cancellation signal into control-lock admission, so a cancelled old call cannot acquire that lock later and stop newly admitted input. Compaction and worktree changes still require exclusive execution admission. A tool that pauses its own execution persists its successful result before signalling the original lease through `afterPersist`; that hook cannot wait for a control lock held by input awaiting the same lease. Failed tool settlement also signals an already-paused original owner, allowing same-batch waiting tools to drain when result processing prevents the hook. The invoke loop checks the durable pause before each subsequent model turn as well.
+
 ## Durable input recovery
 
 Startup Inbox discovery skips corrupt records and unreadable Session owners, including missing derived indexes, while continuing to healthy owners. Storage outages still propagate; discovery never removes retained work or bypasses execution-owner availability. Owner checks use effective message metadata and canonical rollback semantics; they do not hydrate bodies or start owner migrations inside a read snapshot.

@@ -659,6 +659,10 @@ export namespace SessionInvoke {
                 log.info("loop", { step, sessionID })
                 if (abort.aborted) break
                 session = SessionExecutionOwners.forRoot(await Session.get(sessionID), root.info)
+                if (await SessionLifecycle.blocksDrive(session)) {
+                  cancel(sessionID, { pauseTurn: true })
+                  break
+                }
                 SessionManager.assertExecutionContext(session, "session loop refresh")
                 scopeID = (session.scope as Scope).id
                 let msgs = MessageV2.executionMessages(

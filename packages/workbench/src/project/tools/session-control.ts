@@ -114,6 +114,7 @@ export const SessionControlTool = Tool.define("session_control", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
+    ctx.abort.throwIfAborted()
     if (params.action === "create") {
       return handleCreate(params, ctx)
     }
@@ -130,13 +131,15 @@ export const SessionControlTool = Tool.define("session_control", {
     }
 
     const inSession = <T>(fn: () => Promise<T>) => SessionManager.run(sessionID, fn)
+    const inScope = <T>(fn: () => Promise<T>) =>
+      ScopeContext.provide({ scope: session.scope as Scope, workspace: session.workspace, fn })
 
     switch (params.action) {
       case "compact": {
         return inSession(() => handleCompact(sessionID))
       }
       case "abort": {
-        return inSession(() => handleAbort(sessionID))
+        return inScope(() => handleAbort(sessionID, ctx.abort))
       }
       case "worktree_enter": {
         return inSession(() => handleWorktreeEnter(sessionID, params))
@@ -163,13 +166,13 @@ export const SessionControlTool = Tool.define("session_control", {
         if (!params.answers) {
           throw new Error("answers is required for question_reply")
         }
-        return inSession(() => handleQuestionReply(params.requestID!, params.answers!))
+        return inScope(() => handleQuestionReply(params.requestID!, params.answers!))
       }
       case "question_reject": {
         if (!params.requestID) {
           throw new Error("requestID is required for question_reject")
         }
-        return inSession(() => handleQuestionReject(params.requestID!))
+        return inScope(() => handleQuestionReject(params.requestID!))
       }
       case "permission_reply": {
         if (!params.requestID) {
@@ -178,7 +181,7 @@ export const SessionControlTool = Tool.define("session_control", {
         if (!params.reply) {
           throw new Error("reply is required for permission_reply")
         }
-        return inSession(() => handlePermissionReply(params.requestID!, params.reply!, params.message))
+        return inScope(() => handlePermissionReply(params.requestID!, params.reply!, params.message))
       }
     }
   },
@@ -433,8 +436,8 @@ async function handleCompact(sessionID: string) {
   }
 }
 
-async function handleAbort(sessionID: string) {
-  await SessionAbort.abort(sessionID)
+async function handleAbort(sessionID: string, signal: AbortSignal) {
+  await SessionAbort.abort(sessionID, { signal })
   return {
     title: `Aborted ${sessionID}`,
     output: `Session ${sessionID} has been aborted.`,

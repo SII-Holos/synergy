@@ -57,10 +57,17 @@ export namespace SessionAbort {
     terminalize?: boolean
     abandonWorkflow?: boolean
     pauseReason?: PausedReason
+    /** Cancel control admission when the calling operation is no longer active. */
+    signal?: AbortSignal
   }
 
   export async function abort(sessionID: string, options?: AbortOptions): Promise<Result> {
-    using control = options?.internalCancel ? undefined : await Lock.write(`session-control:${sessionID}`)
+    using control = options?.internalCancel
+      ? undefined
+      : options?.signal
+        ? await Lock.writeWithSignal(`session-control:${sessionID}`, options.signal)
+        : await Lock.write(`session-control:${sessionID}`)
+    options?.signal?.throwIfAborted()
     const instanceState = runtimeState()
     // Sample liveness *before* the signal. The signal ends the turn, which
     // releases the runtime, so a later sample cannot distinguish a loop that was
@@ -85,6 +92,7 @@ export namespace SessionAbort {
       options?.terminalize !== true &&
       options?.abandonWorkflow !== true &&
       SessionLifecycle.latchable(await SessionManager.getSession(sessionID).catch(() => undefined))
+    options?.signal?.throwIfAborted()
     if (!options?.internalCancel) {
       await SessionLifecycle.pause({ sessionID, reason: options?.pauseReason ?? "aborted" })
     }

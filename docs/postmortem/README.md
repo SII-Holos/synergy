@@ -25,6 +25,8 @@ Rationale: `docs/decisions/`.
 
 ## Index
 
+- [0083](0083-blueprint-blockers-could-not-pause.md)
+
 - [0082](0082-performance-evidence-and-failure-retention.md)
 
 - [0082](0082-replaced-directory-checkpoint-blocked-rebind.md)
@@ -37,9 +39,9 @@ Rationale: `docs/decisions/`.
 
 - [0078](0078-cold-navigation-migration-admission.md)
 
-- [0074: Agenda Home origin](0074-agenda-home-origin-blocked-session-creation.md)
+- [0074: Agenda origin](0074-agenda-home-origin-blocked-session-creation.md)
 
-- [0072: Native watcher concurrency](0072-native-watcher-exception-concurrency.md)
+- [0072: Watcher concurrency](0072-native-watcher-exception-concurrency.md)
 
 - [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
 

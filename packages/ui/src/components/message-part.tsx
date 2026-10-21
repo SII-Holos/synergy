@@ -715,7 +715,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "blueprint_loop_stop":
       return {
         icon: "circle-pause",
-        title: TOOL_TITLE_DESC["blueprint_loop_stop"],
+        title: input.action === "pause" ? TOOL_TITLE_DESC["session_pause"] : TOOL_TITLE_DESC["blueprint_loop_stop"],
         subtitle: input.summary,
       }
     case "blueprint_loop_approve":
