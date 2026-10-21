@@ -12,7 +12,6 @@ function Editor() {
   const prompt = usePrompt()
   const navigate = useNavigate()
   const params = useParams()
-  Object.assign(window, { projectDraftFixture: { prompt, navigate } })
   const [node, setNode] = createSignal<HTMLDivElement>()
   const [mounted, setMounted] = createSignal(false)
   const [revision, setRevision] = createSignal(0)
@@ -47,6 +46,7 @@ function Editor() {
     applyEdits: editor.applyDocumentEdits,
     isEditableRange: editor.isEditableRange,
   })
+  Object.assign(window, { projectDraftFixture: { prompt, navigate, controller } })
   onCleanup(controller.subscribe(() => setRevision((value) => value + 1)))
   onCleanup(() => controller.dispose())
   createEffect(() => {

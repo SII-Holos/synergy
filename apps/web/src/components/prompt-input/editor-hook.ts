@@ -246,8 +246,10 @@ export function usePromptEditor(input: PromptEditorInput) {
   }
 
   const setRangeEdge = (range: Range, edge: "start" | "end", offset: number) => {
+    const editor = input.editor()
+    if (!editor) return
     let remaining = offset
-    const nodes = Array.from(input.editor()?.childNodes ?? [])
+    const nodes = Array.from(editor.childNodes)
 
     for (const node of nodes) {
       const length = getNodeLength(node)
@@ -271,6 +273,8 @@ export function usePromptEditor(input: PromptEditorInput) {
 
       remaining -= length
     }
+    if (edge === "start") range.setStart(editor, nodes.length)
+    if (edge === "end") range.setEnd(editor, nodes.length)
   }
 
   const addPart = (part: ContentPart) => {

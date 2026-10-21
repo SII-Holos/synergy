@@ -119,7 +119,7 @@ export type RetrievalEntry = {
   sessionID: string
   messageID: string
   available: number
-  parts: string[]
+  parts: string[] | null
   role: "user" | "assistant"
 }
 
@@ -128,24 +128,50 @@ export function requestCatalog(
   owner: { scopeID: string; sessionID: string },
   available: number,
 ): RetrievalEntry[] {
-  const invalid = new Set<string>()
-  const messages = new Map<string, { role: "user" | "assistant"; parts: Map<string, string> }>()
+  const messages = new Map<
+    string,
+    {
+      role: "user" | "assistant"
+      parts: Map<string, string>
+      positions: Set<string>
+      physical: Set<number>
+      invalid: boolean
+    }
+  >()
   for (const source of request.contextSources ?? []) {
+    if (!source.messageID || !["userMessages", "assistantMessages"].includes(source.category)) continue
+    const value = messages.get(source.messageID) ?? {
+      role: source.category === "userMessages" ? "user" : "assistant",
+      parts: new Map<string, string>(),
+      positions: new Set<string>(),
+      physical: new Set<number>(),
+      invalid: false,
+    }
+    messages.set(source.messageID, value)
     if (
       source.precision !== "source" ||
-      !source.messageID ||
       !source.partID ||
-      !["userMessages", "assistantMessages"].includes(source.category)
-    )
+      source.path.length !== 2 ||
+      source.path[0] !== "messages" ||
+      !/^(0|[1-9]\d*)$/.test(source.path[1]!)
+    ) {
+      value.invalid = true
       continue
-    if (source.path.length !== 2 || source.path[0] !== "messages" || !/^(0|[1-9]\d*)$/.test(source.path[1]!)) continue
-    const message = request.messages[Number(source.path[1])]
-    if (!message || (message.role !== "user" && message.role !== "assistant")) continue
-    if ((message.role === "user") !== (source.category === "userMessages")) continue
+    }
+    const index = Number(source.path[1])
+    const message = request.messages[index]
+    if (!message || message.role !== value.role) {
+      value.invalid = true
+      continue
+    }
+    value.physical.add(index)
     const selector = source.selector
     let text: string | undefined
-    if (selector?.length === 1 && selector[0] === "content" && typeof message.content === "string")
+    let position: string | undefined
+    if (selector?.length === 1 && selector[0] === "content" && typeof message.content === "string") {
       text = message.content
+      position = `${index}/content`
+    }
     if (
       selector?.length === 3 &&
       selector[0] === "content" &&
@@ -154,28 +180,44 @@ export function requestCatalog(
       Array.isArray(message.content)
     ) {
       const part = message.content[Number(selector[1])]
-      if (part?.type === "text") text = part.text
+      if (part && part.type !== "text") continue
+      if (part?.type === "text") {
+        text = part.text
+        position = `${index}/${selector[1]}`
+      }
     }
-    if (text === undefined) continue
-    if (source.range) {
-      if (source.range.end > text.length || source.range.start > source.range.end) continue
-      text = text.slice(source.range.start, source.range.end)
+    if (
+      text === undefined ||
+      position === undefined ||
+      text.length !== source.characters ||
+      (source.range && (source.range.start !== 0 || source.range.end !== text.length))
+    ) {
+      value.invalid = true
+      continue
     }
-    if (text.length !== source.characters) continue
-    const value = messages.get(source.messageID) ?? { role: message.role, parts: new Map<string, string>() }
-    if (value.parts.has(source.partID) && value.parts.get(source.partID) !== text) invalid.add(source.messageID)
+    if (value.parts.has(source.partID) && value.parts.get(source.partID) !== text) value.invalid = true
     value.parts.set(source.partID, text)
-    messages.set(source.messageID, value)
+    value.positions.add(position)
+  }
+  for (const value of messages.values()) {
+    for (const index of value.physical) {
+      const content = request.messages[index]!.content
+      const positions =
+        typeof content === "string"
+          ? [`${index}/content`]
+          : content.flatMap((part, at) => (part.type === "text" ? [`${index}/${at}`] : []))
+      if (positions.some((position) => !value.positions.has(position))) value.invalid = true
+    }
   }
   return [...messages]
-    .filter(([id]) => !invalid.has(id))
+    .filter(([, value]) => value.invalid || value.parts.size)
     .map(([messageID, message]) => ({
       identity: `${owner.scopeID}/${owner.sessionID}/${messageID}`,
       sessionID: owner.sessionID,
       messageID,
       available,
       role: message.role,
-      parts: [...message.parts.values()],
+      parts: message.invalid ? null : [...message.parts.values()],
     }))
 }
 
@@ -265,6 +307,7 @@ export async function loadHistory(progress: (value: object) => void) {
           const request = Request.parse(JSON.parse(await artifactText(owner, call.request)))
           const entries = requestCatalog(request, owner, call.started)
           if (!entries.length) catalogGap("missing_source_attribution")
+          for (const entry of entries) if (entry.parts === null) catalogGap("unavailable_message_version")
           if (
             new Set(
               (request.contextSources ?? [])
@@ -341,7 +384,7 @@ export async function loadHistory(progress: (value: object) => void) {
             const precedingEntry = requestCatalog(request, owner, first.started)
               .filter((entry) => entry.role === "assistant")
               .at(-1)
-            if (!precedingEntry || precedingEntry.parts.join("\n\n").trim() !== preceding.completed.reply.trim())
+            if (!precedingEntry?.parts || precedingEntry.parts.join("\n\n").trim() !== preceding.completed.reply.trim())
               throw new Error("Preceding identity unavailable")
             item.preceding = {
               identity: precedingEntry.identity,
@@ -428,7 +471,7 @@ export function temporalEvidence(item: ReplayCase, history: HistoricalInput[], c
     const previous = versions.get(entry.identity)
     if (!previous || previous.available < entry.available) versions.set(entry.identity, entry)
   }
-  const matches = (identity: string, text: string) => versions.get(identity)?.parts.join("\n\n").trim() === text.trim()
+  const matches = (identity: string, text: string) => versions.get(identity)?.parts?.join("\n\n").trim() === text.trim()
   const precedingCurrent = (source: HistoricalInput) =>
     source.preceding &&
     source.preceding.at < source.at &&
@@ -475,7 +518,11 @@ export function temporalEvidence(item: ReplayCase, history: HistoricalInput[], c
     byIdentity.set(source.identity, source)
     if (source.preceding && precedingCurrent(source)) byIdentity.set(source.preceding.identity, source)
   }
-  const hits = TextSearch.ranked([...versions.values()], terms, 96).flatMap((hit) => {
+  const hits = TextSearch.ranked(
+    [...versions.values()].filter((entry): entry is RetrievalEntry & { parts: string[] } => entry.parts !== null),
+    terms,
+    96,
+  ).flatMap((hit) => {
     const source = byIdentity.get(hit.identity)
     if (!source || (hit.role === "user" ? source.text : source.preceding?.reply) !== hit.parts.join("\n\n").trim())
       return []

@@ -1927,7 +1927,7 @@ export function createPromptInputController(props: PromptInputProps) {
       return
     }
     if (event.key === "Escape" && completion) {
-      composerDocument.selectionChanged()
+      composerDocument.dismissCompletion()
       event.preventDefault()
       return
     }

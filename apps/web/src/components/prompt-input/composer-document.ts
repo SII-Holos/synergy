@@ -203,6 +203,23 @@ export class ComposerDocumentController {
 
   selectionChanged() {
     if (this.#completions.size === 0) return
+    const snapshot = this.current()
+    let removed = false
+    for (const [owner, completion] of this.#completions) {
+      if (
+        completion.revision === snapshot.revision &&
+        completion.position === snapshot.selection.start &&
+        snapshot.selection.start === snapshot.selection.end
+      )
+        continue
+      this.#completions.delete(owner)
+      removed = true
+    }
+    if (removed) this.#notify()
+  }
+
+  dismissCompletion() {
+    if (this.#completions.size === 0) return
     this.#completions.clear()
     this.#notify()
   }

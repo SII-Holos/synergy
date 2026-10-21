@@ -58,16 +58,78 @@ test("retrieval catalog accepts attributed text and rejects reasoning, invalid r
       parts: ["API"],
     },
   ])
-  expect(requestCatalog({ ...request, contextSources: [{ ...text, range: { start: 0, end: 9 } }] }, owner, 4)).toEqual(
-    [],
-  )
+  expect(
+    requestCatalog({ ...request, contextSources: [{ ...text, range: { start: 0, end: 9 } }] }, owner, 4),
+  ).toMatchObject([{ parts: null }])
   expect(
     requestCatalog(
       { ...request, contextSources: [text, { ...text, range: { start: 0, end: 1 }, characters: 1 }] },
       owner,
       4,
     ),
-  ).toEqual([])
+  ).toMatchObject([{ parts: null }])
+})
+
+test("incomplete observations fence earlier catalog versions until a complete observation restores them", () => {
+  const owner = { scopeID: "scope", sessionID: "past" }
+  const source = {
+    category: "userMessages" as const,
+    precision: "source" as const,
+    path: ["messages", "0"],
+    selector: ["content", "0", "text"],
+    messageID: "message",
+    partID: "first",
+    source: "user",
+    characters: 3,
+  }
+  const request = {
+    messages: [
+      {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: "API" },
+          { type: "text" as const, text: "boundary" },
+        ],
+      },
+    ],
+    contextSources: [source, { ...source, selector: ["content", "1", "text"], partID: "second", characters: 8 }],
+  }
+  const good = requestCatalog(request, owner, 1)
+  const incomplete = requestCatalog(
+    { ...request, contextSources: [source, { ...request.contextSources[1]!, characters: 99 }] },
+    owner,
+    2,
+  )
+  expect(incomplete).toMatchObject([{ parts: null }])
+  const partial = requestCatalog(
+    {
+      ...request,
+      contextSources: [source, { ...request.contextSources[1]!, range: { start: 0, end: 3 }, characters: 3 }],
+    },
+    owner,
+    2,
+  )
+  expect(partial).toMatchObject([{ parts: null }])
+  const history = [
+    {
+      id: "past",
+      identity: "scope/past/message",
+      sessionID: "past",
+      family: "past",
+      at: 1,
+      text: "API\n\nboundary",
+    } as HistoricalInput,
+  ]
+  const item = {
+    sessionID: "target",
+    family: "target",
+    current: [{ role: "assistant", content: "API" }],
+    reference: "测试",
+  } as ReplayCase
+  const catalog = [...good, ...incomplete, ...requestCatalog(request, owner, 3)]
+  expect(temporalEvidence({ ...item, cutoff: 2 }, history, catalog).available).toBe(1)
+  expect(temporalEvidence({ ...item, cutoff: 3 }, history, catalog).available).toBe(0)
+  expect(temporalEvidence({ ...item, cutoff: 4 }, history, catalog).available).toBe(1)
 })
 
 test("replay requires the terminal reply to survive into the next immutable request unchanged", () => {

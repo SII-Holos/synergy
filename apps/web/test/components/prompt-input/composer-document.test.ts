@@ -19,6 +19,31 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 }
 
 describe("ComposerDocumentController", () => {
+  test("explicit dismissal removes a completion without moving the caret or editing the draft", () => {
+    const { controller, text } = fixture()
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.write"]) })
+    service.setCompletion({ revision: 0, position: 5, text: " world" })
+    controller.dismissCompletion()
+    expect(controller.completion()).toBeUndefined()
+    expect(controller.current().selection).toEqual({ start: 5, end: 5 })
+    expect(text()).toBe("hello")
+    controller.dispose()
+  })
+
+  test("refocusing the same caret preserves a completion, while moving the caret dismisses it", () => {
+    const { controller, selection } = fixture()
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.write"]) })
+    service.setCompletion({ revision: 0, position: 5, text: " world" })
+    controller.selectionChanged()
+    expect(controller.completion()?.text).toBe(" world")
+    selection({ start: 4, end: 4 })
+    controller.selectionChanged()
+    expect(controller.completion()).toBeUndefined()
+    selection({ start: 5, end: 5 })
+    expect(controller.completion()).toBeUndefined()
+    controller.dispose()
+  })
+
   test("an asynchronous acceptance cannot mark a different session draft as assisted", async () => {
     let sessionId = "first"
     let text = ""

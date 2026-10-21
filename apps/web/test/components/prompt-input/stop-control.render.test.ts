@@ -244,6 +244,8 @@ mock.module("../../../src/context/prompt", () => ({
   PromptProvider: (props: { children?: unknown }) => props.children,
   usePrompt: () => ({
     ready: () => true,
+    assistance: () => undefined,
+    setAssistance: () => {},
     current: promptParts,
     dirty: () => promptParts().length > 0,
     cursor: () => 0,
@@ -258,6 +260,7 @@ mock.module("../../../src/context/prompt", () => ({
     },
     capture: () => ({
       draft: {
+        assistance: () => undefined,
         current: promptParts,
         context: { items: () => [] },
         revision: () => 0,
