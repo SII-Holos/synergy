@@ -116,7 +116,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
 import { LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
-import { resolveLoopDisplay, resolveLoopHistoryHint } from "./loop-status"
+import { resolveLoopDisplay } from "./loop-status"
 import { createLoopStatusResource } from "./loop-status-resource"
 import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
@@ -327,23 +327,15 @@ export function createPromptInputController(props: PromptInputProps) {
     undefined,
     { equals: (a, b) => a?.sessionID === b?.sessionID && a?.scopeID === b?.scopeID },
   )
-  const loopHistory = createMemo(() => resolveLoopHistoryHint(view().messagesFor(params.id ?? "")), undefined, {
-    equals: (a, b) => a?.blueprintID === b?.blueprintID && a?.light === b?.light && a?.lightReview === b?.lightReview,
-  })
   const loopStatus = createLoopStatusResource({
     client: sdk.client,
     owner: loopOwner,
     loopID: () => blueprintBinding()?.loopID,
-    lightActive: backendLightLoopActive,
-    lightInstructions: lightLoopInstructions,
-    history: loopHistory,
     reconnect: globalSync.reconnectVersion,
     selection: capabilities.current,
     hasFeature: capabilities.has,
     getBlueprint: async (id, scopeID, signal) =>
       (await sdk.client.blueprint.loop.get({ id, scopeID }, { signal })).data,
-    getTerminal: async (id, scopeID, signal) =>
-      (await sdk.client.workflow.session.getLightloopTerminal({ id, scopeID }, { signal })).data,
   })
   const sessionLoop = loopStatus.blueprint
   createEffect(
@@ -528,14 +520,10 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   const loopDisplay = createMemo(() =>
     resolveLoopDisplay({
-      localBlueprint: availableLocalLoop(),
       blueprint: sessionLoop(),
       blueprintBinding: blueprintBinding(),
       blueprintUnavailable: loopStatus.blueprintUnavailable(),
       workflow: activeWorkflow(),
-      lightPending: capabilities.has("light-loop") && pendingLightLoop(),
-      lightTerminal: loopStatus.terminal(),
-      awaitingTerminal: loopStatus.awaitingTerminal(),
       status: status(),
     }),
   )
@@ -555,40 +543,50 @@ export function createPromptInputController(props: PromptInputProps) {
     const action = { owner },
       sessionID = params.id,
       scopeID = sessionScopeID(),
+      loopID = boundLoopID(),
       slot = availableLocalLoop()
     setLoopAction(action)
     try {
       if (value.kind === "lightloop" && activeWorkflow()?.kind === "lightloop" && sessionID)
         await sdk.client.workflow.session.cancelLightloop({ id: sessionID, scopeID }, { throwOnError: true })
-      else if (value.kind === "blueprint") {
-        if (boundLoopID() && (!slot || (slot.type === "loop" && slot.loopID === boundLoopID())))
-          await abandonSession(sessionID)
-        else if (slot?.type === "loop")
-          await sdk.client.blueprint.loop.cancel({ id: slot.loopID, scopeID }, { throwOnError: true })
-      }
+      else if (value.kind === "blueprint" && loopID) await abandonSession(sessionID)
       if (sessionKey() !== owner) return
-      if (localArmedLoop() === slot) setLocalArmedLoop(null)
-      if (value.kind === "lightloop" && value.pending) setPendingLightLoop(false)
+      if (slot?.type === "loop" && slot.loopID === loopID && localArmedLoop() === slot) setLocalArmedLoop(null)
     } catch (error) {
       if (sessionKey() === owner) reportControlError(error)
     } finally {
       if (loopAction() === action) setLoopAction(undefined)
     }
   }
+  const [loopDetails, setLoopDetails] = createSignal<{ id: string; owner: string; loopID?: string }>()
+  createEffect(() => {
+    const details = loopDetails()
+    if (details && (!loopDisplay() || sessionKey() !== details.owner || boundLoopID() !== details.loopID)) {
+      workflowDialog.close(details.id)
+    }
+  })
+  onCleanup(() => {
+    const details = untrack(loopDetails)
+    if (details) workflowDialog.close(details.id)
+  })
   const openLoopStatus = () => {
     const owner = sessionKey()
-    workflowDialog.show(() => (
-      <LoopStatusDialog
-        value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
-        onReviewer={() => {
-          const reviewer = loopDisplay()?.reviewerSessionID
-          if (sessionKey() === owner && reviewer) {
-            workflowDialog.close()
-            navigate(`/${params.dir}/session/${reviewer}`)
-          }
-        }}
-      />
-    ))
+    const id = workflowDialog.show(
+      () => (
+        <LoopStatusDialog
+          value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
+          onReviewer={() => {
+            const reviewer = loopDisplay()?.reviewerSessionID
+            if (sessionKey() === owner && reviewer) {
+              if (id) workflowDialog.close(id)
+              navigate(`/${params.dir}/session/${reviewer}`)
+            }
+          }}
+        />
+      ),
+      () => setLoopDetails(undefined),
+    )
+    if (id) setLoopDetails({ id, owner, loopID: boundLoopID() })
   }
   const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>(() => {
     const workflow = activeWorkflow()?.kind

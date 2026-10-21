@@ -27,10 +27,13 @@ describe("prompt blueprint slot display", () => {
     expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(), activeLoopID: "bll_other" })).toBeNull()
   })
 
-  test("does not display terminal session loops", () => {
+  test("Loop terminal metadata cannot clear the Session binding", () => {
     const terminalStatuses: BlueprintLoopInfo["status"][] = ["completed", "failed", "cancelled"]
     for (const status of terminalStatuses) {
-      expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })).toBeNull()
+      expect(
+        resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })?.slot,
+      ).toMatchObject({ loopID: "bll_active" })
+      expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(status) })).toBeNull()
     }
   })
 

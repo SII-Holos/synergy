@@ -25,7 +25,7 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
-    import { createSignal } from "solid-js"
+    import { createSignal, Show } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { LoopStatusEntry, LoopStatusDialog } from ${JSON.stringify(path.join(app, "src/components/prompt-input/loop-status-entry.tsx"))}
@@ -37,12 +37,15 @@ beforeAll(async () => {
     const [projected, setProjected] = createSignal(false)
     window.fixture = {
       set(stage,kind="blueprint") { setValue({ ...value(), kind, stage, terminal:["completed","failed","cancelled","timed_out","iteration_exhausted"].includes(stage) }) },
-      project(status, bound, pending = false) {
+      project(status, bound, pending = false, kind = "blueprint") {
         setProjected(true)
         setValue(resolveLoopDisplay({
           blueprint: { id:"loop", sessionID:"session", scopeID:"home", noteID:"note", title:"Previous task", status, source:"user", auditAgent:"supervisor", error:status === "failed" ? "Execution failed" : undefined, time:{created:1,updated:2} },
-          blueprintBinding: bound ? {loopID:"loop", source:"user", loopRole:"execution", phase:"running"} : undefined,
-          localBlueprint: pending ? {type:"pending", noteID:"next", title:"Next task", runMode:"current"} : undefined,
+          blueprintBinding: bound && kind === "blueprint" ? {loopID:"loop", source:"user", loopRole:"execution", phase:"running"} : undefined,
+          localBlueprint: pending && kind === "blueprint" ? {type:"pending", noteID:"next", title:"Next task", runMode:"current"} : undefined,
+          workflow: bound && kind === "lightloop" ? {kind:"lightloop", instructions:"Current goal"} : undefined,
+          lightPending: pending && kind === "lightloop",
+          lightTerminal: {status, instructions:"Previous goal", error:"Execution failed", createdAt:2},
           status: {type:"idle"},
         }))
       },
@@ -51,7 +54,7 @@ beforeAll(async () => {
     function App() {
       const dialog = useDialog()
       return <div class="prompt-input" style={{width:"100%", "container-type":"inline-size", "container-name":"prompt-input"}} onKeyDown={event => { if(event.key==="Escape") window.fixture.pauses++ }}>
-        <LoopStatusEntry value={value()} onRemove={projected() ? () => {} : undefined} onOpen={() => dialog.show(() => <LoopStatusDialog value={value} />)} />
+        <Show when={value()}>{current => <LoopStatusEntry value={current()} onRemove={projected() ? () => {} : undefined} onOpen={() => dialog.show(() => <LoopStatusDialog value={value} />)} />}</Show>
         <textarea aria-label="Message" />
       </div>
     }
@@ -99,19 +102,7 @@ for (const width of [320, 375, 720])
     const button = await entry.locator("button").elementHandle()
     const heights: number[] = []
     for (const kind of ["blueprint", "lightloop"])
-      for (const stage of [
-        "bound",
-        "running",
-        "auditing",
-        "paused",
-        "rework",
-        "resolving",
-        "failed",
-        "cancelled",
-        "timed_out",
-        "iteration_exhausted",
-        "unavailable",
-      ]) {
+      for (const stage of ["bound", "running", "auditing", "paused", "rework", "resolving", "unavailable"]) {
         await page.evaluate(
           ({ stage, kind }) =>
             (window as unknown as { fixture: { set(stage: string, kind: string): void } }).fixture.set(stage, kind),
@@ -131,68 +122,84 @@ for (const width of [320, 375, 720])
   })
 
 test.each(["lightloop", "blueprint"])(
-  "%s completion removes the row without replacing the editor or its draft",
+  "%s row presence follows binding, not result metadata, and preserves the editor",
   async (kind) => {
     await page.goto(server.url)
     const entry = page.locator('[data-component="loop-status-entry"]')
     const editor = page.getByRole("textbox", { name: "Message" })
     await editor.fill("Keep this draft")
     const original = await editor.elementHandle()
-    const set = (stage: string) =>
+    const project = (status: string, bound: boolean) =>
       page.evaluate(
-        ({ stage, kind }) =>
-          (window as unknown as { fixture: { set(stage: string, kind: string): void } }).fixture.set(stage, kind),
-        { stage, kind },
+        ({ status, bound, kind }) =>
+          (
+            window as unknown as {
+              fixture: { project(status: string, bound: boolean, pending: boolean, kind: string): void }
+            }
+          ).fixture.project(status, bound, false, kind),
+        { status, bound, kind },
       )
-    await set("running")
+    await project("running", true)
     expect(await entry.count()).toBe(1)
-    await set("completed")
+    for (const stage of kind === "blueprint"
+      ? ["failed", "cancelled", "completed"]
+      : ["failed", "cancelled", "completed", "timed_out", "iteration_exhausted"]) {
+      await project(stage, true)
+      expect(await entry.count()).toBe(1)
+      expect(await editor.inputValue()).toBe("Keep this draft")
+      expect(await editor.evaluate((node, old) => node === old, original)).toBe(true)
+    }
+    await project("failed", false)
     expect(await entry.count()).toBe(0)
     expect(await editor.inputValue()).toBe("Keep this draft")
     expect(await editor.evaluate((node, old) => node === old, original)).toBe(true)
-    await set("bound")
-    expect(await entry.getAttribute("data-stage")).toBe("bound")
     expect(errors).toEqual([])
   },
 )
 
-test("an unbound cached run loses cancellation, retains failure details, and never replaces a new intent or draft", async () => {
-  await page.goto(server.url)
-  const entry = page.locator('[data-component="loop-status-entry"]')
-  const cancel = entry.getByRole("button", { name: "Cancel loop" })
-  const editor = page.getByRole("textbox", { name: "Message" })
-  await editor.fill("Keep this draft")
-  const original = await editor.elementHandle()
-  const project = (status: string, bound: boolean, pending = false) =>
-    page.evaluate(
-      ({ status, bound, pending }) =>
-        (
-          window as unknown as { fixture: { project(status: string, bound: boolean, pending: boolean): void } }
-        ).fixture.project(status, bound, pending),
-      { status, bound, pending },
+test.each(["blueprint", "lightloop"])(
+  "an unbound %s leaves no row and never replaces a new intent or draft",
+  async (kind) => {
+    await page.goto(server.url)
+    const entry = page.locator('[data-component="loop-status-entry"]')
+    const cancel = entry.getByRole("button", { name: "Cancel loop" })
+    const editor = page.getByRole("textbox", { name: "Message" })
+    await editor.fill("Keep this draft")
+    const original = await editor.elementHandle()
+    const project = (status: string, bound: boolean, pending = false) =>
+      page.evaluate(
+        ({ status, bound, pending, kind }) =>
+          (
+            window as unknown as {
+              fixture: { project(status: string, bound: boolean, pending: boolean, kind: string): void }
+            }
+          ).fixture.project(status, bound, pending, kind),
+        { status, bound, pending, kind },
+      )
+    await project("running", true)
+    expect(await cancel.count()).toBe(1)
+    await project("running", false)
+    expect(await entry.count()).toBe(0)
+    expect(await cancel.count()).toBe(0)
+    for (const stage of kind === "blueprint"
+      ? ["failed", "cancelled", "completed"]
+      : ["failed", "cancelled", "completed", "timed_out", "iteration_exhausted"]) {
+      await project(stage, false)
+      expect(await entry.count()).toBe(0)
+    }
+    await project("failed", false, true)
+    expect(await entry.count()).toBe(0)
+    await project("running", true, true)
+    expect(await entry.getAttribute("data-stage")).toBe(kind === "blueprint" ? "running" : "bound")
+    expect(await entry.locator(".pending-composer-label").textContent()).toBe(
+      kind === "blueprint" ? "Previous task" : "Current goal",
     )
-  await project("running", true)
-  expect(await cancel.count()).toBe(1)
-  await project("running", false)
-  expect(await entry.getAttribute("data-stage")).toBe("resolving")
-  expect(await cancel.count()).toBe(0)
-  await project("failed", false)
-  expect(await entry.getAttribute("data-stage")).toBe("failed")
-  expect(await cancel.count()).toBe(0)
-  await entry.getByRole("button", { name: "Loop details" }).click()
-  const dialog = page.getByRole("dialog")
-  await dialog.waitFor({ state: "visible" })
-  expect(await dialog.innerText()).toContain("Execution failed")
-  await page.keyboard.press("Escape")
-  await dialog.waitFor({ state: "hidden" })
-  await project("failed", false, true)
-  expect(await entry.getAttribute("data-stage")).toBe("bound")
-  expect(await entry.locator(".pending-composer-label").textContent()).toBe("Next task")
-  expect(await cancel.count()).toBe(1)
-  expect(await editor.inputValue()).toBe("Keep this draft")
-  expect(await editor.evaluate((node, old) => node === old, original)).toBe(true)
-  expect(errors).toEqual([])
-})
+    expect(await cancel.count()).toBe(1)
+    expect(await editor.inputValue()).toBe("Keep this draft")
+    expect(await editor.evaluate((node, old) => node === old, original)).toBe(true)
+    expect(errors).toEqual([])
+  },
+)
 
 test("keyboard opens review reasons, live updates retain the dialog, and Escape never pauses the task", async () => {
   await page.setViewportSize({ width: 375, height: 700 })

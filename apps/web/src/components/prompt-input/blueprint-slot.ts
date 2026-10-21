@@ -16,15 +16,14 @@ export function isTerminalBlueprintLoopStatus(status?: string | null) {
   return !!status && TERMINAL_BLUEPRINT_LOOP_STATUSES.has(status)
 }
 
-export function resolveBlueprintLoopState<Loop extends Pick<BlueprintLoopInfo, "id" | "status">>(input: {
+export function resolveBlueprintLoopState<Loop extends Pick<BlueprintLoopInfo, "id">>(input: {
   loop?: Loop | null
   activeLoopID?: string | null
 }) {
-  const loop = input.loop && (!input.activeLoopID || input.loop.id === input.activeLoopID) ? input.loop : undefined
-  const terminal = isTerminalBlueprintLoopStatus(loop?.status)
+  const activeLoopID = input.activeLoopID || undefined
   return {
-    activeLoopID: input.activeLoopID && !terminal ? input.activeLoopID : undefined,
-    loop: loop && (terminal || input.activeLoopID) ? loop : undefined,
+    activeLoopID,
+    loop: activeLoopID && input.loop?.id === activeLoopID ? input.loop : undefined,
   }
 }
 
