@@ -639,3 +639,36 @@ test("cancellation joins an admitted body-end without writing or finishing twice
   expect(events.filter((event) => event.type === "attempt-end")).toHaveLength(1)
   expect(events.at(-1)?.type).toBe("attempt-end")
 })
+
+test("probe error bodies are removed before recording and SDK delivery without changing ordinary requests", () =>
+  runtime.run(async () => {
+    const events: RolloutTransport.Event[] = []
+    const secret = "echoed-probe-key"
+    const response = await RolloutTransport.redactErrors(() =>
+      RolloutTransport.provide(
+        async (event) => {
+          events.push(event)
+        },
+        () =>
+          RolloutTransport.fetch(
+            async () => new Response(secret, { status: 401, headers: { "x-request-id": secret } }),
+            "https://fixture.test",
+          ),
+      ),
+    )
+    expect(response.status).toBe(401)
+    expect(await response.text()).toBe("")
+    expect(response.headers.get("x-request-id")).toBeNull()
+    const captured = events
+      .flatMap((event) =>
+        event.type === "chunk" && event.channel === "response" ? [new TextDecoder().decode(event.data)] : [],
+      )
+      .join("")
+    expect(captured).not.toContain(secret)
+    expect(JSON.stringify(events)).not.toContain(secret)
+    const ordinary = await RolloutTransport.fetch(
+      async () => new Response(secret, { status: 401 }),
+      "https://fixture.test",
+    )
+    expect(await ordinary.text()).toBe(secret)
+  }))

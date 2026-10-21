@@ -560,6 +560,9 @@ import type {
   ProviderConnectionCustomInput,
   ProviderConnectionRemoveErrors,
   ProviderConnectionRemoveResponses,
+  ProviderConnectionTestErrors,
+  ProviderConnectionTestInput,
+  ProviderConnectionTestResponses,
   ProviderConnectionUpdateErrors,
   ProviderConnectionUpdateInput,
   ProviderConnectionUpdateResponses,
@@ -11056,6 +11059,47 @@ export class Command extends HeyApiClient {
 }
 
 export class Connection extends HeyApiClient {
+  /**
+   * Test a saved provider connection with one short model request
+   */
+  public test<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+      providerConnectionTestInput?: ProviderConnectionTestInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "providerConnectionTestInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderConnectionTestResponses,
+      ProviderConnectionTestErrors,
+      ThrowOnError
+    >({
+      url: "/provider/connections/{providerID}/test",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Create provider account connection
    *

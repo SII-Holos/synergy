@@ -129,6 +129,30 @@ export function createProviderRoute(contributions: Hono = new Hono()) {
       },
     )
     .post(
+      "/connections/:providerID/test",
+      describeRoute({
+        summary: "Test a saved provider connection with one short model request",
+        operationId: "provider.connection.test",
+        responses: {
+          200: {
+            description: "Observed model request result",
+            content: { "application/json": { schema: resolver(ProviderConnection.TestResult) } },
+          },
+          ...errors(400),
+        },
+      }),
+      validator("param", z.object({ providerID: z.string() })),
+      validator("json", ProviderConnection.TestInput),
+      async (c) =>
+        c.json(
+          await ProviderConnection.testConnection(
+            c.req.valid("param").providerID,
+            c.req.valid("json"),
+            c.req.raw.signal,
+          ),
+        ),
+    )
+    .post(
       "/connections",
       describeRoute({
         summary: "Create provider account connection",

@@ -7,3 +7,13 @@
   grid-column: 2;
   justify-self: center;
 }
+
+.provider-connection-test {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.provider-connection-test p {
+  margin: 0;
+}

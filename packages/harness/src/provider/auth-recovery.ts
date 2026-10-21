@@ -1,3 +1,4 @@
+import { Context } from "../util/context"
 import { RuntimeContext } from "../lifecycle/context"
 import { retryAfterMs } from "@ericsanchezok/synergy-util/retry"
 import { ScopeContext } from "../scope/context"
@@ -10,6 +11,12 @@ import { RolloutTransport } from "../session/rollout/transport"
 import { findRecordingError } from "../session/rollout/error"
 
 export namespace ProviderAuthRecovery {
+  const oneShot = Context.create<boolean>("provider-auth-one-shot")
+
+  export function withoutRecovery<T>(action: () => T): T {
+    return oneShot.provide(true, action)
+  }
+
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
   export interface ExecuteInput {
@@ -393,6 +400,7 @@ export namespace ProviderAuthRecovery {
   }
 
   export async function execute(input: ExecuteInput) {
+    if (oneShot.tryUse()) return input.request()
     const removalRevision = Auth.removalRevision(input.providerID)
     const selectedBeforeRequest = await selectCredential(input)
     let first: Response

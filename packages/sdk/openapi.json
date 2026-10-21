@@ -19756,6 +19756,83 @@
         ]
       }
     },
+    "/provider/connections/{providerID}/test": {
+      "post": {
+        "operationId": "provider.connection.test",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Test a saved provider connection with one short model request",
+        "responses": {
+          "200": {
+            "description": "Observed model request result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnectionTestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionTestInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.connection.test({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/connections": {
       "post": {
         "operationId": "provider.connection.create",
@@ -72429,6 +72506,47 @@
           }
         },
         "required": ["version", "models"]
+      },
+      "ProviderConnectionTestResult": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "modelID": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["authentication", "rate_limit", "model", "network", "timeout", "unavailable", "provider"]
+              },
+              "statusCode": {
+                "type": "number"
+              }
+            },
+            "required": ["kind"]
+          }
+        },
+        "required": ["providerID", "success", "durationMs"]
+      },
+      "ProviderConnectionTestInput": {
+        "type": "object",
+        "properties": {
+          "modelID": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
       },
       "ProviderConnectionCreateInput": {
         "type": "object",

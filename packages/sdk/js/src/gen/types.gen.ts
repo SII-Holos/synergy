@@ -11257,6 +11257,21 @@ export type ProviderModelLookup = {
   models: Array<ProviderDirectoryModel>
 }
 
+export type ProviderConnectionTestResult = {
+  providerID: string
+  modelID?: string
+  success: boolean
+  durationMs: number
+  error?: {
+    kind: "authentication" | "rate_limit" | "model" | "network" | "timeout" | "unavailable" | "provider"
+    statusCode?: number
+  }
+}
+
+export type ProviderConnectionTestInput = {
+  modelID?: string
+}
+
 export type ProviderConnectionCreateInput = {
   profileID: string
   name: string
@@ -24274,6 +24289,40 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderConnectionTestData = {
+  body?: ProviderConnectionTestInput
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/{providerID}/test"
+}
+
+export type ProviderConnectionTestErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderConnectionTestError = ProviderConnectionTestErrors[keyof ProviderConnectionTestErrors]
+
+export type ProviderConnectionTestResponses = {
+  /**
+   * Observed model request result
+   */
+  200: ProviderConnectionTestResult
+}
+
+export type ProviderConnectionTestResponse = ProviderConnectionTestResponses[keyof ProviderConnectionTestResponses]
 
 export type ProviderConnectionCreateData = {
   body?: ProviderConnectionCreateInput

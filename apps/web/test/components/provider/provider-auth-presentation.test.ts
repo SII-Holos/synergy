@@ -16,6 +16,9 @@ function render(descriptor: MessageDescriptor): string {
 }
 
 describe("provider auth presentation", () => {
+  test("stored credentials are described as configured without claiming a successful request", () => {
+    expect(render(providerStatusLabel({ providerID: "a", status: "connected" }))).toBe("Configured")
+  })
   test("durable action-required and immediate usage rejection share one decision", () => {
     expect(providerNeedsAction({ providerID: "a", status: "action_required" })).toBe(true)
     expect(

@@ -1,4 +1,8 @@
-import type { ProviderAuthAuthorization, ProviderAuthMethod } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ProviderAuthAuthorization,
+  ProviderAuthMethod,
+  ProviderConnectionTestResult,
+} from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
@@ -7,7 +11,20 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
-import { createMemo, createSignal, For, Match, onCleanup, onMount, Show, Switch, untrack, type JSX } from "solid-js"
+import {
+  createEffect,
+  on,
+  createMemo,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+  untrack,
+  type JSX,
+} from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { providerFlow } from "@/locales/messages"
@@ -156,12 +173,17 @@ export function ProviderConnectionFlow(props: {
     props.onDraftChange?.({ credentialsSaved: true, apiKey: "" })
     await globalSync.refreshProviders()
     if (!active()) return
-    const suffix = props.intent === "recover" ? _(providerFlow.reconnected) : _(providerFlow.connected)
+    const suffix = _({ id: "app.provider.toast.saved", message: "credentials saved" })
     showToast({
       type: "success",
       icon: getSemanticIcon("state.complete"),
       title: `${providerName()} ${suffix}`,
-      description: props.completeDescription ?? _(providerFlow.modelsAvailable.id, { provider: providerName() }),
+      description:
+        props.completeDescription ??
+        _({
+          id: "app.provider.toast.untested",
+          message: "Credentials saved. Use Test connection to verify a model request.",
+        }),
     })
     await props.onComplete?.()
   }
@@ -573,4 +595,90 @@ export function ProviderConnectionFlow(props: {
 function formDataValue(form: FormData, key: string) {
   const value = form.get(key)
   return typeof value === "string" ? value : ""
+}
+
+const failures = {
+  authentication: {
+    id: "provider.test.authentication",
+    message: "Credentials are missing or were rejected. Check the saved API key.",
+  },
+  rate_limit: { id: "provider.test.rateLimit", message: "The provider returned a quota or rate limit error." },
+  model: { id: "provider.test.model", message: "The model or endpoint was not found." },
+  network: { id: "provider.test.network", message: "Could not reach the provider. Check the endpoint and network." },
+  timeout: { id: "provider.test.timeout", message: "The model request timed out." },
+  unavailable: { id: "provider.test.unavailable", message: "No enabled text model is available for this account." },
+  provider: { id: "provider.test.provider", message: "The provider rejected the model request." },
+}
+
+export function ProviderConnectionTest(props: { providerID: string; disabled?: boolean; revision?: string }) {
+  const sdk = useGlobalSDK()
+  const { _, i18n } = useLingui()
+  const [pending, setPending] = createSignal(false)
+  const [result, setResult] = createSignal<ProviderConnectionTestResult>()
+  const [failed, setFailed] = createSignal(false)
+  let controller: AbortController | undefined
+  const reset = () => {
+    controller?.abort()
+    controller = undefined
+    setPending(false)
+    setResult(undefined)
+    setFailed(false)
+  }
+  createEffect(on(() => [sdk.url, sdk.client, props.providerID, props.disabled, props.revision], reset))
+  onCleanup(reset)
+  const test = async () => {
+    if (pending() || props.disabled) return
+    const request = new AbortController()
+    controller = request
+    const client = sdk.client
+    setPending(true)
+    setResult(undefined)
+    setFailed(false)
+    try {
+      const response = await client.provider.connection.test(
+        { providerID: props.providerID, providerConnectionTestInput: {} },
+        { signal: request.signal, throwOnError: true },
+      )
+      if (controller !== request || request.signal.aborted) return
+      if (response.data) setResult(response.data)
+      else setFailed(true)
+    } catch {
+      if (controller === request && !request.signal.aborted) setFailed(true)
+    } finally {
+      if (controller === request) setPending(false)
+    }
+  }
+  return (
+    <div class="provider-connection-test">
+      <Button type="button" variant="secondary" disabled={props.disabled || pending()} onClick={() => void test()}>
+        {pending()
+          ? _({ id: "provider.test.pending", message: "Testing…" })
+          : _({ id: "provider.test.action", message: "Test connection" })}
+      </Button>
+      <Show when={props.disabled}>
+        <p class="ds-section-hint">
+          {_({ id: "provider.test.saveFirst", message: "Save changes before testing the connection." })}
+        </p>
+      </Show>
+      <Show when={result()}>
+        {(value) => (
+          <p role="status" class={value().success ? "ds-section-hint" : "settings-request-error"}>
+            {value().success
+              ? _({
+                  id: "provider.test.success",
+                  message: "Model request succeeded · {model} · {duration} ms",
+                  values: { model: value().modelID ?? props.providerID, duration: value().durationMs },
+                })
+              : translateDescriptor(failures[value().error?.kind ?? "provider"], i18n())}
+            <Show when={value().error?.statusCode}>{(status) => ` (HTTP ${status()})`}</Show>
+          </p>
+        )}
+      </Show>
+      <Show when={failed()}>
+        <p role="alert" class="settings-request-error">
+          {_({ id: "provider.test.failed", message: "Could not complete the connection test. Try again." })}
+        </p>
+      </Show>
+    </div>
+  )
 }
