@@ -178,7 +178,7 @@ export type WorktreeInventoryEntry = {
         type: "external"
       }
   bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  lifecycle?: "active" | "detached" | "gc_candidate" | "released" | "deleted"
   createdAt?: number
   updatedAt?: number
   lastUsedAt?: number
@@ -245,7 +245,7 @@ export type Worktree = {
         type: "external"
       }
   bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  lifecycle?: "active" | "detached" | "gc_candidate" | "released" | "deleted"
   createdAt?: number
   updatedAt?: number
   lastUsedAt?: number
@@ -4198,6 +4198,12 @@ export type WorkspaceInfo = {
       [key: string]: unknown
     }
   }
+  recovery?: {
+    provider: string
+    spec: {
+      [key: string]: unknown
+    }
+  }
   content?: {
     revision: number
     manifest: string | null
@@ -4219,7 +4225,7 @@ export type WorkspaceInfo = {
     [key: string]: unknown
   }
   sharedWritableWorkspaceIDs: Array<string>
-  lifecycle: "active" | "deleting" | "deleted"
+  lifecycle: "active" | "deleting" | "released" | "deleted"
   createdAt: number
   updatedAt: number
   [key: string]:
@@ -4232,6 +4238,12 @@ export type WorkspaceInfo = {
         path: string | null
         physicalID?: string
         generation: number
+      }
+    | {
+        provider: string
+        spec: {
+          [key: string]: unknown
+        }
       }
     | {
         provider: string
@@ -4262,6 +4274,7 @@ export type WorkspaceInfo = {
     | Array<string>
     | "active"
     | "deleting"
+    | "released"
     | "deleted"
     | number
     | undefined
@@ -4970,7 +4983,7 @@ export type SkillsConfig = {
 
 export type WorktreeConfig = {
   /**
-   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
+   * Soft limit for materialized managed worktrees; only archived or unreferenced, finished, clean worktrees can be released and restored on demand
    */
   maxManaged?: number
   /**

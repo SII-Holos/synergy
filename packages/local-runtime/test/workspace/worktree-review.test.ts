@@ -80,26 +80,6 @@ test("a sweep never prunes missing external worktrees", () =>
     })
   }))
 
-test("reclaiming an idle bound worktree migrates the session to the main checkout", () =>
-  runtime.run(async () => {
-    await fixture(async () => {
-      const session = await Session.create({})
-      try {
-        const tree = await Worktree.create({
-          name: "idle-binding",
-          sessionID: session.id,
-          bind: true,
-          baseRef: "current",
-        })
-        const report = await Worktree.sweep({ maxManaged: 0 })
-        expect(report.removed).toContain(tree.id)
-        expect((await Session.get(session.id)).workspace?.type).not.toBe("git_worktree")
-      } finally {
-        await Session.remove(session.id)
-      }
-    })
-  }))
-
 test("a Synergy marker alone does not prove another process released its lock", () =>
   runtime.run(async () => {
     await fixture(async (root) => {

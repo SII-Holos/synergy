@@ -36,7 +36,9 @@ export const WorktreeConfig = z
       .int()
       .positive()
       .optional()
-      .describe("Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones"),
+      .describe(
+        "Soft limit for materialized managed worktrees; only archived or unreferenced, finished, clean worktrees can be released and restored on demand",
+      ),
     sweepIntervalHours: z.number().positive().optional().describe("Hours between managed-worktree janitor sweeps"),
     janitor: z.boolean().optional().describe("Run the managed-worktree janitor at all (default: true)"),
   })

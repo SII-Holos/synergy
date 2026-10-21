@@ -40,13 +40,14 @@ export namespace WorkspaceCatalog {
       revision: z.number().int().positive(),
       binding: Binding,
       backend: Backend.optional(),
+      recovery: Backend.optional(),
       content: Content.optional(),
       mountGeneration: z.number().int().nonnegative().optional(),
       activeMount: Mount.optional(),
       importedFrom: z.object({ workspaceID: z.string(), hostID: z.string() }).optional(),
       metadata: z.record(z.string(), z.unknown()),
       sharedWritableWorkspaceIDs: z.array(z.string()),
-      lifecycle: z.enum(["active", "deleting", "deleted"]),
+      lifecycle: z.enum(["active", "deleting", "released", "deleted"]),
       createdAt: z.number(),
       updatedAt: z.number(),
     })
@@ -152,7 +153,7 @@ export namespace WorkspaceCatalog {
     for await (const record of catalogRecords(reader)) {
       if (
         record.id === candidate.id ||
-        record.lifecycle !== "deleting" ||
+        !["deleting", "released"].includes(record.lifecycle) ||
         !liveDirectory(record) ||
         record.binding.hostID !== candidate.binding.hostID
       )
@@ -177,7 +178,8 @@ export namespace WorkspaceCatalog {
           record.binding.hostID === root.binding.hostID &&
           (samePhysicalDirectory(record, root) ||
             directoryContains(root.binding.path, record.binding.path) ||
-            (record.lifecycle === "deleting" && directoryContains(record.binding.path, root.binding.path))),
+            (["deleting", "released"].includes(record.lifecycle) &&
+              directoryContains(record.binding.path, root.binding.path))),
       )
       if (root)
         throw new Unavailable({
@@ -193,15 +195,15 @@ export namespace WorkspaceCatalog {
     return record
   }
 
-  export function beginRetirement(records: Info[]): Promise<Info[]> {
-    return transitionRetirement(records, "active", "deleting")
+  export function beginRetirement(records: Info[], recovery?: z.infer<typeof Backend>): Promise<Info[]> {
+    return transitionRetirement(records, "active", "deleting", recovery)
   }
 
   export async function assertRetirement(records: Info[]): Promise<void> {
     await Storage.snapshot(() => retirementRecords(records, "deleting"))
   }
 
-  export function completeRetirement(records: Info[], lifecycle: "active" | "deleted"): Promise<Info[]> {
+  export function completeRetirement(records: Info[], lifecycle: "active" | "released" | "deleted"): Promise<Info[]> {
     return transitionRetirement(records, "deleting", lifecycle)
   }
 
@@ -229,19 +231,52 @@ export namespace WorkspaceCatalog {
 
   function transitionRetirement(
     records: Info[],
-    expectedLifecycle: "active" | "deleting",
+    expectedLifecycle: Info["lifecycle"],
     lifecycle: Info["lifecycle"],
+    recovery?: z.infer<typeof Backend>,
   ): Promise<Info[]> {
     return Storage.transaction(async () => {
       const current = await retirementRecords(records, expectedLifecycle)
+      if (lifecycle === "released" && current.some((record) => !record.recovery))
+        throw new Invalid({ workspaceID: current[0]!.id, message: "Releasing a Workspace requires a recovery receipt" })
       const next = current.map((record) => ({
         ...record,
         lifecycle,
+        recovery: lifecycle === "active" || lifecycle === "deleted" ? undefined : (recovery ?? record.recovery),
         revision: record.revision + 1,
         updatedAt: Date.now(),
       }))
       for (const record of next) {
         await Storage.write(recordKey(record.id), record)
+        await publishUpdated(record)
+      }
+      return next
+    })
+  }
+
+  export function updateRecovery(records: Info[], recovery: z.infer<typeof Backend>) {
+    return transitionRetirement(records, "released", "released", recovery)
+  }
+
+  export function restoreReleased(records: Info[], physicalID: string): Promise<Info[]> {
+    return Storage.transaction(async () => {
+      const current = await retirementRecords(records, "released")
+      const next = current.map((record) =>
+        Info.parse({
+          ...record,
+          lifecycle: "active",
+          recovery: undefined,
+          revision: record.revision + 1,
+          updatedAt: Date.now(),
+          binding: { ...record.binding, physicalID, generation: record.binding.generation + 1 },
+          activeMount: undefined,
+        }),
+      )
+      await assertRetirementReferences(next)
+      for (const record of current) for (const key of locations(record)) await Storage.remove(key)
+      for (const record of next) {
+        await Storage.write(recordKey(record.id), record)
+        for (const key of locations(record)) await Storage.write(key, record.id)
         await publishUpdated(record)
       }
       return next
@@ -436,6 +471,7 @@ export namespace WorkspaceCatalog {
       ...source,
       id,
       binding: { ...source.binding, state: "unbound" },
+      recovery: undefined,
       activeMount: undefined,
       mountGeneration: undefined,
       importedFrom: source.importedFrom ?? { workspaceID: source.id, hostID: source.binding.hostID },

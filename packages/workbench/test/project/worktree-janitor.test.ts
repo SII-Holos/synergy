@@ -1,5 +1,4 @@
 import { describe, expect, spyOn, test } from "bun:test"
-import fs from "node:fs/promises"
 import path from "node:path"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -31,9 +30,8 @@ const runtime = await testRuntime()
 // sweep cancels registrations, so it can remove one the caller is still using.
 // That regression is what these tests pin.
 //
-// Reconciliation is cap-independent, so nothing here needs configuration: a
-// managed worktree whose directory has vanished is reconciled by the next
-// sweep regardless of `maxManaged`.
+// Recovery is cap-independent: a verified retained directory can recover its
+// active catalog admission on the next sweep regardless of `maxManaged`.
 // ---------------------------------------------------------------------------
 
 function registryFile(repoRoot: string, id: string) {
@@ -182,7 +180,10 @@ describe("worktree janitor wiring", () => {
         scope,
         fn: async () => {
           const created = await Worktree.create({ name: "no-janitor", bind: false, baseRef: "current" })
-          await fs.rm(created.path, { recursive: true, force: true })
+          const record = (await WorkspaceCatalog.list(scope.id)).find(
+            (item) => item.metadata.worktreeID === created.id,
+          )!
+          await WorkspaceCatalog.beginRetirement([record])
 
           // No janitor was started for this scope, so a creation-triggered request
           // must be a no-op rather than a sweep of a scope that never opted in.
@@ -190,11 +191,12 @@ describe("worktree janitor wiring", () => {
           await Bun.sleep(500)
 
           expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
+          expect((await WorkspaceCatalog.get(record.id, scope.id)).lifecycle).toBe("deleting")
         },
       })
     }))
 
-  test("reconciles on the first scheduled sweep once a janitor is started", () =>
+  test("recovers retained admission on the first scheduled sweep once a janitor is started", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = asProject(await tmp.scope())
@@ -203,13 +205,18 @@ describe("worktree janitor wiring", () => {
         scope,
         fn: async () => {
           const created = await Worktree.create({ name: "has-janitor", bind: false, baseRef: "current" })
-          await fs.rm(created.path, { recursive: true, force: true })
+          const record = (await WorkspaceCatalog.list(scope.id)).find(
+            (item) => item.metadata.worktreeID === created.id,
+          )!
+          await WorkspaceCatalog.beginRetirement([record])
 
           await startWorktreeJanitor(scope)
           try {
             expect(
-              await pollUntil(async () => !(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists())),
+              await pollUntil(async () => (await WorkspaceCatalog.get(record.id, scope.id)).lifecycle === "active"),
             ).toBe(true)
+            expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
+            expect(await Bun.file(path.join(created.path, ".git")).exists()).toBe(true)
           } finally {
             await stopWorktreeJanitor(scope.id)
           }

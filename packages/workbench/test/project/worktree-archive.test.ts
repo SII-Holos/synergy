@@ -221,7 +221,7 @@ test("running owner archives through the tool and continues a real write in its 
               restored: { type: "main", path: root },
               cleanup: { performed: true },
             })
-            expect(result.output).toContain("Checkout removed")
+            expect(result.output).toContain("Checkout released")
             expect(result.output).toContain(branch)
             expect(result.output).toContain(root)
             expect(captured).toHaveLength(1)
@@ -249,8 +249,8 @@ test("running owner archives through the tool and continues a real write in its 
     expect((await Session.get(session.id)).workspaceID).toBe(session.workspaceID)
   }, registerProjectTools))
 
-test("explicit idle target rebinds its owner without changing another caller's binding", () =>
-  fixture(async (root) => {
+test("explicit idle target retains its owner binding without changing another caller's binding", () =>
+  fixture(async () => {
     const idleOwner = await Session.create()
     const target = await Worktree.create({
       name: "idle-target",
@@ -258,6 +258,7 @@ test("explicit idle target rebinds its owner without changing another caller's b
       sessionID: idleOwner.id,
       bind: true,
     })
+    const selected = await Session.get(idleOwner.id)
     const caller = await Session.create({ workspace: idleOwner.workspace })
     const ownTree = await Worktree.create({
       name: "caller-checkout",
@@ -285,8 +286,8 @@ test("explicit idle target rebinds its owner without changing another caller's b
     expect(asked[0]).toMatchObject({ permission: "worktree_archive", patterns: [target.path] })
     expect((await Session.get(caller.id)).workspaceID).toBe(before.workspaceID)
     expect((await Session.get(caller.id)).workspace).toEqual(before.workspace)
-    expect((await Session.get(idleOwner.id)).workspaceID).toBe(idleOwner.workspaceID)
-    expect((await Session.get(idleOwner.id)).workspace?.path).toBe(root)
+    expect((await Session.get(idleOwner.id)).workspaceID).toBe(selected.workspaceID)
+    expect((await Session.get(idleOwner.id)).workspace).toMatchObject({ path: target.path, lifecycle: "released" })
     expect(await present(target.path)).toBe(false)
     expect(await present(ownTree.path)).toBe(true)
     expect((await Worktree.resolve(ownTree.id)).bindings).toContain(caller.id)
@@ -315,7 +316,7 @@ test("dirty checkout output reports kept with its path and reason rather than re
     expect(result.output).toContain("Checkout kept")
     expect(result.output).toContain(tree.path)
     expect(result.output).toContain("dirty")
-    expect(result.output).not.toContain("Checkout removed")
+    expect(result.output).not.toContain("Checkout released")
     expect(result.metadata.message).toBe(result.output)
     expect(captured).toHaveLength(1)
     expect(captured[0]).toMatchObject({
@@ -329,7 +330,7 @@ test("dirty checkout output reports kept with its path and reason rather than re
   }))
 
 test.skipIf(process.platform === "win32")(
-  "unconfirmed removal output does not claim the checkout is kept or advertise re-entry",
+  "a lost removal acknowledgement reports verified release with recovery available",
   async () => {
     const git = Bun.which("git")
     if (!git) throw new Error("Fixture requires Git")
@@ -366,21 +367,20 @@ process.exit(child.exitCode)
         expect(await present(tree.path)).toBe(false)
         expect((await Session.get(session.id)).workspace?.path).toBe(root)
         expect(result.metadata.cleanup).toMatchObject({
-          performed: false,
-          state: "unknown",
-          reason: "removal_failed",
+          performed: true,
           error: expect.stringContaining("removal completion unavailable"),
         })
-        expect(result.output).toMatch(/removal[^.\n]*(?:unconfirmed|could not be confirmed)/i)
+        expect(result.output).toContain("Checkout released")
         expect(result.metadata.worktree?.path).toBe(tree.path)
-        expect(result.output).not.toMatch(/Checkout (?:kept|removed)|Re-enter (?:it|the|this)|worktree_enter/i)
+        expect(result.output).toContain("restore it on demand")
         expect(result.metadata.message).toBe(result.output)
         expect(captured).toHaveLength(1)
-        expect(captured[0]).toMatchObject({ output: result.output, metadata: { cleanup: { state: "unknown" } } })
-        expect((await WorkspaceCatalog.get(workspaceID, session.scope.id)).lifecycle).toBe("deleting")
-        expect((await Worktree.sweep()).reconciled).toContain(tree.id)
-        expect((await WorkspaceCatalog.get(workspaceID, session.scope.id)).lifecycle).toBe("deleted")
-        expect((await Worktree.list()).some((entry) => entry.id === tree.id)).toBe(false)
+        expect(captured[0]).toMatchObject({ output: result.output, metadata: { cleanup: { performed: true } } })
+        expect((await WorkspaceCatalog.get(workspaceID, session.scope.id)).lifecycle).toBe("released")
+        await Worktree.enter({ sessionID: session.id, target: tree.id })
+        expect((await Session.get(session.id)).workspaceID).toBe(workspaceID)
+        expect((await WorkspaceCatalog.get(workspaceID, session.scope.id)).lifecycle).toBe("active")
+        expect(await present(tree.path)).toBe(true)
       },
       undefined,
       { PATH: `${commands.path}${path.delimiter}${process.env.PATH ?? ""}` },
@@ -419,7 +419,7 @@ test("a repeated archive of replaced bytes reports unknown without promising re-
       expect(result.output).not.toMatch(/Checkout (?:kept|removed)|Re-enter (?:it|the|this)|worktree_enter/i)
       expect(captured).toHaveLength(1)
       expect(captured[0]).toMatchObject({ output: result.output, metadata: { cleanup: { state: "unknown" } } })
-      expect((await WorkspaceCatalog.get(workspaceID, session.scope.id)).lifecycle).toBe("deleting")
+      expect((await WorkspaceCatalog.get(workspaceID, session.scope.id)).lifecycle).toBe("active")
       expect(await Bun.file(path.join(tree.path, "replacement.txt")).text()).toBe("foreign bytes")
     }
     expect(replaced).toBe(true)
