@@ -110,6 +110,7 @@ const KNOWN_STATIC_TOKENS = new Set([
 ])
 
 const KNOWN_LOCAL_TOKENS = new Set([
+  "conversation-reading-max-width",
   "workbench-canvas-bg",
   "workbench-panel-bg",
   "workbench-panel-bg-hover",

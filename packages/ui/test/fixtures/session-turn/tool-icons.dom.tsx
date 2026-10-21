@@ -1,4 +1,4 @@
-import { For } from "solid-js"
+import { createSignal, For } from "solid-js"
 import { render } from "solid-js/web"
 import { I18nProvider } from "@lingui/solid"
 import type { AssistantMessage, ToolPart } from "@ericsanchezok/synergy-sdk/client"
@@ -8,7 +8,7 @@ import { ActivityTrace } from "../../../src/components/activity-trace"
 import { ToolResultBody } from "../../../src/components/tool-result-body"
 import { getToolInfo } from "../../../src/components/message-part"
 import { registerIcon } from "../../../src/plugin/icon-registry"
-import { Icon } from "../../../src/components/icon"
+import { Icon, type IconSource } from "../../../src/components/icon"
 import { getSemanticIcon } from "../../../src/components/semantic-icon"
 import "../../../src/components/tool-renders"
 import "../../../src/styles/index.css"
@@ -30,6 +30,7 @@ const cases = [
 ]
 const message = { id: "m", sessionID: "s", role: "assistant", time: { created: 1 } } as AssistantMessage
 let disposeLogo: (() => void) | undefined
+const [optionalIcon, setOptionalIcon] = createSignal<IconSource>()
 
 const dispose = render(
   () => (
@@ -45,6 +46,9 @@ const dispose = render(
           <h1>Tool icon integration</h1>
           <div id="reasoning-icon">
             <Icon name={getSemanticIcon("session.reasoning")} />
+          </div>
+          <div id="optional-icon">
+            <Icon name={optionalIcon()!} />
           </div>
           <For each={cases}>
             {(item) => {
@@ -107,6 +111,7 @@ const dispose = render(
 
 Object.assign(globalThis, {
   toolIconFixture: {
+    setOptionalIcon,
     register() {
       disposeLogo = registerIcon({
         name: "example:logo",

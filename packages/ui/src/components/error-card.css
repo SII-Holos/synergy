@@ -104,11 +104,11 @@
 [data-slot="error-card-details-trigger"]:hover {
   color: var(--text-base);
 }
-[data-slot="error-card-details-trigger"]:focus-visible,
-[data-slot="error-card-recovery-actions"] > button:focus-visible,
-[data-slot="error-card-copy-button"]:focus-visible {
-  outline: 2px solid var(--border-active);
-  outline-offset: 2px;
+[data-slot="error-card-details-trigger"]:focus-visible:not(:disabled),
+[data-slot="error-card-recovery-actions"] > button:focus-visible:not(:disabled),
+[data-slot="error-card-copy-button"]:focus-visible:not(:disabled) {
+  background: var(--surface-raised-base-hover);
+  color: var(--text-strong);
 }
 [data-slot="error-card-content"] {
   padding: 12px 20px 16px;
@@ -160,7 +160,7 @@
   cursor: default;
 }
 [data-slot="error-card-copy-button"][data-copy-state="failed"] {
-  color: var(--text-critical-base);
+  color: var(--text-on-critical-base);
 }
 @container error-card (max-width: 540px) {
   [data-slot="error-card-header"] {

@@ -30766,7 +30766,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DigitalTwinFailure"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DigitalTwinFailure"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
                 }
               }
             }

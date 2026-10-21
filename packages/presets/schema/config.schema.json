@@ -2468,11 +2468,11 @@
       "additionalProperties": false
     },
     "digitalTwin": {
-      "description": "Next-input prediction: automatic defaults to true; model defaults to the current Session model",
+      "description": "Next-input prediction: automatic defaults to false; model defaults to the current Session model",
       "type": "object",
       "properties": {
         "automatic": {
-          "description": "Automatically predict the next input after a completed task (default: true)",
+          "description": "Automatically predict the next input after a completed task (default: false)",
           "type": "boolean"
         },
         "model": {

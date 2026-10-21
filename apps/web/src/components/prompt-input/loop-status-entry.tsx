@@ -7,8 +7,37 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import type { LoopDisplay } from "./loop-status"
+import type { BlueprintSlot } from "./types"
 
 import { loopCopy } from "./loop-status-copy"
+import { PI } from "./prompt-input-i18n"
+
+export function BlueprintDraftEntry(props: { value: BlueprintSlot; onRemove: () => void }) {
+  const { i18n } = useLocale()
+  const removeLabel = () => i18n._({ ...PI.attachRemoveButton, values: { filename: props.value.title } })
+  return (
+    <section data-component="blueprint-draft-entry" class="pending-composer-layer" aria-label={i18n._(PI.bpLabel)}>
+      <div class="pending-composer-row pending-composer-loop">
+        <span class="pending-composer-status">
+          <Icon name={getSemanticIcon("blueprint.main")} size="small" />
+        </span>
+        <span role="status" title={i18n._(loopCopy.pending)}>
+          {i18n._(loopCopy.pending)}
+        </span>
+        <span class="pending-composer-label" title={props.value.title}>
+          {props.value.title}
+        </span>
+        <div class="pending-composer-actions">
+          <Tooltip value={removeLabel()}>
+            <Button variant="ghost" aria-label={removeLabel()} onClick={props.onRemove}>
+              <Icon name={getSemanticIcon("action.remove")} size="small" />
+            </Button>
+          </Tooltip>
+        </div>
+      </div>
+    </section>
+  )
+}
 
 const name = (value: LoopDisplay) => (value.kind === "blueprint" ? "BlueprintLoop" : "Light Loop")
 const statusCopy = (value: LoopDisplay) =>

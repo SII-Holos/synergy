@@ -718,7 +718,7 @@ export function Icon(props: IconProps) {
       style={local.color ? { color: local.color } : undefined}
     >
       {(() => {
-        if (typeof local.name !== "string") return <ImageIcon value={local.name} size={local.size} />
+        if (local.name && typeof local.name === "object") return <ImageIcon value={local.name} size={local.size} />
         const svg = pluginSvg()
         if (svg) {
           // Plugin icon: render raw SVG markup through innerHTML

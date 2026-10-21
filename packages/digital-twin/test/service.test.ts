@@ -81,6 +81,7 @@ test(
           let release = Promise.withResolvers<void>()
           let entered = Promise.withResolvers<void>()
           const calls: AgentCall.TextInput[] = []
+          const pending: Promise<unknown>[] = []
           const sampling = spyOn(AgentCall, "text").mockImplementation(async (input) => {
             calls.push(input)
             entered.resolve()
@@ -110,9 +111,20 @@ test(
             }
             const first = DigitalTwin.predictNextInput({ ...input, signal: cancel.signal })
             const firstResult = first.catch((error) => error)
+            pending.push(firstResult)
             await entered.promise
-            const second = DigitalTwin.predictNextInput({ ...input, requestID: "two" })
-            await Bun.sleep(20)
+            const survivor = new AbortController()
+            const joined = Promise.withResolvers<void>()
+            const addListener = survivor.signal.addEventListener.bind(survivor.signal)
+            using subscription = spyOn(survivor.signal, "addEventListener").mockImplementation(
+              (...args: Parameters<typeof addListener>) => {
+                addListener(...args)
+                if (args[0] === "abort") joined.resolve()
+              },
+            )
+            const second = DigitalTwin.predictNextInput({ ...input, requestID: "two", signal: survivor.signal })
+            pending.push(second.catch(() => {}))
+            await joined.promise
             cancel.abort()
             expect((await firstResult).code).toBe("cancelled")
             expect(calls[0]!.signal!.aborted).toBe(false)
@@ -125,6 +137,7 @@ test(
             entered = Promise.withResolvers<void>()
             const stale = DigitalTwin.predictNextInput({ ...input, requestID: "three" })
             const staleResult = stale.catch((error) => error)
+            pending.push(staleResult)
             await entered.promise
             await Session.updatePart({
               id: part.id,
@@ -137,6 +150,7 @@ test(
             expect((await staleResult).code).toBe("source_changed")
           } finally {
             release.resolve()
+            await Promise.allSettled(pending)
             sampling.mockRestore()
             provider.mockRestore()
             await Session.remove(session.id)

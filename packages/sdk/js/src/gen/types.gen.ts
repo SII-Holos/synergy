@@ -29423,7 +29423,7 @@ export type DigitalTwinPredictNextInputErrors = {
   /**
    * Prediction unavailable
    */
-  503: DigitalTwinFailure
+  503: DigitalTwinFailure | RuntimeShuttingDownError
 }
 
 export type DigitalTwinPredictNextInputError =

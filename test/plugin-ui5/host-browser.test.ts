@@ -127,7 +127,22 @@ test("functional plugin commands, events, settings and resource close guards wor
     )
     stage = "load Shell and functional contributions"
     diagnostics = await openPluginPreviewPage(preview, page)
-    await page.getByRole("textbox", { name: "Message", exact: true }).waitFor()
+    await page
+      .getByRole("textbox", { name: "Message", exact: true })
+      .waitFor()
+      .catch(async (error) => {
+        await page
+          .getByText("Error Details", { exact: true })
+          .click()
+          .catch(() => {})
+        const details = await page
+          .locator("textarea")
+          .evaluateAll((nodes) => nodes.map((node) => node.value).join("\n"))
+        throw new AggregateError(
+          [error, new Error(await page.locator("body").innerText()), new Error(details)],
+          "Shell did not mount",
+        )
+      })
     stage = "command and event update"
     await page.getByRole("button", { name: "Increment example counter", exact: true }).click()
     await page.getByLabel("Example counter").filter({ hasText: "1" }).waitFor()

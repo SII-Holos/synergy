@@ -1,6 +1,8 @@
 import { Hono } from "hono"
+import { z } from "zod"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
+import { RuntimeShuttingDownError } from "@ericsanchezok/synergy-server/server/error"
 import { DigitalTwinContract } from "./contract"
 import { DigitalTwin } from "./service"
 import { PredictionError } from "./inference"
@@ -21,7 +23,15 @@ export function DigitalTwinRoute() {
             status,
             {
               description: "Prediction unavailable",
-              content: { "application/json": { schema: resolver(DigitalTwinContract.Failure) } },
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    status === 503
+                      ? z.union([DigitalTwinContract.Failure, RuntimeShuttingDownError])
+                      : DigitalTwinContract.Failure,
+                  ),
+                },
+              },
             },
           ]),
         ),

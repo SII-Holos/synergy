@@ -49,7 +49,7 @@ describe("Blueprint stop action presentation", () => {
 
     test(`${action ?? "default"} keeps trigger metadata action-sensitive and localizable`, () => {
       const info = getToolInfo("blueprint_loop_stop", input)
-      expect(info).toMatchObject({ icon: "circle-pause", title, subtitle: summary })
+      expect(info).toMatchObject({ icon: "clipboard-check", title, subtitle: summary })
 
       const i18n = setupI18n()
       i18n.loadAndActivate({
@@ -88,7 +88,7 @@ describe("Blueprint stop action presentation", () => {
               : { reviewRequested: true },
         })
 
-        expect(capturedTool?.trigger).toEqual({ icon: "circle-pause", title, subtitle: summary })
+        expect(capturedTool?.trigger).toEqual({ icon: "clipboard-check", title, subtitle: summary })
         expect(capturedTool?.status).toBe(status)
         expect(capturedOutput).toBe(output)
       }

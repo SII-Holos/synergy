@@ -115,7 +115,7 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
-import { LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
+import { BlueprintDraftEntry, LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
 import { resolveLoopDisplay } from "./loop-status"
 import { createLoopStatusResource } from "./loop-status-resource"
 import { resolveLightLoopActivity } from "./light-loop-control"
@@ -2774,19 +2774,24 @@ export function createPromptInputController(props: PromptInputProps) {
     bindComposerPresentation(composerInput, {
       state: presentation,
       status: () => (
-        <Show when={loopDisplay()}>
-          {(value) => (
-            <LoopStatusEntry
-              value={value()}
-              pending={loopAction()?.owner === sessionKey()}
-              onOpen={openLoopStatus}
-              onEdit={openLightLoopDialog}
-              onNote={openLoopNote}
-              onRemove={() => void cancelDisplayedLoop()}
-              onRetry={loopStatus.retry}
-            />
-          )}
-        </Show>
+        <>
+          <Show when={!loopDisplay() && availableLocalLoop()}>
+            {(slot) => <BlueprintDraftEntry value={slot()} onRemove={() => setLocalArmedLoop(null)} />}
+          </Show>
+          <Show when={loopDisplay()}>
+            {(value) => (
+              <LoopStatusEntry
+                value={value()}
+                pending={loopAction()?.owner === sessionKey()}
+                onOpen={openLoopStatus}
+                onEdit={openLightLoopDialog}
+                onNote={openLoopNote}
+                onRemove={() => void cancelDisplayedLoop()}
+                onRetry={loopStatus.retry}
+              />
+            )}
+          </Show>
+        </>
       ),
       hasAttachments: () => hasAttachments() || attachmentsUploading(),
       preview() {

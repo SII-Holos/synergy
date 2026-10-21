@@ -377,6 +377,7 @@ function Toolbar() {
   editor.contentEditable = "true"
   editor.setAttribute("role", "textbox")
   editor.addEventListener("keydown", controller.input.editor.keyDown)
+  editor.addEventListener("drop", (event) => void controller.input.drop(event))
   onCleanup(controller.input.editor.mount(editor, editor))
   return [
     editor,
@@ -409,6 +410,32 @@ const controlCount = () =>
   [...document.querySelectorAll<HTMLButtonElement>("button")].filter((node) =>
     node.classList.contains("prompt-input-submit"),
   ).length
+
+test("a dropped Blueprint remains a removable draft without claiming a Session binding", async () => {
+  const harness = mount()
+  try {
+    await settle()
+    const editor = harness.root.querySelector('[role="textbox"]')!
+    const drop = new Event("drop", { bubbles: true, cancelable: true })
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { getData: () => JSON.stringify({ noteID: "draft-note", title: "Next Blueprint" }) },
+    })
+    editor.dispatchEvent(drop)
+    await settle()
+    const draft = harness.root.querySelector('[data-component="blueprint-draft-entry"]')
+    expect(draft?.textContent).toContain("Next Blueprint")
+    expect(draft?.textContent).toContain("Send a task to start")
+    expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+    expect(loopGetCalls).toEqual([])
+    draft!.querySelector<HTMLButtonElement>("button")!.click()
+    await settle()
+    expect(harness.root.querySelector('[data-component="blueprint-draft-entry"]')).toBeNull()
+    expect(harness.root.querySelector('[role="textbox"]')).toBe(editor)
+    expect(abandonCalls).toEqual([])
+  } finally {
+    harness.dispose()
+  }
+})
 
 afterEach(() => {
   setStatusType("idle")

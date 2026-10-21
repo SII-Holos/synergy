@@ -11,6 +11,7 @@
 
 .attachment-workbench-toolbar {
   display: flex;
+  flex-wrap: wrap;
   min-width: 0;
   min-height: 52px;
   align-items: center;
@@ -31,6 +32,7 @@
 
 .attachment-workbench-heading {
   flex: 1;
+  min-width: 8rem;
   max-width: 100%;
   gap: 9px;
 }

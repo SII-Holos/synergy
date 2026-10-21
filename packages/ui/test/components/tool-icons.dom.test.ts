@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { domFixture } from "../support/dom-fixtures"
+import type { IconSource } from "../../src/components/icon"
 
 let dom: JSDOM
-let fixture: { register(): void; unregister(): void; dispose(): void }
+let fixture: { register(): void; unregister(): void; dispose(): void; setOptionalIcon(value?: IconSource): void }
 
 beforeAll(async () => {
   const entry = await domFixture("tool-icons.dom")
@@ -50,6 +51,18 @@ afterAll(() => {
 function icons(tool: string, surface: "process" | "detail") {
   return document.querySelector(`[data-tool-case="${tool}"] [data-surface="${surface}"] [data-component="icon"]`)!
 }
+
+test("an optional plugin icon can be absent, populated and withdrawn without unmounting its surface", () => {
+  const surface = document.getElementById("optional-icon")!
+  expect(surface.querySelector("svg,img")).toBeNull()
+  fixture.setOptionalIcon("puzzle")
+  expect(surface.querySelector(".lucide-puzzle")).not.toBeNull()
+  fixture.setOptionalIcon({ sources: [], fallback: "package" })
+  expect(surface.querySelector(".lucide-package")).not.toBeNull()
+  fixture.setOptionalIcon()
+  expect(surface.querySelector("svg,img")).toBeNull()
+  expect(document.getElementById("optional-icon")).toBe(surface)
+})
 
 test("real activity rows and specialized cards use the selected glyph", () => {
   for (const [tool, glyph] of [

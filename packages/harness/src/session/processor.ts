@@ -1369,9 +1369,9 @@ export namespace SessionProcessor {
                       break
 
                     case "reasoning-delta":
+                      recordFirstDelta("reasoning")
                       if (!value.text) break
                       activity("responding")
-                      recordFirstDelta("reasoning")
                       observeContent("reasoning", value.text)
                       if (value.text) {
                         streamInput.memoryTurn?.addOutputChars(value.text.length)
@@ -1815,9 +1815,9 @@ export namespace SessionProcessor {
                       break
 
                     case "text-delta":
+                      recordFirstDelta("text")
                       if (!value.text) break
                       activity("responding")
-                      recordFirstDelta("text")
                       observeContent("text", value.text)
                       if (value.text) {
                         streamInput.memoryTurn?.addOutputChars(value.text.length)

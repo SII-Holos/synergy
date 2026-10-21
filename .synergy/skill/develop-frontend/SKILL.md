@@ -20,6 +20,8 @@ Keep cancellation of pending inference separate from the lifetime of a completed
 
 Manual composer assistance returns focus at invocation, before disabling its trigger. Do not steal focus on asynchronous completion. Verify the real button-to-editor path, including moving to another control before the response arrives.
 
+Keep staged workflow choices visibly separate from bound execution status. Exercise native drop through the real Composer controller, verify cancellation versus draft removal, and assert no start or metadata request before submission. Optional plugin icons must tolerate absent values throughout reactive updates.
+
 ## Verify
 
 Start with `bun run verify plan`. During iteration run the narrow component, model or context test; before publication use `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` with all relevant tests explicitly selected. The entry point uses canonical coverage executors and static gates; it leaves complete package thresholds and platform acceptance to CI.

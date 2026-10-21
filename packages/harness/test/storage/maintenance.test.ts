@@ -65,6 +65,7 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
   await using tmp = await tmpdir()
   const filename = path.join(tmp.path, "agent.sqlite")
   initializeSqliteEngine()
+  if (process.platform === "win32") console.info("storage maintenance stage 0")
   const legacy = new Database(filename)
   legacy.exec("CREATE TABLE seed (body TEXT)")
   legacy.exec("INSERT INTO seed VALUES ('preserved')")
@@ -74,11 +75,16 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
   await observeStorageMaintenance(
     () =>
       context.run(true, async () => {
+        if (process.platform === "win32") console.info("storage maintenance stage 1")
         const store = await TransactionalStore.open({ backend: "sqlite", namespace: "maintenance", filename })
         try {
+          if (process.platform === "win32") console.info("storage maintenance stage 2")
           await store.maintain({ operation: "enable-incremental-vacuum" })
+          if (process.platform === "win32") console.info("storage maintenance stage 3")
           expect((await store.verify()).issues).toEqual([])
+          if (process.platform === "win32") console.info("storage maintenance stage 4")
           await store.dropIndexIfExists("storage_records_owner")
+          if (process.platform === "win32") console.info("storage maintenance stage 5")
           await expect(store.maintainDdl("CREATE INDEX broken ON absent(x)", "create-index")).rejects.toThrow()
         } finally {
           await store.close()
@@ -89,6 +95,7 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
       events.push(event)
     },
   )
+  if (process.platform === "win32") console.info("storage maintenance stage 6")
   const starts = events.filter((event) => event.state === "started")
   expect(starts.map((event) => event.operation)).toContain("vacuum")
   expect(starts.map((event) => event.operation)).toContain("integrity-check")
