@@ -3,6 +3,7 @@ import { StoragePath } from "../storage/path"
 import { UpgradeWork } from "../storage/upgrade-work"
 import { TEXT_FRAGMENT_CHARS, TEXT_QUERY_CHARS, type TextCategory } from "../storage/text-projection"
 import { MessageV2 } from "./message-v2"
+import { PartContent } from "./part-content"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 
@@ -131,11 +132,19 @@ export namespace SessionHistorySearch {
             ? (await tx.queryKeys({ kind: "part", scopeID, sessionID, after: state.cursor, limit: 1 }))[0]
             : marker?.value.key)
         if (!key) return { state }
-        const record = await tx.versioned<MessageV2.Part>(key).catch((error) => {
+        const record = await tx.versioned<PartContent.Stored>(key).catch((error) => {
           if (error instanceof Storage.NotFoundError) return undefined
           throw error
         })
-        return { state, key, marker, record, projection: record ? await tx.textProjectionState(key) : undefined }
+        return {
+          state,
+          key,
+          marker,
+          record,
+          part: record ? await PartContent.hydrate(key, record.value) : undefined,
+          version: record ? PartContent.summary(record.value).content.version : undefined,
+          projection: record ? await tx.textProjectionState(key) : undefined,
+        }
       })
       if (source.state.ready) return { ready: true, prepared: source.state.prepared }
       if (!source.key) {
@@ -152,11 +161,11 @@ export namespace SessionHistorySearch {
         })
         return { ready: state.ready, prepared: state.prepared }
       }
-      const version = source.record ? MessageV2.summarizePart(source.record.value).content.version : undefined
+      const version = source.version
       const prepared =
         source.record && source.projection?.revision === source.record.revision && source.projection.version === version
       const offset = prepared ? source.projection!.progress : 0
-      const body = source.record ? content(source.record.value) : undefined
+      const body = source.part ? content(source.part) : undefined
       const count = body ? Math.ceil(body.text.length / TEXT_FRAGMENT_CHARS) : 0
       const fragments =
         body && !(prepared && source.projection?.ready)

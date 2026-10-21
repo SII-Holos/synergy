@@ -42,6 +42,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
+import { PartContent } from "./part-content"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
@@ -1643,6 +1644,7 @@ export namespace Session {
         await SessionSearchIndex.removeRecords(scopeID, sid)
         await removeChildIndex(scope.id, id)
         Storage.afterCommit(() => {
+          partWriteBuffer().cancelWhere((part) => part.sessionID === id)
           SessionManager.unregisterRuntime(id)
           SessionManager.forgetSession(id)
           SessionMessageCache.disable(id)
@@ -1826,6 +1828,7 @@ export namespace Session {
           sessionID: asSessionID(input.sessionID),
           messageID: asMessageID(input.messageID),
         })
+        Storage.afterCommit(() => partWriteBuffer().cancelWhere((part) => part.messageID === input.messageID))
         // Structural change: drop the cache and let the next read repopulate.
         SessionMessageCache.invalidate(input.sessionID)
         Bus.publish(MessageV2.Event.Removed, {
@@ -1852,7 +1855,7 @@ export namespace Session {
         const scopeID = asScopeID((session.scope as Scope).id)
         // See updateMessage: invalidate before the content write, refresh after.
         await SessionSearchIndex.markDirty(scopeID, asSessionID(input.sessionID))
-        await Storage.remove(
+        await PartContent.remove(
           StoragePath.messagePart(
             scopeID,
             asSessionID(input.sessionID),
@@ -1861,6 +1864,7 @@ export namespace Session {
           ),
         )
         await SessionHistoryDisplay.partRemoved(scopeID, input.sessionID, input.messageID, input.partID)
+        Storage.afterCommit(() => partWriteBuffer().cancel(input.partID))
         SessionMessageCache.invalidate(input.sessionID)
         Bus.publish(MessageV2.Event.PartRemoved, {
           sessionID: input.sessionID,
@@ -1885,31 +1889,17 @@ export namespace Session {
     }),
   ])
 
-  // Write-behind for streaming part persistence (perf hotspot S1). Text/reasoning
-  // deltas are coalesced to at most one disk write per interval; discrete updates
-  // (tool state, the final no-delta part write) persist immediately so nothing is
-  // lost at a meaningful boundary. The event is always broadcast on every delta.
-  // Part files are the highest-frequency writes and are never hand-edited, so
-  // they persist as compact JSON (no pretty-print) to cut serialization and disk
-  // bytes on the streaming path.
   const partWriteBuffer = Storage.state(() => {
-    const handle = { store: Storage.current().store, artifactDirectory: Storage.current().artifactDirectory }
-    return new PartWriteBuffer<MessageV2.Part, string[]>((key, value) =>
+    const { store, artifactDirectory, artifactObjects } = Storage.current()
+    const handle = { store, artifactDirectory, artifactObjects }
+    return new PartWriteBuffer((key, batch, guard) =>
       Storage.provide(handle, () =>
-        Storage.transaction(async (tx) => {
-          await assertPartOwner(tx, key)
-          await tx.write(key, value)
-          await SessionHistoryDisplay.partWritten(key[1], value)
-        }),
+        PartContent.append(key, batch, guard, (value) =>
+          SessionHistoryDisplay.partWritten(key[1], value, PartContent.summary(value)),
+        ),
       ),
     )
   })
-
-  async function assertPartOwner(tx: StoreTransaction, key: string[]) {
-    await tx.read(["sessions", key[1], key[2], "info"])
-    await tx.read(["sessions", key[1], key[2], "messages", key[4], "info"])
-    await tx.assertNotDeleted(key)
-  }
 
   /**
    * Flush all buffered streaming part writes to disk and await them. Called at
@@ -1917,9 +1907,10 @@ export namespace Session {
    * importantly when a turn is interrupted mid-stream and the terminal part
    * write that normally flushes never fired (issue #327).
    */
-  export function flushPartWrites(sessionID?: string) {
-    if (!sessionID) return partWriteBuffer().flushAll()
-    return partWriteBuffer().flushWhere((part) => part.sessionID === sessionID)
+  export async function flushPartWrites(sessionID?: string, options?: { release?: boolean }) {
+    const matches = (part: Pick<MessageV2.Part, "sessionID">) => !sessionID || part.sessionID === sessionID
+    await partWriteBuffer().flushWhere(matches)
+    if (options?.release) partWriteBuffer().cancelWhere(matches)
   }
 
   type UpdatePartInternalInput =
@@ -2004,27 +1995,28 @@ export namespace Session {
       asPartID(part.id),
     )
     const transactional = Storage.inTransaction()
+    let summary: MessageV2.PartSummary | undefined
     if (delta !== undefined && !transactional) {
-      // The delta is exactly what the streaming producer appended to the part's
-      // text, so the buffer can price this update without re-serializing the
-      // whole accumulated part on every token.
-      partWriteBuffer().defer(part.id, path, part, delta)
+      summary = partWriteBuffer().defer(part.id, path, part as PartContent.Streaming, delta)
     } else {
-      const write = (key: string[], value: MessageV2.Part) =>
-        Storage.transaction(async (tx) => {
-          await assertPartOwner(tx, key)
-          await Storage.write(key, value)
-          if (value.type === "tool" && MessageV2.isUnsettledToolState(value.state))
-            await SessionPauseRecovery.mark({ scopeID, sessionID: value.sessionID })
-          await SessionHistoryDisplay.partWritten(scopeID, value)
-          if (value.type === "text" || value.type === "tool" || value.type === "attachment")
-            await SessionSearchIndex.markDirty(scopeID, asSessionID(value.sessionID))
-          SessionMessageCache.upsertPart(value.sessionID, value)
-          await Bus.publish(MessageV2.Event.PartUpdated, { part: value, delta })
-        })
+      const write = (key: string[], value: MessageV2.Part, commitGuard?: () => void) =>
+        Storage.transaction(
+          async () => {
+            await PartContent.replace(key, value)
+            if (value.type === "tool" && MessageV2.isUnsettledToolState(value.state))
+              await SessionPauseRecovery.mark({ scopeID, sessionID: value.sessionID })
+            await SessionHistoryDisplay.partWritten(scopeID, value)
+            if (value.type === "text" || value.type === "tool" || value.type === "attachment")
+              await SessionSearchIndex.markDirty(scopeID, asSessionID(value.sessionID))
+            SessionMessageCache.upsertPart(value.sessionID, value)
+            await Bus.publish(MessageV2.Event.PartUpdated, { part: value, delta })
+          },
+          { commitGuard },
+        )
       if (transactional) {
         partWriteBuffer().assertDrained(part.id)
         await write(path, part)
+        Storage.afterCommit(() => partWriteBuffer().cancel(part.id))
       } else await partWriteBuffer().writeNow(part.id, path, part, write)
     }
     if (part.type === "tool") {
@@ -2042,7 +2034,7 @@ export namespace Session {
         durable: delta === undefined,
       })
     }
-    if (delta !== undefined && !transactional) await Bus.publish(MessageV2.Event.PartUpdated, { part, delta })
+    if (delta !== undefined && !transactional) await Bus.publish(MessageV2.Event.PartUpdated, { part, delta, summary })
     return part
   }
 

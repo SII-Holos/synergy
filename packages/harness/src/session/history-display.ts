@@ -4,6 +4,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { MessageV2 } from "./message-v2"
+import { PartContent as SessionPartContent } from "./part-content"
 import { UpgradeWork } from "../storage/upgrade-work"
 import { SessionHistorySearch } from "./history-search"
 import { upgradeAccessRecord } from "../migration/import"
@@ -279,12 +280,20 @@ export namespace SessionHistoryDisplay {
     })
   }
 
-  export async function partWritten(scopeID: string, part: MessageV2.Part) {
-    await SessionHistorySearch.partWritten(scopeID, part)
-    await Storage.write(
-      StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id),
-      summarizePart(part),
+  export async function partWritten(scopeID: string, part: SessionPartContent.Stored, summary?: PartSummary) {
+    summary ??= SessionPartContent.summary(
+      upgradeAccessRecord(
+        StoragePath.messagePart(
+          Identifier.asScopeID(scopeID),
+          Identifier.asSessionID(part.sessionID),
+          Identifier.asMessageID(part.messageID),
+          Identifier.asPartID(part.id),
+        ),
+        part,
+      ),
     )
+    await SessionHistorySearch.partWritten(scopeID, part)
+    await Storage.write(StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id), summary)
     const [previous] = await Storage.readMany<PartsState>([partStateKey(scopeID, part.sessionID, part.messageID)])
     await Storage.write(partStateKey(scopeID, part.sessionID, part.messageID), {
       ...previous,
@@ -599,7 +608,7 @@ export namespace SessionHistoryDisplay {
           kind: "display_part",
           after: after && StoragePath.sessionDisplayPart(scopeID, input.sessionID, input.messageID, after.at(-1)!),
         })
-      : await Storage.query<MessageV2.Part>({
+      : await Storage.query<SessionPartContent.Stored>({
           ...query,
           kind: "part",
           after:
@@ -612,7 +621,9 @@ export namespace SessionHistoryDisplay {
             ),
         })
     const projected = records.map((record) =>
-      "content" in record.value ? record.value : summarizePart(upgradeAccessRecord(record.key, record.value)),
+      "content" in record.value
+        ? record.value
+        : SessionPartContent.summary(upgradeAccessRecord(record.key, record.value)),
     )
     const selected: PartSummary[] = []
     let bytes = 256
@@ -737,8 +748,11 @@ export namespace SessionHistoryDisplay {
       Identifier.asMessageID(input.messageID),
       Identifier.asPartID(input.partID),
     )
-    const part = upgradeAccessRecord(key, await Storage.read<MessageV2.Part>(key))
-    const version = summarizePart(part).content.version
+    const snapshot = await SessionPartContent.read(key)
+    const part = upgradeAccessRecord(key, snapshot.part)
+    const version = snapshot.checkpoint
+      ? snapshot.summary.content.version
+      : MessageV2.summarizePart(part).content.version
     if (input.version && version !== input.version)
       throw new Conflict({ message: "Part content changed; refresh its summary" })
     return { part, version }

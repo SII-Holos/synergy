@@ -31,6 +31,7 @@ import { SnapshotSchema } from "./snapshot-schema"
 import { fn } from "../util/fn"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
+import { PartContent } from "./part-content"
 import { ProviderTransform } from "../provider/transform"
 import { ProviderAuthRecoveryError } from "../provider/auth-recovery-error"
 import { STATUS_CODES } from "http"
@@ -892,6 +893,7 @@ export namespace MessageV2 {
       z.object({
         part: Part,
         delta: z.string().optional(),
+        summary: PartSummary.optional(),
       }),
       { streaming: true },
     ),
@@ -1012,7 +1014,7 @@ export namespace MessageV2 {
    * that predate it. The single predicate all consumers should use instead of
    * reading `part.synthetic` directly.
    */
-  export function isSystemPart(part: Part): boolean {
+  export function isSystemPart(part: Part | Omit<TextPart, "text">): boolean {
     if (part.type === "patch" && part.checkpoint) return true
     if (part.type === "compaction") return true
     if (part.type !== "text") return false
@@ -2081,10 +2083,12 @@ export namespace MessageV2 {
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
       if (!input.scopeID) await prepareSessionMigrations({ scopeID, sessionID })
-      const results: MessageV2.Part[] = []
-      for await (const record of Storage.records<MessageV2.Part>({ kind: "part", scopeID, sessionID, messageID })) {
-        results.push(upgradeAccessRecord(record.key, record.value))
-      }
+      const results = await Storage.snapshot(async () => {
+        const parts: MessageV2.Part[] = []
+        for await (const record of Storage.records<PartContent.Stored>({ kind: "part", scopeID, sessionID, messageID }))
+          parts.push(upgradeAccessRecord(record.key, await PartContent.hydrate(record.key, record.value)))
+        return parts
+      })
       const parts = await Promise.all(
         results
           .filter((p): p is MessageV2.Part => p !== undefined)
