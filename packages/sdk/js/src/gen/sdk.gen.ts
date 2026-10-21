@@ -6287,16 +6287,7 @@ export class Traces extends HeyApiClient {
       limit?: number
       cursor?: string
       kind?:
-        | "request"
-        | "session"
-        | "tool"
-        | "provider"
-        | "runtime"
-        | "storage"
-        | "frontend"
-        | "mcp"
-        | "plugin"
-        | "channel"
+        "request" | "session" | "tool" | "provider" | "runtime" | "storage" | "frontend" | "mcp" | "plugin" | "channel"
       status?: PerfSpanStatus
       minDurationMs?: number
       scopeID?: string

@@ -2021,13 +2021,7 @@ export type PerfTimelineQuality = {
 }
 
 export type PerfResourceOwnerKind =
-  | "control_plane"
-  | "agent"
-  | "policy"
-  | "plugin"
-  | "browser"
-  | "mcp"
-  | "local_process"
+  "control_plane" | "agent" | "policy" | "plugin" | "browser" | "mcp" | "local_process"
 
 export type PerfResourceRecovery = {
   action: "gc" | "recycle" | "idle_retire" | "close"
@@ -5710,11 +5704,11 @@ export type GithubConfig = {
 }
 
 /**
- * Next-input prediction: automatic defaults to true; model defaults to the current Session model
+ * Next-input prediction: automatic defaults to false; model defaults to the current Session model
  */
 export type DigitalTwinSettings = {
   /**
-   * Automatically predict the next input after a completed task (default: true)
+   * Automatically predict the next input after a completed task (default: false)
    */
   automatic?: boolean
   /**
@@ -7436,11 +7430,7 @@ export type ConfigIssue = {
    * Stable machine-readable issue code
    */
   code:
-    | "config.json_syntax"
-    | "config.root_type"
-    | "config.unknown_key"
-    | "config.load_failed"
-    | "config.migration_failed"
+    "config.json_syntax" | "config.root_type" | "config.unknown_key" | "config.load_failed" | "config.migration_failed"
   /**
    * Whether the offending file was moved aside
    */
@@ -7576,9 +7566,7 @@ export type ConfigExportSecretsRejectedError = {
 }
 
 export type ConfigExportBadRequestError =
-  | BadRequestError
-  | ConfigImportProjectScopeRequiredError
-  | ConfigExportSecretsRejectedError
+  BadRequestError | ConfigImportProjectScopeRequiredError | ConfigExportSecretsRejectedError
 
 export type ConfigImportDiagnostic = {
   severity: "warning" | "info"
@@ -8343,15 +8331,7 @@ export type ExecutionSummary = {
     title: string
     started: number
     status:
-      | "running"
-      | "completed"
-      | "failed"
-      | "cancelled"
-      | "interrupted"
-      | "unknown"
-      | "queued"
-      | "paused"
-      | "waiting"
+      "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
     elapsedMs: number | null
     elapsedActive: boolean
     elapsedLowerBound: boolean
@@ -8544,15 +8524,7 @@ export type ExecutionNodeDetail = {
   node: ExecutionTrajectoryNode
   execution?: {
     status:
-      | "running"
-      | "completed"
-      | "failed"
-      | "cancelled"
-      | "interrupted"
-      | "unknown"
-      | "queued"
-      | "paused"
-      | "waiting"
+      "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
     elapsedMs: number | null
     elapsedActive: boolean
     elapsedLowerBound: boolean
@@ -13155,15 +13127,7 @@ export type BrowserApiSessionState = {
     reason: "desktop-local" | "requested"
   } | null
   hostStatus:
-    | "unavailable"
-    | "installing"
-    | "starting"
-    | "pending"
-    | "ready"
-    | "detached"
-    | "restarting"
-    | "idle"
-    | "failed"
+    "unavailable" | "installing" | "starting" | "pending" | "ready" | "detached" | "restarting" | "idle" | "failed"
   seq: number
   epoch: string
   error?: BrowserApiError
@@ -16543,16 +16507,7 @@ export type PerformanceTracesListData = {
     limit?: number
     cursor?: string
     kind?:
-      | "request"
-      | "session"
-      | "tool"
-      | "provider"
-      | "runtime"
-      | "storage"
-      | "frontend"
-      | "mcp"
-      | "plugin"
-      | "channel"
+      "request" | "session" | "tool" | "provider" | "runtime" | "storage" | "frontend" | "mcp" | "plugin" | "channel"
     status?: PerfSpanStatus
     minDurationMs?: number
     scopeID?: string
