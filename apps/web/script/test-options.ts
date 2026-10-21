@@ -9,6 +9,7 @@ import type { TestRunnerOptions } from "../../../script/shared/test-runner"
 const playwrightIsolated = [
   "test/components/dialog/session-transfer.dom.test.ts",
   "test/components/prompt-input/loop-status-entry.dom.test.ts",
+  "test/components/prompt-input/plan-blueprint-offer.dom.test.ts",
   "test/components/session/conversation-hydration.test.ts",
   "test/components/session/retained-session-views.dom.test.ts",
   "test/components/session/project-directory-resource.dom.test.ts",
@@ -75,6 +76,7 @@ const playwrightIsolated = [
   "test/components/session/conversation-process-reading.dom.test.ts",
   "test/components/session/conversation-process-virtualization.dom.test.ts",
   "test/components/session/conversation-presentation.dom.test.ts",
+  "test/components/session/conversation-attachments.dom.test.ts",
   "test/components/session/conversation-controls.dom.test.tsx",
   "test/components/session/conversation-process.dom.test.ts",
   "test/components/session/session-submission-status.dom.test.ts",

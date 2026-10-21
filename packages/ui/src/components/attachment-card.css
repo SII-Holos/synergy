@@ -88,8 +88,12 @@
 }
 
 [data-slot="activity-evidence"] {
-  padding: 2px 0 8px 24px;
+  padding: 8px 0;
   min-width: 0;
+}
+
+[data-slot="activity-evidence"] [data-slot="attachment-row-layout"] {
+  padding-inline: 0;
 }
 
 [data-slot="activity-evidence"] [data-component="attachment-gallery"],

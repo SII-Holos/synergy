@@ -24,6 +24,7 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { RenderHtml } from "@ericsanchezok/synergy-ui/render-html"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { attachmentWorkbench as A, panels as P } from "@/locales/messages"
 import {
@@ -138,40 +139,64 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
           </Show>
           <Show when={sourcePath()}>
             {(path) => (
-              <button type="button" class="attachment-workbench-action" onClick={() => props.onOpenSource?.()}>
-                <Icon name={getSemanticIcon("workspace.files")} size="small" />
-                <span>{lingui._(A.viewSourceFile)}</span>
-              </button>
+              <Tooltip value={lingui._(A.viewSourceFile)} placement="top">
+                <button
+                  type="button"
+                  class="attachment-workbench-action"
+                  aria-label={lingui._(A.viewSourceFile)}
+                  onClick={() => props.onOpenSource?.()}
+                >
+                  <Icon name={getSemanticIcon("workspace.files")} size="small" />
+                  <span>{lingui._(A.viewSourceFile)}</span>
+                </button>
+              </Tooltip>
             )}
           </Show>
           <Show when={props.onOpenBrowser && attachmentOpenInBrowserUrl(capability()?.kind, url())}>
             {(href) => (
-              <button type="button" class="attachment-workbench-action" onClick={() => props.onOpenBrowser?.(href())}>
-                <Icon name={getSemanticIcon("action.open")} size="small" />
-                <span>{lingui._(A.openInBrowser)}</span>
-              </button>
+              <Tooltip value={lingui._(A.openInBrowser)} placement="top">
+                <button
+                  type="button"
+                  class="attachment-workbench-action"
+                  aria-label={lingui._(A.openInBrowser)}
+                  onClick={() => props.onOpenBrowser?.(href())}
+                >
+                  <Icon name={getSemanticIcon("action.open")} size="small" />
+                  <span>{lingui._(A.openInBrowser)}</span>
+                </button>
+              </Tooltip>
             )}
           </Show>
           <Show when={props.onOpenExternal && url()}>
             {(href) => (
-              <button type="button" class="attachment-workbench-action" onClick={() => props.onOpenExternal?.(href())}>
-                <Icon name={getSemanticIcon("action.external")} size="small" />
-                <span>{lingui._(A.openFullPage)}</span>
-              </button>
+              <Tooltip value={lingui._(A.openFullPage)} placement="top">
+                <button
+                  type="button"
+                  class="attachment-workbench-action"
+                  aria-label={lingui._(A.openFullPage)}
+                  onClick={() => props.onOpenExternal?.(href())}
+                >
+                  <Icon name={getSemanticIcon("action.external")} size="small" />
+                  <span>{lingui._(A.openFullPage)}</span>
+                </button>
+              </Tooltip>
             )}
           </Show>
           <Show when={url()}>
             {(href) => (
-              <a
-                class="attachment-workbench-action"
-                href={href()}
-                download={props.file.filename}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Icon name={getSemanticIcon("action.download")} size="small" />
-                <span>{lingui._(A.download)}</span>
-              </a>
+              <Tooltip value={lingui._(A.download)} placement="top">
+                <a
+                  class="attachment-workbench-action"
+                  aria-label={lingui._(A.download)}
+                  href={href()}
+                  download={props.file.filename}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Icon name={getSemanticIcon("action.download")} size="small" />
+                  <span>{lingui._(A.download)}</span>
+                </a>
+              </Tooltip>
             )}
           </Show>
         </div>

@@ -1,7 +1,17 @@
+.plan-blueprint-offer-container {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 620px;
+  justify-content: center;
+  container: blueprint-offer / inline-size;
+}
+
 .plan-blueprint-offer {
   display: flex;
   width: fit-content;
-  max-width: min(620px, calc(100vw - 24px));
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 8px;
   border-radius: 999px;
@@ -15,7 +25,7 @@
 
 .plan-blueprint-offer-title {
   min-width: 0;
-  max-width: min(260px, 42vw);
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -31,6 +41,7 @@
   gap: 5px;
   border-radius: 999px;
   padding: 0 9px;
+  white-space: nowrap;
   color: var(--text-base);
   transition:
     background-color 140ms ease-out,
@@ -67,6 +78,17 @@
 
 .plan-blueprint-offer-icon-button:active {
   transform: scale(0.95);
+}
+
+@container blueprint-offer (max-width: 30rem) {
+  .plan-blueprint-offer-action {
+    width: 26px;
+    padding: 0;
+  }
+
+  .plan-blueprint-offer-action-label {
+    display: none;
+  }
 }
 
 @keyframes plan-blueprint-offer-enter {
