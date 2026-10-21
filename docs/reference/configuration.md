@@ -104,7 +104,7 @@ File: `35-digital-twin.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `digitalTwin` | DigitalTwinContract.Settings.optional (optional) | Next-input prediction: automatic defaults to true; model defaults to the current Session model |
+| `digitalTwin` | DigitalTwinContract.Settings.optional (optional) | Next-input prediction: automatic defaults to false; model defaults to the current Session model |
 
 ## MCP
 

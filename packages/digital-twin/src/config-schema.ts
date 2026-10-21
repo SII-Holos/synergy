@@ -4,7 +4,7 @@ import { DigitalTwinContract } from "./contract"
 
 const ConfigShape = {
   digitalTwin: DigitalTwinContract.Settings.optional().describe(
-    "Next-input prediction: automatic defaults to true; model defaults to the current Session model",
+    "Next-input prediction: automatic defaults to false; model defaults to the current Session model",
   ),
 }
 type Shape = typeof ConfigShape

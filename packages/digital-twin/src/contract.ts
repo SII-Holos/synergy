@@ -8,7 +8,7 @@ export namespace DigitalTwinContract {
       automatic: z
         .boolean()
         .optional()
-        .describe("Automatically predict the next input after a completed task (default: true)"),
+        .describe("Automatically predict the next input after a completed task (default: false)"),
       model: ModelSelection.Model.nullable()
         .optional()
         .describe("Prediction model; null or absent follows the current Session"),

@@ -137,7 +137,7 @@ function SessionPrediction(props: Props) {
       anchor: anchor(),
       eligible: eligible(),
       ready: props.status.type === "idle" && completedRoot() === anchor()?.rootID,
-      automatic: sync.data.config.digitalTwin?.automatic !== false,
+      automatic: sync.data.config.digitalTwin?.automatic === true,
     }
   }
   const requests = new PredictionRequest({

@@ -2,7 +2,7 @@
 
 Optional next-user-message prediction. The public component registers configuration, a hidden Agent and lazy preparation; the separate HTTP adapter contributes `POST /digital-twin/predict-next-input` and the `digital-twin` capability. `service` exposes independent recorded prediction and shutdown, and `contract` exposes validated request, result and settings schemas.
 
-Full installations select this component. Core does not. Digital Twin depends on public Harness corpus/context APIs and Local Runtime, without a Library dependency. Configuration belongs to `35-digital-twin.jsonc`: `automatic` defaults to true and a null or absent `model` follows the current Session. No profile, training or source-selection setup is required.
+Full installations select this component. Core does not. Digital Twin depends on public Harness corpus/context APIs and Local Runtime, without a Library dependency. Configuration belongs to `35-digital-twin.jsonc`: `automatic` defaults to false and a null or absent `model` follows the current Session. No profile, training or source-selection setup is required.
 
 The composer shows a suggestion only after a successful completed root and on an eligible empty draft. Tab inserts it, Escape dismisses it, and sending remains explicit. Generated suggestions stay saved locally across navigation and reload until accepted, dismissed, edited over or superseded by new work; restoration does not call the model. Manual prediction is available when automatic prediction is disabled. Accepted suggestions retain generic assistance metadata so subsequent predictions do not treat them as original voice.
 

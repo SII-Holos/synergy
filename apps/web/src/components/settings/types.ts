@@ -462,7 +462,7 @@ export type SettingsState = {
 
 export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: ColorScheme = "system"): SettingsState {
   return {
-    digitalTwin: { automatic: true, model: "" },
+    digitalTwin: { automatic: false, model: "" },
     general: {
       colorScheme,
       snapshot: UI_DEFAULTS.snapshot,

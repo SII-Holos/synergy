@@ -31,7 +31,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
 
   if (params.hasFeature?.("digital-twin")) {
     const current = {
-      automatic: cfg.digitalTwin?.automatic !== false,
+      automatic: cfg.digitalTwin?.automatic === true,
       model: cfg.digitalTwin?.model ? `${cfg.digitalTwin.model.providerID}/${cfg.digitalTwin.model.modelID}` : "",
     }
     if (!isDeepEqual(current, state.digitalTwin)) {
@@ -516,17 +516,17 @@ function buildEmailPatch(cfg: Config, state: SettingsState, patch: Record<string
   const hasEmailFrom = Boolean(email.fromAddress.trim() || email.fromName.trim())
   const hasEmailSmtp = Boolean(
     email.smtpHost.trim() ||
-      smtpPort !== undefined ||
-      email.smtpUsername.trim() ||
-      email.smtpPassword.trim() ||
-      email.smtpSecure !== true,
+    smtpPort !== undefined ||
+    email.smtpUsername.trim() ||
+    email.smtpPassword.trim() ||
+    email.smtpSecure !== true,
   )
   const hasEmailImap = Boolean(
     email.imapHost.trim() ||
-      imapPort !== undefined ||
-      email.imapUsername.trim() ||
-      email.imapPassword.trim() ||
-      email.imapSecure !== true,
+    imapPort !== undefined ||
+    email.imapUsername.trim() ||
+    email.imapPassword.trim() ||
+    email.imapSecure !== true,
   )
   const shouldMaterializeEmail =
     hasEmailFrom || hasEmailSmtp || hasEmailImap || email.enabled !== true || cfg.email !== undefined

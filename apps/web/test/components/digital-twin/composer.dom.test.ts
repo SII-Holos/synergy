@@ -12,6 +12,7 @@ type Control = {
   connection(value: string): void
   model(value: string): void
   composing(value: boolean): void
+  automatic(value: boolean | undefined): void
   complete(): void
   editSource(): void
   metadata(): void
@@ -62,6 +63,7 @@ beforeAll(async () => {
     export const useSync=()=>({data:{config}})
     export const useViewActivity=()=>active
     export const controls={capability:value=>setSelection(value==="unknown"?undefined:{features:value==="selected"?["digital-twin"]:[]}),active:setActive,session:setSession,scope:setScope,connection:setConnection,model:setModel,running:setRunning,
+      automatic:value=>setConfig("digitalTwin","automatic",value),
       complete:()=>emit("session.root.completed",{sessionID:session(),rootID:"root",assistantID:"reply"}),
       editSource:()=>emit("message.part.summary",{summary:{sessionID:session()}}),
       metadata:()=>{emit("session.updated",{info:{id:session()}});emit("message.updated",{info:{sessionID:session()}})},
@@ -128,14 +130,15 @@ beforeAll(async () => {
   })
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
-  page.on("pageerror", (error) => errors.push(error.message))
   page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
 }, 60_000)
 
 afterAll(async () => {
   await browser?.close()
   await fixture?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
+  expect(errors).toEqual([])
 })
 
 test("rendered composer requires a fresh completion event and fences drafts, reconnects and source edits", async () => {
@@ -347,6 +350,7 @@ test("handled suggestions and suggestions superseded by new work do not return a
 
 test("prediction feedback expires without input and a retry receives its own reading time", async () => {
   const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
   page.on("pageerror", (error) => errors.push(error.message))
   try {
     await page.goto(fixture.url)
@@ -501,3 +505,26 @@ test.each([
     }
   },
 )
+
+test("an unconfigured composer predicts only after an explicit request", async () => {
+  const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url)
+    const button = page.getByRole("button", { name: "Predict next input", exact: true })
+    await button.waitFor()
+    await page.evaluate(async () => {
+      window.twinFixture.automatic(undefined)
+      window.twinFixture.complete()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([])
+    await button.click()
+    await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+  } finally {
+    await page.close()
+  }
+})

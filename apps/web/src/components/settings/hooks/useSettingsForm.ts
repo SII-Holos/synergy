@@ -38,7 +38,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   if (params.initialized() && params.initializedForSet === setName) return undefined
 
   params.setSettings("digitalTwin", {
-    automatic: cfg.digitalTwin?.automatic !== false,
+    automatic: cfg.digitalTwin?.automatic === true,
     model: cfg.digitalTwin?.model ? `${cfg.digitalTwin.model.providerID}/${cfg.digitalTwin.model.modelID}` : "",
   })
 
