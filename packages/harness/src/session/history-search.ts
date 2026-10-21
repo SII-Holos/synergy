@@ -109,6 +109,42 @@ export namespace SessionHistorySearch {
     return { category: "tool", text: [JSON.stringify(part.state.input), output].filter(Boolean).join("\n\n") }
   }
 
+  export async function preparePart(key: string[], signal?: AbortSignal) {
+    signal?.throwIfAborted()
+    const source = await Storage.snapshot(async (tx) => {
+      const [revision] = await tx.revisions([key])
+      if (revision === undefined) return undefined
+      const projection = await tx.textProjectionState(key)
+      if (projection?.revision === revision && projection.ready) return { ready: true as const }
+      const record = await tx.versioned<MessageV2.Part>(key)
+      return { ready: false as const, record, projection }
+    })
+    if (!source || source.ready) return true
+    const version = MessageV2.summarizePart(source.record.value).content.version
+    const prepared = source.projection?.revision === source.record.revision && source.projection.version === version
+    const offset = prepared ? source.projection!.progress : 0
+    const body = content(source.record.value)
+    const count = Math.ceil(body.text.length / TEXT_FRAGMENT_CHARS)
+    const fragments = Array.from({ length: Math.min(4, Math.max(0, count - offset)) }, (_, index) => {
+      const start = (offset + index) * TEXT_FRAGMENT_CHARS
+      return { offset: start, text: body.text.slice(start, start + TEXT_FRAGMENT_CHARS + TEXT_QUERY_CHARS * 2) }
+    })
+    const complete = offset + fragments.length >= count
+    signal?.throwIfAborted()
+    return Storage.transaction(async (tx) => {
+      const accepted = await tx.appendTextProjection({
+        key,
+        revision: source.record.revision,
+        version,
+        category: body.category,
+        offset,
+        fragments,
+        complete,
+      })
+      return accepted && complete
+    })
+  }
+
   export function prepareBatch(scopeID: string, sessionID: string, signal?: AbortSignal) {
     const identity = `${scopeID}/${sessionID}`
     const pending = batches().get(identity)
@@ -131,11 +167,7 @@ export namespace SessionHistorySearch {
             ? (await tx.queryKeys({ kind: "part", scopeID, sessionID, after: state.cursor, limit: 1 }))[0]
             : marker?.value.key)
         if (!key) return { state }
-        const record = await tx.versioned<MessageV2.Part>(key).catch((error) => {
-          if (error instanceof Storage.NotFoundError) return undefined
-          throw error
-        })
-        return { state, key, marker, record, projection: record ? await tx.textProjectionState(key) : undefined }
+        return { state, key, marker }
       })
       if (source.state.ready) return { ready: true, prepared: source.state.prepared }
       if (!source.key) {
@@ -152,35 +184,9 @@ export namespace SessionHistorySearch {
         })
         return { ready: state.ready, prepared: state.prepared }
       }
-      const version = source.record ? MessageV2.summarizePart(source.record.value).content.version : undefined
-      const prepared =
-        source.record && source.projection?.revision === source.record.revision && source.projection.version === version
-      const offset = prepared ? source.projection!.progress : 0
-      const body = source.record ? content(source.record.value) : undefined
-      const count = body ? Math.ceil(body.text.length / TEXT_FRAGMENT_CHARS) : 0
-      const fragments =
-        body && !(prepared && source.projection?.ready)
-          ? Array.from({ length: Math.min(4, Math.max(0, count - offset)) }, (_, index) => {
-              const start = (offset + index) * TEXT_FRAGMENT_CHARS
-              return { offset: start, text: body.text.slice(start, start + TEXT_FRAGMENT_CHARS + TEXT_QUERY_CHARS * 2) }
-            })
-          : []
-      const complete =
-        !source.record || Boolean(prepared && source.projection?.ready) || offset + fragments.length >= count
+      const complete = await preparePart(source.key, signal)
       await UpgradeWork.checkpoint()
       const updated = await Storage.transaction(async (tx) => {
-        if (source.record && !(prepared && source.projection?.ready)) {
-          const accepted = await tx.appendTextProjection({
-            key: source.key!,
-            revision: source.record.revision,
-            version: version!,
-            category: body!.category,
-            offset,
-            fragments,
-            complete,
-          })
-          if (!accepted) return false
-        }
         if (complete && source.marker) {
           const current = await tx.versioned(source.marker.key).catch((error) => {
             if (error instanceof Storage.NotFoundError) return undefined

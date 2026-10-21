@@ -21,12 +21,15 @@ export interface TextProjectionQuery {
   scopeID?: string
   sessionID?: string
   query: string
+  terms?: string[]
   categories?: TextCategory[]
   cursor?: string
   limit?: number
 }
 export interface TextProjectionHit {
   key: string[]
+  cursor: string
+  revision: string
   version: string
   category: TextCategory
   offset: number
@@ -166,12 +169,14 @@ export class TextProjection {
   async search(
     input: TextProjectionQuery,
   ): Promise<{ items: TextProjectionHit[]; nextCursor: string | null; scanned: number; indexed: boolean }> {
-    const query = normalize(input.query)
+    const terms = [...new Set((input.terms ?? [input.query]).map(normalize).filter(Boolean))]
+    const query = terms[0] ?? ""
     const categories = input.categories ?? ["text"]
     if (!query || !categories.length) return { items: [], nextCursor: null, scanned: 0, indexed: false }
-    if ([...query].length > TEXT_QUERY_CHARS) throw new StorageIntegrityError("Search query exceeds its budget")
+    if (terms.length > 32 || terms.some((term) => [...term].length > TEXT_QUERY_CHARS))
+      throw new StorageIntegrityError("Search query exceeds its budget")
     if (input.cursor && !/^\d+$/.test(input.cursor)) throw new StorageIntegrityError("Invalid text search cursor")
-    const indexed = this.backend === "sqlite" && [...query].length >= 3
+    const indexed = this.backend === "sqlite" && terms.every((term) => [...term].length >= 3)
     const limit = indexed ? Math.max(1, Math.min(100, input.limit ?? 50)) : 32
     const conditions = [
       "c.namespace = ?",
@@ -197,28 +202,33 @@ export class TextProjection {
     }
     if (indexed) {
       conditions.push("storage_text_fts MATCH ?")
-      values.push(`"${query.replaceAll('"', '""')}"`)
+      values.push(terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR "))
     }
     values.push(limit + 1)
     const rows = await this.connection.query<SqlRow>(
-      `SELECT c.id, c.source_version, c.category, c.source_offset, c.text, c.normalized, r.key_text FROM ${indexed ? "storage_text_fts JOIN storage_text_chunks c ON c.id = storage_text_fts.rowid" : "storage_text_chunks c"} JOIN storage_text_sources s ON s.namespace = c.namespace AND s.source_key = c.source_key JOIN storage_records r ON r.namespace = s.namespace AND r.key_id = s.source_key WHERE ${conditions.join(" AND ")} ORDER BY c.id LIMIT ?`,
+      `SELECT c.id, c.source_revision, c.source_version, c.category, c.source_offset, c.text, c.normalized, r.key_text FROM ${indexed ? "storage_text_fts JOIN storage_text_chunks c ON c.id = storage_text_fts.rowid" : "storage_text_chunks c"} JOIN storage_text_sources s ON s.namespace = c.namespace AND s.source_key = c.source_key JOIN storage_records r ON r.namespace = s.namespace AND r.key_id = s.source_key WHERE ${conditions.join(" AND ")} ORDER BY c.id LIMIT ?`,
       values,
     )
     const scanned = rows.slice(0, limit)
     const items: TextProjectionHit[] = []
     const seen = new Set<string>()
     for (const row of scanned) {
-      const at = String(row.normalized).indexOf(query)
+      const matched = terms
+        .map((term) => ({ term, at: String(row.normalized).indexOf(term) }))
+        .find((match) => match.at >= 0)
+      const at = matched?.at ?? -1
       if (at < 0 || seen.has(String(row.key_text))) continue
       seen.add(String(row.key_text))
       const text = String(row.text)
       const start = Math.max(0, at - 80)
       items.push({
         key: JSON.parse(String(row.key_text)) as string[],
+        cursor: String(row.id),
+        revision: String(row.source_revision),
         version: String(row.source_version),
         category: String(row.category) as TextCategory,
         offset: Number(row.source_offset) + at,
-        text: text.slice(start, Math.min(text.length, at + query.length + 140)),
+        text: text.slice(start, Math.min(text.length, at + (matched?.term.length ?? 0) + 140)),
       })
     }
     return {

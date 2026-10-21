@@ -10,6 +10,8 @@ Read-only consumers need a coherent completed conversation and a way to reject r
 
 Session owns `SessionContextSnapshot`, which uses the canonical model working set inside a short storage snapshot. A successful Rollout and its terminal assistant establish the completion anchor. The result is deeply immutable and retains the resolved model and source revisions. Storage supplies a revision-only batch read; source checking includes ordering and part-membership records so appends and deletions invalidate existing results. No reader remains open while a model executes.
 
+`SessionCorpus` exposes paginated local text retrieval, canonical neighborhoods and versioned hydration. It reuses the existing text projection and shared CJK/ASCII tokenizer. Role and origin filtering continues through nonmatching storage pages. Targeted preparation reads original text using existing part summaries; old records without a summary require one bounded discovery decode, reported separately. Preparation honors background pause and yields at short checkpoints. It creates no second search database or transcript copy.
+
 ## Alternatives considered
 
 **Feature-specific history copies and hashes.** These duplicate canonical projection and hydrate full bodies on every freshness check.

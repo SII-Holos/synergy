@@ -6,6 +6,7 @@
   "license": "MIT",
   "exports": {
     "./session/context-snapshot": "./src/session/context-snapshot.ts",
+    "./session/corpus": "./src/session/corpus.ts",
     "./attachment/delivery": "./src/attachment/delivery.ts",
     "./execution/model-execution": "./src/execution/model-execution.ts",
     "./session/rollout/events": "./src/session/rollout/events.ts",
