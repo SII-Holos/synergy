@@ -714,6 +714,54 @@ a {
   width: 12px;
   height: 12px;
 }
+.prompt-attachment-entry:has(> [data-component="attachment-card"][data-type="file"]) {
+  max-width: min(288px, 100%);
+  > [data-component="attachment-card"] {
+    padding-inline-end: 44px;
+  }
+  .prompt-attachment-remove {
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+  }
+  [data-slot="attachment-retry"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding-inline: 8px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+  [data-component="tooltip-trigger"] {
+    flex-shrink: 0;
+  }
+  .prompt-attachment-remove:hover,
+  [data-slot="attachment-retry"]:hover {
+    background: var(--surface-base-hover);
+  }
+}
+@media (pointer: coarse) {
+  .prompt-attachment-entry:has(> [data-component="attachment-card"][data-type="file"]) {
+    > [data-component="attachment-card"] {
+      padding-inline-end: 56px;
+    }
+    .prompt-attachment-remove {
+      width: 44px;
+      height: 44px;
+    }
+    [data-slot="attachment-retry"] {
+      min-width: 44px;
+      height: 44px;
+    }
+  }
+}
 .prompt-attachment-status {
   display: flex;
   flex-wrap: wrap;
@@ -729,14 +777,6 @@ a {
   color: var(--text-interactive-base);
   cursor: pointer;
   text-align: start;
-}
-.prompt-attachment-error {
-  font-size: 11px;
-  color: var(--text-error);
-  max-width: 168px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .prompt-attachment-reference {
   height: 48px;

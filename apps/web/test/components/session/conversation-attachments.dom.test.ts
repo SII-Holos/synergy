@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test"
 import { errors, frames, page, url } from "../../support/conversation-process"
 
-for (const width of [375, 1000]) {
+for (const width of [260, 375, 1000]) {
   for (const theme of ["light", "dark"] as const) {
-    for (const count of [1, 2]) {
+    for (const count of width === 260 ? [2] : [1, 2]) {
       test(`${count} generated HTML documents align with conversation rows at ${width}px in ${theme}`, async () => {
         await page.setViewportSize({ width, height: 900 })
         await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
@@ -22,6 +22,8 @@ for (const width of [375, 1000]) {
           const gallery = document.querySelector(
             '[data-slot="activity-evidence"] [data-component="attachment-gallery"]',
           )!
+          const row = gallery.querySelector('[data-slot="attachment-row-layout"]')!
+          const style = getComputedStyle(row)
           return {
             prose: bounds(document.querySelector('[data-part-id="progress"] [data-component="text-part"]')!),
             tool: bounds(document.querySelector('[data-slot="activity-step-trigger"]')!),
@@ -29,6 +31,8 @@ for (const width of [375, 1000]) {
             cards: [...gallery.querySelectorAll('[data-component="attachment-card"]')].map(bounds),
             viewport: bounds(document.querySelector("[data-scroller]")!),
             overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            available: row.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+            gap: parseFloat(style.columnGap),
           }
         })
         expect(geometry.cards).toHaveLength(count)
@@ -39,7 +43,8 @@ for (const width of [375, 1000]) {
           expect(card.right).toBeLessThanOrEqual(geometry.viewport.right + 1)
         }
         if (count === 2) {
-          if (width === 375) {
+          const fits = geometry.cards[0].width + geometry.cards[1].width + geometry.gap <= geometry.available + 1
+          if (!fits) {
             expect(geometry.cards[1].left).toBe(geometry.cards[0].left)
             expect(geometry.cards[1].top).toBeGreaterThanOrEqual(geometry.cards[0].bottom)
           } else {
