@@ -7,7 +7,7 @@ Own composition, lifecycle and exports. `context` owns pure attribution; `agent/
 - `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; domain packages own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances together and entrypoints in isolated child processes.
-- Runtime tests use isolated homes under test/; pure functions need no Runtime. Migration mechanism tests use the unsealed fixture.
+- Use the unsealed fixture for migration mechanism tests.
 
 Verify types, tests and packages.
 
@@ -18,6 +18,7 @@ Verify types, tests and packages.
 - File browsing, indexing, Ripgrep, Hashline editing and conflict resolution belong to local-runtime; this package retains execution read evidence and locking.
 - Native file imports cross the Runtime-scoped `workspace/file-import` Host contract; register the implementation before opening the Runtime and reject unavailable hosts explicitly.
 - Workspace catalog references and binding generations own file identity. Native write admission uses `workspace/access`; execution-capacity scheduling remains private. File resources use `WorkspaceState`; Scope configuration and event sequencing use `ScopedState`. Startup contributions declare Workspace ownership when they depend on working files.
+- Tool `resourceNeeds` augments static requirements through the existing resolver. Follow `add-tool`.
 - Environment ownership: [Environments](../../docs/architecture/environments.md).
 - Metadata mutations have short claims. Retirement admits only its owner. Session selection pins destinations and drains registered resources before commit; file-aware commands share the binding lease. Release claims when capacity resumption fails.
 

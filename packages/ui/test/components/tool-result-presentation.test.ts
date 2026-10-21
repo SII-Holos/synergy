@@ -70,6 +70,9 @@ describe("tool result display metadata", () => {
 })
 
 test("optional tool presentation requires its independently selected owner", () => {
+  expect(toolRequiredFeatures({ tool: "workbench_view" })).toEqual(["workbench"])
+  expect(toolFeatureAvailable({ tool: "workbench_view" }, () => false)).toBe(false)
+  expect(toolFeatureAvailable({ tool: "workbench_view" }, (id) => id === "workbench")).toBe(true)
   expect(toolFeatureAvailable({ tool: "note_read" })).toBe(false)
   expect(toolFeatureAvailable({ tool: "bash" })).toBe(true)
   const agendaOnly = (feature: string) => feature === "agenda"

@@ -49,7 +49,6 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `browser_screenshot` | `browser.inspect` | Capture exactly one PNG screenshot type: viewport, full page, clip, or uniquely matched locator. Models that accept PNG input receive it directly; other models receive a saved local path and can use l |
 | `browser_snapshot` | `browser.inspect` | Capture the current accessibility and interactive DOM snapshot. Returned opaque refs are valid only with the returned snapshotId and current document generation. |
 | `browser_upload` | `browser.interact` | Upload permission-reviewed workspace files to one uniquely matched file input through isolated staging. |
-| `browser_view` | `browser.inspect` | Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only  |
 | `browser_wait` | `browser.inspect` | Wait for a specific page condition: load state, URL, title, text, locator state, download, or dialog. The result only reports that the requested condition was observed; it is never evidence of busines |
 | `channel_push` | `orchestration.session` | 把结果或状态显式推送到渠道(或回复某条消息),是 Boss Mode 的显式回执工具。Push a text receipt to a channel chat, or reply to an inbound message — the only outbound delivery surface for boss-role sessions. accountId defaults to the  |
 | `channel_reaction_only` | `communication.deliver` | End the turn with only a reaction on the user's inbound message: add that reaction and send no text, card, attachment, or other message. Use this only when the message needs no answer at all — a pure  |
@@ -113,6 +112,7 @@ Every model-visible tool schema includes optional `workBrief`: One short sentenc
 | `view_file` | `code.read` | Read a file through the anchored coding harness. Use this instead of `read` when the content may feed `revise_file` or `resolve_conflicts`. The output starts with a real `[path#TAG]` header followed b |
 | `view_image` | `code.analyze` | Load an image file from the selected Workspace into the current model context for direct visual inspection. Use this when the active model supports the image's format and you need to inspect it yourse |
 | `webfetch` | `search.web` | - Fetches content from a specified URL - Takes a URL and optional format as input - Fetches the URL content, converts to requested format (markdown by default) - Returns the content in the specified f |
+| `workbench_view` | `platform.presentation` | Show an existing note, Workspace file, Browser page or immutable asset in a frontend actively viewing this Session; hide a returned viewId or inspect views. This only presents existing resources: it d |
 | `worktree_archive` | `platform.config` | Archive a finished Synergy-managed git worktree. Use when isolated work is complete, including from the running owner turn, or to reclaim another idle worktree. Optional target accepts a name, ID, bra |
 | `worktree_enter` | `platform.config` | Create or enter a git worktree for the current session.  |
 | `worktree_leave` | `platform.config` | Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree,  |
@@ -599,16 +599,6 @@ Upload permission-reviewed workspace files to one uniquely matched file input th
 | `target` | BrowserLocatorSchema | yes |  |
 | `paths` | array | yes |  |
 
-## browser_view
-
-Kind: `browser.inspect`
-
-Control the Browser Side Workspace panel. Show or hide the Browser UI, switch focus to the browser page, or query the Side Workspace open state. This does not affect CDP or the running browser — only the frontend view.
-
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `action` | "show" \| "hide" \| "focus" \| "status" | yes | show: open the Browser Side Workspace panel. hide: close the Side Workspace. focus: switch the Side Workspace to Browser. status: query current host connection state. |
-
 ## browser_wait
 
 Kind: `browser.inspect`
@@ -788,6 +778,16 @@ Kind: `orchestration.task`
 
 Submit exactly one semantic action for the current parent Lattice state. Valid state/action pairs are: submit_requirements in clarifying; submit_pathway in planning; submit_pathway_review in reviewing_pathway; submit_blueprint in blueprinting; submit_blueprint_review in reviewing_blueprint; and approve_execution in awaiting_execution. The strict action contracts are: submit_requirements uses goal, successCriteria, and optional constraints/nonGoals/assumptions; submit_pathway uses reason; submit_pathway_review uses reason; submit_blueprint uses blueprintID; submit_blueprint_review uses reason; approve_execution uses reason and only follows explicit user approval. Never mix fields from different actions. Result semantics are operational instructions. LATTICE_SUBMIT_INVALID_ARGUMENTS means no action was persisted: correct only the stated fields and retry the same current-state action once. LATTICE_ACTION_WRONG_STATE, LATTICE_RUN_NOT_ACTIVE, LATTICE_ACTION_CONFLICT, LATTICE_BLUEPRINT_REVIEW_STALE, or LATTICE_RUN_NOT_FOUND means no action was persisted and the result is not retryable: follow the stated current owner, do not bypass Lattice with other tools, and do not begin another state or future Pathway Step. LATTICE_BLUEPRINT_UNAVAILABLE is retryable only when the result explicitly says to repair the current Blueprint artifact and retry once. LATTICE_ACTION_QUEUED means the semantic intent is durable but state has not changed synchronously. LATTICE_ACTION_ALREADY_QUEUED means an exact retry matched the existing durable intent. After either successful result, end the assistant turn immediately; do not call tools, poll, resubmit, create next-state artifacts, or execute future work. Only the host controller validates the intent, advances state, and delivers the next responsibility after the turn ends.
 
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `action` | z.enum | yes |  |
+| `goal` | string |  |  |
+| `successCriteria` | array |  |  |
+| `constraints` | array |  |  |
+| `nonGoals` | array |  |  |
+| `assumptions` | array |  |  |
+| `reason` | string |  |  |
+| `blueprintID` | string |  |  |
 
 ## look_at
 
@@ -835,8 +835,8 @@ Edit an existing memory by ID. Replaces the title, content, `category`, `recallM
 | `memoryId` | string | yes | The memory ID to edit |
 | `memoryTitle` | string | yes | New title (10 words max) |
 | `memoryContent` | string | yes | New content to replace the existing memory |
-| `category` | categorySchema.describe | yes |  |
-| `recallMode` | recallModeSchema.describe | yes | Memory recall mode: always, contextual, or search_only |
+| `category` | z.enum | yes |  |
+| `recallMode` | z.enum | yes | Memory recall mode: always, contextual, or search_only |
 | `expectedUpdatedAt` | number |  | The numeric updatedAt returned by memory_get. Reject the edit if that revision changed; re-read on conflict. |
 
 ## memory_get
@@ -872,8 +872,8 @@ Persist a piece of knowledge as long-term memory. Provide a concise title, conte
 | --- | --- | --- | --- |
 | `memoryTitle` | string | yes | A concise title summarizing the memory (10 words max) |
 | `memoryContent` | string | yes | The memory content to persist |
-| `category` | categorySchema.describe | yes |  |
-| `recallMode` | recallModeSchema.describe | yes | Memory recall mode: always, contextual, or search_only |
+| `category` | z.enum | yes |  |
+| `recallMode` | z.enum | yes | Memory recall mode: always, contextual, or search_only |
 
 ## note_archive
 
@@ -1387,6 +1387,18 @@ Kind: `search.web`
 | `url` | string | yes | The URL to fetch content from |
 | `format` | "text" \| "markdown" \| "html" |  | The format to return the content in (text, markdown, or html). Defaults to markdown. |
 | `timeoutSeconds` | number |  | Optional timeout in seconds (max 120); defaults to 30. |
+
+## workbench_view
+
+Kind: `platform.presentation`
+
+Show an existing note, Workspace file, Browser page or immutable asset in a frontend actively viewing this Session; hide a returned viewId or inspect views. This only presents existing resources: it does not create resources, navigate Browser pages or perform arbitrary UI actions. With multiple eligible frontends, choose a returned clientId. Applied means the frontend confirmed presentation, not that loading content is ready. Waits 30 seconds for a receipt by default; timeout, disconnection or cancellation after dispatch may leave the effect unknown. Use status with the returned requestId to read the retained runtime receipt without replay. Reconnecting and conversation history never replay commands.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `input` | union | yes |  |
+| `clientId` | string |  | An eligible frontend ID returned by status when multiple frontends show this session. |
+| `timeoutSeconds` | number |  | Seconds to wait for a frontend receipt. A missing receipt is unknown, not success. |
 
 ## worktree_archive
 

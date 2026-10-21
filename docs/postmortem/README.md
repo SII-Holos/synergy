@@ -8,10 +8,6 @@
 
 Otherwise, test.
 
-## Placement
-
-Rationale: `docs/decisions/`.
-
 ## Format
 
 `NNNN-kebab-case-title.md` sections:
@@ -24,6 +20,8 @@ Rationale: `docs/decisions/`.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0082](0082-browser-view-completed-without-presentation.md)
 
 - [0081](0081-browser-navigation-timeouts.md)
 

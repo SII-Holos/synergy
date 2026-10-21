@@ -143,6 +143,10 @@ function BrowserPanelInner(props: {
   }
 
   const page = browser.page
+  const autoFocusAddress = () => {
+    const state = props.tab.state
+    return !(state && typeof state === "object" && "focusAddress" in state && state.focusAddress === false)
+  }
 
   const showDevPanel = () => browser.devPanel() !== "closed"
   const [recent, setRecent] = createSignal<Array<{ url: string; title: string; time: number }>>([])
@@ -298,6 +302,7 @@ function BrowserPanelInner(props: {
     <BrowserStoreProvider store={browser}>
       <div class="browser-workspace flex h-full flex-col">
         <AddressBar
+          autoFocus={autoFocusAddress()}
           recent={recent}
           activeUrl={() =>
             page()?.isLoading ? (page()?.navigation?.requestedURL ?? page()?.url ?? "") : (page()?.url ?? "")

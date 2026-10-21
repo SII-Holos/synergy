@@ -6,6 +6,8 @@ The Web application maintains reactive projections of server-owned state. Initia
 
 The sync layer optimizes identity stability, reconnect recovery, streaming cost, and bounded memory. It is not a complete normalized entity database: some feature resources remain component-owned and must refetch after reconnect.
 
+Live Agent resource-presentation requests share the existing connection but are not canonical state events, tool-result effects or replayable history. Workbench owns their target-client selection and execution receipts; see [Workbench presentation](workbench-presentation.md).
+
 ## Connection Model
 
 `GlobalSDKProvider` opens one WebSocket to:

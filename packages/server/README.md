@@ -4,6 +4,8 @@ HTTP/WS transport, authentication, core API routes, and explicit domain route co
 
 Shared runtime routes stay here. Domain routes belong with the domain service and are mounted through server contributions; importing the full product from Server is forbidden.
 
+`Server.Contributions.eventClients` adds connection-local domain protocols to the existing `/global/event/ws` transport. Each contribution receives an opaque fresh `clientId` and a targeted `send(frame): boolean`, then owns validated domain payload handling, active-view notifications and disposal. Server rejects stale view-interest publication generations and disposes contributions with their stable raw socket. A true send result is not an acknowledgement, and these targeted frames do not enter Bus history or reconnect replay.
+
 The explicit `webApp({ directory })` component serves built Web assets. Known page paths negotiate HTML navigation before optional API handlers, after authentication, CORS and Scope resolution; JSON and fetch requests retain their API behavior. This allows a bookmarked Library page and its generated SDK endpoint to share a path.
 
 Cross-package imports use the explicit entries in `package.json`. Tests and fixtures belong in this package’s `test/` tree. Full API composition tests belong in `presets/test/`.

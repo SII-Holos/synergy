@@ -1,6 +1,7 @@
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import { createContext, onCleanup, useContext, type Accessor, type ParentProps } from "solid-js"
 import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import type { WorkbenchView } from "@ericsanchezok/synergy-util/workbench-view"
 import type { AttachmentFile } from "../components/attachment-card-utils"
 import type { ImagePreviewImage } from "../components/image-preview-model"
 
@@ -13,6 +14,8 @@ export type OpenableResource =
     }
 
 export interface ResourceOpenOptions {
+  origin?: "agent"
+  canCommit?: () => boolean
   prefer?: "preview" | "workspace" | "external"
   focusTarget?: () => HTMLElement | undefined
   context?: ResourceReference.Context
@@ -23,7 +26,8 @@ export interface ResourceOpenOptions {
 }
 
 export type ResourceOpenResult =
-  { status: "opened" | "dispatched" | "cancelled" } | { status: "unavailable"; reason: string }
+  | { status: "opened" | "dispatched" | "cancelled"; view?: Pick<WorkbenchView.View, "viewId" | "surface"> }
+  | { status: "unavailable" | "blocked"; reason: string }
 
 export interface ResourcePreview {
   title: string
@@ -43,6 +47,7 @@ export type ActivityDetailTarget =
   | { kind: "agent-delivery" | "compaction"; sessionID: string; messageID: string }
 
 export interface ResourceOpenController {
+  present?(target: WorkbenchView.Target, options?: ResourceOpenOptions): Promise<ResourceOpenResult>
   resolveUrl?(reference: ResourceReference.Target, context?: ResourceReference.Context): string | undefined
   openActivityDetail?(target: ActivityDetailTarget): boolean
   isActivityDetailSelected?(target: ActivityDetailTarget): boolean

@@ -60,6 +60,8 @@ Tools return ordered message parts with text output, structured metadata, and op
 
 Current first-party families cover workspace read/write/search, shell and persistent processes, LSP and diagnostics, Web research, Browser interaction, attachments and media rendering, sessions and delegation, todo/DAG/workflow state, Agenda, Library, Notes, email, worktrees, and Synergy maintenance. Most large families are grouped or searchable rather than permanently occupying every model prompt.
 
+Explicit resource presentation uses `workbench_view`: it shows an existing resource in a frontend viewing the calling Session and reports the frontend's receipt. Creating or reading content remains separate. No connected frontend or an uncertain receipt is not a successful display. See [Workbench presentation](../architecture/workbench-presentation.md).
+
 ## Todo and DAG State
 
 A session can retain two forms of agent-authored working state. Todo is a linear checklist for immediate steps. DAG is a dependency graph whose nodes carry content, status, dependencies, assignment hints, memo, and optional Cortex task/session bindings. Agents can replace or read the graph and patch selected nodes without rewriting unrelated state; Cortex completion can update a bound node and make newly unblocked work eligible.

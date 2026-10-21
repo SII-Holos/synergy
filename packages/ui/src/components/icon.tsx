@@ -548,6 +548,7 @@ const icons = {
   "worktree-leave": ArrowLeft,
   "worktree-archive": Archive,
   "worktree-list": LayoutGrid,
+  "workbench-view": PanelRight,
   wrench: Wrench,
   x: X,
   zap: Zap,

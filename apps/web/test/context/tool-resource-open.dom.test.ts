@@ -218,6 +218,7 @@ beforeAll(async () => {
         { find: "@/components/workspace/browser/browser-catalog", replacement: bridge },
         ...[
           "@/context/sdk",
+          "@/context/layout",
           "@/context/global-sdk",
           "@/context/file",
           "@/context/workbench",

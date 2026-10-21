@@ -57,6 +57,8 @@ import {
 } from "./errors"
 
 export type FileOpenOptions = {
+  origin?: "agent"
+  canCommit?: () => boolean
   newTab?: boolean
   location?: ResourceReference.Location
   directory?: boolean
@@ -745,13 +747,18 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     if (path && store.documents[path]) setStore("documents", path, "draft", undefined)
   }
 
-  const [navigation, setNavigation] =
-    createStore<
-      Record<
-        string,
-        { id: number; location: ResourceReference.Location; focusTarget?: () => HTMLElement | undefined } | undefined
-      >
-    >()
+  const [navigation, setNavigation] = createStore<
+    Record<
+      string,
+      | {
+          id: number
+          location: ResourceReference.Location
+          origin?: "agent"
+          focusTarget?: () => HTMLElement | undefined
+        }
+      | undefined
+    >
+  >()
   let navigationID = 0
   const openWorkspaceFile = (input: string, options?: FileOpenOptions) => {
     const path = options?.directory ? "" : normalize(input)
@@ -765,10 +772,17 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     const promise = workbench
       .openPanel("file", {
         ...(options?.signal
-          ? { canCommit: () => !disposed && !options.signal?.aborted && side.selectionRevision() === selectionRevision }
+          ? {
+              canCommit: () =>
+                !disposed &&
+                !options.signal?.aborted &&
+                options.canCommit?.() !== false &&
+                side.selectionRevision() === selectionRevision,
+            }
           : {}),
-        replaceEmpty: true,
-        replaceCurrent: !options?.newTab,
+        intent: options?.origin,
+        replaceEmpty: options?.origin !== "agent",
+        replaceCurrent: options?.origin !== "agent" && !options?.newTab,
         forceNew: options?.newTab,
         init: {
           resourceId: workspaceFileResource(workspace, path),
@@ -779,6 +793,14 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       })
       .then(async (tab) => {
         if (disposed || !tab || options?.signal?.aborted) return undefined
+        if (options?.origin === "agent") {
+          if (options.location) {
+            view().setMode(path, options.location.kind === "text" ? "source" : "preview")
+            setNavigation(path, { id: ++navigationID, location: options.location, origin: options.origin })
+          }
+          void load(path)
+          return tab
+        }
         if (options?.directory) {
           view().setExplorerOpen(true)
           await reveal(input)

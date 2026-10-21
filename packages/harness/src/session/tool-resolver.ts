@@ -1641,16 +1641,20 @@ export namespace ToolResolver {
               if (runtimeInput.session) {
                 SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
               }
-              const workspaceInfo =
-                item.requiresWorkspace !== false || item.requiresExecution ? ScopeContext.current.workspace : null
-              if (item.requiresExecution || item.requiresWorkspace) {
+              const requested = item.resourceNeeds?.(args)
+              const needs = {
+                workspace: item.requiresWorkspace === true || requested?.workspace === true,
+                execution: item.requiresExecution ?? requested?.execution,
+              }
+              const workspaceInfo = needs.workspace || needs.execution ? ScopeContext.current.workspace : null
+              if (needs.execution || needs.workspace) {
                 resources = await EnvironmentResources.select({
                   scopeID: ScopeContext.current.scope.id,
                   ownerID: ctx.sessionID,
                   environmentID: ctx.environmentID,
                   workspaceID: runtimeInput.session?.workspaceID ?? workspaceInfo?.id,
                   workspaceGeneration: workspaceInfo?.generation,
-                  needs: { execution: item.requiresExecution, workspace: item.requiresWorkspace },
+                  needs,
                   signal: ctx.abort,
                 })
                 ctx.resources = resources

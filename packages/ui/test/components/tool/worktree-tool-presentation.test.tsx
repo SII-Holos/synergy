@@ -108,3 +108,34 @@ describe("worktree archive presentation", () => {
     }
   })
 })
+
+describe("workbench view presentation", () => {
+  test("describes the requested resource without claiming that the frontend opened it", () => {
+    expect(
+      getToolInfo("workbench_view", { input: { action: "open", target: { kind: "note", id: "note" } } }),
+    ).toMatchObject({
+      icon: "workbench-view",
+      title: { id: "tool.title.workbench-view", message: "Manage resource views" },
+      subtitle: "note",
+      args: ["open"],
+    })
+  })
+
+  test("the standard tool bundle preserves acknowledged and uncertain results verbatim", () => {
+    const render = ToolRegistry.render("workbench_view")
+    expect(render).toBeDefined()
+    for (const status of ["applied", "unknown", "unavailable", "superseded"]) {
+      resetCapture()
+      const output = JSON.stringify({ status, requestId: "request" })
+      render!({
+        tool: "workbench_view",
+        input: { input: { action: "status" } },
+        status: "completed",
+        output,
+        metadata: { status, requestId: "request" },
+      })
+      expect(capturedTool?.trigger).toMatchObject({ tags: [{ label: "status" }, { label: status }] })
+      expect(capturedOutput).toBe(output)
+    }
+  })
+})

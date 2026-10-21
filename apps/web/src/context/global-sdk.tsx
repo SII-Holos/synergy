@@ -53,6 +53,18 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     let disposed = false
     let ws: WebSocket | undefined
+    const clientMessageListeners = new Set<(payload: unknown, reply: (payload: unknown) => boolean) => void>()
+    const [connectionGeneration, setConnectionGeneration] = createSignal(0)
+    const sendClientMessage = (socket: WebSocket | undefined, payload: unknown) => {
+      if (disposed || !socket || socket !== ws || socket.readyState !== WebSocket.OPEN) return false
+      try {
+        socket.send(JSON.stringify({ payload }))
+        return true
+      } catch {
+        socket.close()
+        return false
+      }
+    }
     let mode: "projection" | "projection-v2" = "projection"
     let interestsFrame: number | undefined
     const [contentRevision, setContentRevision] = createSignal(0)
@@ -222,14 +234,17 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       ws = socket
 
       socket.onopen = () => {
+        if (disposed || ws !== socket) return
         contentSubscriptions.reconnect()
         reconnectDelay = 1000
         missedPongs = 0
+        setConnectionGeneration((generation) => generation + 1)
         markConnected()
         startPing()
       }
 
       socket.onmessage = (msg) => {
+        if (disposed || ws !== socket) return
         let parsed: { scopeID?: string | null; payload?: Event }
         try {
           parsed = JSON.parse(msg.data)
@@ -240,6 +255,11 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (!payload) return
 
         const type = payload.type as string
+        if (typeof type === "string" && type.startsWith("server.workbench.")) {
+          for (const listener of clientMessageListeners)
+            listener(payload, (response) => sendClientMessage(socket, response))
+          return
+        }
         if (type === "server.pong") {
           if (pongTimer) clearTimeout(pongTimer)
           pongTimer = undefined
@@ -285,6 +305,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       }
 
       socket.onclose = () => {
+        if (ws !== socket) return
         clearPingTimers()
         markDisconnected()
         if (disposed) return
@@ -305,6 +326,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     onCleanup(() => {
       disposed = true
+      setConnected(false)
+      clientMessageListeners.clear()
       capabilities.dispose()
       clearPingTimers()
       if (reconnectTimer) clearTimeout(reconnectTimer)
@@ -323,10 +346,22 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       capabilities,
       event: emitter,
       connected,
+      connectionGeneration,
+      clientMessages: {
+        send: (payload: unknown) => sendClientMessage(ws, payload),
+        subscribe(listener: (payload: unknown, reply: (payload: unknown) => boolean) => void) {
+          clientMessageListeners.add(listener)
+          return () => clientMessageListeners.delete(listener)
+        },
+      },
       disconnectedAt,
       drafts,
       content: {
         ...contentSubscriptions,
+        current() {
+          contentRevision()
+          return contentSubscriptions.current()
+        },
         pending(scopeID: string, sessionID: string) {
           contentRevision()
           return contentSubscriptions.pending(scopeID, sessionID)

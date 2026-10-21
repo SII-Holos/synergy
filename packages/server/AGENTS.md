@@ -16,3 +16,5 @@ Expose composition through `./component`; keep registration side-effect free unt
 Keep published `synergy` component metadata aligned with the factory version, requirements and packaged entry. Component CLI contributions belong in `src/cli-adapter.ts` when this owner supplies commands; keep their handlers lazy and independent of the complete product.
 
 Own the capability-negotiated view projection transport and Runtime-scoped transient checkpoints. Product detail contributors come from Runtime composition; never import Workbench into Server. Verify live/replay cursor equivalence, bounded frames, Scope checks and lease cleanup on socket removal.
+
+Connection-local domain protocols use the public `Server.Contributions.eventClients` seam on `/global/event/ws`. Keep opaque connection IDs, raw-socket ownership, monotonic view-interest publications and cleanup in Server; domain owners validate their own incoming payloads. A `send` result confirms transport sending only, never domain application. Verify `bun test test/server/event-client-contributions.test.ts` and the neighboring event-client/projection suites.

@@ -46,6 +46,8 @@ Declare first-party `fileToolGroups` only for the closed file-interface members 
 
 Authorize file search observations against the actual selected file paths before returning content or recording read evidence. Search expressions and synthetic wildcard patterns are not resource paths. Exercise path-specific decisions through the production resolver and policy worker, including saved decisions after broader semantic rules.
 
+For mixed tools with directory-independent actions, keep static `requiresWorkspace: false` and declare the file-bearing actions through initialized `resourceNeeds(args)`. The existing resolver acquires their Session resources before creating the gate. File operations still call `ctx.ask` with resolved read/write paths; a manually constructed gate does not verify either resource acquisition or path-specific rules. Cover both through `ToolInvocation` with a protected actual Workspace root and an explicit file denial.
+
 For patch-like multi-file writes, use one pure grammar for policy and execution and the selected-view mutation owners. Preflight before effects, then revalidate identities and perform conditional sequential writes. Test content/mode and parent replacement, unrelated object revisions, update-then-move failure and cancellation through rollout capture. Keep the full stage ledger even when display text is bounded; a post-publication error is not proof of no effect. Never retry with a new operation identity to obtain a cleaner result.
 
 When adopting another tool's capabilities, pin and replay its behavioral fixtures through the real execution owner, not only its syntax parser. List host-specific differences explicitly. Patch matching changes must cover tier priority, repeated context, Unicode whitespace and source order; replacement/move changes must verify every actual target's read evidence, permissions, mode, conditional versions and partial effects. Record destination writes and source removals separately, retain complete per-file patches independently of bounded previews, and verify them through both tool presentation and Review without inventing historical paths. When a later destructive stage depends on a formatted file, advance its observation only through the formatter owner; test real in-place and atomic-replacement formatters as well as arbitrary listener replacements.
@@ -63,6 +65,8 @@ Complete all five first-party registrations:
 A renderer may either be registered by the render-group loop or self-register with `ToolRegistry.register()` and be imported for its side effect from the render-group entry point. In both cases, keep the registration reachable from the standard tool-render bundle and cover it with a render test.
 
 The tool icon registry is separate from the product semantic-token registry. Load `develop-frontend` and use semantic product icons for non-tool UI added around the feature. Preserve accessible pending, success, error, and attachment presentation.
+
+For explicit frontend presentation, use the existing [Workbench presentation](../../../docs/architecture/workbench-presentation.md) owner rather than tool-metadata effects or another native input path. Verify the mounted consumer and matching client execution receipt, not only an isolated open-panel helper. Keep a sent request, an applied view and loaded content distinct; exercise an absent consumer, wrong-client reply, reconnect without replay and a user selection made during asynchronous resolution.
 
 ## Tool Description Quality
 
