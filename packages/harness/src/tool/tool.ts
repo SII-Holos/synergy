@@ -101,6 +101,12 @@ export namespace Tool {
         type: "local"
       }
 
+  export interface ExecutionActivity {
+    progress(): void
+    waiting(reason: "child" | "authorization" | "capacity"): () => void
+    owner(alive: () => boolean | undefined): () => void
+  }
+
   export type Context<M extends Metadata = Metadata> = {
     sessionID: string
     messageID: string
@@ -114,6 +120,7 @@ export namespace Tool {
     captureResult?(result: unknown): Promise<void>
     openProcessEvidence?(id: string): Promise<RolloutProcess.Writer>
     recordActivity?(input: ToolActivityCapture): Promise<ToolActivityEvidence>
+    execution?: ExecutionActivity
     extra?: { [key: string]: any }
     metadata(input: { title?: string; metadata?: M }): void
     ask(input: Omit<PermissionNext.Request, "id" | "sessionID" | "tool">): Promise<void>

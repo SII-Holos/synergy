@@ -110,6 +110,28 @@ describe("ObservabilitySpans", () => {
       expect(inflight[0].stale).toBe(true)
     }))
 
+  test("heartbeats and diagnoses do not manufacture progress or reopen a settled span", () =>
+    runtime.run(() => {
+      using clock = spyOn(ObservabilityClock, "now").mockReturnValue(1000)
+      const span = ObservabilitySpans.start({ name: "tool.execute", module: "tool" })!
+      clock.mockReturnValue(2000)
+      ObservabilitySpans.activity(span)
+      clock.mockReturnValue(40_000)
+      ObservabilitySpans.heartbeat(span)
+      ObservabilitySpans.markStalled(span)
+      const running = ObservabilityStore.querySpans({ traceId: span.traceId })[0]
+      expect(running.last_activity_time).toBe(2000)
+      expect(running.heartbeat_time).toBe(40_000)
+      expect(running.stalled).toBe(1)
+      ObservabilitySpans.end(span)
+      clock.mockReturnValue(50_000)
+      ObservabilitySpans.activity(span)
+      ObservabilitySpans.heartbeat(span)
+      ObservabilitySpans.markStalled(span)
+      expect(ObservabilityStore.queryInflight().filter((row) => row.span_id === span.spanId)).toEqual([])
+      expect(ObservabilityStore.querySpans({ traceId: span.traceId })[0].status).toBe("ok")
+    }))
+
   test("filters inflight spans by last activity instead of start time", () =>
     runtime.run(() => {
       const inactive = ObservabilitySpans.start({ name: "tool.inactive", module: "tool" })!

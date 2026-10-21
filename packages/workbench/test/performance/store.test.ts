@@ -483,6 +483,37 @@ describe.serial("performance observability store", () => {
       ).rejects.toThrow("Timeline metric is not allowed")
     }))
 
+  test("timeline exposes first-content clocks without replacing the legacy first-delta series", () =>
+    runtime.run(async () => {
+      const values = [
+        ["llm.stream.first_token", 5, "ms"],
+        ["llm.stream.first_content", 20, "ms"],
+        ["llm.stream.first_visible_text", 30, "ms"],
+        ["llm.stream.first_content.unavailable", 1, "count"],
+        ["llm.stream.first_visible_text.unavailable", 1, "count"],
+      ] as const
+      for (const [name, value, unit] of values) {
+        ObservabilityMetrics.record({ name, value, unit, module: "llm", sessionID: "session_content_clocks" })
+      }
+      ObservabilityStore.flush()
+      const timeline = await PerformanceTimeline.get({
+        metric: values.map(([name]) => name),
+        from: new Date(Date.now() - 60_000).toISOString(),
+        to: new Date(Date.now() + 1000).toISOString(),
+        bucketMs: 2000,
+        sessionID: "session_content_clocks",
+      })
+      expect(timeline.series).toHaveLength(values.length)
+      for (const [index, [name, value, unit]] of values.entries()) {
+        const series = timeline.series[index]
+        expect(series).toMatchObject({ name, unit, sampleCount: 1, stat: unit === "count" ? "sum" : "p95" })
+        expect(series.points.filter((point) => point.value !== null).map((point) => point.value)).toEqual([value])
+      }
+      expect(timeline.series[0].label).toContain("stream-open")
+      expect(timeline.series[1].label).toContain("dispatch")
+      expect(timeline.series[2].label).toContain("dispatch")
+    }))
+
   test("coalesces repeated issue events while preserving occurrence counts", () =>
     runtime.run(() => {
       let published = 0

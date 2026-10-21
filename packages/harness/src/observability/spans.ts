@@ -24,6 +24,7 @@ export namespace ObservabilitySpans {
     heartbeatTime?: number
     heartbeatCount: number
     stalled: boolean
+    ended?: boolean
     scopeID?: string
     sessionID?: string
     messageID?: string
@@ -127,7 +128,7 @@ export namespace ObservabilitySpans {
   }
 
   export function activity(ctx: SpanContext | undefined, attributes?: Record<string, unknown>) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
     const now = ObservabilityClock.now()
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(attributes ?? {}) })
     ctx.lastActivityTime = now
@@ -136,11 +137,10 @@ export namespace ObservabilitySpans {
   }
 
   export function heartbeat(ctx: SpanContext | undefined, attributes?: Record<string, unknown>) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
     const now = ObservabilityClock.now()
     ctx.heartbeatTime = now
     ctx.heartbeatCount++
-    ctx.lastActivityTime = now
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(attributes ?? {}) })
     ctx.attributes = redacted.value
     ObservabilityStore.updateSpan(
@@ -149,9 +149,8 @@ export namespace ObservabilitySpans {
   }
 
   export function markStalled(ctx: SpanContext | undefined, attributes?: Record<string, unknown>) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
     ctx.stalled = true
-    ctx.lastActivityTime = ObservabilityClock.now()
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(attributes ?? {}) })
     ctx.attributes = redacted.value
     ObservabilityStore.updateSpan(toSpan(ctx, { stalled: true, redaction: redacted.summary }))
@@ -165,7 +164,8 @@ export namespace ObservabilitySpans {
       attributes?: Record<string, unknown>
     } = {},
   ) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
+    ctx.ended = true
     const durationMs = ObservabilityClock.durationMs(ctx.startMark)
     const time = ObservabilityClock.now()
     const status = opts.status ?? (opts.error ? "error" : "ok")
