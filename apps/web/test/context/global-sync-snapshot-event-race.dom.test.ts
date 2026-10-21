@@ -52,7 +52,10 @@ type Fixture = {
     connect(): void
     setPending(key: string, questions: unknown[], permissions: unknown[]): void
     waitForReplay(key: string): Promise<void>
-    completeReplay(key: string): void
+    completeReplay(
+      key: string,
+      events?: Array<{ type: string; properties: Record<string, unknown>; seq: number }>,
+    ): void
     watchPeek(key: string, sink: (state: ScopeState | undefined) => void): () => void
     resolveEntry(sessionID: string): { tone?: string; pulse?: boolean }
   }
@@ -121,7 +124,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
       return {started,dispose,emit,connect,setPending,api:()=>api,
         waitForReplay(key) {return new Promise(resolve=>{const check=()=>{if(replays.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
-        completeReplay(key) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:replay.since,events:[]}})},
+        completeReplay(key, events = []) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:events.at(-1)?.seq??replay.since,events:events.map(event=>({...event,epoch:"test-epoch"}))}})},
       resolveEntry(sessionID) {
         return resolveSessionVisualState({
           entry: { id: sessionID },
@@ -607,17 +610,87 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.cortex.some((task) => task.id === "task-pulse" && task.status === "running")).toBe(true)
       expect(h.resolveEntry("resting-child")).toMatchObject({ tone: "active", pulse: true })
 
+      const summaryScope = api.retainScopeState("summary-scope")
+      await h.waitForRequest("summary-scope")
+      const summary = {
+        id: "task-summary",
+        sessionID: "summary-child",
+        parentSessionID: "summary-parent",
+        parentMessageID: "summary-message",
+        description: "Summary-only task",
+        agent: "fixture",
+        status: "running",
+        startedAt: 10,
+      }
+      const usage = {
+        inputTokens: 2,
+        outputTokens: 3,
+        reasoningTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        cost: 0,
+      }
+      h.emit("summary-scope", 1, "cortex.task.created", { task: summary })
+      const summaryIdentity = api.cortex.find((task) => task.id === summary.id)
+      h.emit("summary-scope", 2, "session.updated", {
+        info: {
+          id: summary.sessionID,
+          time: { created: 10, updated: 20 },
+          cortex: {
+            taskID: summary.id,
+            status: "completed",
+            completedAt: 20,
+            output: { mode: "final_response", value: "private child output ".repeat(32_768) },
+            error: "private child stack ".repeat(8_192),
+            usage,
+          },
+        },
+      })
+      const completedSummary = { ...summary, status: "completed", completedAt: 20, usage }
+      expect(api.cortex.find((task) => task.id === summary.id)).toBe(summaryIdentity)
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(completedSummary)
+      h.complete(
+        "summary-scope",
+        { provider: { all: [] }, agent: [], config: {}, cortex: [summary] },
+        { epoch: "test-epoch", seq: 1 },
+      )
+      await h.waitComplete(summaryScope.state)
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(completedSummary)
+
       h.setPending(
         "shared",
         [{ id: "reconnect-question", sessionID: "waiting-session", questions: [] }],
         [{ id: "reconnect-permission", sessionID: "waiting-session", permission: "edit", patterns: [], metadata: {} }],
       )
       h.connect()
+      await h.waitForReplay("summary-scope")
+      h.completeReplay("summary-scope", [
+        { type: "cortex.tasks.updated", seq: 3, properties: { tasks: [completedSummary] } },
+      ])
       await h.waitForReplay("shared")
       h.completeReplay("shared")
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(api.questions["waiting-session"]?.map((request) => request.id)).toEqual(["reconnect-question"])
       expect(api.permissions["waiting-session"]?.map((request) => request.id)).toEqual(["reconnect-permission"])
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(completedSummary)
+      h.emit("summary-scope", 4, "session.updated", {
+        info: {
+          id: summary.sessionID,
+          time: { created: 10, updated: 30 },
+          cortex: { taskID: summary.id, status: "interrupted", completedAt: 30, usage },
+        },
+      })
+      const interruptedSummary = { ...completedSummary, status: "interrupted", completedAt: 30 }
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(interruptedSummary)
+      h.emit("summary-scope", 5, "session.updated", {
+        info: {
+          id: summary.sessionID,
+          time: { created: 10, updated: 40 },
+          cortex: { taskID: "reused-child-task", status: "completed", completedAt: 40 },
+        },
+      })
+      expect(api.cortex.find((task) => task.id === summary.id)).toEqual(interruptedSummary)
+      summaryScope.release()
       shared.release()
     } finally {
       h.dispose()

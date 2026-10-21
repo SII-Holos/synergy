@@ -7,7 +7,7 @@ import {
   type LspStats,
   type McpStats,
 } from "../../../src/components/session/session-connection-stats"
-import type { CortexTask, LspStatus, McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { CortexTaskSummary, LspStatus, McpStatus } from "@ericsanchezok/synergy-sdk/client"
 
 // --- LSP ---
 
@@ -94,14 +94,13 @@ describe("computeMcpStats", () => {
 
 // --- Cortex ---
 
-function cortex(sessionID: string, status: CortexTask["status"]): CortexTask {
+function cortex(sessionID: string, status: CortexTaskSummary["status"]): CortexTaskSummary {
   return {
     id: "t1",
     sessionID,
     parentSessionID: sessionID,
     parentMessageID: "m1",
     description: "task",
-    prompt: "p",
     agent: "a",
     status,
     startedAt: 0,

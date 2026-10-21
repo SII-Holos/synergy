@@ -72,6 +72,9 @@ const CortexDelegationInfoInner = z.object({
   parentSessionID: z.string(),
   parentMessageID: z.string(),
   description: z.string(),
+  prompt: z.string().optional(),
+  category: z.string().optional(),
+  dagNodeId: z.string().optional(),
   agent: z.string(),
   executionRole: z.enum(["primary", "delegated_subagent"]).optional(),
   startedAt: z.number(),
@@ -99,6 +102,17 @@ const CortexDelegationInfoInner = z.object({
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
+
+export const CortexDelegationSummary = CortexDelegationInfoInner.omit({
+  prompt: true,
+  error: true,
+  tools: true,
+  outputConfig: true,
+  output: true,
+  owner: true,
+})
+  .extend({ usage: CortexTypes.TaskUsage.omit({ accounting: true }).optional() })
+  .meta({ ref: "SessionCortexDelegationSummary" })
 
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 

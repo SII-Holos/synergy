@@ -264,6 +264,7 @@ describe("Cortex cancellation fences queued follow-ups", () => {
           clock.advanceTo(30_000)
           expect(Cortex.get(task.id)?.prompt).toHaveLength(4096)
           expect(Cortex.get(task.id)?.progress).toBeUndefined()
+          expect((await Cortex.getVisibleTaskForOutput(parent.id, task.id))?.prompt).toBe(prompt)
           clock.advanceTo(299_999)
           expect(Cortex.get(task.id)?.status).toBe("cancelled")
           expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
@@ -278,6 +279,7 @@ describe("Cortex cancellation fences queued follow-ups", () => {
           expect(Cortex.get(task.id)).toBeUndefined()
           expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
           expect(await Cortex.getVisibleTaskForOutput(parent.id, task.id)).toMatchObject({
+            prompt,
             status: "cancelled",
             completedAt,
           })

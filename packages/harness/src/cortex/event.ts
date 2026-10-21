@@ -6,19 +6,19 @@ export const CortexEvent = {
   TaskCreated: BusEvent.define(
     "cortex.task.created",
     z.object({
-      task: CortexTypes.Task,
+      task: CortexTypes.TaskSummary,
     }),
   ),
   TaskCompleted: BusEvent.define(
     "cortex.task.completed",
     z.object({
-      task: CortexTypes.Task,
+      task: CortexTypes.TaskSummary,
     }),
   ),
   TasksUpdated: BusEvent.define(
     "cortex.tasks.updated",
     z.object({
-      tasks: z.array(CortexTypes.Task),
+      tasks: z.array(CortexTypes.TaskSummary),
     }),
   ),
 }

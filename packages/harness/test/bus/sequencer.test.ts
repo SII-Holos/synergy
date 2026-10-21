@@ -76,3 +76,36 @@ describe("SyncSequencer.replay", () => {
     expect(s2.replay(0, 1000).status).toBe("reset")
   })
 })
+
+function retainPayload(sequencer: SyncSequencer) {
+  const payload = { seq: 0, bytes: new Uint8Array(512 * 1024) }
+  sequencer.stamp(payload, Date.now())
+  return new WeakRef(payload)
+}
+
+test("releases expired payloads while idle without a stamp or replay", async () => {
+  const sequencer = new SyncSequencer("idle", 4096, 20)
+  const payload = retainPayload(sequencer)
+  await Bun.sleep(60)
+  Bun.gc(true)
+  await Bun.sleep(0)
+  Bun.gc(true)
+  expect(payload.deref()).toBeUndefined()
+  expect(sequencer.current).toBe(1)
+  expect(sequencer.replay(0, Date.now()).status).toBe("reset")
+  expect(sequencer.replay(1, Date.now())).toEqual({ status: "ok", epoch: "idle", seq: 1, events: [] })
+})
+
+test("disposal releases retained payloads and prevents rearming cleanup", async () => {
+  const sequencer = new SyncSequencer("disposed")
+  const payload = retainPayload(sequencer)
+  sequencer.dispose()
+  sequencer.dispose()
+  await Bun.sleep(0)
+  Bun.gc(true)
+  await Bun.sleep(0)
+  Bun.gc(true)
+  expect(payload.deref()).toBeUndefined()
+  expect(sequencer.replay(0, Date.now()).status).toBe("reset")
+  expect(() => sequencer.stamp({ seq: 0 }, Date.now())).toThrow("disposed")
+})

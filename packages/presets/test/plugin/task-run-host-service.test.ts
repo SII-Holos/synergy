@@ -16,6 +16,7 @@ import { createPluginInvocationContext } from "@ericsanchezok/synergy-plugin-hos
 import { executePluginHostService } from "@ericsanchezok/synergy-plugin-host/plugin/host-services-runtime"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
+import type { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
@@ -319,8 +320,7 @@ describe("plugin task.run Host Service", () => {
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
           const controller = new AbortController()
-          const created =
-            Promise.withResolvers<ReturnType<typeof Cortex.get> extends infer T ? Exclude<T, undefined> : never>()
+          const created = Promise.withResolvers<CortexTypes.TaskSummary>()
           const unsubscribe = Bus.subscribe(Cortex.Event.TaskCreated, (event) => created.resolve(event.properties.task))
           let childSessionID: string | undefined
           ;(SessionInvoke.invokeInternal as unknown) = mock(async () => new Promise(() => {}))

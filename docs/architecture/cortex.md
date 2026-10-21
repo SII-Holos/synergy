@@ -20,6 +20,8 @@ Task status moves through `queued`, `running`, and one terminal state: `complete
 
 The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, output, `notifyParentOnComplete` decision, and optional `deliveryNotifiedAt` parent-handoff timestamp.
 
+Task list, bootstrap and task-event collections expose `TaskSummary`, containing identity, state, times, scalar usage and bounded tool progress rather than prompt, output, schemas, stack or textual progress. Public Session projections omit private task payloads as well. Complete results use the shared authorized `cortex.get` / `cortex.output` reader, including after live retention expires. It verifies Scope, parent/child/task identity and visibility against the durable child. Optional parent and child qualifiers disambiguate imported task IDs; an unqualified cold lookup with multiple valid matches returns 404 instead of choosing a copy. New launches retain their original prompt/category/DAG metadata; absent historical launch fields are not reconstructed. See the [task-summary decision](../decisions/implemented/feature/2026-10-21-project-cortex-task-summaries.md).
+
 Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
 The Plugin Task Host can resolve the task that owns the current invocation directly from this durable child-Session metadata. Ownership is committed before child execution begins, so an internal plugin tool can bind through the correlation ID even before the original `start()` call has returned to the plugin.
@@ -83,6 +85,8 @@ Cortex observes the child session while it runs. Progress includes:
 - elapsed time and update time
 
 Recent tool history is bounded. Pure progress coalesces into at most one visible task-table publication per second; creation, status changes and terminal outcomes publish immediately and consume pending progress. The global frontend index reconciles tasks by ID so unaffected objects retain identity. Progress is observability, not a separate execution log; the child message history remains authoritative.
+
+Replay retains detached summary payloads rather than complete task results. Its existing TTL also releases payload references while the Scope is idle, and Scope disposal cancels cleanup and clears the journal. Sequence, epoch and reset semantics remain unchanged.
 
 ## Output Contracts
 

@@ -3480,6 +3480,9 @@ export type SessionCortexDelegation = {
   parentSessionID: string
   parentMessageID: string
   description: string
+  prompt?: string
+  category?: string
+  dagNodeId?: string
   agent: string
   executionRole?: "primary" | "delegated_subagent"
   startedAt: number
@@ -7217,13 +7220,12 @@ export type CommandSummary = {
   hints: Array<string>
 }
 
-export type CortexTask = {
+export type CortexTaskSummary = {
   id: string
   sessionID: string
   parentSessionID: string
   parentMessageID: string
   description: string
-  prompt: string
   agent: string
   model?: {
     providerID: string
@@ -7235,63 +7237,13 @@ export type CortexTask = {
   status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   startedAt: number
   completedAt?: number
-  error?: string
   launchFailure?: boolean
   progress?: {
     toolCalls: number
     lastTool?: string
     lastToolStatus?: string
-    lastTitle?: string
-    lastPartId?: string
     lastUpdate: number
-    lastMessage?: string
-    recentTools?: Array<{
-      id: string
-      tool: string
-      status: string
-      title?: string
-      updatedAt: number
-    }>
   }
-  notifyParentOnComplete?: boolean
-  visibility?: "visible" | "hidden"
-  tools?: {
-    [key: string]: boolean
-  }
-  outputConfig?:
-    | {
-        mode?: "summary"
-      }
-    | {
-        mode: "final_response"
-      }
-    | {
-        mode: "structured"
-        schema: {
-          [key: string]: unknown
-        }
-        maxRepairTurns?: 0 | 1 | 2 | 3
-      }
-  output?:
-    | {
-        mode: "summary"
-        value: string
-      }
-    | {
-        mode: "final_response"
-        value: string
-      }
-    | {
-        mode: "structured"
-        value: unknown
-      }
-  owner?: {
-    pluginId: string
-    pluginGeneration: string
-    scopeId: string
-    correlationId: string
-  }
-  timeoutMs?: number
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -7299,7 +7251,6 @@ export type CortexTask = {
     cacheReadTokens: number
     cacheWriteTokens: number
     cost: number
-    accounting?: RolloutAccountingSummary
   }
 }
 
@@ -7393,7 +7344,7 @@ export type ScopeBootstrapResponse = {
     [key: string]: SessionStatus
   }
   sessions?: ScopeBootstrapSessions
-  cortex?: Array<CortexTask>
+  cortex?: Array<CortexTaskSummary>
   _errors?: {
     [key: string]: ScopeBootstrapFieldError
   }
@@ -11162,6 +11113,92 @@ export type CortexConcurrencyStatus = {
   queued: number
 }
 
+export type CortexTask = {
+  id: string
+  sessionID: string
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  prompt: string
+  agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  executionRole?: "primary" | "delegated_subagent"
+  category?: string
+  dagNodeId?: string
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  startedAt: number
+  completedAt?: number
+  error?: string
+  launchFailure?: boolean
+  progress?: {
+    toolCalls: number
+    lastTool?: string
+    lastToolStatus?: string
+    lastTitle?: string
+    lastPartId?: string
+    lastUpdate: number
+    lastMessage?: string
+    recentTools?: Array<{
+      id: string
+      tool: string
+      status: string
+      title?: string
+      updatedAt: number
+    }>
+  }
+  notifyParentOnComplete?: boolean
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+    accounting?: RolloutAccountingSummary
+  }
+}
+
 export type ProviderDirectoryModel = {
   providerID: string
   model: Model
@@ -14234,6 +14271,7 @@ export type EventMessagePartUpdated = {
   properties: {
     part: Part
     delta?: string
+    summary?: SessionPartSummary
   }
 }
 
@@ -14328,21 +14366,21 @@ export type EventSessionCompacted = {
 export type EventCortexTaskCreated = {
   type: "cortex.task.created"
   properties: {
-    task: CortexTask
+    task: CortexTaskSummary
   }
 }
 
 export type EventCortexTaskCompleted = {
   type: "cortex.task.completed"
   properties: {
-    task: CortexTask
+    task: CortexTaskSummary
   }
 }
 
 export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
-    tasks: Array<CortexTask>
+    tasks: Array<CortexTaskSummary>
   }
 }
 
@@ -23860,7 +23898,7 @@ export type CortexListResponses = {
   /**
    * List of tasks
    */
-  200: Array<CortexTask>
+  200: Array<CortexTaskSummary>
 }
 
 export type CortexListResponse = CortexListResponses[keyof CortexListResponses]
@@ -23901,6 +23939,8 @@ export type CortexGetData = {
   query?: {
     directory?: string
     scopeID?: string
+    parentSessionID?: string
+    sessionID?: string
   }
   url: "/cortex/tasks/{taskID}"
 }
@@ -23939,6 +23979,8 @@ export type CortexOutputData = {
   query?: {
     directory?: string
     scopeID?: string
+    parentSessionID?: string
+    sessionID?: string
   }
   url: "/cortex/tasks/{taskID}/output"
 }

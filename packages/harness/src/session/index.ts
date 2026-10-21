@@ -55,6 +55,7 @@ import { SessionManager } from "./manager"
 import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
 import {
+  CortexDelegationSummary,
   Info as InfoSchema,
   normalizeSessionTags,
   PersistedInfo as PersistedInfoSchema,
@@ -114,7 +115,8 @@ export namespace Session {
   export type StatusInfo = StatusInfoType
 
   export function publicInfo(info: Info): Info {
-    return Info.parse(structuredClone(info))
+    const projected = info.cortex ? { ...info, cortex: CortexDelegationSummary.parse(info.cortex) } : info
+    return Info.parse(structuredClone(projected))
   }
 
   export const EndpointScopeMismatchError = NamedError.create(

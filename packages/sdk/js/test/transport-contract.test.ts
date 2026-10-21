@@ -132,3 +132,48 @@ test("SDK parameter mapping preserves whole bodies and explicit transport destin
   })
   expect(buildClientParams([undefined, { ignored: true }], [])).toEqual({})
 })
+
+test("generated Cortex detail and output preserve parent and child qualifiers over HTTP", async () => {
+  const requests: Array<{ pathname: string; scope: string | null; parent: string | null; child: string | null }> = []
+  const server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch(request) {
+      const url = new URL(request.url)
+      requests.push({
+        pathname: url.pathname,
+        scope: url.searchParams.get("scopeID"),
+        parent: url.searchParams.get("parentSessionID"),
+        child: url.searchParams.get("sessionID"),
+      })
+      return Response.json({ ok: true })
+    },
+  })
+  try {
+    const client = createSynergyClient({ baseUrl: server.url.toString() })
+    const input = {
+      taskID: "imported-task",
+      scopeID: "scope/测试",
+      parentSessionID: "imported parent",
+      sessionID: "imported child",
+    }
+    await client.cortex.get(input, { throwOnError: true })
+    await client.cortex.output(input, { throwOnError: true })
+    expect(requests).toEqual([
+      {
+        pathname: "/cortex/tasks/imported-task",
+        scope: input.scopeID,
+        parent: input.parentSessionID,
+        child: input.sessionID,
+      },
+      {
+        pathname: "/cortex/tasks/imported-task/output",
+        scope: input.scopeID,
+        parent: input.parentSessionID,
+        child: input.sessionID,
+      },
+    ])
+  } finally {
+    server.stop(true)
+  }
+})

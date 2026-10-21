@@ -9,7 +9,6 @@ export interface SessionMeta {
   isCortexSubagent: boolean
   parentID: string | null
 
-  // Cortex delegation (full object for SubagentSessionFooter)
   cortex: SessionCortexDelegation | undefined
 
   // Interaction mode
