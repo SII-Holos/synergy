@@ -28,6 +28,15 @@ const migrations = [
       await Storage.write(StoragePath.digitalTwinCursor(), { version: 2, complete: false })
     },
   },
+  {
+    id: "20261021-reference-projection-v3",
+    scope: "global" as const,
+    execution: "startup" as const,
+    description: "Rebuild voice projections with legacy credential detection on first use",
+    async up() {
+      await Storage.write(StoragePath.digitalTwinCursor(), { version: 3, complete: false })
+    },
+  },
 ]
 export function digitalTwin(): RuntimeComponent {
   return {

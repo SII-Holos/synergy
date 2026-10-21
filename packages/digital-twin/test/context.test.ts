@@ -50,8 +50,8 @@ test("quoted context masks text and tool data while preserving native media and 
       ],
     },
   ]
-  const masking = spyOn(SecretMask, "apply").mockImplementation(async (value) =>
-    value.replaceAll("sensitive", "[masked]"),
+  const masking = spyOn(SecretMask, "captureAndApplyMany").mockImplementation(async (values) =>
+    values.map((value) => value.replaceAll("sensitive", "[masked]")),
   )
   try {
     const messages = await contextMessages(current, { task: "assessment", reference: "sensitive" })

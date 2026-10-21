@@ -8,6 +8,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { UpgradeWork } from "@ericsanchezok/synergy-harness/storage/upgrade-work"
+import { SecretVault } from "@ericsanchezok/synergy-harness/secrets/vault"
 import { digitalTwin } from "../src/component"
 import { prepareStep, representatives, representativesCurrent, stopPreparation, useCorpus } from "../src/preparation"
 
@@ -24,6 +25,61 @@ async function utterance(sessionID: string, text: string) {
   })
   return Session.updatePart({ id: Identifier.ascending("part"), sessionID, messageID: id, type: "text", text })
 }
+
+test("cold preparation excludes legacy credentials from voice statistics and references", async () => {
+  const runtime = await testRuntime({ register: digitalTwin().register })
+  try {
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await UpgradeWork.control("resume")
+          const session = await Session.create({})
+          await utterance(session.id, "先把 API 边界讲清楚")
+          await utterance(session.id, `http://localhost:1455/auth/callback?code=fixture-${crypto.randomUUID()}`)
+          while (!(await prepareStep({ scopeID: session.scope.id, sessionID: session.id }))) {}
+          const result = await representatives()
+          expect(result.statistics.reduce((count, value) => count + value.count, 0)).toBe(1)
+          expect(result.references).toHaveLength(1)
+        },
+      }),
+    )
+  } finally {
+    await runtime.run(stopPreparation)
+    await runtime.close()
+  }
+})
+
+test("newly recognized credentials withdraw cached voice statistics before lazy rebuilding", async () => {
+  const runtime = await testRuntime({ register: digitalTwin().register })
+  try {
+    await runtime.run(() =>
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await UpgradeWork.control("resume")
+          const session = await Session.create({})
+          const value = `fixture-${crypto.randomUUID()}`
+          await utterance(session.id, "先把 API 边界讲清楚")
+          await utterance(session.id, value)
+          while (!(await prepareStep({ scopeID: session.scope.id, sessionID: session.id }))) {}
+          const old = await representatives()
+          expect(old.statistics.reduce((count, item) => count + item.count, 0)).toBe(2)
+          await SecretVault.register(value, { kind: "user" })
+          expect(await representativesCurrent(old)).toBe(false)
+          const withdrawn = await representatives()
+          expect(withdrawn.statistics).toEqual([])
+          while (!(await prepareStep({ scopeID: session.scope.id, sessionID: session.id }))) {}
+          const current = await representatives()
+          expect(current.statistics.reduce((count, item) => count + item.count, 0)).toBe(1)
+        },
+      }),
+    )
+  } finally {
+    await runtime.run(stopPreparation)
+    await runtime.close()
+  }
+})
 
 test("first use reconciles history changed while the component was dormant", async () => {
   await using home = await tmpdir()
@@ -91,7 +147,7 @@ test("representative statistics include every prepared family and warm reads reu
           using reads = spyOn(Storage, "query")
           expect((await representatives()).statistics).toEqual(bundle.statistics)
           expect(reads).not.toHaveBeenCalled()
-          expect(representativesCurrent(bundle)).toBe(true)
+          expect(await representativesCurrent(bundle)).toBe(true)
         },
       }),
     )
@@ -172,13 +228,13 @@ test("preparation resumes a final pending page across runtimes, deduplicates fam
           expect(projection.statistics.reduce((sum, value) => sum + value.count, 0)).toBe(3)
           expect(new Set(projection.references.map((reference) => reference.family))).toEqual(new Set([parent.id]))
           await Session.remove(child.id)
-          expect(representativesCurrent(projection)).toBe(false)
-          while (!representativesCurrent(await representatives())) await Bun.sleep(20)
+          expect(await representativesCurrent(projection)).toBe(false)
+          while (!(await representativesCurrent(await representatives()))) await Bun.sleep(20)
           const after = await representatives()
           expect(after.references.every((reference) => reference.sessionID === parent.id)).toBe(true)
           expect(after.statistics.reduce((sum, value) => sum + value.count, 0)).toBe(2)
           await Session.remove(parent.id)
-          while (!representativesCurrent(await representatives())) await Bun.sleep(20)
+          while (!(await representativesCurrent(await representatives()))) await Bun.sleep(20)
           expect((await representatives()).references).toEqual([])
         },
       }),

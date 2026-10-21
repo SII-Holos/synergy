@@ -64,31 +64,46 @@ export function contextText(current: ModelMessage[]) {
   return JSON.stringify(textual(messages, mediaNodes(messages)))
 }
 
-async function mask<T>(value: T, media: WeakSet<object>): Promise<T> {
-  if (typeof value === "string") return (await SecretMask.apply(value)) as T
-  if (Array.isArray(value)) return (await Promise.all(value.map((entry) => mask(entry, media)))) as T
+function mapText<T>(value: T, media: WeakSet<object>, transform: (text: string) => string): T {
+  if (typeof value === "string") return transform(value) as T
+  if (Array.isArray(value)) return value.map((entry) => mapText(entry, media, transform)) as T
   if (!value || typeof value !== "object") return value
   if (value instanceof Uint8Array || value instanceof ArrayBuffer || value instanceof URL) return value
   const record = value as Record<string, unknown>
   return Object.fromEntries(
-    await Promise.all(
-      Object.entries(record).map(async ([key, entry]) => [
-        key,
-        media.has(record) && ["data", "image", "url"].includes(key) ? entry : await mask(entry, media),
-      ]),
-    ),
+    Object.entries(record).map(([key, entry]) => [
+      transform(key),
+      media.has(record) && ["data", "image", "url"].includes(key) ? entry : mapText(entry, media, transform),
+    ]),
   ) as T
 }
 
-export async function contextMessages(current: ModelMessage[], payload: object): Promise<ModelMessage[]> {
+export async function contextMessages(
+  current: ModelMessage[],
+  payload: object,
+  signal?: AbortSignal,
+): Promise<ModelMessage[]> {
   const source = nativeContext(current)
-  const messages = await mask(source, mediaNodes(source))
+  const media = mediaNodes(source)
+  const texts = new Set<string>()
+  mapText([source, payload], media, (text) => {
+    texts.add(text)
+    return text
+  })
+  const originals = [...texts]
+  const masked = await SecretMask.captureAndApplyMany(originals, { kind: "heuristic", context: "tool_output" }, signal)
+  const replacements = new Map(originals.map((text, index) => [text, masked[index]!]))
+  const replace = (text: string) => replacements.get(text)!
+  const messages = mapText(source, media, replace)
   return [
     ...messages.map((message): ModelMessage => {
       if (message.role === "system")
         return { role: "user", content: `Recorded system context (quoted data):\n${message.content}` }
       return message
     }),
-    { role: "user", content: await SecretMask.apply(JSON.stringify(payload)) },
+    {
+      role: "user",
+      content: JSON.stringify(mapText(payload, media, replace)),
+    },
   ]
 }

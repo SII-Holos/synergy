@@ -174,12 +174,15 @@ async function assess<T extends z.ZodType>(
   name: string,
   current: ModelMessage[],
   payload: object,
+  maskRevision: string,
   onCall: (call: CallIdentity) => Promise<void>,
 ) {
   const measurement = await measured(
     "digital-twin-evaluator",
-    async () =>
-      AgentCall.text({
+    async () => {
+      const messages = await contextMessages(current, { ...payload, outputTool: name })
+      if (maskRevision !== (await SecretMask.revision())) throw new Error("Protected content index changed")
+      return AgentCall.text({
         agent: "digital-twin-evaluator",
         ownership: "operation",
         small: false,
@@ -188,17 +191,19 @@ async function assess<T extends z.ZodType>(
         retries: 2,
         maxOutputTokens: model.limit.output,
         maxOutputChars: model.limit.output * 8,
-        messages: await contextMessages(current, { ...payload, outputTool: name }),
+        messages,
         outputTool: {
           name,
           force: false,
           description: "Return the requested independent assessment through this schema.",
           schema: z.toJSONSchema(schema, { target: "draft-7" }) as JSONSchema7,
         },
-      }),
+      })
+    },
     onCall,
   )
   try {
+    if (maskRevision !== (await SecretMask.revision())) throw new Error("Protected content index changed")
     if (!measurement.value) throw new Error(measurement.error)
     const calls = measurement.value.toolCalls?.filter((call) => call.name === name)
     if (calls?.length !== 1) throw new Error("Evaluator returned no unique assessment")
@@ -231,7 +236,7 @@ export function pairedInterval(values: Array<{ family: string; win: number }>) {
   return [Math.max(0, Math.min(samples[49]!, mean - radius)), Math.min(1, Math.max(samples[1949]!, mean + radius))]
 }
 
-export function summarize(results: Result[], expectedCases: number) {
+export function summarize(results: Result[], expectedCases: number, evidenceCurrent = true) {
   let predictable = 0,
     covered = 0,
     emitted = 0,
@@ -443,7 +448,9 @@ export function summarize(results: Result[], expectedCases: number) {
     quality,
     winRate,
     paired95: interval,
+    evidenceError: evidenceCurrent ? null : "protected_content_index_changed",
     qualityResolved:
+      evidenceCurrent &&
       results.length > 0 &&
       finished &&
       !errors &&
@@ -557,7 +564,11 @@ export async function evaluate(input: {
   const [model, judge] = await Promise.all([resolve(modelID), resolve(judgeID)])
   const started = performance.now()
   const dataset = input.dataset ?? (await loadHistory(progress))
-  if (dataset.version !== 3 || dataset.sourceHash !== (await historySourceHash()))
+  if (
+    dataset.version !== 4 ||
+    dataset.sourceHash !== (await historySourceHash()) ||
+    dataset.maskRevision !== (await SecretMask.revision())
+  )
     throw new Error("Historical evidence must be rebuilt with the current immutable extraction contract")
   const preparationMs = performance.now() - started
   const sources = await Promise.all(
@@ -576,6 +587,9 @@ export async function evaluate(input: {
       "../../harness/src/agent/call.ts",
       "../../harness/src/session/llm.ts",
       "../../harness/src/session/prompt-budgeter.ts",
+      "../../harness/src/secrets/mask.ts",
+      "../../secret-detection/src/regex.ts",
+      "../../secret-detection/src/patterns.ts",
       "../../harness/src/provider/transform.ts",
       "../../harness/src/provider/thinking.ts",
       "./evaluator-worker.ts",
@@ -596,6 +610,7 @@ export async function evaluate(input: {
     judgeModel: judgeID,
     corpusHash,
     sourceHash,
+    maskRevision: dataset.maskRevision,
     sessions: dataset.sessions,
     authenticInputs: dataset.history.length,
     eligibleCases: dataset.cases.length,
@@ -644,6 +659,7 @@ export async function evaluate(input: {
             task: "Label whether the actual continuation was predictable from the completed situation, without seeing any proposed candidates. Freeze this label.",
             authenticNextMessage: item.reference,
           },
+          dataset.maskRevision,
           async (call) => {
             ;(result.labelCalls ??= []).push(call)
             await persist()
@@ -676,6 +692,7 @@ export async function evaluate(input: {
               current: item.current,
               evidence: evidence.evidence,
               statistics: evidence.statistics,
+              maskRevision: dataset.maskRevision,
               model,
               recipe,
               onPrepared: async (selected) => {
@@ -737,6 +754,7 @@ export async function evaluate(input: {
               ["B", "C"],
             ],
           },
+          dataset.maskRevision,
           async (call) => {
             ;(result.judgeCalls ??= []).push(call)
             await persist()
@@ -766,12 +784,14 @@ export async function evaluate(input: {
     const count = offset === 0 ? 1 : 4
     results.push(...(await Promise.all(ordered.slice(offset, offset + count).map(evaluateCase))))
     offset += count
-    const summary = summarize(results, dataset.cases.length)
+    const evidenceCurrent = dataset.maskRevision === (await SecretMask.revision())
+    const summary = summarize(results, dataset.cases.length, evidenceCurrent)
     await writeCheckpoint(path.join(directory, "summary.json"), JSON.stringify(summary, null, 2))
     await writeCheckpoint(path.join(directory, "report.md"), await SecretMask.apply(report(results, summary, manifest)))
     progress({ stage: "evaluation", done: results.length, total: dataset.cases.length, summary })
+    if (!evidenceCurrent) break
   }
-  const summary = summarize(results, dataset.cases.length)
+  const summary = summarize(results, dataset.cases.length, dataset.maskRevision === (await SecretMask.revision()))
   await writeCheckpoint(path.join(directory, "summary.json"), JSON.stringify(summary, null, 2))
   await writeCheckpoint(path.join(directory, "report.md"), await SecretMask.apply(report(results, summary, manifest)))
   return { ...summary, directory }

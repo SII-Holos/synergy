@@ -14,6 +14,23 @@ afterEach(() =>
 )
 
 describe("SecretMask engine", () => {
+  test("batch discovery masks earlier bare values and versions the registered mask set", () =>
+    runtime.run(async () => {
+      const value = `fixture-${crypto.randomUUID()}`
+      const before = await SecretMask.revision()
+      const result = await SecretMask.captureAndApplyMany(
+        [value, `http://localhost:1455/auth/callback?code=${value}`],
+        { kind: "heuristic", context: "user_message" },
+      )
+      const id = SecretVault.idOf(value)
+      tracked.push(id)
+      expect(result.every((text) => !text.includes(value))).toBe(true)
+      const after = await SecretMask.revision()
+      expect(after).not.toBe(before)
+      await SecretVault.updatePolicy(id, { tools: ["fixture"] })
+      expect(await SecretMask.revision()).toBe(after)
+    }))
+
   test("replaces a registered value with its stable token and is idempotent", () =>
     runtime.run(async () => {
       const value = `sk-test-${crypto.randomUUID()}`

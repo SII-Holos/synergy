@@ -77,6 +77,7 @@ export namespace DigitalTwin {
           current,
           evidence,
           statistics: prepared.statistics,
+          maskRevision: prepared.maskRevision,
           model,
           signal: controller.signal,
           metadata: {
@@ -92,7 +93,7 @@ export namespace DigitalTwin {
         if (
           JSON.stringify(latestConfig) !== JSON.stringify(selectedModel) ||
           !(await SessionContextSnapshot.isCurrent(snapshot.stamp)) ||
-          !representativesCurrent(prepared) ||
+          !(await representativesCurrent(prepared)) ||
           !(await Storage.snapshot(() => SessionCorpus.current(result.selected.flatMap((item) => item.references))))
         )
           throw new PredictionError("source_changed", "The conversation or selected evidence changed")

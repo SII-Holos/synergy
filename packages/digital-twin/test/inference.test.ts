@@ -6,9 +6,100 @@ import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import type { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { infer } from "../src/inference"
 import type { ModelMessage } from "ai"
+import { contextMessages } from "../src/context"
+import { SecretVault } from "@ericsanchezok/synergy-harness/secrets/vault"
+import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("legacy OAuth context is captured before native prediction or evaluation requests", () =>
+  runtime.run(async () => {
+    const credential = `fixture-${crypto.randomUUID()}`
+    const known = `registered-${crypto.randomUUID()}`
+    await SecretVault.register(known, { kind: "user" })
+    const content = `http://localhost:1455/auth/callback?code=${credential}&state=ordinary-state`
+    const current: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          { type: "tool-call", toolName: "inspect", toolCallId: "legacy", input: { authorizationCode: credential } },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolName: "inspect",
+            toolCallId: "legacy",
+            output: { type: "json", value: { [credential]: known } },
+          },
+        ],
+      },
+      { role: "user", content },
+      { role: "assistant", content: known },
+    ]
+    const messages = await contextMessages(current, { reference: content })
+    expect(JSON.stringify(messages)).not.toContain(credential)
+    expect(JSON.stringify(messages)).not.toContain(known)
+    expect(JSON.stringify(messages)).toContain("⟦sec:")
+    expect(current[2]?.content).toBe(content)
+  }))
+
+test("sensitive originals cannot enter selected historical evidence", () =>
+  runtime.run(async () => {
+    const model = { providerID: "fixture", id: "selected", limit: { context: 32_000, output: 8_000 } } as Provider.Model
+    const credential = `fixture-${crypto.randomUUID()}`
+    const text = `http://localhost:1455/auth/callback?code=${credential}`
+    const maskRevision = await SecretMask.revision()
+    let received: AgentCall.TextInput | undefined
+    const sampling = spyOn(AgentCall, "text").mockImplementation(async (input) => {
+      received = input
+      return {
+        text: "",
+        model,
+        toolCalls: [
+          {
+            name: "predict_next_input",
+            input: {
+              candidate: null,
+              abstention: "no-clear-continuation",
+              grounding: ["current"],
+              targets: [],
+            },
+          },
+        ],
+      }
+    })
+    try {
+      const result = await infer({
+        current: [{ role: "assistant", content: "完成了" }],
+        evidence: [
+          { id: "bare", kind: "voice", text: credential, family: "older", score: 2, references: [] },
+          { id: "legacy", kind: "voice", text, family: "old", score: 1, references: [] },
+        ],
+        statistics: [],
+        model,
+        metadata: {},
+      })
+      expect(result.selected).toEqual([])
+      expect(JSON.stringify(received?.messages)).not.toContain(credential)
+      await expect(
+        infer({
+          current: [{ role: "assistant", content: "完成了" }],
+          evidence: [],
+          statistics: [],
+          maskRevision,
+          model,
+          metadata: {},
+        }),
+      ).rejects.toThrow("protected content index changed")
+      expect(sampling).toHaveBeenCalledTimes(1)
+    } finally {
+      sampling.mockRestore()
+    }
+  }))
 
 test("native media and tool history reach inference without encoded bytes becoming prompt text", () =>
   runtime.run(() =>
@@ -92,6 +183,35 @@ test("native media and tool history reach inference without encoded bytes becomi
       },
     }),
   ))
+
+test("credential changes during inference invalidate the result even when the candidate is ordinary text", () =>
+  runtime.run(async () => {
+    const model = { providerID: "fixture", id: "selected", limit: { context: 32_000, output: 8_000 } } as Provider.Model
+    const text = `fixture-${crypto.randomUUID()}`
+    using sampling = spyOn(AgentCall, "text").mockImplementation(async () => {
+      await SecretVault.register(text, { kind: "user" })
+      return {
+        text: "",
+        model,
+        toolCalls: [
+          {
+            name: "predict_next_input",
+            input: { candidate: "再检查一下", abstention: null, grounding: ["current"], targets: [] },
+          },
+        ],
+      }
+    })
+    await expect(
+      infer({
+        current: [{ role: "assistant", content: "完成了" }],
+        evidence: [{ id: "original", kind: "voice", text, family: "old", score: 1, references: [] }],
+        statistics: [],
+        model,
+        metadata: {},
+      }),
+    ).rejects.toThrow("protected content index changed")
+    expect(sampling).toHaveBeenCalledTimes(1)
+  }))
 
 test("the output contract names exact supplied evidence IDs and rejects invented targets", () =>
   runtime.run(() =>

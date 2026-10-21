@@ -13,9 +13,10 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { original, sketch, normalize, representativePool, familyProjections, type Sketch } from "./evidence"
 import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 
-const version = 2
+const version = 3
 const Projection = z.object({
   version: z.literal(version),
+  maskRevision: z.string(),
   ready: z.boolean(),
   phase: z.enum(["index", "sketch"]),
   family: z.string(),
@@ -47,6 +48,7 @@ const state = RuntimeContext.state(() => ({
   queue: new Map<string, { scopeID: string; sessionID: string }>(),
   unsubscribe: [] as Array<() => void>,
   projections: new Map<string, Projection>(),
+  maskRevision: undefined as string | undefined,
   generations: new Map<string, number>(),
   loading: undefined as Promise<void> | undefined,
   reconcileAfterResume: undefined as boolean | undefined,
@@ -54,6 +56,7 @@ const state = RuntimeContext.state(() => ({
     references: SessionCorpus.Reference[]
     statistics: Sketch[]
     generations: Array<[string, number]>
+    maskRevision?: string
   },
 }))
 
@@ -68,6 +71,17 @@ async function current(sources: Projection["source"]) {
   return sources.every((source, index) => source.revision === (revisions[index]?.toString() ?? null))
 }
 
+async function refreshMask() {
+  const instance = state()
+  const revision = await SecretMask.revision()
+  if (revision === instance.maskRevision) return revision
+  instance.maskRevision = revision
+  instance.projections.clear()
+  publishSelection()
+  if (instance.started) schedule()
+  return revision
+}
+
 export function prepareStep(owner: { scopeID: string; sessionID: string }, signal?: AbortSignal) {
   return UpgradeWork.run({ background: true, sessionID: owner.sessionID, signal }, async () => {
     await UpgradeWork.checkpoint()
@@ -77,6 +91,7 @@ export function prepareStep(owner: { scopeID: string; sessionID: string }, signa
 
 async function prepareBatch(owner: { scopeID: string; sessionID: string }, signal?: AbortSignal) {
   const instance = state()
+  const maskRevision = await refreshMask()
   const generation = instance.generations.get(owner.sessionID) ?? 0
   const key = StoragePath.digitalTwinSession(owner.scopeID, owner.sessionID)
   const source = await Storage.snapshot(async (tx) => {
@@ -86,13 +101,17 @@ async function prepareBatch(owner: { scopeID: string; sessionID: string }, signa
     const keys = sourceKeys(owner)
     const revisions = await tx.revisions(keys)
     if (revisions[0] === undefined) return undefined
-    const previous = parsed.success && (await current(parsed.data.source)) ? parsed.data : undefined
+    const previous =
+      parsed.success && parsed.data.maskRevision === maskRevision && (await current(parsed.data.source))
+        ? parsed.data
+        : undefined
     return {
       revision,
       value:
         previous ??
         ({
           version,
+          maskRevision,
           ready: false,
           phase: "index" as const,
           family: owner.sessionID,
@@ -113,12 +132,19 @@ async function prepareBatch(owner: { scopeID: string; sessionID: string }, signa
     if (result.ready) next.phase = "sketch"
   } else {
     const page = await SessionCorpus.messages({ ...owner, cursor: next.messageCursor, limit: 16 })
-    for (const message of page.items) {
+    const originals = page.items.map((message) => original(message) ?? "")
+    const masked = await SecretMask.captureAndApplyMany(
+      originals,
+      { kind: "heuristic", context: "user_message" },
+      signal,
+    )
+    if ((await refreshMask()) !== maskRevision) return false
+    for (const [index, message] of page.items.entries()) {
       await UpgradeWork.checkpoint()
       next.source.push(...message.reference.sources)
       next.family = message.reference.family
-      const text = original(message)
-      if (!text || (await SecretMask.apply(text)) !== text) continue
+      const text = originals[index]!
+      if (!text || masked[index] !== text) continue
       const fingerprint = InputAssistance.fingerprint(normalize(text))
       if (next.fingerprints.includes(fingerprint)) continue
       next.fingerprints.push(fingerprint)
@@ -139,12 +165,17 @@ async function prepareBatch(owner: { scopeID: string; sessionID: string }, signa
     next.ready = !page.cursor
   }
   signal?.throwIfAborted()
+  if ((await refreshMask()) !== maskRevision) return false
   const ready = await Storage.transaction(async (tx) => {
     if ((await tx.revisions([key]))[0] !== source.revision || !(await current(next.source))) return false
     await tx.write(key, next)
     return next.ready
   })
-  if (ready && generation === (instance.generations.get(owner.sessionID) ?? 0)) {
+  if (
+    ready &&
+    maskRevision === (await refreshMask()) &&
+    generation === (instance.generations.get(owner.sessionID) ?? 0)
+  ) {
     instance.projections.set(owner.sessionID, next)
     publishSelection()
   }
@@ -154,6 +185,7 @@ async function prepareBatch(owner: { scopeID: string; sessionID: string }, signa
 async function run() {
   const instance = state()
   const signal = instance.controller.signal
+  await refreshMask()
   await UpgradeWork.checkpoint()
   while (!signal.aborted) {
     const queued = instance.queue.entries().next().value
@@ -175,12 +207,14 @@ async function run() {
   publishSelection()
   type Cursor = {
     version: number
+    maskRevision: string
     after?: string[]
     pending?: Array<{ scopeID: string; sessionID: string }>
     complete?: boolean
   }
   const [stored] = await Storage.readMany<Cursor>([StoragePath.digitalTwinCursor()])
-  const cursor = stored?.version === version ? stored : undefined
+  const maskRevision = await refreshMask()
+  const cursor = stored?.version === version && stored.maskRevision === maskRevision ? stored : undefined
   instance.reconcileAfterResume ??= Boolean(cursor?.after || cursor?.complete || cursor?.pending?.length)
   if (cursor?.pending?.length) {
     const owner = cursor.pending[0]!
@@ -196,12 +230,13 @@ async function run() {
   if (cursor?.complete) {
     if (!instance.reconcileAfterResume) return true
     instance.reconcileAfterResume = false
-    await Storage.write(StoragePath.digitalTwinCursor(), { version, complete: false })
+    await Storage.write(StoragePath.digitalTwinCursor(), { version, maskRevision, complete: false })
     return
   }
   const page = await SessionCorpus.sessions({ cursor: cursor?.after, limit: 16 })
   await Storage.write(StoragePath.digitalTwinCursor(), {
     version,
+    maskRevision,
     after: page.cursor,
     complete: !page.cursor,
     pending: page.items.map((session) => ({ scopeID: session.scope.id, sessionID: session.id })),
@@ -276,9 +311,12 @@ export function useCorpus(owner: { scopeID: string; sessionID: string }) {
 function publishSelection() {
   const instance = state()
   const families = familyProjections(
-    [...instance.projections.entries()].map(([sessionID, value]) => ({ ...value, sessionID })),
+    [...instance.projections.entries()]
+      .filter(([, value]) => value.maskRevision === instance.maskRevision)
+      .map(([sessionID, value]) => ({ ...value, sessionID })),
   )
   instance.selection = {
+    maskRevision: instance.maskRevision,
     references: representativePool(
       families.flatMap((family) => family.references.map((entry) => ({ ...entry, family: family.family }))),
     ).map((entry) => entry.reference),
@@ -290,6 +328,7 @@ function publishSelection() {
 export async function representatives() {
   observe()
   const instance = state()
+  await refreshMask()
   if (!instance.closed)
     instance.loading ??= (async () => {
       const work = UpgradeWork.controller(true)
@@ -306,8 +345,18 @@ export async function representatives() {
                 const parsed = Projection.safeParse(row.value)
                 const sessionID = row.key[2]!
                 const generation = instance.generations.get(sessionID) ?? 0
-                if (!parsed.success || !parsed.data.ready || !(await current(parsed.data.source))) continue
-                if (generation !== (instance.generations.get(sessionID) ?? 0)) continue
+                if (
+                  !parsed.success ||
+                  !parsed.data.ready ||
+                  parsed.data.maskRevision !== instance.maskRevision ||
+                  !(await current(parsed.data.source))
+                )
+                  continue
+                if (
+                  parsed.data.maskRevision !== (await refreshMask()) ||
+                  generation !== (instance.generations.get(sessionID) ?? 0)
+                )
+                  continue
                 instance.projections.set(sessionID, parsed.data)
               }
               publishSelection()
@@ -328,9 +377,12 @@ export async function representatives() {
   return instance.selection
 }
 
-export function representativesCurrent(bundle: Awaited<ReturnType<typeof representatives>>) {
+export async function representativesCurrent(bundle: Awaited<ReturnType<typeof representatives>>) {
   const instance = state()
-  return bundle.generations.every(([id, generation]) => generation === (instance.generations.get(id) ?? 0))
+  return (
+    bundle.maskRevision === (await refreshMask()) &&
+    bundle.generations.every(([id, generation]) => generation === (instance.generations.get(id) ?? 0))
+  )
 }
 
 export async function stopPreparation() {

@@ -174,7 +174,7 @@ export async function collect(input: {
   }
   const references = [...hits.map((hit) => hit.reference), ...input.representatives]
   const seen = new Set<string>()
-  const evidence: Evidence[] = []
+  const candidates: Array<Omit<Evidence, "score"> & { created: number }> = []
   for (const reference of references) {
     input.signal?.throwIfAborted()
     const key = `${reference.scopeID}/${reference.sessionID}/${reference.messageID}`
@@ -185,18 +185,17 @@ export async function collect(input: {
     const user = neighborhood.message.info.role === "user" ? neighborhood.message : neighborhood.next
     if (!user) continue
     const text = original(user)
-    if (!text || (await SecretMask.apply(text)) !== text) continue
+    if (!text) continue
     const previous = neighborhood.message.info.role === "assistant" ? neighborhood.message : neighborhood.previous
-    const score = evidenceScore(text, undefined, user.info.time.created, tokens, Date.now())
-    const voice: Evidence = {
+    const voice = {
       id: key,
-      kind: "voice",
+      kind: "voice" as const,
       text,
       family: user.reference.family,
-      score,
+      created: user.info.time.created,
       references: [user.reference],
     }
-    evidence.push(voice)
+    candidates.push(voice)
     if (
       previous?.text &&
       previous.info.role === "assistant" &&
@@ -205,16 +204,24 @@ export async function collect(input: {
       previous.info.finish &&
       !["tool-calls", "unknown"].includes(previous.info.finish)
     ) {
-      const preceding = await SecretMask.apply(previous.text)
-      evidence.push({
+      candidates.push({
         ...voice,
         id: `${key}/continuation`,
         kind: "continuation",
-        previous: preceding,
-        score: evidenceScore(text, preceding, user.info.time.created, tokens, Date.now()),
+        previous: previous.text,
         references: [previous.reference, user.reference],
       })
     }
   }
+  const masked = await SecretMask.captureAndApplyMany(
+    candidates.flatMap((item) => [item.text, item.previous ?? ""]),
+    { kind: "heuristic", context: "tool_output" },
+    input.signal,
+  )
+  const evidence = candidates.flatMap(({ created, ...item }, index): Evidence[] => {
+    if (masked[index * 2] !== item.text) return []
+    const previous = item.previous === undefined ? undefined : masked[index * 2 + 1]!
+    return [{ ...item, previous, score: evidenceScore(item.text, item.previous, created, tokens, Date.now()) }]
+  })
   return selectEvidence(evidence)
 }

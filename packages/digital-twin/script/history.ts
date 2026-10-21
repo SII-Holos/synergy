@@ -249,12 +249,50 @@ export async function historySourceHash() {
     [
       "./history.ts",
       "../src/evidence.ts",
+      "../src/context.ts",
       "../../harness/src/session/message-v2.ts",
       "../../harness/src/session/search-index.ts",
       "../../harness/src/util/text-search.ts",
+      "../../harness/src/secrets/mask.ts",
+      "../../secret-detection/src/regex.ts",
+      "../../secret-detection/src/patterns.ts",
     ].map((file) => Bun.file(new URL(file, import.meta.url)).text()),
   )
   return new Bun.CryptoHasher("sha256").update(sources.join("\n")).digest("hex")
+}
+
+export async function sealHistory(input: {
+  history: HistoricalInput[]
+  cases: ReplayCase[]
+  catalog: RetrievalEntry[]
+}) {
+  const texts = input.catalog.flatMap((entry) => entry.parts ?? [])
+  texts.push(...input.history.flatMap((item) => [item.text, item.preceding?.reply ?? ""]))
+  for (let offset = 0; offset < texts.length; offset += 128)
+    await SecretMask.captureAndApplyMany(texts.slice(offset, offset + 128), {
+      kind: "heuristic",
+      context: "tool_output",
+    })
+  for (const item of input.cases)
+    await SecretMask.captureAndApply(contextText(item.current), { kind: "heuristic", context: "tool_output" })
+  const maskRevision = await SecretMask.revision()
+  const safe = new Map<string, HistoricalInput>()
+  for (const item of input.history) {
+    if ((await SecretMask.apply(item.text)) !== item.text) continue
+    safe.set(item.id, { ...item })
+  }
+  const cases = input.cases.flatMap((item): ReplayCase[] => {
+    const previous = safe.get(item.sources.previous.id)
+    const target = safe.get(item.sources.target.id)
+    if (!target) return []
+    if (!previous) {
+      target.preceding = undefined
+      return []
+    }
+    return [{ ...item, sources: { ...item.sources, previous, target } }]
+  })
+  if (maskRevision !== (await SecretMask.revision())) throw new Error("Protected content changed while sealing history")
+  return { history: [...safe.values()], cases, maskRevision }
 }
 
 export async function loadHistory(progress: (value: object) => void) {
@@ -349,7 +387,10 @@ export async function loadHistory(progress: (value: object) => void) {
           continue
         }
         const text = original({ info: input.message, parts: input.parts })
-        if (!text || (await SecretMask.apply(text)) !== text) {
+        if (
+          !text ||
+          (await SecretMask.captureAndApply(text, { kind: "heuristic", context: "user_message" })) !== text
+        ) {
           exclude("non_original_or_contaminated_input")
           continue
         }
@@ -449,14 +490,16 @@ export async function loadHistory(progress: (value: object) => void) {
         progress({ stage: "history", sessions, inputs: history.length, cases: cases.length, exclusions })
     }
   } while (cursor)
+  const sealed = await sealHistory({ history, cases, catalog })
+  exclusions.protected_inputs_after_discovery = history.length - sealed.history.length
+  exclusions.protected_continuations_after_discovery = cases.length - sealed.cases.length
   return {
-    version: 3 as const,
+    version: 4 as const,
     catalog,
     catalogGaps,
     preparationMs: performance.now() - preparationStarted,
     sourceHash: await historySourceHash(),
-    history,
-    cases,
+    ...sealed,
     sessions,
     exclusions,
   }

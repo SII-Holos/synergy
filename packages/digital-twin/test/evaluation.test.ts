@@ -3,12 +3,51 @@ import {
   confirmsReply,
   requestCatalog,
   terminalText,
+  sealHistory,
   temporalEvidence,
   type HistoricalInput,
   type ReplayCase,
 } from "../script/history"
 import { pairedInterval, summarize } from "../script/evaluate"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+
+test("frozen eligibility applies final credential discoveries without reconnecting removed turns", async () => {
+  const runtime = await testRuntime()
+  try {
+    await runtime.run(async () => {
+      const credential = `fixture-${crypto.randomUUID()}`
+      const history = ["开始", credential, "检查 API", "完成"].map(
+        (text, index) => ({ id: String(index), text }) as HistoricalInput,
+      )
+      const cases = history.slice(1).map(
+        (target, index) =>
+          ({
+            id: target.id,
+            current: [
+              {
+                role: "assistant",
+                content: index === 2 ? `http://localhost:1455/auth/callback?code=${credential}` : "完成",
+              },
+            ],
+            reference: target.text,
+            sources: { previous: history[index], target },
+          }) as ReplayCase,
+      )
+      history[2]!.preceding = { identity: "reply", reply: "上一轮", at: 1 }
+      history[3]!.preceding = { identity: "protected-reply", reply: credential, at: 2 }
+      const sealed = await sealHistory({ history, cases, catalog: [] })
+      expect(sealed.history.map((item) => item.id)).toEqual(["0", "2", "3"])
+      expect(sealed.cases.map((item) => item.id)).toEqual(["3"])
+      expect(sealed.history.find((item) => item.id === "2")?.preceding).toBeUndefined()
+      expect(sealed.maskRevision).toMatch(/^[a-f\d]{64}$/)
+      expect(history[2]!.preceding?.reply).toBe("上一轮")
+      expect(sealed.history.find((item) => item.id === "3")?.preceding?.reply).toBe(credential)
+    })
+  } finally {
+    await runtime.close()
+  }
+})
 
 test("immutable response reconstruction uses real text deltas and refuses tool or failed endings", () => {
   const text = [
@@ -197,6 +236,10 @@ test("a successful evaluation prefix cannot satisfy the complete experiment gate
     },
   }))
   expect(summarize(results, 100).qualityResolved).toBe(true)
+  expect(summarize(results, 100, false)).toMatchObject({
+    qualityResolved: false,
+    evidenceError: "protected_content_index_changed",
+  })
   expect(summarize(results, 101)).toMatchObject({ expectedCases: 101, finished: false, qualityResolved: false })
 })
 
