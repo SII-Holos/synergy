@@ -223,6 +223,24 @@ describe.serial("LibraryDB", () => {
         expect(LibraryDB.Experience.getContent("exp-preview-long")?.script).toBe(script)
       }))
 
+    test("getScriptPreviews handles a library larger than the SQLite parameter limit without duplicate rows", () =>
+      runtime.run(() => {
+        makeExperience("exp-preview-first", { content: { script: "First trajectory" } })
+        makeExperience("exp-preview-last", { content: { script: "Last trajectory" } })
+        const ids = [
+          "exp-preview-first",
+          ...Array.from({ length: 33_000 }, (_, index) => `exp-preview-missing-${index}`),
+          "exp-preview-last",
+          "exp-preview-first",
+        ]
+        expect(
+          LibraryDB.Experience.getScriptPreviews(ids).sort((left, right) => left.id.localeCompare(right.id)),
+        ).toEqual([
+          { id: "exp-preview-first", script_preview: "First trajectory" },
+          { id: "exp-preview-last", script_preview: "Last trajectory" },
+        ])
+      }))
+
     test("getScriptPreviews skips the database for an empty batch", () =>
       runtime.run(() => {
         const prepare = spyOn(LibraryDB.connection(), "prepare")

@@ -935,13 +935,20 @@ export namespace LibraryDB {
     export function getScriptPreviews(ids: string[]): ScriptPreviewRow[] {
       if (ids.length === 0) return []
       const conn = open()
-      const placeholders = ids.map(() => "?").join(",")
-      return conn
-        .prepare(
-          `SELECT id, NULLIF(substr(script, 1, ${SCRIPT_PREVIEW_LENGTH}), '') AS script_preview
-           FROM experience_content WHERE id IN (${placeholders})`,
-        )
-        .all(...ids) as ScriptPreviewRow[]
+      const unique = [...new Set(ids)]
+      const result: ScriptPreviewRow[] = []
+      for (let offset = 0; offset < unique.length; offset += 512) {
+        const batch = unique.slice(offset, offset + 512)
+        const placeholders = batch.map(() => "?").join(",")
+        const rows = conn
+          .prepare(
+            `SELECT id, NULLIF(substr(script, 1, ${SCRIPT_PREVIEW_LENGTH}), '') AS script_preview
+             FROM experience_content WHERE id IN (${placeholders})`,
+          )
+          .all(...batch) as ScriptPreviewRow[]
+        result.push(...rows)
+      }
+      return result
     }
 
     function buildPageWhere(input: PageInput) {
