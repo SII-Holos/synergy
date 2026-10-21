@@ -860,9 +860,11 @@ describe.serial("SessionInvoke memory recall", () => {
               const messages = await Session.messages({ sessionID: session.id })
               const user = messages.find((message) => message.info.role === "user")
               const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
-              expect(injectedContext).toMatchObject({
-                memory: expect.stringContaining('<entry title="Always workflow memory">'),
-              })
+              const injectedMemory =
+                typeof injectedContext === "object" && injectedContext !== null && "memory" in injectedContext
+                  ? injectedContext.memory
+                  : undefined
+              expect(injectedMemory).toContain('<entry title="Always workflow memory">')
             } finally {
               await Session.remove(session.id)
             }
@@ -971,12 +973,12 @@ describe.serial("SessionInvoke memory recall", () => {
               const messages = await Session.messages({ sessionID: session.id })
               const user = messages.find((message) => message.info.role === "user")
               const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
-              expect(injectedContext).toMatchObject({
-                memory: expect.stringContaining('<entry title="Always workflow memory">'),
-              })
-              expect(injectedContext).toMatchObject({
-                memory: expect.stringContaining('<entry title="Contextual workflow memory" similarity="0.900">'),
-              })
+              const injectedMemory =
+                typeof injectedContext === "object" && injectedContext !== null && "memory" in injectedContext
+                  ? injectedContext.memory
+                  : undefined
+              expect(injectedMemory).toContain('<entry title="Always workflow memory">')
+              expect(injectedMemory).toContain('<entry title="Contextual workflow memory" similarity="0.900">')
             } finally {
               await Session.remove(session.id)
             }

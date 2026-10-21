@@ -4,6 +4,7 @@ import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { Token } from "@ericsanchezok/synergy-harness/util/token"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { DigitalTwinContract } from "./contract"
 import { sketch, type Evidence, type Sketch } from "./evidence"
 import prompt from "./prompts/predict.txt"
@@ -34,8 +35,8 @@ export async function infer(input: {
   const recipe = input.recipe ?? "full"
   const current = JSON.stringify(input.current)
   const contextText = await SecretMask.apply(current)
-  const maxOutputTokens = Math.min(input.model.limit.output, 16_384)
-  const available = Math.min(input.model.limit.input ?? Infinity, input.model.limit.context - maxOutputTokens)
+  const maxOutputTokens = input.model.limit.output
+  const available = ModelLimit.usableInput(input.model.limit)
   const statistics = sketch([])
   for (const value of recipe === "context" ? [] : input.statistics) {
     for (const field of ["count", "characters", "han", "latin", "questions", "commas", "newlines"] as const)
@@ -107,7 +108,7 @@ export async function infer(input: {
   if (
     !prediction.grounding.includes("current") ||
     prediction.grounding.some((id) => !allowed.has(id)) ||
-    prediction.targets.some((target) => !contextText.includes(target)) ||
+    prediction.targets.some((target) => !contextText.includes(JSON.stringify(target).slice(1, -1))) ||
     Boolean(prediction.candidate) === Boolean(prediction.abstention)
   )
     throw new PredictionError("invalid_prediction", "The prediction contains ungrounded references or targets")

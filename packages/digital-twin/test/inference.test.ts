@@ -17,7 +17,7 @@ test("the output contract names exact supplied evidence IDs and rejects invented
         const model = {
           providerID: "fixture",
           id: "selected",
-          limit: { context: 100_000, output: 8192 },
+          limit: { context: 1_000_000, output: 131_072 },
         } as Provider.Model
         let targets = ["API"]
         const calls: AgentCall.TextInput[] = []
@@ -52,6 +52,17 @@ test("the output contract names exact supplied evidence IDs and rejects invented
             properties: { grounding: { items: { type: "string", enum: ["current"] } } },
           })
           expect(calls[0]?.maxOutputTokens).toBe(model.limit.output)
+          expect(
+            (await infer({ ...input, model: { ...model, limit: { context: 100_000, output: 100_000 } } })).prediction
+              .candidate,
+          ).toContain("API")
+          for (const target of ["C:\\repo\\a.ts", '"draft"']) {
+            targets = [target]
+            expect(
+              (await infer({ ...input, current: [{ role: "assistant", content: `API updated at ${target}` }] }))
+                .prediction.candidate,
+            ).toContain("API")
+          }
           targets = ["an-unrelated-repository"]
           await expect(infer(input)).rejects.toThrow("ungrounded")
         } finally {

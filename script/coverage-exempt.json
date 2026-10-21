@@ -175,6 +175,18 @@
           "reason": "barrel re-export"
         },
         {
+          "glob": "src/components/digital-twin/composer.tsx",
+          "reason": "Fresh completion events, absent/reinstalled capability, held responses, draft/source/model/Session changes and IME are exercised by test/components/digital-twin/composer.dom.test.ts in Vite/Chromium; Bun cannot attribute browser execution to TSX. The request state machine has direct behavioral coverage."
+        },
+        {
+          "glob": "src/components/digital-twin/settings.tsx",
+          "reason": "Both settings, defaults, keyboard switching and manual prediction with automatic mode disabled are rendered in test/components/digital-twin/composer.dom.test.ts; Vite/Chromium execution is outside Bun source coverage."
+        },
+        {
+          "glob": "src/components/digital-twin/copy.ts",
+          "reason": "Localized descriptors are exercised by the rendered Digital Twin browser suite and the localization extraction gate; browser-bundled modules are outside Bun coverage."
+        },
+        {
           "glob": "src/components/dialog/project-directory-picker.tsx",
           "reason": "dialogs require interactive flows"
         },

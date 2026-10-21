@@ -16,6 +16,8 @@ The [secret-detection package](../../packages/secret-detection/README.md) owns t
 
 ## Optional agent integrations
 
+[Digital Twin](../../packages/digital-twin/README.md) owns personalized next-input inference and historical evidence preparation. Full selects it explicitly; core excludes it. Its HTTP adapter has an optional Server peer, and its worker registers only configuration and the hidden Agent.
+
 MCP, LSP, Formatter, ACP, External Agents, Link Client and Code Tools are separate workspace packages: `mcp`, `lsp`, `formatter`, `acp`, `external-agents`, `link-client` and `code-tools`. Each owns its public exports, tests and configuration registration. LSP and Formatter can register independently; complete composition orders Formatter before LSP. Their existing domain configuration files and field names stay stable.
 
 ## Embedded component composition

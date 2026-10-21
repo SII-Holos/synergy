@@ -183,8 +183,8 @@ async function assess<T extends z.ZodType>(
         model,
         timeoutMs: 180_000,
         retries: 2,
-        maxOutputTokens: Math.min(model.limit.output, 16_384),
-        maxOutputChars: 65_536,
+        maxOutputTokens: model.limit.output,
+        maxOutputChars: model.limit.output * 8,
         messages: [{ role: "user", content: await SecretMask.apply(JSON.stringify({ ...payload, outputTool: name })) }],
         outputTool: {
           name,

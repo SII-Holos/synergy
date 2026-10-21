@@ -474,6 +474,8 @@ Settings and the session toolbar use the same thinking choice component. Default
 
 ## Composer Interaction State
 
+Optional next-input prediction consumes the live `session.root.completed` event through the existing SDK connection. Historical reads establish manual eligibility only. The adapter fences server, Scope, Session, connection selection, model, completion anchor, source and draft revisions before applying the native completion. Navigation, edits, IME, attachments, queued work and capability loss invalidate pending work; clearing a dismissed completion does not replay its automatic trigger. Generic assistance metadata stays with the draft through acceptance, editing, history restoration and submission. See [Digital Twin](../../packages/digital-twin/README.md) for the optional feature settings and inference owner.
+
 Submitting an empty composer never pauses execution, including repeated Enter after an accepted send clears the draft. Pause belongs to the explicit primary control or stop shortcut; sending, model-readiness checks and attachment uploads do not own cancellation.
 
 The active Web Composer owns one in-memory document controller. A snapshot contains a monotonic revision, editable text, UTF-16 selection offsets, optional Session identity, and normal/shell mode. File pills and other non-editable nodes remain in the controller's private DOM mapping and edits crossing them are rejected. Completion, decoration, and edit APIs share this revision boundary, so an asynchronous result cannot mutate a newer draft.
