@@ -222,7 +222,7 @@
     [data-kind="reasoning"],
     [data-kind="non-root-user"]
   ) {
-    max-width: min(54rem, 100%);
+    max-width: min(var(--conversation-reading-max-width, 54rem), 100%);
     margin-inline: auto;
   }
 
@@ -271,7 +271,7 @@
 
   /* ── Assistant message footer (Copy Markdown + timestamp) ────── */
   [data-slot="assistant-message-meta"] {
-    max-width: min(54rem, 100%);
+    max-width: min(var(--conversation-reading-max-width, 54rem), 100%);
     margin-inline: auto;
     display: flex;
     align-items: center;

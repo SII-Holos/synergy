@@ -17345,6 +17345,10 @@ msgid "session.cmd.undoDesc"
 msgstr "撤销上一个消息回合"
 
 #. js-lingui-explicit-id
+msgid "session.column.resize"
+msgstr "调整对话宽度"
+
+#. js-lingui-explicit-id
 msgid "session.content.loadFailed"
 msgstr "这部分内容暂时无法加载"
 

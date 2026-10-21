@@ -176,11 +176,13 @@ a {
 }
 
 .session-content-column {
+  --session-column-gutter: 24px;
+  --session-text-inset: 1rem;
   width: 100%;
   min-width: 0;
-  max-width: 50rem;
+  max-width: var(--session-content-width, 50rem);
   margin-inline: auto;
-  padding-inline: 24px;
+  padding-inline: var(--session-column-gutter);
 }
 
 .session-empty-view {
@@ -766,13 +768,15 @@ a {
 }
 
 .session-conversation-content {
+  --conversation-reading-max-width: 100%;
+  padding-inline: calc(var(--session-column-gutter) + var(--session-text-inset));
   font-size: 1rem;
   line-height: 1.625rem;
 }
 
 @container (max-width: 48rem) {
   .session-content-column {
-    padding-inline: 16px;
+    --session-column-gutter: 16px;
   }
   .session-conversation-content {
     font-size: var(--type-ui-body-size);
@@ -1841,4 +1845,49 @@ a {
 }
 .session-work-context-button[data-unavailable="true"] {
   color: var(--text-error);
+}
+
+.conversation-column-resize {
+  position: absolute;
+  inset: 72px 0 16px;
+  width: min(100%, var(--session-content-width, 50rem));
+  margin-inline: auto;
+  pointer-events: none;
+  z-index: 10;
+}
+.conversation-column-resize-handle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 8px;
+  width: 16px;
+  cursor: ew-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+.conversation-column-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: 6px;
+  top: calc(50% - 20px);
+  height: 40px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--border-base);
+}
+.conversation-column-resize-handle:hover::after,
+.conversation-column-resize-handle:focus-visible::after {
+  background: var(--border-strong-base);
+}
+@media (max-width: 767px) {
+  .conversation-column-resize {
+    display: none;
+  }
+}
+
+.conversation-column-resize-handle:hover,
+.conversation-column-resize-handle:focus-visible {
+  background: transparent;
 }

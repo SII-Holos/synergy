@@ -23,6 +23,7 @@ export function createInitialLayoutDefaults() {
       width: SIDEBAR_WIDTH_DEFAULT,
       resized: false,
     },
+    conversation: { width: 800 },
     mobileSidebar: {
       opened: false,
     },

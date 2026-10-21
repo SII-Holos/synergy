@@ -2624,7 +2624,7 @@ function SessionPageContent() {
           layout={sessionLayout}
           workbench={workbenchService}
           views={views}
-          fallback={() => <DefaultSession context={{ layout: sessionLayout }} />}
+          fallback={() => <DefaultSession context={{ layout: sessionLayout }} column={layout.conversation} />}
         />
       </SessionDecisionHost>
     </>
