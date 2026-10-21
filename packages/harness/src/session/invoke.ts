@@ -47,6 +47,7 @@ import { SessionMemoryIncident } from "./memory-incident"
 import { SessionExternalAgents } from "./external-agents"
 import { withPreambleSection } from "../agent/prompt/preamble"
 import { SessionManager } from "./manager"
+import { SessionDrive } from "./drive"
 import { SessionMessageCache } from "./message-cache"
 import { LLMTurnMemory } from "./llm-memory"
 import { SessionInbox } from "./inbox"
@@ -2812,7 +2813,8 @@ export namespace SessionInvoke {
 
   export async function reconcilePausedSession(sessionID: string): Promise<void> {
     using control = await Lock.tryAcquireWrite(`session-control:${sessionID}`)
-    if (!control || SessionManager.isRunning(sessionID) || (await SessionTransferGate.isFrozen(sessionID))) return
+    const owned = () => SessionManager.isRunning(sessionID) || SessionDrive.isPending(sessionID)
+    if (!control || owned() || (await SessionTransferGate.isFrozen(sessionID))) return
     try {
       const session = await SessionManager.getSession(sessionID)
       if (!session) return
@@ -2820,8 +2822,11 @@ export namespace SessionInvoke {
       await prepareSessionMigrations(owner)
       const revision = await SessionPauseRecovery.request(owner)
       if (!revision) return
-      if (await SessionLifecycle.isUnfinished(session)) {
+      const unfinished = await SessionLifecycle.isUnfinished(session)
+      if (owned()) return
+      if (unfinished) {
         await repairIncompleteAssistant(sessionID, { terminalize: false })
+        if (owned()) return
         await SessionLifecycle.pause({ sessionID, reason: "interrupted" })
       }
       await SessionPauseRecovery.complete(owner, revision)

@@ -7,6 +7,8 @@ Read only sections relevant to the current change. Search the headings and domai
 
 ## Workbench Presentation Acceptance
 
+For first-send recovery, cross an accepted inbox item with concurrent Session detail reads while drive discovery and host admission are deliberately delayed. The task must remain unpaused before its execution lease exists; an unrelated orphaned Session must still recover as interrupted. Exercise both scheduled and awaited drive paths, plus a lease acquired during recovery evidence reads. Preserve the recovery receipt until the accepted work settles.
+
 For compaction acceptance, observe session idle and durable turn completion separately. Cross detached result settlement with a committed compaction, and verify that a request's pending process row yields to its canonical running, completed, failed or empty attempt across segmented rendering.
 
 Use the isolated provider and synthetic-data workflow in `develop-synergy` for the real new-task → first-send → reply → switch-and-return path. Keep component fixtures for failure injection and geometry, but do not label them end-to-end or real-provider evidence. Register browser suites with their owning serial runner. Do not run a narrow suite alongside that runner when they share a Vite fixture root or dependency cache; finish one run before starting the other. Measure the actual Composer, status footer, floating inbox and menu bounds in both wide and narrow chat panes; a full-width browser can still contain a narrow pane. Allow subpixel rounding rather than exact floating-point width equality. Native IME, real 200% zoom, reduced motion and visual focus each need explicit evidence; pasted text or a resized viewport is not a substitute.

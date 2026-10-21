@@ -160,8 +160,9 @@ export namespace SessionManager {
 
     instanceState.accepting = true
   }
-  export function hasPendingWake(): boolean {
+  export function hasPendingWake(sessionID?: string): boolean {
     const state = runtimeState()
+    if (sessionID) return state.activeWakeChains.has(sessionID) || state.sessionCompletions.has(sessionID)
     return state.activeWakeChains.size > 0 || state.running.size > 0
   }
   export async function drain() {
