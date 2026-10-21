@@ -13,6 +13,7 @@ type Control = {
   complete(): void
   editSource(): void
   resolve(index: number): void
+  reject(index: number): void
   requests(): boolean[]
   ghost(): string | undefined
 }
@@ -46,7 +47,7 @@ beforeAll(async () => {
     export const emit=(type,properties)=>listeners.get(type)?.forEach(handler=>handler({properties}))
     export const sdk={url:"http://same-server.test",scopeKey:"scope",connected:()=>true,capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false},event:events,client:{
       session:{turnExecution:async ({rootIDs})=>({data:rootIDs.map(rootID=>({rootID,status:"completed"}))})},
-      digitalTwin:{predictNextInput:({digitalTwinInput},options)=>new Promise(resolve=>requests.push({input:digitalTwinInput,signal:options.signal,resolve}))}
+      digitalTwin:{predictNextInput:({digitalTwinInput},options)=>new Promise((resolve,reject)=>requests.push({input:digitalTwinInput,signal:options.signal,resolve,reject}))}
     }}
     export const useSDK=()=>sdk
     export const useSync=()=>({data:{config}})
@@ -55,6 +56,7 @@ beforeAll(async () => {
       complete:()=>emit("session.root.completed",{sessionID:session(),rootID:"root",assistantID:"reply"}),
       editSource:()=>emit("message.part.summary",{summary:{sessionID:session()}}),
       requests:()=>requests.map(value=>value.signal.aborted),
+      reject:index=>requests[index].reject(new Error("Fixture prediction failed")),
       resolve:index=>requests[index].resolve({data:{proposalID:"proposal-"+index,candidate:"再检查一下 API 的边界",stamp:requests[index].input.expected}})}
   `,
   )
@@ -137,6 +139,7 @@ test("rendered composer requires a fresh completion event and fences drafts, rec
   expect(await page.getByText("Describe a task", { exact: true }).count()).toBe(1)
   await page.evaluate(() => window.twinFixture.complete())
   await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+  expect(await button.getAttribute("aria-busy")).toBe("true")
   await page.evaluate(() => window.twinFixture.resolve(0))
   await page.waitForFunction(() => !!window.twinFixture.ghost())
   expect(await page.getByRole("textbox", { name: "Draft" }).inputValue()).toBe("")
@@ -175,6 +178,85 @@ test("rendered composer requires a fresh completion event and fences drafts, rec
   await page.evaluate(() => window.twinFixture.model("another-model"))
   await page.waitForFunction(() => window.twinFixture.requests()[4])
   expect(errors).toEqual([])
+})
+
+test.each([
+  { colorScheme: "dark" as const, reducedMotion: "no-preference" as const },
+  { colorScheme: "light" as const, reducedMotion: "no-preference" as const },
+  { colorScheme: "dark" as const, reducedMotion: "reduce" as const },
+])("prediction distinguishes unavailable and pending states: %o", async ({ colorScheme, reducedMotion }) => {
+  const page = await browser.newPage({ colorScheme, reducedMotion })
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url)
+    const button = page.getByRole("button", { name: "Predict next input", exact: true })
+    const draft = page.getByRole("textbox", { name: "Draft" })
+    await page.waitForFunction(
+      () => !document.querySelector('button[aria-label="Predict next input"]')?.hasAttribute("disabled"),
+    )
+    const activeColor = await button.locator("svg").evaluate((element) => getComputedStyle(element).color)
+    await draft.fill("自己的草稿")
+    expect(await button.isDisabled()).toBe(true)
+    const disabledColor = await button.locator("svg").evaluate((element) => getComputedStyle(element).color)
+    expect(disabledColor).not.toBe(activeColor)
+    const background = await button.evaluate((element) => getComputedStyle(element).backgroundColor)
+    await button.hover()
+    const hovered = await button.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished.catch(() => {})))
+      return getComputedStyle(element).backgroundColor
+    })
+    expect(hovered).toBe(background)
+    await button.click({ force: true })
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(0)
+    await draft.fill("")
+    const restingBounds = (await button.boundingBox())!
+    await button.click()
+    expect(await button.getAttribute("aria-busy")).toBe("true")
+    expect(await button.isDisabled()).toBe(true)
+    const loadingBounds = (await button.boundingBox())!
+    expect(loadingBounds.width).toBe(restingBounds.width)
+    expect(loadingBounds.height).toBe(restingBounds.height)
+    const animations = await button.evaluate(
+      (element) =>
+        element
+          .getAnimations({ subtree: true })
+          .filter((animation) => animation.effect?.getTiming().iterations === Infinity).length,
+    )
+    if (reducedMotion === "reduce") expect(animations).toBe(0)
+    else expect(animations).toBeGreaterThan(0)
+    await button.hover()
+    expect(await page.getByRole("tooltip").innerText()).toBe("Predicting next input…")
+    await button.click({ force: true })
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(1)
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await button.getAttribute("aria-busy")).toBe("false")
+    expect(await button.isEnabled()).toBe(true)
+    expect(await button.locator("svg").evaluate((element) => getComputedStyle(element).color)).toBe(activeColor)
+    expect(
+      await button.evaluate(
+        (element) =>
+          element
+            .getAnimations({ subtree: true })
+            .filter((animation) => animation.effect?.getTiming().iterations === Infinity).length,
+      ),
+    ).toBe(0)
+    await button.click()
+    await page.evaluate(() => window.twinFixture.reject(1))
+    await page.getByRole("status").getByText("Prediction unavailable. Try again.", { exact: true }).waitFor()
+    expect(await button.getAttribute("aria-busy")).toBe("false")
+    expect(await button.isEnabled()).toBe(true)
+    await button.click()
+    await draft.fill("新草稿")
+    expect((await page.evaluate(() => window.twinFixture.requests()))[2]).toBe(true)
+    expect(await button.getAttribute("aria-busy")).toBe("false")
+    expect(await button.isDisabled()).toBe(true)
+    expect(await button.locator("svg").evaluate((element) => getComputedStyle(element).color)).toBe(disabledColor)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
 })
 
 test("the two rendered settings retain manual prediction when automatic prediction is off", async () => {

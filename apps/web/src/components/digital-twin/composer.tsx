@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js"
 import type { Message, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
@@ -184,21 +185,34 @@ export function DigitalTwinComposer(props: {
     service.dispose()
     document.removeEventListener("visibilitychange", visibility)
   })
+  const disabled = createMemo(() => !eligible() || !state().ready || busy())
   return (
     <>
       <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
-        <IconButton
+        <button
           type="button"
-          variant="ghost"
-          class="prompt-input-toolbar-icon-button"
-          icon={getSemanticIcon("action.predict")}
+          class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
           aria-label={_(twinCopy.predict)}
-          disabled={!eligible() || !state().ready || busy()}
+          aria-busy={busy()}
+          disabled={disabled()}
           onClick={() => {
             props.focusEditor()
             requests.manual()
           }}
-        />
+        >
+          <Show
+            when={busy()}
+            fallback={
+              <Icon
+                name={getSemanticIcon("action.predict")}
+                size="small"
+                color={disabled() ? "var(--icon-disabled)" : "var(--icon-base)"}
+              />
+            }
+          >
+            <Spinner class="size-4 text-icon-base motion-reduce:[&>rect]:animate-none!" />
+          </Show>
+        </button>
       </Tooltip>
       <Show when={failure()}>
         {(reason) => (
