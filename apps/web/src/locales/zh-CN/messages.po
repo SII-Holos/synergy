@@ -18292,6 +18292,10 @@ msgid "session.progress.expand"
 msgstr "展开"
 
 #. js-lingui-explicit-id
+msgid "session.progress.inactive"
+msgstr "{activity, select, waiting {等待你处理} paused {已暂停} idle {尚未完成} other {执行状态未知}}"
+
+#. js-lingui-explicit-id
 msgid "session.progress.needsAttention"
 msgstr "需要处理 · {count, plural, one {# 个任务失败} other {# 个任务失败}}"
 

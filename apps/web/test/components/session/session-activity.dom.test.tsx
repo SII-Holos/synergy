@@ -51,6 +51,7 @@ beforeAll(async () => {
     import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
     const query = new URLSearchParams(location.search)
     const [status, setStatus] = createSignal(query.has("ended") ? undefined : { type: "busy" })
+    const [childStatus, setChildStatus] = createSignal()
     const [ready, setReady] = createSignal(true)
     const [connected, setConnected] = createSignal(true)
     const [waiting, setWaiting] = createSignal(false)
@@ -91,12 +92,12 @@ beforeAll(async () => {
     export { offer, editing, currentSession, footerActive, footerMounted, footerSession }
     const [data, setData] = createStore({
       session: [{ id: "s1" }, { id: "other-parent" }, { id: "attention-peer" }], todo: { s1: [
-        { id: "one", content: "Inspect the request interaction and preserve every word of this naturally wrapping long task", status: "in_progress", priority: "high" },
-        { id: "two", content: "Write the regression test", status: "pending", priority: "medium" },
+        { id: "one", content: "Inspect the request interaction and preserve every word of this naturally wrapping long task", status: query.has("completed") ? "completed" : "in_progress", priority: "high" },
+        { id: "two", content: "Write the regression test", status: query.has("completed") ? "completed" : "pending", priority: "medium" },
         { id: "three", content: "Retired item", status: "cancelled", priority: "low" },
       ] }, dag: { s1: [
-        { id: "a", content: "Prepare the fixture", status: query.has("blocked") ? "blocked" : query.has("failed") ? "failed" : "running", deps: [], session_id: "child" },
-        { id: "b", content: "Verify the result", status: "pending", deps: ["a"] },
+        { id: "a", content: "Prepare the fixture", status: query.has("completed") ? "completed" : query.has("blocked") ? "blocked" : query.has("failed") ? "failed" : "running", deps: [], session_id: "child" },
+        { id: "b", content: "Verify the result", status: query.has("completed") ? "completed" : "pending", deps: ["a"] },
       ], "attention-peer": [{ id: "peer", content: "Peer blocker", status: "blocked", deps: [] }] }, message: {}, part: {}, session_diff: {},
     })
     const [tasks, setTasks] = createStore([
@@ -108,7 +109,7 @@ beforeAll(async () => {
     ])
     window.navigation = []
     window.cancellations = []
-    const runtime = { statusFor: (id) => id === footerSession.id ? footerStatus() : id === "s1" ? status() : undefined, cortexTasks: () => tasks, questionsFor: (id) => waiting() && id === "child" ? [{ id: "q", sessionID: "child", questions: [] }] : [], permissionsFor: (id) => permission() && id === "child" ? [{ id: "p", sessionID: "child" }] : [] }
+    const runtime = { statusFor: (id) => id === footerSession.id ? footerStatus() : id === "s1" ? status() : id === "child" ? childStatus() : undefined, cortexTasks: () => tasks, questionsFor: (id) => waiting() && id === "child" ? [{ id: "q", sessionID: "child", questions: [] }] : [], permissionsFor: (id) => permission() && id === "child" ? [{ id: "p", sessionID: "child" }] : [] }
     export const useSessionDataView = () => () => createSessionDataView(data, runtime)
     export const useSDK = () => ({ connected,get url(){return footerOwner.server},get scopeKey(){return footerOwner.scopeID}, client: { cortex: {
       get:(parameters,options)=>new Promise((resolve,reject)=>footerRequests.push({parameters,signal:options.signal,resolve,reject,server:footerOwner.server,scopeID:footerOwner.scopeID,status:footerSession.cortex.status})),
@@ -137,6 +138,9 @@ beforeAll(async () => {
       if (action === "cancel-failure") setCancelFailure(true)
       if (action === "cancel-success") setCancelFailure(false)
       if (action === "child-ended") setTasks(0, "status", "completed")
+      if (action === "children-ended") { setTasks(task => task.parentSessionID === "s1", "status", "completed"); setChildStatus(undefined) }
+      if (action === "child-busy") setChildStatus({ type: "busy" })
+      if (action === "child-paused") setChildStatus({ type: "paused" })
       if (action === "switch-session") setCurrentSession("other-parent")
       if (action === "switch-back") setCurrentSession("s1")
       if (action === "switch-peer") setCurrentSession("attention-peer")
@@ -144,6 +148,15 @@ beforeAll(async () => {
       if (action === "mixed") { setData("dag", "s1", 0, "status", "failed"); setData("dag", "s1", 1, "status", "blocked") }
       if (action === "resolved" || action === "cancelled" || action === "pending") setData("dag", "s1", 0, "status", action === "resolved" ? "completed" : action)
       if (action === "clear-dag") setData("dag", "s1", [])
+      if (action === "clear-todo") setData("todo", "s1", [])
+      if (action === "complete-dag") setData("dag", "s1", () => true, "status", "completed")
+      if (action === "complete" || action === "cancel-all") {
+        setData("dag", "s1", () => true, "status", action === "complete" ? "completed" : "cancelled")
+        setData("todo", "s1", item => item.status !== "cancelled", "status", action === "complete" ? "completed" : "cancelled")
+      }
+      if (action === "memo") setData("dag", "s1", 0, "memo", "Completion details updated")
+      if (action === "new-dag") setData("dag", "s1", [{ id: "new", content: "New task", status: "pending", deps: [] }])
+      if (action === "reopen-todo") setData("todo", "s1", 0, "status", "in_progress")
       if (action === "todo-complete") setData("todo", "s1", item => item.status !== "cancelled", "status", "completed")
       if (action === "unknown") { setReady(false); setStatus(undefined) }
       if (action === "many") setTasks(Array.from({ length: 30 }, (_, i) => ({ ...tasks[0], id: "task-" + i, sessionID: "child-" + i, startedAt: Date.now() + i })))
@@ -159,6 +172,7 @@ beforeAll(async () => {
     import { Show } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
+    import { messages as chineseMessages } from "@/locales/zh-CN/messages.po"
     import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
     import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
     import { offer, editing, currentSession, footerActive, footerMounted, footerSession } from "./runtime"
@@ -172,7 +186,8 @@ beforeAll(async () => {
     import { Toast } from "@ericsanchezok/synergy-ui/toast"
     import "@ericsanchezok/synergy-ui/styles"
     import "@/index.css"
-    window.fixtureI18n = setupI18n({ locale: "en", messages: {} })
+    const chinese = new URLSearchParams(location.search).has("chinese")
+    window.fixtureI18n = setupI18n({ locale: chinese ? "zh-CN" : "en", messages: chinese ? { "zh-CN": chineseMessages } : {} })
     function Footer(){
       const meta=useSessionMeta(()=>footerSession,()=>true)
       return <Show when={footerMounted()}><ViewActivityProvider active={footerActive}><section data-footer hidden={!footerActive()}>
@@ -575,8 +590,10 @@ test("changing session during a hold discards the old gesture", async () => {
   expect(await navigation()).toEqual([])
 })
 
-test("many agents remain reachable without horizontal page overflow", async () => {
+test("many agents remain reachable in an initially narrow viewport without horizontal page overflow", async () => {
   await page.setViewportSize({ width: 320, height: 700 })
+  await page.reload()
+  await page.locator("#composer").waitFor()
   await change("many")
   expect(await page.locator(".subagent-dock-avatar").count()).toBe(30)
   await page.locator(".subagent-dock-avatar").last().focus()
@@ -609,21 +626,23 @@ test("workflow priority hides progress and freezes its retained DAG without remo
   ).toBe(true)
 })
 
-test("child permissions and pending synchronization preserve an observed progress receipt", async () => {
+test("unfinished work survives child decisions and unknown execution without claiming activity", async () => {
   await page.clock.install()
   await change("permission")
   await change("idle")
   await page.clock.runFor(2200)
   expect(await page.locator(".session-progress-island").count()).toBe(1)
+  expect(await page.locator(".session-progress-island-title").textContent()).toContain("Waiting for you")
   await change("allow")
   await page.clock.runFor(1000)
   await change("unknown")
   await page.clock.runFor(2200)
   expect(await page.locator(".session-progress-island").count()).toBe(1)
+  expect(await page.locator(".session-progress-island-header").getAttribute("aria-label")).toContain("Status unknown")
   await change("idle")
   await change("ready")
   await page.clock.runFor(1800)
-  expect(await page.locator(".session-progress-island").count()).toBe(0)
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
 })
 
 test("compressed space opens a readable progress dialog and restores focus on close", async () => {
@@ -672,13 +691,21 @@ test("compressed space opens a readable progress dialog and restores focus on cl
   await zoom.send("Emulation.setPageScaleFactor", { pageScaleFactor: 1 })
 })
 
-test("an ending progress dialog releases its focus boundary to Composer", async () => {
+test("completion preserves an expanded dialog until the reader closes it, then releases focus", async () => {
   await page.setViewportSize({ width: 375, height: 430 })
   await page.goto(`${baseURL}?compressed`)
   await page.clock.install()
   await expand()
   await page.getByRole("button", { name: "Close progress", exact: true }).focus()
-  await change("idle")
+  await change("complete")
+  await page.clock.runFor(5000)
+  expect(await page.getByRole("dialog", { name: "Session progress", exact: true }).isVisible()).toBe(true)
+  expect(
+    await page
+      .getByRole("button", { name: "Close progress", exact: true })
+      .evaluate((node) => node === document.activeElement),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Close progress", exact: true }).click()
   await page.clock.runFor(1800)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
   expect(
@@ -845,7 +872,7 @@ test("DAG instance and manual viewport survive tab changes and collapse, with no
   expect(errors).toEqual([])
 })
 
-test("unresolved failure survives idle and returns contained focus only after resolution", async () => {
+test("unresolved failure survives idle and completion does not interrupt expanded DAG reading", async () => {
   await page.clock.install()
   await expand()
   await page.getByRole("button", { name: "DAG", exact: true }).click()
@@ -857,55 +884,159 @@ test("unresolved failure survives idle and returns contained focus only after re
   expect(
     await page.getByRole("button", { name: "Fit", exact: true }).evaluate((node) => node === document.activeElement),
   ).toBe(true)
-  await change("resolved")
+  await change("complete")
   await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  expect(
+    await page.getByRole("button", { name: "Fit", exact: true }).evaluate((node) => node === document.activeElement),
+  ).toBe(true)
+  await expand()
+  await page.clock.runFor(1800)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
   expect(
     await page.getByRole("textbox", { name: "Composer" }).evaluate((node) => node === document.activeElement),
   ).toBe(true)
 })
 
-test("waiting, paused and disconnect preserve progress; new activity cancels ending", async () => {
+test("unfinished progress describes real parent and child activity without dismissing on idle", async () => {
   await page.clock.install()
-  await change("wait")
+  const title = page.locator(".session-progress-island-title")
   await change("idle")
+  await change("children-ended")
   await page.clock.runFor(2000)
-  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  expect(await title.textContent()).toContain("Unfinished")
+  await change("child-busy")
+  expect(await title.textContent()).not.toContain("Unfinished")
+  await change("wait")
+  expect(await title.textContent()).toContain("Waiting for you")
   await change("answer")
-  await page.clock.runFor(900)
-  await change("busy")
-  await page.clock.runFor(2000)
-  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  await change("children-ended")
   await change("paused")
   await page.clock.runFor(2000)
-  expect(await page.locator(".session-progress-island").count()).toBe(1)
-  await change("disconnect")
+  expect(await title.textContent()).toContain("Paused")
   await change("idle")
+  await change("child-paused")
+  expect(await title.textContent()).toContain("Paused")
+  await change("disconnect")
   await page.clock.runFor(2000)
-  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  expect(await title.textContent()).toContain("Status unknown")
   await change("connect")
   await page.clock.runFor(1800)
-  expect(await page.locator(".session-progress-island").count()).toBe(0)
+  expect(await title.textContent()).toContain("Paused")
 })
 
-test("initially ended sessions do not flash a progress summary", async () => {
-  await page.goto(baseURL + "?ended")
-  await page.getByRole("textbox", { name: "Composer" }).waitFor()
-  expect(await page.locator(".session-progress-island").count()).toBe(0)
+test("historical completion stays hidden during hydration, navigation and unrelated new execution", async () => {
+  for (const query of ["?completed", "?ended&completed"]) {
+    await page.goto(baseURL + query)
+    await page.getByRole("textbox", { name: "Composer" }).waitFor()
+    await page.clock.install()
+    for (const action of ["busy", "unknown", "ready", "switch-session", "switch-back", "memo"]) {
+      await change(action)
+      await page.clock.runFor(2200)
+      expect(await page.locator(".session-progress-island").count()).toBe(0)
+    }
+  }
 })
 
-test("sparse idle status waits for synchronization and persisted work before dismissing progress", async () => {
+test("task completion dismisses while execution continues and unrelated state cannot resurrect it", async () => {
   await page.clock.install()
-  await change("unknown")
-  await page.clock.runFor(2200)
+  await change("complete")
+  await page.clock.runFor(1500)
   expect(await page.locator(".session-progress-island").count()).toBe(1)
-  await change("persisted-work")
-  await change("ready")
-  await page.clock.runFor(2200)
-  expect(await page.locator(".session-progress-island").count()).toBe(1)
-  await change("persisted-idle")
-  await page.clock.runFor(2200)
+  await change("busy")
+  await change("memo")
+  await page.clock.runFor(300)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
+  for (const action of ["idle", "busy", "persisted-work", "wait", "disconnect", "connect"]) {
+    await change(action)
+    await page.clock.runFor(2200)
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+  }
+  await change("new-dag")
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  await change("complete")
+  await page.clock.runFor(1800)
+  await change("reopen-todo")
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+})
+
+test("completion and cancellation settle while disconnected and suppression cannot revive their receipt", async () => {
+  await page.clock.install()
+  for (const action of ["complete", "cancel-all"]) {
+    await change("new-dag")
+    await change("disconnect")
+    await change(action)
+    if (action === "cancel-all") {
+      expect(await page.locator(".session-progress-island-title").textContent()).toContain("Ended")
+      expect(await page.locator(".session-progress-island-title").textContent()).toContain("cancelled")
+    }
+    await change("offer")
+    await page.clock.runFor(1800)
+    await change("dismiss-offer")
+    await change("connect")
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+  }
+})
+
+test("selected completed tabs cannot hide unfinished work or label it complete", async () => {
+  await page.clock.install()
+  await change("todo-complete")
+  const title = page.locator(".session-progress-island-title")
+  expect(await title.textContent()).toContain("Prepare the fixture")
+  await expand()
+  await page.getByRole("button", { name: "To-do", exact: true }).click()
+  expect(await page.locator(".session-progress-island-count").textContent()).toBe("2/2 complete · 1 cancelled")
+  expect(await title.textContent()).not.toContain("Done")
+  await change("complete-dag")
+  await change("reopen-todo")
+  await page.getByRole("button", { name: "DAG", exact: true }).click()
+  expect(await page.locator(".session-progress-island-count").textContent()).toBe("2/2 complete")
+  expect(await title.textContent()).toContain("Inspect the request interaction")
+  await change("idle")
+  await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+})
+
+test("removing all task data removes progress even during execution", async () => {
+  await expand()
+  await change("clear-dag")
+  await page.locator(".session-progress-island-header").focus()
+  await change("clear-todo")
+  expect(await page.locator(".session-progress-island").count()).toBe(0)
+  expect(await page.locator("#composer").evaluate((node) => node === document.activeElement)).toBe(true)
+  await change("busy")
+  expect(await page.locator(".session-progress-island").count()).toBe(0)
+})
+
+test("Chinese task states and expanded completion remain readable in narrow light and dark views", async () => {
+  await page.setViewportSize({ width: 375, height: 430 })
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme })
+    await page.goto(baseURL + "?chinese&compressed&ended")
+    await page.locator("#composer").waitFor()
+    await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, colorScheme)
+    await page.clock.install()
+    await change("children-ended")
+    const header = page.locator(".session-progress-island-header")
+    expect(await header.textContent()).toContain("尚未完成")
+    await change("wait")
+    expect(await header.getAttribute("aria-label")).toContain("等待你处理")
+    await change("answer")
+    await change("paused")
+    expect(await header.textContent()).toContain("已暂停")
+    const bounds = (await header.boundingBox())!
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(375)
+    await expand()
+    const dialog = page.getByRole("dialog")
+    await dialog.waitFor()
+    await change("complete")
+    await page.clock.runFor(2200)
+    expect(await dialog.isVisible()).toBe(true)
+    await page.keyboard.press("Escape")
+    await page.clock.runFor(1800)
+    expect(await page.locator(".session-progress-island").count()).toBe(0)
+  }
 })
 
 test("large DAG retains its instance and closes inspector when switching views", async () => {
@@ -935,7 +1066,7 @@ test("large DAG retains its instance and closes inspector when switching views",
 test("reduced motion hides an ended receipt without a fade", async () => {
   await page.emulateMedia({ reducedMotion: "reduce" })
   await page.clock.install()
-  await change("idle")
+  await change("complete")
   await page.clock.runFor(1601)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
 })
@@ -962,7 +1093,7 @@ test("idle attention restores after navigation and reload without leaking anothe
     await page.locator("#composer").waitFor()
     expect(await page.locator(".session-progress-island-title").textContent()).toContain(state)
     await change("switch-session")
-    await change("resolved")
+    await change("complete")
     await change("switch-back")
     expect(await page.locator(".session-progress-island").count()).toBe(0)
   }
@@ -993,8 +1124,8 @@ test("Todo selection and completion cannot hide DAG attention or change the sele
 test("late attention cancels both idle dismissal phases and can return after the receipt disappeared", async () => {
   await page.clock.install()
   for (const elapsed of [1500, 1650, 2200]) {
-    await change("busy")
-    await change("idle")
+    await change("pending")
+    await change("complete")
     await page.clock.runFor(elapsed)
     await change("blocked")
     await page.clock.runFor(2200)
@@ -1002,11 +1133,14 @@ test("late attention cancels both idle dismissal phases and can return after the
     expect(await page.locator(".session-progress-island").getAttribute("data-exiting")).toBe("false")
     await change("pending")
     await page.clock.runFor(2200)
+    expect(await page.locator(".session-progress-island").count()).toBe(1)
+    await change("complete")
+    await page.clock.runFor(1800)
     expect(await page.locator(".session-progress-island").count()).toBe(0)
   }
 })
 
-test("authoritative resolution, cancellation and removal release attention while retry keeps normal progress", async () => {
+test("resolving one blocker preserves other unfinished work; only the final task releases progress", async () => {
   await page.clock.install()
   for (const action of ["resolved", "cancelled", "clear-dag"]) {
     await page.goto(baseURL + "?ended&blocked")
@@ -1014,6 +1148,9 @@ test("authoritative resolution, cancellation and removal release attention while
     expect(await page.locator(".session-progress-island-title").textContent()).toContain("blocked")
     await change(action)
     await page.clock.runFor(2200)
+    expect(await page.locator(".session-progress-island").count()).toBe(1)
+    await change("complete")
+    await page.clock.runFor(1800)
     expect(await page.locator(".session-progress-island").count()).toBe(0)
   }
   await page.goto(baseURL + "?ended&failed")
@@ -1024,6 +1161,9 @@ test("authoritative resolution, cancellation and removal release attention while
   expect(await page.locator(".session-progress-island").getAttribute("data-status")).toBe("active")
   await change("idle")
   await page.clock.runFor(2200)
+  expect(await page.locator(".session-progress-island").count()).toBe(1)
+  await change("complete")
+  await page.clock.runFor(1800)
   expect(await page.locator(".session-progress-island").count()).toBe(0)
 })
 

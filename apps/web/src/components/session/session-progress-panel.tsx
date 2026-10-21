@@ -1,8 +1,8 @@
-import { createEffect, createMemo, createSignal, on, onCleanup, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, on, onCleanup, Show } from "solid-js"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
-import { classifySessionActivity, resolveSessionStatus } from "@/utils/session-status"
+import { classifySessionActivity, resolveSessionStatus, type SessionActivity } from "@/utils/session-status"
 import {
   computeProgressMode,
   computeDagSummary,
@@ -28,7 +28,6 @@ export function SessionProgressPanel(props: {
   const [expanded, setExpanded] = createSignal(false)
   const [dagMounted, setDagMounted] = createSignal(false)
   const [phase, setPhase] = createSignal<"hidden" | "visible" | "ending" | "exiting">("hidden")
-  let observedActivity = false
   let timer: ReturnType<typeof setTimeout> | undefined
   let root: HTMLDivElement | undefined
   let panel: HTMLDivElement | undefined
@@ -57,32 +56,26 @@ export function SessionProgressPanel(props: {
   const activeTab = () => (mode() === "dag" ? "dag" : mode() === "todo" ? "todo" : tab())
   const dagSummary = createMemo(() => computeDagSummary(dag()))
   const todoSummary = createMemo(() => computeTodoSummary(todo()))
-  const needsAttention = createMemo(
-    () => !!view().sessionFor(props.sessionID) && (dagSummary().failed > 0 || dagSummary().blocked > 0),
-  )
   const snapshot = createMemo(() =>
-    computeProgressIslandSnapshot(needsAttention() ? "dag" : activeTab(), dagSummary(), todoSummary()),
+    computeProgressIslandSnapshot(mode() === "none" ? "none" : activeTab(), dagSummary(), todoSummary()),
   )
   const viewSummary = () => (activeTab() === "dag" ? dagSummary() : todoSummary())
   const activeLabel = () =>
-    activeTab() === "todo"
+    snapshot().source === "todo"
       ? todo().find((item) => item.status === "in_progress")?.content
       : dag().find((item) => item.status === "running")?.content
   createEffect(
     on(
       () => props.sessionID,
       () => {
-        cancelEnd()
-        observedActivity = false
         setTab("todo")
         setDagMounted(false)
         setExpanded(false)
-        setPhase("hidden")
       },
     ),
   )
-  createEffect(() => {
-    const session = view().sessionFor(props.sessionID)
+  const activity = createMemo<SessionActivity | "unknown">(() => {
+    if (!sync.ready || !sdk.connected()) return "unknown"
     const children = view()
       .sessions()
       .filter((item) => item.parentID === props.sessionID)
@@ -94,61 +87,68 @@ export function SessionProgressPanel(props: {
       ...children.map((item) => item.id),
       ...tasks.map((item) => item.sessionID),
     ])
-    const waiting = [...related].some(
-      (id) => view().questionsFor(id).length > 0 || view().permissionsFor(id).length > 0,
-    )
-    const runtimeStatus = view().statusFor(props.sessionID)
-    const activity = classifySessionActivity({
-      status: resolveSessionStatus({
-        runtimeStatus,
-        working: session?.working,
-      }),
-      waiting,
+    const activities = [...related].map((id) => {
+      const working = view().sessionFor(id)?.working
+      const runtimeStatus = view().statusFor(id)
+      const waiting = view().questionsFor(id).length > 0 || view().permissionsFor(id).length > 0
+      if (waiting) return "waiting"
+      if (!runtimeStatus && !working && tasks.some((task) => task.sessionID === id && task.status === "running"))
+        return "working"
+      return classifySessionActivity({ status: resolveSessionStatus({ runtimeStatus, working }) })
     })
-    const currentMode = mode()
-    const attention = needsAttention()
-    const known = sync.ready && !!session && sdk.connected()
-    untrack(() => {
-      if (attention) {
-        observedActivity = true
-        cancelEnd()
-        setPhase("visible")
-        return
-      }
-      if (!known) {
-        cancelEnd()
-        if (phase() === "ending" || phase() === "exiting") setPhase("visible")
-        return
-      }
-      if (activity !== "idle") {
-        observedActivity = true
-        cancelEnd()
-        setPhase(currentMode === "none" ? "hidden" : "visible")
-        return
-      }
-      if (!observedActivity || phase() === "hidden" || timer) return
-      if (currentMode === "none") {
-        hide()
-        return
-      }
-      setPhase("ending")
-      timer = setTimeout(() => {
-        timer = undefined
-        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (activities.includes("waiting")) return "waiting"
+    if (activities.includes("working")) return "working"
+    if (activities.includes("paused")) return "paused"
+    return "idle"
+  })
+  createEffect(
+    on(
+      () => ({
+        sessionID: props.sessionID,
+        status: view().sessionFor(props.sessionID) ? snapshot().status : "hidden",
+        reading: expanded(),
+      }),
+      (current, previous) => {
+        if (current.sessionID !== previous?.sessionID) {
+          cancelEnd()
+          setPhase("hidden")
+        }
+        if (current.status === "hidden") {
+          cancelEnd()
           hide()
           return
         }
-        const contained = containsFocus()
-        setExpanded(false)
-        setPhase("exiting")
-        returnAfterClose(contained)
+        if (current.status !== "complete") {
+          cancelEnd()
+          setPhase("visible")
+          return
+        }
+        if (phase() === "hidden") return
+        if (current.reading) {
+          cancelEnd()
+          setPhase("visible")
+          return
+        }
+        if (timer) return
+        setPhase("ending")
         timer = setTimeout(() => {
           timer = undefined
-          hide()
-        }, 180)
-      }, 1600)
-    })
-  })
+          if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+            hide()
+            return
+          }
+          const contained = containsFocus()
+          setExpanded(false)
+          setPhase("exiting")
+          returnAfterClose(contained)
+          timer = setTimeout(() => {
+            timer = undefined
+            hide()
+          }, 180)
+        }, 1600)
+      },
+    ),
+  )
   createEffect(() => {
     if (props.suppressed) {
       const contained = containsFocus()
@@ -164,17 +164,18 @@ export function SessionProgressPanel(props: {
     cancelEnd()
   })
   return (
-    <Show when={(needsAttention() || phase() !== "hidden") && mode() !== "none"}>
+    <Show when={phase() !== "hidden"}>
       <div
         ref={root}
         class="relative w-full"
         hidden={props.suppressed}
-        inert={props.suppressed || (phase() === "exiting" && !needsAttention())}
+        inert={props.suppressed || phase() === "exiting"}
         aria-hidden={props.suppressed}
       >
         <SessionProgressIsland
           mode={mode() as "dag" | "todo" | "both"}
           snapshot={snapshot()}
+          activity={activity()}
           viewSummary={viewSummary()}
           activeLabel={activeLabel()}
           activeTab={activeTab()}
@@ -182,7 +183,7 @@ export function SessionProgressPanel(props: {
           onExpandedChange={setExpanded}
           onTabChange={setTab}
           class={props.class}
-          exiting={phase() === "exiting" && !needsAttention()}
+          exiting={phase() === "exiting"}
           anchor={props.anchor}
           onPanelMount={(element) => {
             panel = element

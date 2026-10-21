@@ -8,12 +8,14 @@ import { ProgressCircle } from "@ericsanchezok/synergy-ui/progress-circle"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import type { ProgressIslandSnapshot, ProgressMode } from "./session-progress-summary"
+import type { SessionActivity } from "@/utils/session-status"
 import { S, describeProgress, progressExpandCollapse, formatProgressLabel } from "./session-i18n"
 import "./session-progress-island.css"
 
 interface SessionProgressIslandProps {
   mode: Exclude<ProgressMode, "none">
   snapshot: ProgressIslandSnapshot
+  activity: SessionActivity | "unknown"
   viewSummary: Pick<ProgressIslandSnapshot, "total" | "completed" | "cancelled">
   activeLabel?: string
   activeTab: "dag" | "todo"
@@ -91,9 +93,9 @@ export function SessionProgressIsland(props: SessionProgressIslandProps) {
     const frame = requestAnimationFrame(() => target.focus({ preventScroll: true }))
     onCleanup(() => cancelAnimationFrame(frame))
   })
-  const label = createMemo(() => formatProgressLabel(props.snapshot, props.activeLabel, i18n()))
+  const label = createMemo(() => formatProgressLabel(props.snapshot, props.activeLabel, i18n(), props.activity))
   const ariaLabel = () =>
-    `${describeProgress(props.snapshot, i18n())}. ${progressExpandCollapse(props.expanded, i18n())}`
+    `${describeProgress(props.snapshot, i18n(), props.activity)}. ${progressExpandCollapse(props.expanded, i18n())}`
   createInteractOutside(
     {
       isDisabled: () => !props.expanded || compact(),

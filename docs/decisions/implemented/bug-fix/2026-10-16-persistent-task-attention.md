@@ -25,3 +25,5 @@ Temporary editor and workflow suppression keeps existing ownership and focus rul
 ## Consequences
 
 Attention lasts as long as the accepted task state requires it; execution end is not a substitute for task resolution. Stale task statuses remain visible until their owner updates them, and ordinary replay and volatile snapshot recovery remain responsible for freshness. Browser tests exercise lifecycle races, cold and returning Sessions, mixed states, selected-view counts, focus, temporary suppression, stable frames and presentation request counts.
+
+[Task-owned progress lifetime](2026-10-20-task-owned-progress-lifetime.md) extends admission to all unfinished tasks and supersedes the runtime-readiness requirement for ordinary dismissal. Canonical attention, selected-view counts and resource freshness remain authoritative.
