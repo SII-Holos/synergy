@@ -176,11 +176,13 @@ a {
 }
 
 .session-content-column {
+  --session-column-gutter: 24px;
+  --session-text-inset: 1rem;
   width: 100%;
   min-width: 0;
   max-width: var(--session-content-width, 50rem);
   margin-inline: auto;
-  padding-inline: 24px;
+  padding-inline: var(--session-column-gutter);
 }
 
 .session-empty-view {
@@ -766,13 +768,15 @@ a {
 }
 
 .session-conversation-content {
+  --conversation-reading-max-width: 100%;
+  padding-inline: calc(var(--session-column-gutter) + var(--session-text-inset));
   font-size: 1rem;
   line-height: 1.625rem;
 }
 
 @container (max-width: 48rem) {
   .session-content-column {
-    padding-inline: 16px;
+    --session-column-gutter: 16px;
   }
   .session-conversation-content {
     font-size: var(--type-ui-body-size);

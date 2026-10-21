@@ -80,7 +80,7 @@ beforeAll(async () => {
       return <div style="height:100dvh"><PluginPageOutlet page="session" sessionId={fresh() ? undefined : "created"} fallback={() => <DefaultSession column={{ width: columnWidth, resize: setColumnWidth }} context={{layout: {
         minimumWidth: () => undefined, promptHeight: height,
         render: part => part === "composer" ? <PromptDock context={composer} /> : part === "conversation" ?
-          <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message>Reply</div>}>
+          <div class="flex-1 min-h-0"><Show when={!fresh()}><header class="stb-root" style="justify-content:flex-end"><div class="stb-right"><TaskDetailsPopover inboxCount={1} inbox={() => <div class="session-inbox-list"><div class="session-inbox-row" data-inbox>Queued follow-up</div></div>} /></div></header></Show><Show when={fresh()} fallback={<div class="session-conversation-content session-content-column" data-message><div data-component="session-turn" class="w-full"><div data-slot="session-turn-content"><div data-slot="session-turn-timeline-item" data-kind="text" data-reply>Reply</div><div data-slot="assistant-message-meta" data-footer>Completed</div></div></div></div>}>
             <div class="session-empty-view"><div class="session-content-column">{greeting()}</div></div>
           </Show></div> : null,
       }}} />} /></div>
@@ -506,10 +506,22 @@ test("conversation width resizes the transcript and composer together without re
   const editor = page.getByRole("textbox", { name: "Message", exact: true })
   await editor.fill("Retained draft")
   await editor.evaluate((el) => (el.dataset.retained = "yes"))
+  const expectTextAlignment = async () => {
+    const start = (selector: string) =>
+      page.locator(selector).evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getClientRects()[0]!.left
+      })
+    const editorStart = await start('[role="textbox"]')
+    expect(Math.abs((await start("[data-reply]")) - editorStart)).toBeLessThanOrEqual(1)
+    expect(Math.abs((await start("[data-footer]")) - editorStart)).toBeLessThanOrEqual(1)
+  }
   const handle = page.getByRole("separator", { name: "Resize conversation" })
   await handle.press("ArrowRight")
   expect((await bounds("[data-message]")).width).toBe(832)
   expect((await bounds(".session-prompt-dock-content")).width).toBe(832)
+  await expectTextAlignment()
   const box = await handle.boundingBox()
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
   await page.mouse.down()
@@ -517,14 +529,17 @@ test("conversation width resizes the transcript and composer together without re
   await page.mouse.up()
   expect((await bounds("[data-message]")).width).toBe(1032)
   expect((await bounds(".session-prompt-dock-content")).width).toBe(1032)
+  await expectTextAlignment()
   expect(await editor.getAttribute("data-retained")).toBe("yes")
   expect(await editor.textContent()).toBe("Retained draft")
   await handle.dblclick()
   expect((await bounds("[data-message]")).width).toBe(800)
+  await expectTextAlignment()
   await page.setViewportSize({ width: 375, height: 812 })
   await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 375)
   expect(await handle.isVisible()).toBe(false)
   expect((await bounds(".session-prompt-dock-content")).width).toBe(375)
+  await expectTextAlignment()
 })
 
 test("conversation resize supports limits and cancels an active drag", async () => {
