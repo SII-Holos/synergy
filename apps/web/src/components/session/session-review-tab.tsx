@@ -69,10 +69,10 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     const current = props.workspace?.()
     return Boolean(
       current &&
-      diff.workspace &&
-      diff.workspace.id === current.id &&
-      diff.workspace.generation === current.generation &&
-      diff.workspace.root === current.path,
+        diff.workspace &&
+        diff.workspace.id === current.id &&
+        diff.workspace.generation === current.generation &&
+        diff.workspace.root === current.path,
     )
   }
   const selectedKey = createMemo(() => {

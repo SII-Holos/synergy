@@ -3,7 +3,8 @@ import { type ComponentProps, Show, splitProps } from "solid-js"
 import { Icon, IconProps, IconName } from "./icon"
 
 export interface ButtonProps
-  extends ComponentProps<typeof Kobalte>, Pick<ComponentProps<"button">, "class" | "classList" | "children"> {
+  extends ComponentProps<typeof Kobalte>,
+    Pick<ComponentProps<"button">, "class" | "classList" | "children"> {
   size?: "small" | "normal" | "large"
   variant?: "primary" | "secondary" | "ghost"
   icon?: IconName

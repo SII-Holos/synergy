@@ -203,14 +203,17 @@ test("reasoning is grouped by model reply and manual expansion preserves its rea
 })
 
 test("multiple reasoning parts in one reply share a section and keyboard reading pauses following", async () => {
-  const entries = Array.from({ length: 3 }, (_, index): ReasoningPart => ({
-    id: `reasoning-${index}`,
-    sessionID: "activity-process",
-    messageID: index < 2 ? "reply-one" : "reply-two",
-    type: "reasoning",
-    text: `Preserved reasoning ${index}`,
-    time: { start: index },
-  }))
+  const entries = Array.from(
+    { length: 3 },
+    (_, index): ReasoningPart => ({
+      id: `reasoning-${index}`,
+      sessionID: "activity-process",
+      messageID: index < 2 ? "reply-one" : "reply-two",
+      type: "reasoning",
+      text: `Preserved reasoning ${index}`,
+      time: { start: index },
+    }),
+  )
   harness.setReasoning(entries)
   await update()
   const detail = document.querySelector<HTMLElement>('[data-slot="process-reasoning-detail"]')!

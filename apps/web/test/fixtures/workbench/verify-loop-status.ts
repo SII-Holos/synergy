@@ -343,7 +343,8 @@ try {
   const peer = (await client.session.create({ scopeID: "home", title: "Loop status peer " + Date.now() }, options)).data
   owned.push(peer.id)
   for (const kind of (process.env.LOOP_KIND ? [process.env.LOOP_KIND] : ["lightloop", "blueprint"]) as (
-    "lightloop" | "blueprint"
+    | "lightloop"
+    | "blueprint"
   )[]) {
     for (const outcome of (["approve", "failed", "cancelled", "cancel-review"] as const).filter(
       (outcome) =>

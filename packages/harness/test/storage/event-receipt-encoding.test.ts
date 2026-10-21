@@ -39,9 +39,10 @@ function storedBody(
   const database = new Database(filename, { readonly: true, strict: true })
   try {
     const [record] = database
-      .query<{ kind: string; value: string | Uint8Array }, [string]>(
-        `SELECT typeof(${column}) AS kind, ${column} AS value FROM ${table} WHERE ${row.column} = ?`,
-      )
+      .query<
+        { kind: string; value: string | Uint8Array },
+        [string]
+      >(`SELECT typeof(${column}) AS kind, ${column} AS value FROM ${table} WHERE ${row.column} = ?`)
       .all(row.value)
     return record!
   } finally {

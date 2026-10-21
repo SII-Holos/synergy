@@ -883,7 +883,8 @@ describe("SessionSummary", () => {
             expect(calls).toBeGreaterThanOrEqual(2)
             const messages = await Session.messages({ sessionID: session.id })
             const storedUser = messages.find((message) => message.info.id === user.id)?.info as
-              MessageV2.User | undefined
+              | MessageV2.User
+              | undefined
             expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
 
             await Session.remove(session.id)

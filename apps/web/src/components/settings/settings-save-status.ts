@@ -1,5 +1,13 @@
 export type SettingsSaveStatus =
-  "idle" | "saving" | "saved" | "error" | "dirty" | "loading" | "invalid" | "partial" | "refresh"
+  | "idle"
+  | "saving"
+  | "saved"
+  | "error"
+  | "dirty"
+  | "loading"
+  | "invalid"
+  | "partial"
+  | "refresh"
 
 type SourceSaveStatus = Exclude<SettingsSaveStatus, "dirty"> | "loading"
 

@@ -46,7 +46,8 @@ export namespace SessionSymbolLookup {
    * structural view of the lsp domain's LSP.DocumentSymbol | LSP.Symbol
    * union. */
   export type SymbolHit =
-    { range: SymbolRange; location?: undefined } | { range?: undefined; location: { range: SymbolRange } }
+    | { range: SymbolRange; location?: undefined }
+    | { range?: undefined; location: { range: SymbolRange } }
 
   type Lookup = (uri: string) => Promise<SymbolHit[]>
 

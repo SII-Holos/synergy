@@ -15,12 +15,14 @@ mock.module("@ericsanchezok/synergy-ui/basic-tool", () => ({
   },
 }))
 
-const { getPluginToolRenderer, registerPluginToolRenderer } =
-  await import("../../../src/plugin/registries/tool-renderer-registry")
+const { getPluginToolRenderer, registerPluginToolRenderer } = await import(
+  "../../../src/plugin/registries/tool-renderer-registry"
+)
 const { registerPartRenderer } = await import("../../../src/plugin/registries/part-registry")
 const { PART_MAPPING } = await import("@ericsanchezok/synergy-ui/message-part")
-const { externalLoadNotify, resolveToolRenderer, ToolRegistry } =
-  await import("@ericsanchezok/synergy-ui/tool-registry-lazy")
+const { externalLoadNotify, resolveToolRenderer, ToolRegistry } = await import(
+  "@ericsanchezok/synergy-ui/tool-registry-lazy"
+)
 
 async function loadRenderer(name: string): Promise<ToolComponent> {
   getPluginToolRenderer(name)

@@ -70,7 +70,11 @@ export interface SessionAttachmentPart {
 }
 
 export type ContentPart =
-  TextPart | FileAttachmentPart | UploadedAttachmentPart | NoteAttachmentPart | SessionAttachmentPart
+  | TextPart
+  | FileAttachmentPart
+  | UploadedAttachmentPart
+  | NoteAttachmentPart
+  | SessionAttachmentPart
 export type Prompt = ContentPart[]
 
 export type FileContextItem = {

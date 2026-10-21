@@ -58,7 +58,8 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const sync = useSync()
   const pendingUploads = input.pendingUploads
   let pendingBlueprint:
-    { binding: ReturnType<typeof prompt.capture>; selection: ReturnType<typeof capabilities.current> } | undefined
+    | { binding: ReturnType<typeof prompt.capture>; selection: ReturnType<typeof capabilities.current> }
+    | undefined
 
   const attachmentLimits = () => {
     const limits = sync.data.config.attachment

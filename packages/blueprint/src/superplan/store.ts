@@ -39,31 +39,33 @@ export namespace SuperPlanStore {
       const now = Date.now()
       const runID = Identifier.ascending("superplan_run")
 
-      const nodes = (input.nodes ?? []).map((node): SuperPlanTypes.Node =>
-        SuperPlanTypes.Node.parse({
-          id: node.id ?? Identifier.ascending("superplan_node"),
-          runID,
-          title: node.title,
-          description: node.description,
-          deps: node.deps ?? [],
-          blueprintNoteID: node.blueprintNoteID,
-          baseCommit: node.baseCommit ?? input.baseCommit,
-          status: "pending",
-          time: { created: now, updated: now },
-        }),
+      const nodes = (input.nodes ?? []).map(
+        (node): SuperPlanTypes.Node =>
+          SuperPlanTypes.Node.parse({
+            id: node.id ?? Identifier.ascending("superplan_node"),
+            runID,
+            title: node.title,
+            description: node.description,
+            deps: node.deps ?? [],
+            blueprintNoteID: node.blueprintNoteID,
+            baseCommit: node.baseCommit ?? input.baseCommit,
+            status: "pending",
+            time: { created: now, updated: now },
+          }),
       )
 
-      const merges = (input.merges ?? []).map((merge): SuperPlanTypes.Merge =>
-        SuperPlanTypes.Merge.parse({
-          id: merge.id ?? Identifier.ascending("superplan_merge"),
-          runID,
-          wave: merge.wave,
-          inputNodeIDs: merge.inputNodeIDs,
-          inputCommits: merge.inputCommits ?? [],
-          baseCommit: merge.baseCommit ?? input.baseCommit,
-          status: "pending",
-          time: { created: now, updated: now },
-        }),
+      const merges = (input.merges ?? []).map(
+        (merge): SuperPlanTypes.Merge =>
+          SuperPlanTypes.Merge.parse({
+            id: merge.id ?? Identifier.ascending("superplan_merge"),
+            runID,
+            wave: merge.wave,
+            inputNodeIDs: merge.inputNodeIDs,
+            inputCommits: merge.inputCommits ?? [],
+            baseCommit: merge.baseCommit ?? input.baseCommit,
+            status: "pending",
+            time: { created: now, updated: now },
+          }),
       )
 
       const run = SuperPlanTypes.Run.parse({

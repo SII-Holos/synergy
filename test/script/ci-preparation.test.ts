@@ -179,29 +179,33 @@ test("ordinary tests execute before waiting for a profile, which is restored onc
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-preparation-"))
   try {
     const tasks: Task[] = [
-      ...[0, 1].map((index): Task => ({
-        id: `plain-${index}`,
-        kind: "static",
-        variant: "tests",
-        seconds: 1,
-        pool: "linux",
-        owners: [],
-        needs: [],
-        files: [`test/plain-${index}.test.ts`],
-        outputs: [],
-      })),
-      ...[0, 1, 2, 3].map((index): Task => ({
-        id: `profile-${index}`,
-        kind: "static",
-        variant: "tests",
-        profile: "full",
-        seconds: 10,
-        pool: "linux",
-        owners: [],
-        needs: [],
-        files: [`test/profile-${index}.test.ts`],
-        outputs: [],
-      })),
+      ...[0, 1].map(
+        (index): Task => ({
+          id: `plain-${index}`,
+          kind: "static",
+          variant: "tests",
+          seconds: 1,
+          pool: "linux",
+          owners: [],
+          needs: [],
+          files: [`test/plain-${index}.test.ts`],
+          outputs: [],
+        }),
+      ),
+      ...[0, 1, 2, 3].map(
+        (index): Task => ({
+          id: `profile-${index}`,
+          kind: "static",
+          variant: "tests",
+          profile: "full",
+          seconds: 10,
+          pool: "linux",
+          owners: [],
+          needs: [],
+          files: [`test/profile-${index}.test.ts`],
+          outputs: [],
+        }),
+      ),
     ]
     const plan = createPlan({
       base: "a",

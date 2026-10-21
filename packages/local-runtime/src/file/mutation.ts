@@ -16,7 +16,7 @@ export namespace FileMutation {
     if (!before) return null
     if (before.kind !== "file") throw new AccessDeniedError("Access denied: path is not a regular file")
     const hash = createHash("sha256")
-    for (let offset = 0; offset < before.size;) {
+    for (let offset = 0; offset < before.size; ) {
       signal?.throwIfAborted()
       const bytes = await FileView.bytes(filename, { offset, length: Math.min(before.size - offset, 4 * 1024 * 1024) })
       if (!bytes.length) throw new ConflictError()

@@ -290,7 +290,7 @@ export namespace FileView {
       const length = Math.min(range.length, Math.max(0, first.size - range.offset))
       const result = new Uint8Array(length)
       result.set(first.bytes)
-      for (let offset = first.bytes.length; offset < length;) {
+      for (let offset = first.bytes.length; offset < length; ) {
         const next = await WorkspaceContent.readRange(
           selection(info),
           name,

@@ -527,7 +527,7 @@ export namespace ExecutionService {
       )
     const subtree = (sessionID: string) => {
       const ids = new Set([sessionID])
-      for (let size = -1; size !== ids.size;) {
+      for (let size = -1; size !== ids.size; ) {
         size = ids.size
         for (const session of data.sessions) if (session.parentID && ids.has(session.parentID)) ids.add(session.id)
       }

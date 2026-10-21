@@ -77,7 +77,14 @@ export namespace ConfigSetup {
   }
 
   export type CustomProviderAdapter =
-    "openai-compatible" | "anthropic" | "google" | "openai" | "azure" | "groq" | "mistral" | "xai"
+    | "openai-compatible"
+    | "anthropic"
+    | "google"
+    | "openai"
+    | "azure"
+    | "groq"
+    | "mistral"
+    | "xai"
 
   export type CustomProviderCredentialMode = "synergy" | "env" | "inline"
 
@@ -261,8 +268,8 @@ export namespace ConfigSetup {
           reasoning: Boolean(model.reasoning),
           multimodal: Boolean(
             model.modalities?.input?.includes("image") ||
-            model.modalities?.input?.includes("video") ||
-            model.modalities?.input?.includes("pdf"),
+              model.modalities?.input?.includes("video") ||
+              model.modalities?.input?.includes("pdf"),
           ),
         }))
 

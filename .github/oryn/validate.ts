@@ -60,7 +60,7 @@ export function selectValidation(files: string[], graph: Workspace[]) {
     if (owner) selected.add(owner.name)
     else for (const workspace of graph) selected.add(workspace.name)
   }
-  for (let changed = true; changed;) {
+  for (let changed = true; changed; ) {
     changed = false
     for (const workspace of graph) {
       if (selected.has(workspace.name) || !workspace.dependencies.some((name) => selected.has(name))) continue

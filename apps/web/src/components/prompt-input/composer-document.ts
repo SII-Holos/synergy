@@ -59,7 +59,12 @@ type OwnedRegistration = ComposerExtensionRegistration & { order: number; degrad
 export class ComposerDocumentError extends Error {
   constructor(
     readonly code:
-      "stale_revision" | "invalid_range" | "overlapping_edits" | "capability_denied" | "read_only" | "composing",
+      | "stale_revision"
+      | "invalid_range"
+      | "overlapping_edits"
+      | "capability_denied"
+      | "read_only"
+      | "composing",
     message: string,
   ) {
     super(message)

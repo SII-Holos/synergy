@@ -80,13 +80,15 @@ export namespace ExperienceReencode {
   }
 
   function toState(row: LibraryDB.ReencodeJob.Row): JobState {
-    const items = LibraryDB.ReencodeJob.items(row.id).map((item): JobItem => ({
-      id: item.experience_id,
-      sessionID: item.session_id,
-      scopeID: item.scope_id,
-      status: item.status,
-      ...(item.result_reason ? { reason: item.result_reason } : {}),
-    }))
+    const items = LibraryDB.ReencodeJob.items(row.id).map(
+      (item): JobItem => ({
+        id: item.experience_id,
+        sessionID: item.session_id,
+        scopeID: item.scope_id,
+        status: item.status,
+        ...(item.result_reason ? { reason: item.result_reason } : {}),
+      }),
+    )
     return { ...toSummary(row), items }
   }
 

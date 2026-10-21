@@ -1,5 +1,6 @@
 export type MigrationOwner =
-  { kind: "session"; scopeID: string; sessionID: string } | { kind: "operation"; scopeID: string; operationID: string }
+  | { kind: "session"; scopeID: string; sessionID: string }
+  | { kind: "operation"; scopeID: string; operationID: string }
 
 export interface Migration {
   id: string

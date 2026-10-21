@@ -146,8 +146,9 @@ describe("Clarus extension outbox disposition", () => {
           const acctHash = located!.accountHash
 
           // RED until ClarusExtensionOutbox.submit exists
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           let persistedBeforeSend = false
           let recordStateBeforeSend = ""
@@ -206,8 +207,9 @@ describe("Clarus extension outbox disposition", () => {
             },
           )
 
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
           await ClarusExtensionOutbox.submit({
             sessionID: created.assignment.sessionID,
             payload: extendPayload(),
@@ -237,8 +239,9 @@ describe("Clarus extension outbox disposition", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const failure = {
             disposition: "not_dispatched" as const,
@@ -303,8 +306,9 @@ describe("Clarus extension outbox disposition", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const rejected = {
             disposition: "rejected" as const,
@@ -355,8 +359,9 @@ describe("Clarus extension outbox disposition", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           await expect(
             ClarusExtensionOutbox.submit({
@@ -402,8 +407,9 @@ describe("Clarus extension outbox disposition", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
           expect(located).toBeDefined()
@@ -473,8 +479,9 @@ describe("Clarus extension outbox disposition", () => {
             },
           )
 
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
           await ClarusExtensionOutbox.recover(located.accountHash)
 
           expect((await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID))?.assignment).toMatchObject(
@@ -504,8 +511,9 @@ describe("Clarus extension outbox disposition", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
           expect(located).toBeDefined()
@@ -571,8 +579,9 @@ describe("Clarus extension outbox disposition", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
           expect(located).toBeDefined()
@@ -630,8 +639,9 @@ describe("Clarus extension concurrency", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
           expect(located).toBeDefined()
@@ -683,8 +693,9 @@ describe("Clarus extension concurrency", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const located = await ClarusAssignmentStore.findBySessionID(created.assignment.sessionID)
           expect(located).toBeDefined()
@@ -738,8 +749,9 @@ describe("Clarus extension/result state independence", () => {
           const created = await dispatchAssignment(accountId, event)
 
           // Submit a failed extension
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           await expect(
             ClarusExtensionOutbox.submit({
@@ -779,8 +791,9 @@ describe("Clarus extension/result state independence", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           // Pause the remote project
           const host = ChannelHost.create({ channelType: "clarus", accountId })
@@ -943,8 +956,9 @@ describe("Clarus extension outbox error safety", () => {
           })
 
           const created = await dispatchAssignment(accountId, event)
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
 
           const rawSecret = "super-secret-token"
           const longCode = `INVALID CODE ${"E".repeat(200)}`
@@ -994,8 +1008,9 @@ describe("Clarus extension outbox error safety", () => {
             accountId,
             assignmentFixture({ agentID: accountId, projectID, taskID: "task-ext-malformed" }),
           )
-          const { ClarusExtensionOutbox } =
-            await import("@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox")
+          const { ClarusExtensionOutbox } = await import(
+            "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus/extension-outbox"
+          )
           const failure = {
             disposition: "rejected" as const,
             requestID: "malformed-rejected",

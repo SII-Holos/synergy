@@ -329,7 +329,8 @@ function SessionPageContent() {
     messageId: undefined as string | undefined,
     turnStart: 0,
     newSessionEnvironment: undefined as
-      { scopeID: string; id: string | null | undefined; profile?: string | null } | undefined,
+      | { scopeID: string; id: string | null | undefined; profile?: string | null }
+      | undefined,
     newSessionWorkspaceSelection: undefined as NewSessionWorkspaceSelection | undefined,
     promptHeight: 0,
     mobileReviewOpen: false,
@@ -2525,7 +2526,8 @@ function SessionPageContent() {
                                 dataView()
                                   .messagesFor(params.id!)
                                   .find((message) => message.id === store.mobileReviewMessageID) as
-                                  UserMessage | undefined
+                                  | UserMessage
+                                  | undefined
                               )?.summary?.diffState
                             : info()?.summary?.diffState
                         }

@@ -121,27 +121,29 @@ function installBasicLoopMocks(options?: {
 
   let callIndex = 0
 
-  ;(Provider.getModel as any) = mock(async (): Promise<Provider.Model> => ({
-    id: "test-model",
-    providerID: "test-provider",
-    name: "Test Model",
-    limit: { context: 100_000, output: 8_192 },
-    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-    capabilities: {
-      toolcall: true,
-      attachment: false,
-      reasoning: false,
-      temperature: true,
-      input: { text: true, image: false, audio: false, video: false, pdf: false },
-      output: { text: true, image: false, audio: false, video: false, pdf: false },
-      interleaved: false,
-    },
-    api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
-    options: {},
-    headers: {},
-    status: "active",
-    release_date: "2026-10-01",
-  }))
+  ;(Provider.getModel as any) = mock(
+    async (): Promise<Provider.Model> => ({
+      id: "test-model",
+      providerID: "test-provider",
+      name: "Test Model",
+      limit: { context: 100_000, output: 8_192 },
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      capabilities: {
+        toolcall: true,
+        attachment: false,
+        reasoning: false,
+        temperature: true,
+        input: { text: true, image: false, audio: false, video: false, pdf: false },
+        output: { text: true, image: false, audio: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
+      options: {},
+      headers: {},
+      status: "active",
+      release_date: "2026-10-01",
+    }),
+  )
   ;(Agent.get as any) = mock(async (name: string) => ({
     name,
     mode: "primary",
@@ -681,27 +683,29 @@ describe("SessionInvoke system prompt assembly", () => {
       let capturedLateSystem: string[] | undefined
 
       try {
-        ;(Provider.getModel as any) = mock(async (): Promise<Provider.Model> => ({
-          id: "test-model",
-          providerID: "test-provider",
-          name: "Test Model",
-          limit: { context: 100_000, output: 8_192 },
-          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-          capabilities: {
-            toolcall: true,
-            attachment: false,
-            reasoning: false,
-            temperature: true,
-            input: { text: true, image: false, audio: false, video: false, pdf: false },
-            output: { text: true, image: false, audio: false, video: false, pdf: false },
-            interleaved: false,
-          },
-          api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
-          options: {},
-          headers: {},
-          status: "active",
-          release_date: "2026-10-01",
-        }))
+        ;(Provider.getModel as any) = mock(
+          async (): Promise<Provider.Model> => ({
+            id: "test-model",
+            providerID: "test-provider",
+            name: "Test Model",
+            limit: { context: 100_000, output: 8_192 },
+            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+            capabilities: {
+              toolcall: true,
+              attachment: false,
+              reasoning: false,
+              temperature: true,
+              input: { text: true, image: false, audio: false, video: false, pdf: false },
+              output: { text: true, image: false, audio: false, video: false, pdf: false },
+              interleaved: false,
+            },
+            api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
+            options: {},
+            headers: {},
+            status: "active",
+            release_date: "2026-10-01",
+          }),
+        )
         ;(Agent.get as any) = mock(async () => ({
           name: "synergy",
           mode: "primary",

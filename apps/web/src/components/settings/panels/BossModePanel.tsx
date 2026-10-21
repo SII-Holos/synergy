@@ -34,7 +34,10 @@ const openSessionFailed = { id: "settings.runtime.boss.openSession.failed", mess
 type BossPersonaPresetOption = { value: string; label: MessageDescriptor }
 
 type BossPersonaTraitKey =
-  "bossPersonaFormality" | "bossPersonaConciseness" | "bossPersonaProactiveness" | "bossPersonaWarmth"
+  | "bossPersonaFormality"
+  | "bossPersonaConciseness"
+  | "bossPersonaProactiveness"
+  | "bossPersonaWarmth"
 
 type BossPersonaTraitDef = { key: BossPersonaTraitKey; label: MessageDescriptor }
 

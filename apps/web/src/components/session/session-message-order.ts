@@ -71,7 +71,8 @@ export function isActionCommandMessage(message: {
   includeInContext?: boolean
 }): boolean {
   const metadata = message.metadata as
-    { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean } | undefined
+    | { command?: { kind?: string; promptVisible?: boolean }; promptVisible?: boolean }
+    | undefined
   if (metadata?.command?.kind !== "action") return false
   if (message.includeInContext !== undefined) return message.includeInContext === false
   return metadata.promptVisible === false

@@ -163,7 +163,9 @@ export async function markReactionOnlyFailed(input: {
 }
 
 export type ReactionOnlyOutcome =
-  { status: "delivered" } | { status: "skipped" } | { status: "failed" | "ambiguous"; error: unknown }
+  | { status: "delivered" }
+  | { status: "skipped" }
+  | { status: "failed" | "ambiguous"; error: unknown }
 
 export async function executeReactionOnlyDelivery(input: {
   sessionID: string
@@ -203,12 +205,14 @@ export async function executeReactionOnlyDelivery(input: {
     input.signal?.throwIfAborted()
     await input.send()
   } catch (error) {
-    if (!(
-      error instanceof ReactionDeliveryError &&
-      error.status < 500 &&
-      typeof error.code === "number" &&
-      error.code !== 0
-    )) {
+    if (
+      !(
+        error instanceof ReactionDeliveryError &&
+        error.status < 500 &&
+        typeof error.code === "number" &&
+        error.code !== 0
+      )
+    ) {
       log.warn("reaction-only provider outcome is uncertain", { sessionID: input.sessionID, error })
       return { status: "ambiguous", error }
     }

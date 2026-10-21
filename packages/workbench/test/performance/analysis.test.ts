@@ -469,7 +469,8 @@ describe("performance analysis", () => {
 
             const messages = await Session.messages({ sessionID: analysis.sessionID })
             const assistant = messages.find((message) => message.info.role === "assistant")?.info as
-              MessageV2.Assistant | undefined
+              | MessageV2.Assistant
+              | undefined
             expect(assistant?.finish).toBe("error")
             expect(assistant?.error?.name).toBe("MessageAbortedError")
             // The cancellation is durable in the aborted assistant asserted

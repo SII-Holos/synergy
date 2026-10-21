@@ -151,14 +151,16 @@ test("invalid measured times are rejected rather than becoming scheduling weight
 })
 
 test("execution units estimate two worker finish times rather than summing both lanes", () => {
-  const tasks = [100, 99, 98, 97, 2, 2].map((seconds, index): Task => ({
-    id: String(index),
-    kind: "benchmark-native",
-    pool: "docker",
-    seconds,
-    owners: [],
-    needs: [],
-  }))
+  const tasks = [100, 99, 98, 97, 2, 2].map(
+    (seconds, index): Task => ({
+      id: String(index),
+      kind: "benchmark-native",
+      pool: "docker",
+      seconds,
+      owners: [],
+      needs: [],
+    }),
+  )
   const units = buildUnits(tasks, "full")
   for (const unit of units) {
     const lanes = [0, 0]

@@ -51,10 +51,10 @@ export namespace StartupReporter {
     const interactive = Boolean(process.stderr.isTTY && process.stdout.isTTY)
     const fancy = Boolean(
       interactive &&
-      color &&
-      process.env.CI !== "true" &&
-      process.env.SYNERGY_DAEMON !== "1" &&
-      process.env.TERM !== "dumb",
+        color &&
+        process.env.CI !== "true" &&
+        process.env.SYNERGY_DAEMON !== "1" &&
+        process.env.TERM !== "dumb",
     )
     return {
       fancy,
