@@ -1,5 +1,6 @@
 import type { BlueprintLoopInfo, Message, Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { BlueprintSlot } from "./types"
+import { isTerminalBlueprintLoopStatus, resolveBlueprintLoopState } from "./blueprint-slot"
 
 export type LoopTerminal = {
   status: "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
@@ -42,6 +43,10 @@ export function resolveLoopDisplay(input: {
       terminal: false,
       pending: true,
     }
+  const { activeLoopID, loop } = resolveBlueprintLoopState({
+    loop: input.blueprint,
+    activeLoopID: input.blueprintBinding?.loopID,
+  })
   const workflow = input.workflow
   if (workflow?.kind === "lightloop") {
     return {
@@ -52,19 +57,18 @@ export function resolveLoopDisplay(input: {
     }
   }
   if (input.lightPending) return { kind: "lightloop", stage: "bound", title: "", terminal: false, pending: true }
-  if (input.awaitingTerminal && !input.blueprintBinding?.loopID)
+  if (input.awaitingTerminal && !activeLoopID)
     return {
       kind: "lightloop",
       stage: input.awaitingTerminal.error ? "unavailable" : "resolving",
       title: input.awaitingTerminal.instructions,
       terminal: true,
     }
-  const loop = input.blueprint
-  const terminal = loop && ["completed", "failed", "cancelled"].includes(loop.status)
+  const terminal = isTerminalBlueprintLoopStatus(loop?.status)
   // A newer Light Loop result supersedes an older Blueprint result in the same Session.
   if (
     input.lightTerminal &&
-    !input.blueprintBinding?.loopID &&
+    !activeLoopID &&
     (!loop || (terminal && input.lightTerminal.createdAt > loop.time.updated))
   ) {
     return {
@@ -75,19 +79,28 @@ export function resolveLoopDisplay(input: {
       terminal: true,
     }
   }
-  if (!loop)
-    return input.blueprintBinding?.loopID
+  if (!loop) {
+    if (activeLoopID)
+      return {
+        kind: "blueprint",
+        stage: input.blueprintUnavailable
+          ? "unavailable"
+          : input.blueprintBinding?.phase === "auditing"
+            ? "auditing"
+            : "bound",
+        title: "",
+        terminal: false,
+      }
+    return input.blueprint || input.blueprintUnavailable
       ? {
           kind: "blueprint",
-          stage: input.blueprintUnavailable
-            ? "unavailable"
-            : input.blueprintBinding.phase === "auditing"
-              ? "auditing"
-              : "bound",
-          title: "",
-          terminal: false,
+          stage: input.blueprintUnavailable ? "unavailable" : "resolving",
+          title: input.blueprint?.title ?? "",
+          noteID: input.blueprint?.noteID,
+          terminal: true,
         }
       : undefined
+  }
   return {
     kind: "blueprint",
     stage: terminal

@@ -13,6 +13,12 @@ const loop: BlueprintLoopInfo = {
   auditAgent: "supervisor",
   time: { created: 1, updated: 2 },
 }
+const blueprintBinding: NonNullable<Session["blueprint"]> = {
+  loopID: loop.id,
+  source: "user",
+  loopRole: "execution",
+  phase: "running",
+}
 const light = (patch: object = {}): Session["workflow"] => ({ kind: "lightloop", instructions: "Acceptance", ...patch })
 const paused = { type: "paused", reason: "aborted", since: 1 } as const
 const stopRequest = {
@@ -23,6 +29,11 @@ const stopRequest = {
 }
 
 describe("Loop presentation follows domain terminal state", () => {
+  test("an unbound cached running Blueprint cannot keep the rendered card active", () => {
+    const display = resolveLoopDisplay({ blueprint: loop, status: { type: "idle" } })
+    expect(display?.terminal ?? true).toBe(true)
+    expect(display?.stage).not.toBe("running")
+  })
   test("Light Loop keeps its goal as the label instead of execution or review summaries", () => {
     const instructions = "Repair missing final replies after background generation and preserve the history anchor"
     const reviewing = light({ instructions })
@@ -51,6 +62,7 @@ describe("Loop presentation follows domain terminal state", () => {
       expect(
         resolveLoopDisplay({
           blueprint: { ...loop, noteID: note.id, title: note.title, status, stopRequest, summary: "Review passed" },
+          blueprintBinding,
           status: { type: "idle" },
         }),
       ).toMatchObject({ title: note.title, noteID: note.id })
@@ -74,38 +86,33 @@ describe("Loop presentation follows domain terminal state", () => {
       lightReview: undefined,
     })
   })
-  test.each(["blueprint"] as const)("%s does not mistake an idle reviewer or paused run for completion", (kind) => {
-    const input =
-      kind === "blueprint"
-        ? { blueprint: { ...loop, status: "auditing" as const } }
-        : { workflow: light({ stopRequest }) }
+  test("Blueprint does not mistake an idle reviewer or paused run for completion", () => {
+    const input = { blueprint: { ...loop, status: "auditing" as const }, blueprintBinding }
     expect(resolveLoopDisplay({ ...input, status: { type: "idle" } })?.stage).toBe("auditing")
     expect(resolveLoopDisplay({ ...input, status: paused })?.stage).toBe("paused")
   })
-  test.each(["blueprint"] as const)(
-    "%s shows rejected work, reason, later review and authoritative approval",
-    (kind) => {
-      const rejected =
-        kind === "blueprint"
-          ? { blueprint: { ...loop, audit: { attempts: 1, lastReason: "Missing failure recovery" } } }
-          : { workflow: light({ review: { attempts: 1, lastReason: "Missing failure recovery" } }) }
-      expect(resolveLoopDisplay({ ...rejected, status: { type: "busy" } })).toMatchObject({
-        stage: "rework",
-        reason: "Missing failure recovery",
-        terminal: false,
-      })
-      const reviewing =
-        kind === "blueprint"
-          ? { blueprint: { ...rejected.blueprint!, status: "auditing" as const } }
-          : { workflow: light({ review: { attempts: 1, lastReason: "Missing failure recovery" }, stopRequest }) }
-      expect(resolveLoopDisplay({ ...reviewing, status: { type: "busy" } })?.stage).toBe("auditing")
-      const completed =
-        kind === "blueprint"
-          ? { blueprint: { ...loop, status: "completed" as const, summary: "Recovery verified" } }
-          : { lightTerminal: { instructions: "Acceptance", status: "completed" as const, createdAt: 3 } }
-      expect(resolveLoopDisplay({ ...completed, status: paused })).toMatchObject({ stage: "completed", terminal: true })
-    },
-  )
+  test("Blueprint shows rejected work, reason, later review and authoritative approval", () => {
+    const rejected = { ...loop, audit: { attempts: 1, lastReason: "Missing failure recovery" } }
+    expect(resolveLoopDisplay({ blueprint: rejected, blueprintBinding, status: { type: "busy" } })).toMatchObject({
+      stage: "rework",
+      reason: "Missing failure recovery",
+      terminal: false,
+    })
+    expect(
+      resolveLoopDisplay({
+        blueprint: { ...rejected, status: "auditing" },
+        blueprintBinding,
+        status: { type: "busy" },
+      })?.stage,
+    ).toBe("auditing")
+    expect(
+      resolveLoopDisplay({
+        blueprint: { ...loop, status: "completed", summary: "Recovery verified" },
+        blueprintBinding,
+        status: paused,
+      }),
+    ).toMatchObject({ stage: "completed", terminal: true })
+  })
   test.each(["failed", "cancelled", "timed_out", "iteration_exhausted"] as const)(
     "keeps %s distinct from approval",
     (status) => {
@@ -135,9 +142,10 @@ describe("Loop presentation follows domain terminal state", () => {
     expect(
       resolveLoopDisplay({
         blueprintBinding: { loopID: "new", source: "user", loopRole: "execution", phase: "running" },
+        blueprint: { ...loop, status: "failed" },
         lightTerminal: { status: "completed", instructions: "old", createdAt: 9 },
         status: { type: "busy" },
       }),
-    ).toMatchObject({ kind: "blueprint", terminal: false })
+    ).toMatchObject({ kind: "blueprint", title: "", stage: "bound", terminal: false })
   })
 })

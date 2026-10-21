@@ -1,12 +1,14 @@
 import { createEffect, createMemo, createSignal, onCleanup, untrack, type Accessor } from "solid-js"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { blueprintLoopFeatureAvailable } from "../note/blueprint-run-session"
+import { isTerminalBlueprintLoopStatus } from "./blueprint-slot"
 import type { LoopHistoryHint, LoopTerminal } from "./loop-status"
 
 type Epoch = { selection: unknown; reconnect: number }
 type Snapshot = {
   epoch?: Epoch
   blueprint?: BlueprintLoopInfo
+  blueprintBinding?: string
   blueprintRead?: string
   blueprintError?: boolean
   blueprintRevision: number
@@ -44,6 +46,8 @@ export function createLoopStatusResource(input: {
   const retained = cache
   const [retryVersion, retry] = createSignal(0)
   const requests = new Set<AbortController>()
+  let blueprintOwner: Snapshot | undefined
+  let blueprintRequest: AbortController | undefined
   let terminalRequest: AbortController | undefined
   onCleanup(() => {
     for (const request of requests) request.abort()
@@ -77,14 +81,27 @@ export function createLoopStatusResource(input: {
       lightActive = input.lightActive(),
       lightReviewer = input.lightReviewer?.(),
       history = input.history()
-    if (!owner) return
+    if (!owner) {
+      blueprintOwner = undefined
+      return
+    }
     const value = touch(owner)
+    const loopID = binding ?? history.blueprintID ?? value.blueprint?.id
     if (value.epoch?.selection !== current.selection || value.epoch?.reconnect !== current.reconnect) {
       value.blueprintRead = undefined
       value.lightRead = undefined
       value.blueprintRevision++
       value.lightRevision++
     }
+    if (
+      (blueprintOwner !== value || value.blueprintBinding !== binding) &&
+      (value.blueprint?.id !== loopID || !isTerminalBlueprintLoopStatus(value.blueprint?.status))
+    ) {
+      value.blueprintRead = undefined
+      value.blueprintRevision++
+    }
+    blueprintOwner = value
+    value.blueprintBinding = binding
     value.epoch = current
     if (value.lightActive !== lightActive) {
       value.lightRevision++
@@ -103,29 +120,28 @@ export function createLoopStatusResource(input: {
     }
     const hadLight = value.hadLight
     value.lightActive = lightActive
-    const loopID = binding ?? history.blueprintID ?? value.blueprint?.id
     if (loopID && input.hasFeature("blueprint") && value.blueprintRead !== loopID) {
       value.blueprintRead = loopID
       value.blueprintError = false
       const request = new AbortController(),
         revision = ++value.blueprintRevision
+      blueprintRequest = request
       requests.add(request)
-      onCleanup(() => {
-        if (requests.has(request)) {
-          request.abort()
-          if (value.blueprintRevision === revision) value.blueprintRead = undefined
-        }
-      })
       void input
         .getBlueprint(loopID, owner.scopeID, request.signal)
         .then((loop) => {
           if (request.signal.aborted || retained.get(key(owner)) !== value || value.blueprintRevision !== revision)
             return
           value.blueprint =
-            loop && available(loop) && loop.sessionID === owner.sessionID && loop.scopeID === owner.scopeID
+            loop &&
+            loop.id === loopID &&
+            available(loop) &&
+            loop.sessionID === owner.sessionID &&
+            loop.scopeID === owner.scopeID
               ? loop
               : undefined
-          value.blueprintError = !value.blueprint
+          value.blueprintError =
+            !value.blueprint || (!binding && !isTerminalBlueprintLoopStatus(value.blueprint.status))
           publish()
         })
         .catch(() => {
@@ -168,11 +184,28 @@ export function createLoopStatusResource(input: {
         })
         .finally(() => requests.delete(request))
     }
+    const pendingBlueprint = blueprintRequest
+    const blueprintRevision = value.blueprintRevision
     const pendingTerminal = terminalRequest
     const terminalRevision = value.lightRevision
     onCleanup(() => {
       const next = untrack(input.owner)
       const nextEpoch = untrack(epoch)
+      const nextBinding = untrack(input.loopID)
+      const nextLoopID = nextBinding ?? untrack(input.history).blueprintID ?? value.blueprint?.id
+      if (
+        pendingBlueprint &&
+        requests.has(pendingBlueprint) &&
+        (!next ||
+          key(next) !== key(owner) ||
+          nextBinding !== binding ||
+          nextLoopID !== loopID ||
+          nextEpoch.selection !== current.selection ||
+          nextEpoch.reconnect !== current.reconnect)
+      ) {
+        pendingBlueprint.abort()
+        if (value.blueprintRevision === blueprintRevision) value.blueprintRead = undefined
+      }
       if (
         pendingTerminal &&
         requests.has(pendingTerminal) &&
@@ -221,7 +254,14 @@ export function createLoopStatusResource(input: {
         id = key(loop)
       if (!retained.has(id) && (!owner || key(owner) !== id)) return
       const value = touch(loop)
-      if (value.blueprint && value.blueprint.time.updated > loop.time.updated) return
+      const binding = owner && key(owner) === id ? untrack(input.loopID) : value.blueprintBinding
+      if (binding && loop.id !== binding) return
+      if (
+        value.blueprint &&
+        (!binding || value.blueprint.id === loop.id) &&
+        value.blueprint.time.updated > loop.time.updated
+      )
+        return
       value.blueprint = loop
       value.blueprintError = false
       value.blueprintRead = loop.id

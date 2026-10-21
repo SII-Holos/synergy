@@ -430,6 +430,10 @@ describe("LightLoop terminal hook delivery", () => {
           await LightLoopRuntime.setTerminalStatus(terminal.id, "completed")
           await LightLoopRuntime.failActiveLoop(terminal.id, "boom")
           expect((await LightLoopTerminalStore.get(terminal))?.status).toBe("completed")
+
+          const failure = new Error("Session read unavailable")
+          using read = spyOn(Session, "get").mockRejectedValueOnce(failure)
+          await expect(LightLoopRuntime.failActiveLoop(plain.id, "boom")).rejects.toBe(failure)
         },
       })
     }))

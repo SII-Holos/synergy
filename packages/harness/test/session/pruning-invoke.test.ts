@@ -18,6 +18,7 @@ import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { SessionCompaction } from "../../src/session/compaction"
 import { SessionAbort } from "../../src/session/abort"
+import { SessionInbox } from "../../src/session/inbox"
 import { testRuntime } from "../support/runtime"
 
 const evidence = "evidence-419 ".repeat(2_000)
@@ -298,10 +299,21 @@ for (const scenario of [
               }
             }
             const originalPrune = SessionCompaction.prune
+            let queuedItemID: string | undefined
             const prune =
               "interrupt" in scenario || "failure" in scenario
                 ? spyOn(SessionCompaction, "prune").mockImplementation(async (input) => {
-                    if ("failure" in scenario) throw new Error("Fixture pruning preparation failed")
+                    if ("failure" in scenario) {
+                      if (queuedItemID) return originalPrune(input)
+                      const item = await SessionInbox.enqueueUser({
+                        sessionID: session.id,
+                        agent: "fixture",
+                        model: { providerID: "fixture", modelID: "fixture" },
+                        parts: [{ type: "text", text: "Keep this queued task for explicit recovery." }],
+                      })
+                      queuedItemID = item.id
+                      throw new Error("Fixture pruning preparation failed")
+                    }
                     await SessionAbort.abort(session.id)
                     return originalPrune(input)
                   })
@@ -401,6 +413,8 @@ for (const scenario of [
               } else {
                 expect(latest.finish).toBe("error")
                 expect(JSON.stringify(latest.error).includes("Fixture pruning preparation failed")).toBe(true)
+                const queued = await SessionInbox.getStored(session.id, queuedItemID!)
+                expect(messages.some((message) => message.info.id === queued.messageID)).toBe(false)
               }
             }
             if (scenario.pressure === "none") {

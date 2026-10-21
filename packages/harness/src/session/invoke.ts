@@ -333,8 +333,14 @@ export namespace SessionInvoke {
    * rests as if it had finished. The reason is carried in the description
    * because the client renders that text.
    */
-  async function pauseAfterFailure(sessionID: string, error: MessageV2.Assistant["error"]): Promise<void> {
-    const data = error?.data
+  async function pauseAfterFailure(sessionID: string, error: unknown): Promise<void> {
+    if (
+      MessageV2.AbortedError.isInstance(error) ||
+      (MessageV2.SessionTerminalError.isInstance(error) && error.data.errorName === MessageV2.AbortedError.name) ||
+      (error instanceof Error && error.name === "AbortError")
+    )
+      return
+    const data = error && typeof error === "object" && "data" in error ? error.data : undefined
     const detail =
       data && typeof data === "object" && "message" in data && typeof data.message === "string"
         ? data.message
@@ -342,11 +348,21 @@ export namespace SessionInvoke {
     await SessionLifecycle.pause({
       sessionID,
       reason: "failed",
-      description: detail ?? error?.name,
+      description: detail ?? (error instanceof Error ? error.message : String(error)),
     }).catch((pauseError) => {
       log.warn("session pause after turn error failed", { sessionID, error: pauseError })
     })
     await publishResolvedStatus(sessionID)
+  }
+
+  function terminalError(error: NonNullable<MessageV2.Assistant["error"]>) {
+    return new MessageV2.SessionTerminalError({
+      errorName: error.name,
+      message:
+        error.data && typeof error.data === "object" && "message" in error.data
+          ? String(error.data.message)
+          : error.name,
+    })
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -479,6 +495,7 @@ export namespace SessionInvoke {
         })
       }
       if (!lease.signal.aborted) {
+        await pauseAfterFailure(sessionID, error)
         const session = await SessionExecutionOwners.currentSession(await Session.get(sessionID))
         const kind = WorkflowKindRegistry.effectiveKind(session.workflow)
         if (kind)
@@ -1865,6 +1882,9 @@ export namespace SessionInvoke {
                 if (terminalReply?.info.role === "assistant" && terminalReply.info.id !== previousTerminalReplyID) {
                   await Session.recordCompletionNotice(sessionID, { publishEvent: !terminalReply.info.error })
                 }
+                if (terminalReply?.info.role === "assistant" && terminalReply.info.error) {
+                  throw terminalError(terminalReply.info.error)
+                }
               }
 
               const nextTask = await SessionInbox.materializeNextTask(sessionID)
@@ -1912,12 +1932,7 @@ export namespace SessionInvoke {
     // exception so cortex/runTask records task.status = "error" instead of
     // silently marking the task as "completed".
     if (resultMessage.info.role === "assistant" && resultMessage.info.error) {
-      const err = resultMessage.info.error
-      throw new MessageV2.SessionTerminalError({
-        errorName: err.name,
-        message:
-          err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
-      })
+      throw terminalError(resultMessage.info.error)
     }
     return resultMessage
   }
@@ -2171,14 +2186,6 @@ export namespace SessionInvoke {
       log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
     )
     await SessionContextContributions.onAssistantComplete(message)
-    // A turn that ends in error is an abnormal end, so it leaves the same
-    // visible intermediate state as every other one: the session stays stopped
-    // until the user decides. Abort-shaped errors are excluded because a stop
-    // the user asked for is not a failure, and its own path already records the
-    // accurate reason.
-    if (!MessageV2.AbortedError.isInstance(message.error)) {
-      await pauseAfterFailure(input.sessionID, message.error)
-    }
     await Plugin.trigger(
       "session.turn.after",
       {

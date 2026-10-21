@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { createRoot, createSignal } from "solid-js"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { createLoopStatusResource } from "../../../src/components/prompt-input/loop-status-resource"
-import type { LoopTerminal } from "../../../src/components/prompt-input/loop-status"
+import type { LoopHistoryHint, LoopTerminal } from "../../../src/components/prompt-input/loop-status"
 
 const tick = () => Bun.sleep(0)
 const blueprint = (sessionID = "A", status: BlueprintLoopInfo["status"] = "running"): BlueprintLoopInfo => ({
@@ -16,16 +16,25 @@ const blueprint = (sessionID = "A", status: BlueprintLoopInfo["status"] = "runni
   auditAgent: "supervisor",
   time: { created: 1, updated: status === "running" ? 1 : 2 },
 })
-function fixture() {
+function fixture(
+  input: {
+    client?: object
+    selection?: { features: string[] }
+    binding?: string | null
+    history?: LoopHistoryHint
+  } = {},
+) {
   const [owner, setOwner] = createSignal<{ sessionID: string; scopeID: string } | undefined>({
     sessionID: "A",
     scopeID: "home",
   })
-  const [loopID, setLoopID] = createSignal<string | undefined>("loop-A")
+  const [loopID, setLoopID] = createSignal<string | undefined>(
+    input.binding === null ? undefined : (input.binding ?? "loop-A"),
+  )
   const [lightActive, setLightActive] = createSignal(false)
-  const [history, setHistory] = createSignal<{ blueprintID?: string; light?: string; lightReview?: string }>({})
+  const [history, setHistory] = createSignal<LoopHistoryHint>(input.history ?? {})
   const [lightReviewer, setLightReviewer] = createSignal<string>()
-  const [selection, setSelection] = createSignal({ features: ["blueprint", "light-loop"] })
+  const [selection, setSelection] = createSignal(input.selection ?? { features: ["blueprint", "light-loop"] })
   const [reconnect, setReconnect] = createSignal(0)
   const reads: Array<{
     id: string
@@ -41,7 +50,7 @@ function fixture() {
   const resource = createRoot((close) => {
     dispose = close
     return createLoopStatusResource({
-      client: {},
+      client: input.client ?? {},
       owner,
       loopID,
       lightActive,
@@ -77,6 +86,55 @@ function fixture() {
   }
 }
 
+test("remount revalidates an unfinished cached loop once but retains a confirmed terminal result", async () => {
+  const client = {},
+    selection = { features: ["blueprint", "light-loop"] }
+  const first = fixture({ client, selection })
+  await tick()
+  first.reads[0].reply.resolve(blueprint())
+  await tick()
+  expect(first.blueprint()?.status).toBe("running")
+  first.dispose()
+
+  const restored = fixture({ client, selection, binding: null, history: { blueprintID: "loop-A" } })
+  try {
+    await tick()
+    expect(restored.reads).toHaveLength(1)
+    restored.setHistory({ blueprintID: "loop-A" })
+    await tick()
+    expect(restored.reads).toHaveLength(1)
+    restored.reads[0].reply.resolve(blueprint("A", "failed"))
+    await tick()
+    expect(restored.blueprint()?.status).toBe("failed")
+  } finally {
+    restored.dispose()
+  }
+
+  const terminal = fixture({ client, selection, binding: null, history: { blueprintID: "loop-A" } })
+  try {
+    await tick()
+    expect(terminal.blueprint()?.status).toBe("failed")
+    expect(terminal.reads).toHaveLength(0)
+    terminal.setLoopID("loop-new")
+    await tick()
+    expect(terminal.reads).toHaveLength(1)
+  } finally {
+    terminal.dispose()
+  }
+
+  const pending = fixture({ client, selection, binding: "loop-new", history: { blueprintID: "loop-A" } })
+  try {
+    await tick()
+    expect(pending.reads).toHaveLength(1)
+    expect(pending.reads[0].id).toBe("loop-new")
+    pending.reads[0].reply.resolve({ ...blueprint(), id: "loop-new" })
+    await tick()
+    expect(pending.blueprint()?.id).toBe("loop-new")
+  } finally {
+    pending.dispose()
+  }
+})
+
 test("events retain terminal results, warm switching reads nothing, and an older snapshot cannot undo review", async () => {
   const f = fixture()
   try {
@@ -97,6 +155,63 @@ test("events retain terminal results, warm switching reads nothing, and an older
     expect(f.blueprint()?.status).toBe("completed")
     expect(f.reads).toHaveLength(1)
     expect(f.terminals).toHaveLength(0)
+  } finally {
+    f.dispose()
+  }
+})
+
+test("losing a running binding reads once, shares history updates, and retries only explicitly", async () => {
+  const f = fixture()
+  try {
+    await tick()
+    f.reads[0].reply.resolve(blueprint())
+    await tick()
+    f.setLoopID(undefined)
+    f.setHistory({ blueprintID: "loop-A" })
+    await tick()
+    expect(f.reads).toHaveLength(2)
+    f.setHistory({ blueprintID: "loop-A" })
+    await tick()
+    expect(f.reads).toHaveLength(2)
+    expect(f.reads[1].signal.aborted).toBe(false)
+    f.reads[1].reply.reject(new Error("offline"))
+    await tick()
+    expect(f.blueprintUnavailable()).toBe(true)
+    await tick()
+    expect(f.reads).toHaveLength(2)
+    f.retry()
+    await tick()
+    expect(f.reads).toHaveLength(3)
+    f.reads[2].reply.resolve(blueprint("A", "failed"))
+    await tick()
+    expect(f.blueprint()?.status).toBe("failed")
+    expect(f.blueprintUnavailable()).toBe(false)
+  } finally {
+    f.dispose()
+  }
+})
+
+test("an old loop reply or event cannot displace the current binding", async () => {
+  const f = fixture()
+  try {
+    await tick()
+    f.setLoopID("loop-next")
+    await tick()
+    expect(f.reads[0].signal.aborted).toBe(true)
+    f.update(blueprint("A", "failed"))
+    f.reads[0].reply.resolve(blueprint())
+    await tick()
+    expect(f.blueprint()).toBeUndefined()
+    f.reads[1].reply.resolve({ ...blueprint(), id: "loop-next", title: "Next" })
+    await tick()
+    expect(f.blueprint()).toMatchObject({ id: "loop-next", title: "Next", status: "running" })
+    expect(f.reads).toHaveLength(2)
+    f.update({ ...blueprint("A", "failed"), id: "loop-next", time: { created: 1, updated: 20 } })
+    f.setLoopID(undefined)
+    f.setHistory({ blueprintID: "loop-next" })
+    await tick()
+    f.update({ ...blueprint("A", "completed"), time: { created: 1, updated: 10 } })
+    expect(f.blueprint()).toMatchObject({ id: "loop-next", status: "failed" })
   } finally {
     f.dispose()
   }
@@ -180,6 +295,14 @@ test("loaded history metadata recovers a result without loading message bodies; 
     f.setReconnect(1)
     await tick()
     expect([f.reads.length, f.terminals.length]).toEqual(before.map((count) => count + 1))
+    const obsolete = f.reads.at(-1)!
+    f.setReconnect(2)
+    await tick()
+    expect(obsolete.signal.aborted).toBe(true)
+    f.reads.at(-1)!.reply.resolve(blueprint("A", "failed"))
+    obsolete.reply.resolve(blueprint("A", "completed"))
+    await tick()
+    expect(f.blueprint()?.status).toBe("failed")
   } finally {
     f.dispose()
   }

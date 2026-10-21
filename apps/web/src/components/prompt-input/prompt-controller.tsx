@@ -102,7 +102,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { resolveBossWorkflowMenuState, resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
 import {
   blueprintRequestErrorMessage,
-  isTerminalBlueprintLoopStatus,
+  resolveBlueprintLoopState,
   resolveBlueprintSlotDisplay,
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
@@ -290,18 +290,10 @@ export function createPromptInputController(props: PromptInputProps) {
   const storedLightLoop = createMemo(() =>
     params.id ? backendLightLoopActive() || pendingLightLoop() : pendingLightLoop(),
   )
-  const blueprintModeLocked = createMemo(() => !!availableLocalLoop() || !!blueprintBinding()?.loopID)
-  const lightLoopActive = createMemo(
-    () => capabilities.has("light-loop") && !blueprintModeLocked() && storedLightLoop(),
-  )
   const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
     return backendLightLoopActive() && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
-  const storedPlan = createMemo(
-    () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
-  )
-  const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
   const bossActive = createMemo(
     () => capabilities.has("boss") && (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()),
   )
@@ -389,12 +381,21 @@ export function createPromptInputController(props: PromptInputProps) {
   /** The BlueprintLoop actually bound to this session, or undefined when there
    *  is none or it already reached a terminal state — cancelling a finished loop
    *  is not what "stop" means, and the store rejects that transition. */
-  const boundLoopID = createMemo(() => {
-    const loopID = params.id ? blueprintBinding()?.loopID : undefined
-    if (!loopID) return undefined
-    const loop = sessionLoop()
-    return loop?.id === loopID && isTerminalBlueprintLoopStatus(loop.status) ? undefined : loopID
-  })
+  const boundLoopID = createMemo(
+    () =>
+      resolveBlueprintLoopState({
+        loop: sessionLoop(),
+        activeLoopID: params.id ? blueprintBinding()?.loopID : undefined,
+      }).activeLoopID,
+  )
+  const blueprintModeLocked = createMemo(() => !!availableLocalLoop() || !!boundLoopID())
+  const lightLoopActive = createMemo(
+    () => capabilities.has("light-loop") && !blueprintModeLocked() && storedLightLoop(),
+  )
+  const storedPlan = createMemo(
+    () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
+  )
+  const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
 
   const abortController = createAbortRequestController({
     request: () => abortSession(params.id),
