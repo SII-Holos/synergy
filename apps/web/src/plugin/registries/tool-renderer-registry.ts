@@ -1,6 +1,5 @@
 import { SmartTool } from "@ericsanchezok/synergy-ui/basic-tool"
 import {
-  externalFallbackLookup,
   notifyExternalToolLoaded,
   setExternalToolLookup,
   type ToolComponent,
@@ -39,9 +38,6 @@ function fallbackRenderer(props: ToolProps) {
     },
     get hideDetails() {
       return props.hideDetails
-    },
-    get fallbackMeta() {
-      return externalFallbackLookup?.(props.tool)
     },
   })
 }

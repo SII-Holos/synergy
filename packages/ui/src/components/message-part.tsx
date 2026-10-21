@@ -158,10 +158,10 @@ export function getDirectory(path: string | undefined) {
   return relativizeProjectPaths(_getDirectory(path), data.directory)
 }
 
-import type { IconName } from "./icon"
+import type { IconName, IconSource } from "./icon"
 
 export type ToolInfo = {
-  icon: IconName
+  icon: IconSource
   title: string | MessageDescriptor
   subtitle?: string
   objectKind?: "path" | "command" | "query"
@@ -365,15 +365,15 @@ export function getToolInfo(
 }
 
 function getToolDescription(tool: string, input: any = {}, metadata: any = {}): Omit<ToolTriggerInfo, "icon"> {
-  const computer = getComputerToolPresentation(tool, input)
+  const computer = getComputerToolPresentation(tool, input, metadata)
   if (computer) return computer
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
   const lattice = getLatticeToolPresentation(tool, input, metadata)
   if (lattice) return lattice
 
-  if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
-  if (isScholightToolName(tool)) return getScholightToolInfo(tool, input)
+  if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input, metadata)
+  if (isScholightToolName(tool)) return getScholightToolInfo(tool, input, metadata)
 
   switch (tool) {
     case "read":
@@ -429,7 +429,7 @@ function getToolDescription(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: input.url,
       }
     case "task":
-      return getTaskToolInfo(input)
+      return getTaskToolInfo(input, metadata)
     case "bash":
       return {
         title: TOOL_TITLE_DESC["bash"],
@@ -1305,19 +1305,10 @@ import {
   getTool,
   ToolRegistry,
   setExternalToolLookup,
-  setExternalFallbackLookup,
   notifyExternalToolLoaded,
   resolveToolRenderer,
 } from "./tool-registry-lazy"
-export {
-  registerTool,
-  getTool,
-  ToolRegistry,
-  setExternalToolLookup,
-  setExternalFallbackLookup,
-  notifyExternalToolLoaded,
-  resolveToolRenderer,
-}
+export { registerTool, getTool, ToolRegistry, setExternalToolLookup, notifyExternalToolLoaded, resolveToolRenderer }
 
 PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
   const data = useData()

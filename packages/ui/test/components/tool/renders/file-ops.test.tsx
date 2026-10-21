@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { beforeAll, beforeEach, describe, expect, mock, test } from "bun:test"
 import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descriptors"
 
@@ -24,6 +25,7 @@ beforeAll(async () => {
     }),
   }))
   mock.module("solid-js", () => ({
+    createSignal,
     createMemo: (fn: () => unknown) => fn,
     For: (props: { each?: unknown[]; children: [(value: unknown) => unknown] }) =>
       props.each?.map((value) => props.children[0](value)),

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { getToolIcon } from "../../../src/components/tool/icons"
 import { getSemanticIcon } from "../../../src/components/semantic-icon"
+import { registerIcon } from "../../../src/plugin/icon-registry"
 
 describe("tool icon identity", () => {
   test("shared businesses use the settings identity across tool aliases", () => {
@@ -29,5 +30,33 @@ describe("tool icon identity", () => {
     expect(getToolIcon("mcp__example__custom_operation")).toBe(getSemanticIcon("mcp.main"))
     expect(getToolIcon("unrecognized_operation")).toBe("wrench")
     expect(getToolIcon("mcp__scholight__extract_url")).toBe("telescope")
+    expect(getToolIcon("plugin__example__lookup")).toBe("package")
+  })
+
+  test("declared plugin icons use the plugin namespace and recover after disposal", () => {
+    const metadata = { display: { icon: "logo" } }
+    expect(getToolIcon("plugin__example__lookup", {}, metadata)).toBe("package")
+    const dispose = registerIcon({
+      name: "example:logo",
+      pluginId: "example",
+      svgContent: "<svg><path d='M0 0h24'/></svg>",
+    })
+    expect(getToolIcon("plugin__example__lookup", {}, metadata)).toBe("example:logo")
+    expect(getToolIcon("plugin__other__lookup", {}, metadata)).toBe("package")
+    dispose()
+    expect(getToolIcon("plugin__example__lookup", {}, metadata)).toBe("package")
+    expect(getToolIcon("plugin__example__lookup", {}, { display: { icon: "book-open" } })).toBe("book-open")
+  })
+
+  test("MCP image metadata takes priority and unsafe or missing images retain the fallback", () => {
+    const src = "data:image/png;base64,iVBORw0KGgo="
+    expect(getToolIcon("mcp__notion__fetch", {}, { display: { icon: [{ src, theme: "dark" }] } })).toEqual({
+      sources: [{ src, theme: "dark" }],
+      fallback: "brand-notion",
+    })
+    expect(getToolIcon("mcp__notion__fetch", {}, { display: { icon: [{ src: "javascript:alert(1)" }] } })).toBe(
+      "brand-notion",
+    )
+    expect(getToolIcon("mcp__unknown__fetch", {}, { display: { icon: [] } })).toBe("cable")
   })
 })

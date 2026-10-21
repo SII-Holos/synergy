@@ -4,7 +4,7 @@ import {
   semanticCategoryForKnownTool,
   type SemanticCategory,
 } from "@ericsanchezok/synergy-util/activity"
-import type { IconName } from "../icon"
+import type { IconName, IconSource } from "../icon"
 import { COMPUTER_TOOL_ICONS } from "./computer-icons"
 import type { MessageDescriptor } from "@lingui/core"
 import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
@@ -37,7 +37,7 @@ export function getLatticeToolPresentation(
   tool: string,
   input: Record<string, any> = {},
   metadata: Record<string, any> = {},
-): { icon: IconName; title: MessageDescriptor; subtitle?: string; args?: string[] } | undefined {
+): { icon: IconSource; title: MessageDescriptor; subtitle?: string; args?: string[] } | undefined {
   if (tool === "pathway_read") {
     const completed = typeof metadata.completed === "number" ? metadata.completed : undefined
     const total = typeof metadata.total === "number" ? metadata.total : undefined
@@ -351,12 +351,16 @@ function buildArgs(
 // Re-export for convenient access
 export { CLASSIFIER_LABEL_DESC }
 
-export function getComputerToolPresentation(tool: string, input: Record<string, unknown> = {}) {
+export function getComputerToolPresentation(
+  tool: string,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
+) {
   if (!Object.hasOwn(COMPUTER_TOOL_ICONS, tool)) return undefined
   const action =
     input.input && typeof input.input === "object" && "action" in input.input ? input.input.action : undefined
   return {
-    icon: COMPUTER_TOOL_ICONS[tool]!,
+    icon: getToolIcon(tool, input, metadata),
     title: TOOL_TITLE_DESC[tool]!,
     subtitle: typeof action === "string" ? action : undefined,
   }

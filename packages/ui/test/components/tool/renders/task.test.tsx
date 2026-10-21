@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { describe, expect, mock, test } from "bun:test"
 import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descriptors"
 
@@ -16,6 +17,7 @@ mock.module("@lingui/solid", () => ({
   useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
 }))
 mock.module("solid-js", () => ({
+  createSignal,
   createMemo: (fn: () => unknown) => fn,
   For: () => null,
   Show: () => null,

@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { describe, expect, mock, test } from "bun:test"
 
 let registeredRenders: Record<string, (props: Record<string, any>) => unknown> = {}
@@ -15,6 +16,7 @@ mock.module("@lingui/solid", () => ({
   }),
 }))
 mock.module("solid-js", () => ({
+  createSignal,
   createMemo: (fn: () => unknown) => fn,
   For: () => null,
   Show: () => null,

@@ -167,7 +167,7 @@ describe("tool settlement vs late state flushes", () => {
                   async execute() {
                     await processor.updateToolCallState(callID, {
                       input: {},
-                      metadata: { display: { kind: "media-generation" } },
+                      metadata: { display: { kind: "media-generation", icon: "image-plus" } },
                     })
                     if (kind === "cancelled") abort.abort()
                     if (kind === "timeout") abort.abort(new DOMException("deadline", "TimeoutError"))
@@ -180,7 +180,7 @@ describe("tool settlement vs late state flushes", () => {
             expect(part.state.status).toBe("error")
             if (part.state.status !== "error") throw new Error("Expected a settled error")
             expect(part.state.reason).toBe(kind === "cancelled" ? "cancelled" : undefined)
-            expect(part.state.metadata?.display).toEqual({ kind: "media-generation" })
+            expect(part.state.metadata?.display).toEqual({ kind: "media-generation", icon: "image-plus" })
           }
         },
       })

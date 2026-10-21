@@ -1,3 +1,4 @@
+import type { IconSource } from "../icon"
 import { getToolIcon } from "./icons"
 import { parseToolResultRows, toolCompactArgs, toolFirstString, toolHostname } from "./anysearch-info"
 
@@ -6,7 +7,7 @@ export const SCHOLIGHT_TOOL_NAMES = ["mcp__scholight__search_papers", "mcp__scho
 export type ScholightToolName = (typeof SCHOLIGHT_TOOL_NAMES)[number]
 
 export interface ScholightToolInfo {
-  icon: string
+  icon: IconSource
   title: string
   subtitle?: string
   args?: string[]
@@ -34,11 +35,15 @@ function dateRange(value: unknown): string | undefined {
   return value.trim()
 }
 
-export function getScholightToolInfo(name: ScholightToolName, input: Record<string, unknown> = {}): ScholightToolInfo {
+export function getScholightToolInfo(
+  name: ScholightToolName,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
+): ScholightToolInfo {
   switch (name) {
     case "mcp__scholight__search_papers":
       return {
-        icon: getToolIcon(name, input),
+        icon: getToolIcon(name, input, metadata),
         title: "Scholight",
         subtitle: toolFirstString(input.query),
         args: toolCompactArgs([
@@ -51,7 +56,7 @@ export function getScholightToolInfo(name: ScholightToolName, input: Record<stri
       }
     case "mcp__scholight__extract_url":
       return {
-        icon: getToolIcon(name, input),
+        icon: getToolIcon(name, input, metadata),
         title: "Scholight Extract",
         subtitle: toolFirstString(input.url),
         args: toolCompactArgs([toolHostname(input.url), toolFirstString(input.format)]),

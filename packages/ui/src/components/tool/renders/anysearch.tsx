@@ -25,7 +25,7 @@ function resultCountLabel(count: number): string {
 }
 
 function triggerFromInfo(name: AnysearchToolName, props: ToolProps) {
-  const info = getAnysearchToolInfo(name, props.input ?? {})
+  const info = getAnysearchToolInfo(name, props.input ?? {}, props.metadata ?? {})
   return {
     icon: info.icon,
     title: info.title,

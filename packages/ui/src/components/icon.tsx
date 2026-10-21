@@ -3,7 +3,8 @@ import { getIcon } from "../plugin/icon-registry"
 // Side-effect import: registers all built-in Lucide icon names in the registry
 import "../plugin/builtin-icons"
 
-import { splitProps, type ComponentProps } from "solid-js"
+import { createMemo, createSignal, For, Show, splitProps, type ComponentProps } from "solid-js"
+import type { ToolIconSource } from "@ericsanchezok/synergy-util/tool-display"
 import { Dynamic } from "solid-js/web"
 import {
   Icon as LucideIcon,
@@ -682,9 +683,10 @@ const icons = {
 }
 
 export type IconName = keyof typeof icons | string
+export type IconSource = IconName | { sources: ToolIconSource[]; fallback: IconName }
 
 export interface IconProps extends Omit<ComponentProps<"svg">, "name"> {
-  name: IconName
+  name: IconSource
   size?: "small" | "normal" | "large"
   /** Override the icon color (applied as inline fill / stroke via `color`). */
   color?: string
@@ -694,7 +696,7 @@ export function Icon(props: IconProps) {
   const [local, others] = splitProps(props, ["name", "size", "class", "classList", "color"])
 
   // Check registry for a plugin-contributed icon with actual SVG markup
-  const entry = () => getIcon(local.name)
+  const entry = () => (typeof local.name === "string" ? getIcon(local.name) : undefined)
   const pluginSvg = () => entry()?.svgContent
 
   // Fall back to Lucide component map for built-ins
@@ -707,6 +709,7 @@ export function Icon(props: IconProps) {
       style={local.color ? { color: local.color } : undefined}
     >
       {(() => {
+        if (typeof local.name !== "string") return <ImageIcon value={local.name} size={local.size} />
         const svg = pluginSvg()
         if (svg) {
           // Plugin icon: render raw SVG markup through innerHTML
@@ -740,6 +743,36 @@ export function Icon(props: IconProps) {
         return null
       })()}
     </div>
+  )
+}
+
+function ImageIcon(props: { value: Exclude<IconSource, string>; size: IconProps["size"] }) {
+  const variants = createMemo(() => {
+    const sources = props.value.sources
+    const choose = (theme: "light" | "dark") =>
+      sources.find((item) => item.theme === theme) ?? sources.find((item) => !item.theme) ?? sources[0]
+    const light = choose("light")
+    const dark = choose("dark")
+    return light?.src === dark?.src
+      ? [{ source: light, theme: "any" }]
+      : [
+          { source: light, theme: "light" },
+          { source: dark, theme: "dark" },
+        ]
+  })
+  return (
+    <For each={variants()}>
+      {(variant) => {
+        const [failed, setFailed] = createSignal(false)
+        return (
+          <span data-slot="icon-image" data-theme={variant.theme}>
+            <Show when={variant.source && !failed()} fallback={<Icon name={props.value.fallback} size={props.size} />}>
+              <img src={variant.source?.src} alt="" aria-hidden="true" onError={() => setFailed(true)} />
+            </Show>
+          </span>
+        )
+      }}
+    </For>
   )
 }
 

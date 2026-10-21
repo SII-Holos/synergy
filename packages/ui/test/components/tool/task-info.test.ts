@@ -30,4 +30,10 @@ describe("task tool card title", () => {
       tags: [{ label: "explore" }, { label: "Background" }],
     })
   })
+
+  test("keeps declared task icons aligned between activity and detail triggers", () => {
+    const metadata = { display: { icon: "bot" } }
+    expect(getTaskToolInfo({}, metadata).icon).toBe("bot")
+    expect(getTaskToolTrigger({}, { metadata }).icon).toBe("bot")
+  })
 })

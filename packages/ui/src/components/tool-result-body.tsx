@@ -17,7 +17,6 @@ import { toolFeatureAvailable, toolHistoricalText } from "./tool-result-presenta
 import { ToolObjectResult } from "./tool-object-result"
 import { patchOutcome } from "./tool/patch-result"
 import {
-  externalFallbackLookup,
   externalLoadNotify,
   externalLookup,
   resolveToolRenderer,
@@ -72,7 +71,6 @@ function fallbackRender(props: ToolProps) {
       metadata={props.metadata}
       time={props.time}
       hideDetails={props.hideDetails}
-      fallbackMeta={externalFallbackLookup?.(props.tool)}
     />
   )
 }

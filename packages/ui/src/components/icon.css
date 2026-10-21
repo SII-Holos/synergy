@@ -26,4 +26,28 @@
     width: 100%;
     height: auto;
   }
+
+  [data-slot="icon-image"] {
+    display: inline-flex;
+    width: 100%;
+    height: 100%;
+
+    &[data-theme="dark"] {
+      display: none;
+    }
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+  }
+}
+
+:root[data-color-scheme="dark"] [data-component="icon"] [data-slot="icon-image"] {
+  &[data-theme="light"] {
+    display: none;
+  }
+  &[data-theme="dark"] {
+    display: inline-flex;
+  }
 }

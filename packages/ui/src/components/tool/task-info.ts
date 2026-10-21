@@ -1,20 +1,23 @@
 import { getToolIcon } from "./icons"
 import { TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
-export function getTaskToolInfo(input: Record<string, unknown>) {
+export function getTaskToolInfo(input: Record<string, unknown>, metadata: Record<string, unknown> = {}) {
   const description = typeof input.taskTitle === "string" ? input.taskTitle : undefined
   const agentType = typeof input.subagent_type === "string" ? input.subagent_type : undefined
 
   return {
-    icon: getToolIcon("task", input),
+    icon: getToolIcon("task", input, metadata),
     title: TOOL_TITLE_DESC.task,
     subtitle: description,
     args: agentType ? [agentType] : undefined,
   }
 }
 
-export function getTaskToolTrigger(input: Record<string, unknown>, options: { backgroundLabel?: string } = {}) {
-  const info = getTaskToolInfo(input)
+export function getTaskToolTrigger(
+  input: Record<string, unknown>,
+  options: { backgroundLabel?: string; metadata?: Record<string, unknown> } = {},
+) {
+  const info = getTaskToolInfo(input, options.metadata)
   const tags = [
     ...(info.args?.map((label) => ({ label })) ?? []),
     ...(options.backgroundLabel ? [{ label: options.backgroundLabel }] : []),

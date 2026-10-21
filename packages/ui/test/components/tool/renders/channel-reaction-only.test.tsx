@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { describe, expect, mock, test } from "bun:test"
 import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descriptors"
 
@@ -22,7 +23,7 @@ mock.module("@lingui/solid", () => ({
     _: (descriptor: { id: string; message?: string }) => descriptor.message ?? descriptor.id,
   }),
 }))
-mock.module("solid-js", () => ({ Show: () => null }))
+mock.module("solid-js", () => ({ createSignal, Show: () => null }))
 mock.module("../../../../src/components/basic-tool", () => ({
   BasicTool: (props: { trigger: Record<string, unknown> }) => {
     capturedTrigger = props.trigger

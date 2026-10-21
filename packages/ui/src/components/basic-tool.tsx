@@ -227,9 +227,6 @@ export function BasicTool(props: BasicToolProps) {
  * gemini read_file), MCP tools, and any future tools — all without
  * writing a single new ToolRegistry.register() entry.
  *
- * When `fallbackMeta` is provided (from plugin Tier 1 declarative metadata),
- * its icon/title/subtitleTemplate values override the auto-classified
- * defaults, giving plugin authors control over the smart fallback display.
  */
 export function SmartTool(props: {
   tool: string
@@ -241,11 +238,6 @@ export function SmartTool(props: {
   hideDetails?: boolean
   metadata?: Record<string, any>
   time?: ToolTime
-  fallbackMeta?: {
-    icon?: string
-    title?: string
-    subtitleTemplate?: string
-  }
 }) {
   const { i18n } = useLingui()
   const classified = createMemo(() =>
@@ -253,25 +245,15 @@ export function SmartTool(props: {
   )
 
   const icon = createMemo(() => {
-    const fb = props.fallbackMeta
-    if (fb?.icon) return fb.icon as IconName
     return getToolIcon(props.tool, props.input, props.metadata)
   })
 
   const title = createMemo(() => {
-    const fb = props.fallbackMeta
-    if (fb?.title) return fb.title
     const descriptor = classified().titleDescriptor
     return descriptor ? translateToolDescriptor(i18n(), descriptor) : classified().title
   })
 
-  const subtitle = createMemo(() => {
-    const fb = props.fallbackMeta
-    if (fb?.subtitleTemplate) {
-      return resolveTemplate(fb.subtitleTemplate, props.input, props.metadata ?? {})
-    }
-    return classified().subtitle
-  })
+  const subtitle = () => classified().subtitle
   const tags = createMemo(() => {
     const items = classified().args?.map((label) => ({ label })) ?? []
     const descriptor = classified().countDescriptor
@@ -303,29 +285,4 @@ export function SmartTool(props: {
       </Show>
     </BasicTool>
   )
-}
-
-/**
- * Resolve a template string like "Reading {input.path}" by substituting
- * placeholder values from input or metadata.
- *
- * Placeholders use dot-separated paths: `{input.path}`, `{metadata.key}`.
- * Missing values produce the placeholder as-is.
- */
-function resolveTemplate(template: string, input: Record<string, any>, metadata: Record<string, any>): string {
-  return template.replace(/\{(\w[\w.]*)\}/g, (_match, path: string) => {
-    const parts = path.split(".")
-    const root = parts[0]
-    let source: Record<string, any> | undefined
-    if (root === "input") source = input
-    else if (root === "metadata") source = metadata
-    else return `{${path}}`
-
-    let val: any = source
-    for (const part of parts) {
-      if (val == null || typeof val !== "object") return `{${path}}`
-      val = val[part]
-    }
-    return typeof val === "string" ? val : `{${path}}`
-  })
 }

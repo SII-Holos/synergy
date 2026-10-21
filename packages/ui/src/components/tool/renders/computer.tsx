@@ -101,7 +101,7 @@ for (const name of ["computer_apps", "computer_observe", "computer_action"] as c
         <BasicTool
           {...props}
           trigger={{
-            ...getComputerToolPresentation(name, props.input)!,
+            ...getComputerToolPresentation(name, props.input, props.metadata)!,
             tags: [
               ...(mode() ? [{ label: _(mode() === "foreground" ? D.foreground : D.background) }] : []),
               ...(observation()

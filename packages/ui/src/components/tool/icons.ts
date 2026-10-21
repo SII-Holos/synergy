@@ -1,3 +1,8 @@
+import { toolIconSources } from "@ericsanchezok/synergy-util/tool-display"
+import { PluginToolId } from "@ericsanchezok/synergy-util/plugin-ids"
+import { hasIcon } from "../../plugin/icon-registry"
+import "../../plugin/builtin-icons"
+import type { IconSource } from "../icon"
 import { classifySemanticCategory, type SemanticCategory } from "@ericsanchezok/synergy-util/activity"
 import { getSemanticIcon } from "../semantic-icon"
 
@@ -192,6 +197,25 @@ export function getToolIcon(
   tool: string,
   input: Record<string, unknown> = {},
   metadata: Record<string, unknown> = {},
+): IconSource {
+  const fallback = builtinToolIcon(tool, input, metadata)
+  const display = metadata.display
+  if (!display || typeof display !== "object" || !("icon" in display)) return fallback
+  const declared = display.icon
+  if (typeof declared === "string") {
+    const plugin = PluginToolId.parse(tool)
+    const scoped = plugin ? `${plugin.pluginId}:${declared}` : undefined
+    if (scoped && hasIcon(scoped)) return scoped
+    return hasIcon(declared) ? declared : fallback
+  }
+  const sources = toolIconSources(declared)
+  return sources.length ? { sources, fallback } : fallback
+}
+
+function builtinToolIcon(
+  tool: string,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
 ): string {
   if (
     ["note_list", "note_read", "note_search", "note_write", "note_edit"].includes(tool) &&
@@ -207,6 +231,7 @@ export function getToolIcon(
       return input.reply === "reject" ? "shield-x" : getSemanticIcon("settings.permissions")
   }
   if (Object.hasOwn(toolIcons, tool)) return toolIcons[tool]!
+  if (PluginToolId.is(tool)) return getSemanticIcon("plugins.main")
   if (tool.startsWith("mcp__notion__")) return "brand-notion"
   if (tool.startsWith("mcp__")) return getSemanticIcon("mcp.main")
   return getCategoryIcon(classifySemanticCategory(tool, input))
