@@ -51,6 +51,42 @@ export namespace RolloutSnapshot {
     })
   }
 
+  export async function modelCalls(
+    owner: RolloutSchema.Owner,
+  ): Promise<Pick<Info, "owner" | "revision" | "runs" | "calls">> {
+    await RolloutJournal.prepare(owner)
+    await prepareOwnerMigrations(owner)
+    return Storage.snapshot(async () => {
+      const head = await RolloutJournal.head(owner)
+      if (head.allocated !== head.committed) throw new Error("Rollout owner requires recovery")
+      const base = RolloutArtifact.root(owner)
+      const result: Pick<Info, "owner" | "revision" | "runs" | "calls"> = {
+        owner: RolloutSchema.Owner.parse(owner),
+        revision: head.committed,
+        runs: [],
+        calls: [],
+      }
+      const keys = (await Storage.scan([...base, "runs"])).map((id) => [...base, "runs", id])
+      for (let offset = 0; offset < keys.length; offset += 128) {
+        const page = keys.slice(offset, offset + 128)
+        const runs = await Storage.readMany(page.map((key) => [...key, "info"]))
+        for (const [index, key] of page.entries()) {
+          if (runs[index] !== undefined) {
+            const run = RolloutSchema.RunRecord.parse(runs[index])
+            check(result.owner, run, [...key.slice(base.length), "info"])
+            result.runs.push(run)
+          }
+          for await (const row of Storage.records({ prefix: [...key, "calls"], limit: 128 })) {
+            const call = RolloutSchema.CallRecord.parse(row.value)
+            check(result.owner, call, row.key.slice(base.length))
+            result.calls.push(call)
+          }
+        }
+      }
+      return result
+    })
+  }
+
   const Checkpoint = z.object({ version: z.literal(1), boundary: z.string(), snapshot: Info }).strict()
 
   async function optional<T>(key: string[]) {
@@ -70,28 +106,35 @@ export namespace RolloutSnapshot {
     await prepareOwnerMigrations(owner)
     const root = RolloutArtifact.root(owner)
     const key = [...root, "snapshot-v1"]
-    const headKey = [...root, "journal", "head"]
-    const head = await optional(headKey)
-    const revision = (await RolloutJournal.head(owner)).committed
-    if (!revision) return fold(owner, 0)
-    const raw = await optional(key)
-    const checkpoint = Checkpoint.safeParse(raw?.value)
-    let seed: Info | undefined
     const eventKey = (seq: number) => [...root, "journal", "events", String(seq).padStart(12, "0")]
-    if (
-      checkpoint.success &&
-      checkpoint.data.snapshot.revision <= revision &&
-      JSON.stringify(checkpoint.data.snapshot.owner) === JSON.stringify(RolloutSchema.Owner.parse(owner))
-    ) {
-      const boundary = await optional(eventKey(checkpoint.data.snapshot.revision))
-      if (boundary?.revision.toString() === checkpoint.data.boundary) seed = checkpoint.data.snapshot
-    }
+    const identity = JSON.stringify(RolloutSchema.Owner.parse(owner))
+    const { revision, boundary, seed } = await Storage.snapshot(async () => {
+      const revision = (await RolloutJournal.head(owner)).committed
+      const checkpoint = Checkpoint.safeParse((await optional(key))?.value)
+      let seed: Info | undefined
+      if (
+        checkpoint.success &&
+        checkpoint.data.snapshot.revision <= revision &&
+        JSON.stringify(checkpoint.data.snapshot.owner) === identity &&
+        (await optional(eventKey(checkpoint.data.snapshot.revision)))?.revision.toString() === checkpoint.data.boundary
+      )
+        seed = checkpoint.data.snapshot
+      return { revision, seed, boundary: revision ? await optional(eventKey(revision)) : undefined }
+    })
+    if (!revision) return fold(owner, 0)
     if (seed?.revision === revision) return seed
     const snapshot = await withStorageQueueOptions({ priority: "background" }, () => fold(owner, revision, {}, seed))
-    const boundary = await Storage.versioned(eventKey(revision))
     await Storage.transaction(async () => {
-      const latest = await optional(headKey)
-      if (!head || latest?.revision !== head.revision) return
+      if (!boundary || (await RolloutJournal.head(owner)).committed < revision) return
+      if ((await optional(eventKey(revision)))?.revision !== boundary.revision) return
+      const latest = Checkpoint.safeParse((await optional(key))?.value)
+      if (
+        latest.success &&
+        latest.data.snapshot.revision >= revision &&
+        JSON.stringify(latest.data.snapshot.owner) === identity &&
+        (await optional(eventKey(latest.data.snapshot.revision)))?.revision.toString() === latest.data.boundary
+      )
+        return
       await Storage.write(key, { version: 1, boundary: boundary.revision.toString(), snapshot })
     })
     return snapshot
@@ -146,43 +189,48 @@ export namespace RolloutSnapshot {
     }
   }
 
+  function check(
+    owner: RolloutSchema.Owner,
+    value: { owner: RolloutSchema.Owner; id: string; runID?: string },
+    key: string[],
+  ) {
+    if (JSON.stringify(RolloutSchema.Owner.parse(value.owner)) !== JSON.stringify(owner))
+      throw new Error("Rollout record owner mismatch")
+    const runID = value.runID ?? value.id
+    if (runID !== key[1] || (value.runID !== undefined && value.id !== key.at(-1)))
+      throw new Error("Rollout record identity mismatch")
+  }
+
   function decode(snapshot: Info, latest: Map<string, { key: string[]; value: unknown }>, onProgress?: () => void) {
-    function check(value: { owner: RolloutSchema.Owner; id: string; runID?: string }, key: string[]) {
-      if (JSON.stringify(RolloutSchema.Owner.parse(value.owner)) !== JSON.stringify(snapshot.owner))
-        throw new Error("Rollout record owner mismatch")
-      const runID = value.runID ?? value.id
-      if (runID !== key[1] || (value.runID !== undefined && value.id !== key.at(-1)))
-        throw new Error("Rollout record identity mismatch")
-    }
     for (const { key, value } of latest.values()) {
       if (key.length === 3 && key[2] === "info") {
         const run = RolloutSchema.RunRecord.parse(value)
-        check(run, key)
+        check(snapshot.owner, run, key)
         snapshot.runs.push(run)
       } else if (key.length === 4 && key[2] === "intervals") {
         const interval = RolloutSchema.ExecutionInterval.parse(value)
-        check(interval, key)
+        check(snapshot.owner, interval, key)
         snapshot.intervals.push(interval)
       } else if (key.length === 4 && key[2] === "segments") {
         const segment = RolloutSchema.ExecutionSegment.parse(value)
-        check(segment, key)
+        check(snapshot.owner, segment, key)
         snapshot.segments.push(segment)
       } else if (key.length === 4 && key[2] === "calls") {
         const call = RolloutSchema.CallRecord.parse(value)
-        check(call, key)
+        check(snapshot.owner, call, key)
         snapshot.calls.push(call)
       } else if (key.length === 5 && key[2] === "attempts") {
         const attempt = RolloutSchema.AttemptRecord.parse(value)
-        check(attempt, key)
+        check(snapshot.owner, attempt, key)
         if (attempt.callID !== key[3]) throw new Error("Rollout attempt call mismatch")
         snapshot.attempts.push(attempt)
       } else if (key.length === 4 && key[2] === "tools") {
         const tool = RolloutSchema.ToolExecutionRecord.parse(value)
-        check(tool, key)
+        check(snapshot.owner, tool, key)
         snapshot.tools.push(tool)
       } else if (key.length === 4 && key[2] === "processes") {
         const process = RolloutSchema.ProcessRecord.parse(value)
-        check(process, key)
+        check(snapshot.owner, process, key)
         snapshot.processes.push(process)
       } else throw new Error("Unknown rollout journal record")
       onProgress?.()
