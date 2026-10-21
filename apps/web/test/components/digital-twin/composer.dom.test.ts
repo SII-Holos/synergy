@@ -79,8 +79,9 @@ beforeAll(async () => {
     const messages=()=>[{id:"root",sessionID:session(),role:"user",isRoot:true,time:{created:1}},{id:"reply",sessionID:session(),role:"assistant",rootID:"root",time:{created:2,completed:3},finish:"stop"}]
     const [completionRevision,setCompletionRevision]=createSignal(0)
     controller.subscribe(()=>setCompletionRevision(value=>value+1))
+    let editor
     const input={readOnly:()=>false,current:()=>({mode:"normal"}),setComposing:value=>controller.setComposing(value),editor:{
-      label:()=>"Completion preview",mount:()=>()=>{},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{},
+      label:()=>"Completion preview",mount:element=>{editor=element;return ()=>{editor=undefined}},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{},
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
     }}
@@ -88,7 +89,7 @@ beforeAll(async () => {
       <DigitalTwinSettings value={settings()} models={[{providerId:"fixture",providerName:"Fixture",modelId:"large",modelName:"Large"}]} change={value=>{setSettings(value);setConfig("digitalTwin","automatic",value.automatic)}}/>
       <DefaultComposerEditor context={{input}} onError={error=>{throw error}}/>
       <textarea aria-label="Draft" value={text()} onInput={event=>{setText(event.currentTarget.value);controller.changed()}}/>
-      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show>
+      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show>
     </>}
     render(()=><I18nProvider i18n={i18n}><ThemeProvider><Contents/></ThemeProvider></I18nProvider>,document.getElementById("root"))
   `,
@@ -183,6 +184,25 @@ test("the two rendered settings retain manual prediction when automatic predicti
   expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([])
   await page.getByRole("button", { name: "Predict next input", exact: true }).click()
   expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(1)
+  expect(
+    await page
+      .getByRole("textbox", { name: "Completion preview" })
+      .evaluate((element) => element === document.activeElement),
+  ).toBe(true)
+  await page.evaluate(() => window.twinFixture.resolve(0))
+  await page.waitForFunction(() => !!window.twinFixture.ghost())
+  expect(
+    await page
+      .getByRole("textbox", { name: "Completion preview" })
+      .evaluate((element) => element === document.activeElement),
+  ).toBe(true)
+  await page.getByRole("button", { name: "Predict next input", exact: true }).click()
+  await page.getByRole("textbox", { name: "Draft" }).focus()
+  await page.evaluate(() => window.twinFixture.resolve(1))
+  await page.waitForFunction(() => !!window.twinFixture.ghost())
+  expect(
+    await page.getByRole("textbox", { name: "Draft" }).evaluate((element) => element === document.activeElement),
+  ).toBe(true)
   await model.selectOption("fixture/large")
   expect(await model.inputValue()).toBe("fixture/large")
   expect(errors).toEqual([])

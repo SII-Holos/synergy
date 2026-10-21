@@ -13,6 +13,7 @@ import { twinCopy } from "./copy"
 
 export function DigitalTwinComposer(props: {
   controller: ComposerDocumentController
+  focusEditor(): void
   sessionID?: string
   messages: Message[]
   status: SessionStatus
@@ -191,7 +192,10 @@ export function DigitalTwinComposer(props: {
           icon={getSemanticIcon("action.predict")}
           aria-label={_(twinCopy.predict)}
           disabled={!eligible() || !state().ready || busy()}
-          onClick={() => requests.manual()}
+          onClick={() => {
+            props.focusEditor()
+            requests.manual()
+          }}
         />
       </Tooltip>
       <Show when={failure()}>

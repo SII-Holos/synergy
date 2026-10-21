@@ -2511,6 +2511,7 @@ export function createPromptInputController(props: PromptInputProps) {
               <Suspense>
                 <DigitalTwinComposer
                   controller={composerDocument}
+                  focusEditor={() => editorRef?.focus()}
                   sessionID={params.id}
                   parentID={info()?.parentID}
                   messages={view().messagesFor(params.id ?? "")}

@@ -16,6 +16,8 @@ Preserve domain state and generated API ownership, public theme tokens, localiza
 
 Composer assistance uses the shared document completion and generic input-assistance metadata. Preserve provenance through edits, draft transfer, failed-submit restoration and ordinary message submission. Test late completion events against synchronized history, source edits and same-URL reconnects; completion status and historical rendering alone must never initiate automatic inference.
 
+Manual composer assistance returns focus at invocation, before disabling its trigger. Do not steal focus on asynchronous completion. Verify the real button-to-editor path, including moving to another control before the response arrives.
+
 ## Verify
 
 Start with `bun run verify plan`. During iteration run the narrow component, model or context test; before publication use `bun run verify local --test apps/web/test/<domain>/<file>.test.ts` with all relevant tests explicitly selected. The entry point uses canonical coverage executors and static gates; it leaves complete package thresholds and platform acceptance to CI.
