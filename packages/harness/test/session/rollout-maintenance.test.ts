@@ -9,7 +9,6 @@ import { RolloutJournal } from "../../src/session/rollout/journal"
 import { RolloutJournalMaintenance } from "../../src/session/rollout/journal-maintenance"
 
 test("bounded historical compaction resumes after reopening without changing evidence, revisions or retention age", async () => {
-  if (process.platform === "win32") console.info("rollout maintenance stage 0")
   await using runtime = await migrationFixture()
   await runtime.run(async () => {
     const owner = { kind: "operation" as const, scopeID: "fixture", operationID: "compact" }
@@ -49,7 +48,6 @@ test("bounded historical compaction resumes after reopening without changing evi
       await Storage.write([...root, "journal", "head"], { allocated: 130, committed: 130 })
       await Storage.write([...root, ...key], events.at(-1)!.value)
     })
-    if (process.platform === "win32") console.info("rollout maintenance stage 1")
     const before = await Array.fromAsync(RolloutJournal.events(owner, 130))
     expect(await RolloutJournalMaintenance.inspect()).toMatchObject({ legacyAttempts: 130 })
     {
@@ -62,28 +60,34 @@ test("bounded historical compaction resumes after reopening without changing evi
         await rewrite.call(this, entries)
         throw new Error("interrupted batch publication")
       })
-      await expect(RolloutJournalMaintenance.compact()).rejects.toThrow("interrupted batch publication")
+      const interrupted = await RolloutJournalMaintenance.compact().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(interrupted).toBeInstanceOf(Error)
+      expect(interrupted).toMatchObject({ message: "interrupted batch publication" })
       expect((await RolloutJournalMaintenance.status()).rewritten).toBe(0)
       expect(await Storage.scan([...root, "journal", "contexts"])).toEqual([])
       expect(await Array.fromAsync(RolloutJournal.events(owner, 130))).toEqual(before)
     }
-    if (process.platform === "win32") console.info("rollout maintenance stage 2")
     const controller = new AbortController()
-    await expect(
-      RolloutJournalMaintenance.compact({ signal: controller.signal, progress: () => controller.abort() }),
-    ).rejects.toThrow()
+    const cancelled = await RolloutJournalMaintenance.compact({
+      signal: controller.signal,
+      progress: () => controller.abort(),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(cancelled).toBeInstanceOf(DOMException)
+    expect(cancelled).toMatchObject({ name: "AbortError" })
     const state = await RolloutJournalMaintenance.status()
     expect(state.rewritten).toBe(128)
     expect(isDeepStrictEqual(await Array.fromAsync(RolloutJournal.events(owner, 130)), before)).toBe(true)
-    if (process.platform === "win32") console.info("rollout maintenance stage 3")
     const original = Storage.current()
     await original.store.close()
-    if (process.platform === "win32") console.info("rollout maintenance stage 4")
     const reopened = await TransactionalStore.open(original.store.options)
-    if (process.platform === "win32") console.info("rollout maintenance stage 5")
     RuntimeContext.current().storage = { ...original, store: reopened }
     try {
-      if (process.platform === "win32") console.info("rollout maintenance stage 6")
       const result = await RolloutJournalMaintenance.compact()
       expect(result).toMatchObject({ phase: "completed", rewritten: 130 })
       expect(await RolloutJournalMaintenance.compact()).toEqual(result)
@@ -98,12 +102,10 @@ test("bounded historical compaction resumes after reopening without changing evi
         ]),
       )
       expect(Number(rows[0].updated)).toBe(1000)
-      if (process.platform === "win32") console.info("rollout maintenance stage 7")
       expect(Buffer.concat(await Array.fromAsync(RolloutArtifact.read(owner, artifact))).toString()).toBe(
         "retained bytes",
       )
     } finally {
-      if (process.platform === "win32") console.info("rollout maintenance stage 8")
       await reopened.close()
     }
   })

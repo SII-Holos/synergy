@@ -53,7 +53,12 @@ test("offline backup copies a checkpointed database while fencing later writes",
       await snapshot.close()
     }
     expect(await store.read(["snapshot"])).toBe("after")
-    await expect(store.backupSqlite(filename)).rejects.toThrow()
+    const existing = await store.backupSqlite(filename).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(existing).toBeInstanceOf(Error)
+    expect(existing).toMatchObject({ code: "EEXIST" })
   } finally {
     release.resolve()
     await pending
@@ -65,7 +70,6 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
   await using tmp = await tmpdir()
   const filename = path.join(tmp.path, "agent.sqlite")
   initializeSqliteEngine()
-  if (process.platform === "win32") console.info("storage maintenance stage 0")
   const legacy = new Database(filename)
   legacy.exec("CREATE TABLE seed (body TEXT)")
   legacy.exec("INSERT INTO seed VALUES ('preserved')")
@@ -75,17 +79,17 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
   await observeStorageMaintenance(
     () =>
       context.run(true, async () => {
-        if (process.platform === "win32") console.info("storage maintenance stage 1")
         const store = await TransactionalStore.open({ backend: "sqlite", namespace: "maintenance", filename })
         try {
-          if (process.platform === "win32") console.info("storage maintenance stage 2")
           await store.maintain({ operation: "enable-incremental-vacuum" })
-          if (process.platform === "win32") console.info("storage maintenance stage 3")
           expect((await store.verify()).issues).toEqual([])
-          if (process.platform === "win32") console.info("storage maintenance stage 4")
           await store.dropIndexIfExists("storage_records_owner")
-          if (process.platform === "win32") console.info("storage maintenance stage 5")
-          await expect(store.maintainDdl("CREATE INDEX broken ON absent(x)", "create-index")).rejects.toThrow()
+          const invalid = await store.maintainDdl("CREATE INDEX broken ON absent(x)", "create-index").then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          expect(invalid).toBeInstanceOf(Error)
+          expect(invalid).toMatchObject({ code: "SQLITE_ERROR", message: expect.stringContaining("absent") })
         } finally {
           await store.close()
         }
@@ -95,7 +99,6 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
       events.push(event)
     },
   )
-  if (process.platform === "win32") console.info("storage maintenance stage 6")
   const starts = events.filter((event) => event.state === "started")
   expect(starts.map((event) => event.operation)).toContain("vacuum")
   expect(starts.map((event) => event.operation)).toContain("integrity-check")
@@ -139,7 +142,12 @@ test("worker loss emits one failed maintenance event and rejects the pending ope
     pending.catch(() => {})
     await dispatched.promise
     worker.kill()
-    await expect(pending).rejects.toThrow("SQLite worker exited")
+    const exited = await pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(exited).toBeInstanceOf(Error)
+    expect(exited).toMatchObject({ message: expect.stringContaining("SQLite worker exited") })
     expect(events.map((event) => event.state)).toEqual(["started", "failed"])
     expect(events[0]?.id).toBe(events[1]?.id)
   } finally {
