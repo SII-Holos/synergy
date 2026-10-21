@@ -440,3 +440,41 @@ test("loading and completion keep content bounds stable and do not focus the add
   await page.getByRole("progressbar").waitFor({ state: "hidden" })
   expect(await page.locator(".browser-surface").boundingBox()).toEqual(before)
 })
+
+test("navigation Retry resumes a disconnected suspended page instead of navigating it", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.getByRole("combobox").waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    const current = fixture.store.session.pages[0]!
+    fixture.store.upsertPage({
+      ...current,
+      status: "suspended",
+      navigation: {
+        id: "failed-navigation",
+        generation: 1,
+        revision: 1,
+        phase: "failed",
+        requestedURL: current.url,
+        slow: false,
+      },
+    })
+    fixture.store.setHostStatus(current.id, "detached")
+    fixture.store.setBrowserError({
+      pageId: current.id,
+      severity: "error",
+      code: "browser_page_error",
+      message: "Browser Host broker disconnected.",
+    })
+  })
+  await page
+    .locator('[role="status"]')
+    .filter({ hasText: "Browser Host broker disconnected." })
+    .getByRole("button", { name: "Retry", exact: true })
+    .click()
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands)).toEqual([
+    { type: "resume", pageId: "page-one" },
+  ])
+  expect(errors).toEqual([])
+})

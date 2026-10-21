@@ -1,3 +1,4 @@
+import { installDesktopStdioHandlers } from "./stdio.js"
 import { configureDesktopUserData } from "./user-data.js"
 import { ComputerBrokerClient } from "./computer/broker-client.js"
 import {
@@ -119,6 +120,8 @@ import {
   desktopWindowState,
 } from "./window-chrome.js"
 import { applyDesktopUnreadUpdate, desktopUnreadAssetPaths, desktopUnreadPresentation } from "./unread-indicator.js"
+
+installDesktopStdioHandlers()
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.SYNERGY_COMPUTER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toString("hex")

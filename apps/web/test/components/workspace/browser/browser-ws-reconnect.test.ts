@@ -601,3 +601,54 @@ test("background page events preserve page errors and suspended pages stay detac
     dispose()
   }
 })
+
+test("broker reconnection makes disconnected suspended pages explicitly resumable", async () => {
+  mountNativeWebSocket()
+  bridge = bridgeStub()
+  const commands: string[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://127.0.0.1:4096",
+    fetch: Object.assign(
+      async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const request = input instanceof Request ? input : new Request(input, init)
+        const body = (await request.json()) as { command: { type: string } }
+        commands.push(body.command.type)
+        return Response.json({
+          type: "control.result",
+          protocolVersion: BROWSER_PROTOCOL_VERSION,
+          result: { type: "page", page: testPage },
+        })
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const { store, handle, dispose } = mountHandle(client)
+  try {
+    await sleep(30)
+    const socket = MockWebSocket.instances[0]!
+    socket.emit("open")
+    const emit = (payload: Record<string, unknown>, seq: number) =>
+      socket.emit("message", {
+        data: JSON.stringify(
+          BrowserEventSchema.parse({ ...payload, protocolVersion: BROWSER_PROTOCOL_VERSION, seq, epoch: "test" }),
+        ),
+      })
+    emit({ type: "page.created", page: testPage }, 1)
+    emit({ type: "host.status", pageId: testPage.id, status: "restarting" }, 2)
+    emit({ type: "page.updated", page: { ...testPage, status: "suspended" } }, 3)
+    emit({ type: "host.status", status: "restarting" }, 4)
+    emit({ type: "host.status", status: "ready" }, 5)
+    expect(store.session.connectionStatus).toBe("connected")
+    expect(store.session.pages[0]?.status).toBe("suspended")
+    expect(store.hostStatuses[testPage.id]).toBe("detached")
+    expect(commands).toEqual([])
+    await handle.send({ type: "resume", pageId: testPage.id })
+    expect(commands).toEqual(["resume"])
+    expect(store.session.pages[0]?.status).toBe("suspended")
+    emit({ type: "page.created", page: testPage }, 6)
+    expect(store.hostStatuses[testPage.id]).toBe("ready")
+    expect(store.session.pages[0]?.status).toBe("active")
+  } finally {
+    dispose()
+  }
+})
