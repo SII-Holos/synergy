@@ -5,6 +5,7 @@ import { RuntimeContext } from "../../src/lifecycle/context"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityResources } from "../../src/observability/resources"
+import { ObservabilityIssues } from "../../src/observability/issues"
 
 export function resetObservabilityState() {
   clearObservabilityState()
@@ -18,6 +19,7 @@ export function clearObservabilityState() {
     throw new Error("This fixture requires inline telemetry; worker tests must await their own shutdown")
   ObservabilityResources.stop()
   ObservabilityStore.close()
+  ObservabilityIssues.resetConditions()
   rmSync(path.join(Global.Path.state, "observability"), { recursive: true, force: true })
   ObservabilityConfig.refresh()
 }

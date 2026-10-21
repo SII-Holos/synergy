@@ -1,5 +1,7 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
+import { Database } from "bun:sqlite"
 import { ObservabilityConfig } from "../../src/observability/config"
+import { ObservabilityIssues } from "../../src/observability/issues"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityTelemetryClient } from "../../src/observability/telemetry-client"
@@ -59,6 +61,54 @@ describe("ObservabilityStore worker mode", () => {
       await waitFor(() => ObservabilityTelemetryClient.stats().workerReady === true, 15_000)
       expect(ObservabilityStore.stats().pending).toBeGreaterThanOrEqual(0)
       expect(ObservabilityStore.stats().checkpointIntervalMs).toBe(60_000)
+    }))
+
+  test("uses the existing worker batch window for exact condition deltas and typed recovery", () =>
+    runtime.run(async () => {
+      ObservabilityStore.open()
+      await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+      using enqueues = spyOn(ObservabilityTelemetryClient, "enqueue")
+      const input = {
+        owner: "control-plane" as const,
+        code: "PERF_TEST_WORKER_CONDITION",
+        module: "process" as const,
+        title: "Worker condition",
+        severity: "warning" as const,
+        state: "active" as const,
+        observedValue: 120,
+        thresholdValue: 100,
+        unit: "bytes" as const,
+      }
+      for (let index = 0; index < 1000; index++)
+        ObservabilityIssues.observeCondition({ ...input, observedValue: 120 + index })
+      using observer = new Database(ObservabilityStore.pathName(), { readonly: true })
+      await waitFor(
+        () => observer.query("SELECT issue_id FROM obs_issues WHERE code = ?").get(input.code) !== null,
+        5000,
+      )
+      const [first] = ObservabilityIssues.list({ module: "process" })
+      expect(first).toMatchObject({
+        occurrenceCount: 1000,
+        evidence: { firstObservedValue: 120, observedValue: 1119, peakObservedValue: 1119 },
+      })
+      expect(enqueues.mock.calls.filter(([row]) => row.kind === "issue")).toHaveLength(1)
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 130 })
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 20 })
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 140 })
+      ObservabilityStore.queryIssues()
+      await ObservabilityTelemetryClient.flushAndWait()
+      expect(ObservabilityIssues.list({ status: "resolved", module: "process" })).toMatchObject([
+        { issueId: first.issueId, occurrenceCount: 1001 },
+      ])
+      expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([
+        { occurrenceCount: 1, evidence: { firstObservedValue: 140 } },
+      ])
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 150 })
+      await ObservabilityStore.stop()
+      using reader = new Database(ObservabilityStore.pathName(), { readonly: true })
+      expect(
+        reader.query("SELECT occurrence_count FROM obs_issues WHERE status = 'open' AND code = ?").get(input.code),
+      ).toEqual({ occurrence_count: 2 })
     }))
 
   test("metric aggregation yields to the host and retains numeric bucket results", () =>

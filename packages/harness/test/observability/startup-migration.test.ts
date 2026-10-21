@@ -18,7 +18,7 @@ test("empty telemetry startup completes together without creating a database, th
     registerObservabilityMigrations()
     const writes = spyOn(Storage, "write")
     try {
-      expect((await runMigrations({ output: "silent" })).completed).toBe(7)
+      expect((await runMigrations({ output: "silent" })).completed).toBe(8)
       expect(writes.mock.calls.filter(([key]) => key.join("/") === "meta/migration/log-observability")).toHaveLength(1)
       expect(await Bun.file(ObservabilityStore.pathName()).exists()).toBe(false)
     } finally {
@@ -48,7 +48,7 @@ test("a legacy telemetry file still imports its records before completion", asyn
       .run("retained", 1, 1, "browser", 2, 0, '{"route":"/workbench"}')
     legacy.close()
     registerObservabilityMigrations()
-    expect((await runMigrations({ output: "silent" })).completed).toBe(7)
+    expect((await runMigrations({ output: "silent" })).completed).toBe(8)
     const db = ObservabilityStore.initializeForMigration()
     expect(db.query("SELECT accepted,page_json FROM obs_browser_batches WHERE batch_id='retained'").get()).toEqual({
       accepted: 2,
@@ -65,7 +65,7 @@ test("an existing canonical store still receives metric schema cleanup", async (
     db.exec("ALTER TABLE obs_metrics ADD COLUMN iso TEXT")
     db.exec("CREATE INDEX idx_obs_metrics_module_time ON obs_metrics(module,time)")
     registerObservabilityMigrations()
-    expect((await runMigrations({ output: "silent" })).completed).toBe(7)
+    expect((await runMigrations({ output: "silent" })).completed).toBe(8)
     expect(db.query("SELECT name FROM pragma_table_info('obs_metrics') WHERE name='iso'").get()).toBeNull()
     expect(db.query("SELECT name FROM sqlite_master WHERE name='idx_obs_metrics_module_time'").get()).toBeNull()
   })
@@ -104,7 +104,7 @@ test("upgrade suppresses only legacy open default aggregates without rewriting t
     await Storage.write(ledgerKey, releasedLedger)
     registerObservabilityMigrations()
 
-    expect((await runMigrations({ output: "silent" })).completed).toBe(1)
+    expect((await runMigrations({ output: "silent" })).completed).toBe(2)
     expect(retained()).toEqual(
       before.map((issue) =>
         issue.issueId === "legacy_open"
@@ -125,8 +125,57 @@ test("upgrade suppresses only legacy open default aggregates without rewriting t
     ).toBeGreaterThan(0)
     const upgraded = retained()
     await Storage.write(ledgerKey, releasedLedger)
-    expect((await runMigrations({ output: "silent" })).completed).toBe(1)
+    expect((await runMigrations({ output: "silent" })).completed).toBe(2)
     expect(retained()).toEqual(upgraded)
+    expect((await runMigrations({ output: "silent" })).completed).toBe(0)
+  })
+})
+
+test("condition upgrade preserves historical evidence without leaving ownerless pressure aggregates open", async () => {
+  await using fixture = await migrationFixture({ env: { SYNERGY_OBSERVABILITY_INLINE: "1" } })
+  await fixture.run(async () => {
+    const db = ObservabilityStore.initializeForMigration()
+    for (const [id, status, code, scope, fingerprint] of [
+      ["old_global", "open", "PERF_MEMORY_HIGH_RSS", null, "PERF_MEMORY_HIGH_RSS:process:global"],
+      ["old_scoped", "open", "PERF_CPU_HIGH_UTILIZATION", "home", "PERF_CPU_HIGH_UTILIZATION:process:scope:home"],
+      ["custom", "open", "PERF_MEMORY_HIGH_RSS", null, "owner:pressure"],
+      ["resolved", "resolved", "PERF_EVENT_LOOP_LAG", null, "PERF_EVENT_LOOP_LAG:process:global"],
+      ["condition", "open", "PERF_MEMORY_HIGH_RSS", null, 'condition:[null,"control-plane","PERF_MEMORY_HIGH_RSS"]'],
+      ["other", "open", "PERF_OTHER", null, "PERF_OTHER:process:global"],
+    ]) {
+      db.query(
+        `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,module,scope_id,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint)
+         VALUES (?,1,'1970-01-01T00:00:00.001Z','warning',?,?,'Retained title','Retained message','process',?,'{"observedValue":17}',1,2,13,?)`,
+      ).run(id, status, code, scope, fingerprint)
+    }
+    const rows = () => db.query<ObservabilityStore.StoredIssue, []>("SELECT * FROM obs_issues ORDER BY issue_id").all()
+    const before = rows()
+    const ledgerKey = ["meta", "migration", "log-observability"]
+    const released = {
+      "20260705-observability-store-v2": 1,
+      "20260711-observability-redaction-backfill": 1,
+      "20260711-observability-incremental-vacuum": 1,
+      "20260712-observability-schema-metadata-v4": 1,
+      "20260722-observability-resource-cgroup-v5": 1,
+      "20260814-observability-metric-slim-v6": 1,
+      "20261021-observability-issue-scope-attribution": 1,
+    }
+    await Storage.write(ledgerKey, released)
+    registerObservabilityMigrations()
+    expect((await runMigrations({ output: "silent" })).completed).toBe(1)
+    for (const row of rows()) {
+      const original = before.find((candidate) => candidate.issue_id === row.issue_id)!
+      if (row.issue_id.startsWith("old_")) {
+        const evidence = JSON.parse(row.evidence_json)
+        expect(evidence).toMatchObject({ observedValue: 17, suppressionReason: expect.any(String) })
+        expect({ ...row, status: original.status, evidence_json: original.evidence_json }).toEqual(original)
+        expect(row.status).toBe("suppressed")
+      } else expect(row).toEqual(original)
+    }
+    const upgraded = rows()
+    await Storage.write(ledgerKey, released)
+    expect((await runMigrations({ output: "silent" })).completed).toBe(1)
+    expect(rows()).toEqual(upgraded)
     expect((await runMigrations({ output: "silent" })).completed).toBe(0)
   })
 })
@@ -140,7 +189,7 @@ test("a failed telemetry file proof leaves every completion pending", async () =
     )
     try {
       await expect(runMigrations({ output: "silent" })).rejects.toThrow("telemetry unavailable")
-      expect((await getMigrationStatus()).observability.pending).toHaveLength(7)
+      expect((await getMigrationStatus()).observability.pending).toHaveLength(8)
     } finally {
       stat.mockRestore()
     }

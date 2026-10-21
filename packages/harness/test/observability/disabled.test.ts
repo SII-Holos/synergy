@@ -26,6 +26,17 @@ describe("observability disabled", () => {
         title: "Disabled issue",
         message: "Disabled issue",
       })
+      ObservabilityIssues.observeCondition({
+        owner: "control-plane",
+        code: "PERF_DISABLED_CONDITION",
+        module: "observability",
+        title: "Disabled condition",
+        severity: "warning",
+        state: "active",
+        observedValue: 200,
+        thresholdValue: 100,
+        unit: "bytes",
+      })
       await ObservabilityEvents.emit("disabled.event", {})
       ObservabilityStore.flush()
 

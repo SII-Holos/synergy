@@ -83,6 +83,7 @@ describe("Diagnostics", () => {
       expect(summary.resources.pressure.rssGrowthBytesPerMin).toBeCloseTo((3000 / 59_000) * 60_000)
       expect(summary.resources.pressure.observabilityStoreAvailable).toBe(true)
       expect(summary.resources.pressure.observabilityDroppedWrites).toBeGreaterThanOrEqual(0)
+      expect(summary.resources.pressure.observabilityUncertainObservations).toBe(0)
     }))
 
   test("createPackage bypasses the paused-session cache for a fresh snapshot", () =>

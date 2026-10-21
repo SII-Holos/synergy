@@ -1,4 +1,4 @@
-import z from "zod"
+import { z } from "zod"
 import { ObservabilitySchema } from "./schema"
 
 export namespace TelemetryProtocol {
@@ -30,12 +30,20 @@ export namespace TelemetryProtocol {
   })
   export type BrowserBatchRow = z.infer<typeof BrowserBatchRow>
 
+  export const IssueStatusUpdate = z.object({
+    fingerprint: z.string(),
+    status: z.enum(["resolved", "suppressed"]),
+    evidence: ObservabilitySchema.Labels,
+  })
+  export type IssueStatusUpdate = z.infer<typeof IssueStatusUpdate>
+
   export const BatchRowSchema = z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("metric"), row: ObservabilitySchema.Metric }),
     z.object({ kind: z.literal("event"), row: ObservabilitySchema.Event }),
     z.object({ kind: z.literal("span"), row: ObservabilitySchema.Span }),
     z.object({ kind: z.literal("resource"), row: ObservabilitySchema.ResourceSample }),
     z.object({ kind: z.literal("issue"), row: ObservabilitySchema.Issue }),
+    z.object({ kind: z.literal("issue-status"), row: IssueStatusUpdate }),
     z.object({ kind: z.literal("browser-batch"), row: BrowserBatchRow }),
   ])
   export type BatchRow = z.infer<typeof BatchRowSchema>
@@ -62,6 +70,7 @@ export namespace TelemetryProtocol {
       type: z.literal("status"),
       counters: z.object({
         dropped: z.number().int().nonnegative(),
+        droppedObservations: z.number().int().nonnegative(),
         committed: z.number().int().nonnegative(),
         capExceededBytes: z.number().nonnegative(),
         maintenanceDeferred: z.boolean(),
@@ -71,6 +80,10 @@ export namespace TelemetryProtocol {
     }),
   ])
   export type WorkerToHost = z.infer<typeof WorkerToHostSchema>
+
+  export function observationCount(row: BatchRow): number {
+    return row.kind === "issue" ? row.row.occurrenceCount : 1
+  }
 
   // Approximates the structured-clone payload size of a batch row without
   // serializing it: stringify on the enqueue/flush hot path would re-introduce

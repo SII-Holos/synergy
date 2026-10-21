@@ -337,6 +337,7 @@ export namespace Diagnostics {
     pressure.observabilityStoreAvailable = store.available
     pressure.observabilityPendingWrites = store.pending
     pressure.observabilityDroppedWrites = store.dropped
+    pressure.observabilityUncertainObservations = store.uncertain
     pressure.observabilityCapExceededBytes = store.capExceededBytes
     if (store.lastOpenError) pressure.observabilityStoreError = ObservabilityRedaction.text(store.lastOpenError, 160)
     if (!latest) return pressure

@@ -4,9 +4,13 @@ import { ObservabilityClock } from "../../src/observability/clock"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityContext } from "../../src/observability/context"
 import { ObservabilityEvents } from "../../src/observability/events"
+import { ObservabilityDbWrites } from "../../src/observability/db-writes"
 import { ObservabilityIssues } from "../../src/observability/issues"
+import { ObservabilityLiveEvents } from "../../src/observability/live-events"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
+import { ObservabilityRedaction } from "../../src/observability/redaction"
 import { ObservabilityResources } from "../../src/observability/resources"
+import { ObservabilitySchema } from "../../src/observability/schema"
 import { ObservabilityStore } from "../../src/observability/store"
 import { clearObservabilityState, resetObservabilityState } from "./fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -345,6 +349,295 @@ describe("ObservabilityStore", () => {
         { scopeID: "scope_b", occurrenceCount: 1 },
       ])
       expect(issues.find((issue) => issue.scopeID === undefined)?.occurrenceCount).toBe(1)
+    }))
+
+  test("adds the complete observation delta when an issue aggregate is upserted", () =>
+    runtime.run(() => {
+      const first = ObservabilityIssues.raise({
+        code: "PERF_TEST_DELTA",
+        severity: "warning",
+        module: "process",
+        title: "Delta",
+        message: "First observation",
+      })!
+      ObservabilityStore.insertIssue({ ...first, issueId: "delta-batch", occurrenceCount: 9 })
+      expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([{ occurrenceCount: 10 }])
+    }))
+
+  test("coalesces condition observations before redaction and writes one exact delta per batch", () =>
+    runtime.run(() => {
+      let now = Date.now()
+      using clock = spyOn(ObservabilityClock, "now").mockImplementation(() => now)
+      using writes = spyOn(ObservabilityDbWrites, "insertIssue")
+      using redactions = spyOn(ObservabilityRedaction, "redactRecord")
+      using parses = spyOn(ObservabilitySchema.Issue, "parse")
+      for (let index = 0; index < 1000; index++) {
+        ObservabilityIssues.raise({
+          code: "PERF_TEST_DISCRETE_WORK",
+          module: "process",
+          severity: "warning",
+          title: "Discrete error",
+          message: "Independent error observation",
+          scopeID: "discrete_work",
+        })
+      }
+      expect(parses).toHaveBeenCalledTimes(1000)
+      expect(ObservabilityIssues.list({ scopeID: "discrete_work" })).toMatchObject([{ occurrenceCount: 1000 }])
+      expect(writes).toHaveBeenCalledTimes(1000)
+      expect(redactions).toHaveBeenCalledTimes(1000)
+      writes.mockClear()
+      redactions.mockClear()
+      parses.mockClear()
+      const events: ObservabilityLiveEvents.Event[] = []
+      const unsubscribe = ObservabilityLiveEvents.subscribe((event) => events.push(event))
+      const input = {
+        code: "PERF_TEST_CONDITION_BATCH",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Resource pressure",
+        severity: "warning" as const,
+        state: "active" as const,
+        thresholdValue: 100,
+        unit: "bytes" as const,
+        scopeID: "condition_batch",
+      }
+      try {
+        const firstTime = now
+        for (let index = 0; index < 1000; index++) {
+          ObservabilityContext.withContext({ sessionID: `session_${index}`, traceId: `trace_${index}` }, () =>
+            ObservabilityIssues.observeCondition({ ...input, observedValue: index === 500 ? 2000 : 100 + index }),
+          )
+          now++
+        }
+        expect(events).toHaveLength(1)
+        expect(parses).toHaveBeenCalledTimes(1)
+        const [first] = ObservabilityIssues.list({ scopeID: input.scopeID })
+        expect(first).toMatchObject({
+          occurrenceCount: 1000,
+          firstSeenTime: firstTime,
+          lastSeenTime: now - 1,
+          sessionID: "session_999",
+          traceId: "trace_999",
+          evidence: {
+            firstObservedValue: 100,
+            observedValue: 1099,
+            peakObservedValue: 2000,
+            peakObservedTime: firstTime + 500,
+          },
+        })
+        expect(writes).toHaveBeenCalledTimes(1)
+        expect(redactions.mock.calls.length).toBeLessThanOrEqual(2)
+        expect(parses).toHaveBeenCalledTimes(3)
+        ObservabilityIssues.observeCondition({ ...input, observedValue: 105 })
+        const [second] = ObservabilityIssues.list({ scopeID: input.scopeID })
+        expect(second).toMatchObject({
+          issueId: first.issueId,
+          occurrenceCount: 1001,
+          firstSeenTime: firstTime,
+          lastSeenTime: now,
+          evidence: { firstObservedValue: 100, observedValue: 105, peakObservedValue: 2000 },
+        })
+        expect(second.sessionID).toBeUndefined()
+        expect(second.traceId).toBeUndefined()
+        expect(writes).toHaveBeenCalledTimes(2)
+        expect(events[0]).toMatchObject({
+          type: "issue.raised",
+          issue: { occurrenceCount: 1, evidence: { observedValue: 100 } },
+        })
+      } finally {
+        unsubscribe()
+      }
+    }))
+
+  test("resolves only a healthy owner and starts a new episode even within one batch", () =>
+    runtime.run(() => {
+      const input = {
+        code: "PERF_TEST_CONDITION_EPISODES",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Resource pressure",
+        severity: "warning" as const,
+        state: "active" as const,
+        thresholdValue: 100,
+        observedValue: 120,
+        unit: "bytes" as const,
+        scopeID: "episode_scope_a",
+      }
+      ObservabilityIssues.observeCondition(input)
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 160 })
+      ObservabilityIssues.observeCondition({ ...input, owner: "agent-pool" })
+      ObservabilityIssues.observeCondition({ ...input, scopeID: "episode_scope_b" })
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 40 })
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 130 })
+      const open = ObservabilityIssues.list({ module: "process" })
+      expect(open).toHaveLength(3)
+      const resolved = ObservabilityIssues.list({ status: "resolved", scopeID: input.scopeID })
+      expect(resolved).toHaveLength(1)
+      expect(resolved[0]).toMatchObject({
+        occurrenceCount: 2,
+        evidence: { peakObservedValue: 160, recoveryObservedValue: 40 },
+      })
+      const reentered = open.find((issue) => issue.scopeID === input.scopeID && issue.evidence.owner === input.owner)!
+      expect(reentered.issueId).not.toBe(resolved[0].issueId)
+      expect(reentered).toMatchObject({
+        occurrenceCount: 1,
+        evidence: { firstObservedValue: 130, peakObservedValue: 130 },
+      })
+    }))
+
+  test("keeps unknown or invalid readings open and publishes severity escalation immediately", () =>
+    runtime.run(() => {
+      const input = {
+        code: "PERF_TEST_CONDITION_UNKNOWN",
+        owner: "service" as const,
+        module: "process" as const,
+        title: "Service pressure",
+        severity: "warning" as const,
+        state: "active" as const,
+        thresholdValue: 100,
+        observedValue: 120,
+        unit: "bytes" as const,
+        scopeID: "condition_unknown",
+      }
+      const events: ObservabilityLiveEvents.Event[] = []
+      const unsubscribe = ObservabilityLiveEvents.subscribe((event) => events.push(event))
+      try {
+        ObservabilityIssues.observeCondition(input)
+        ObservabilityIssues.observeCondition({ ...input, state: "unknown" })
+        ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: Number.NaN })
+        expect(ObservabilityIssues.list({ scopeID: input.scopeID })).toMatchObject([
+          { occurrenceCount: 1, status: "open" },
+        ])
+        ObservabilityIssues.observeCondition({ ...input, severity: "critical", observedValue: 300 })
+        expect(events).toHaveLength(2)
+        expect(events[1]).toMatchObject({ type: "issue.raised", issue: { severity: "critical" } })
+        ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 20 })
+        expect(events[2]).toMatchObject({ type: "issue.resolved", issue: { status: "resolved", occurrenceCount: 2 } })
+        expect(ObservabilityIssues.list({ scopeID: input.scopeID })).toEqual([])
+      } finally {
+        unsubscribe()
+      }
+    }))
+
+  test("drains a pending condition delta on stop", async () => {
+    await using independent = await testRuntime()
+    await independent.run(async () => {
+      const input = {
+        code: "PERF_TEST_CONDITION_STOP",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Stop pressure",
+        severity: "warning" as const,
+        state: "active" as const,
+        thresholdValue: 100,
+        observedValue: 120,
+        unit: "bytes" as const,
+      }
+      ObservabilityIssues.observeCondition(input)
+      ObservabilityIssues.observeCondition(input)
+      const filename = ObservabilityStore.pathName()
+      await ObservabilityStore.stop()
+      const { Database } = await import("bun:sqlite")
+      using reader = new Database(filename, { readonly: true })
+      expect(reader.query("SELECT occurrence_count FROM obs_issues WHERE code = ?").get(input.code)).toEqual({
+        occurrence_count: 2,
+      })
+    })
+  })
+
+  test("keeps one condition write per owner when owners first appear in the same batch", () =>
+    runtime.run(() => {
+      using writes = spyOn(ObservabilityDbWrites, "insertIssue")
+      const input = {
+        code: "PERF_TEST_PARALLEL_OWNERS",
+        owner: "control-plane" as const,
+        module: "process" as const,
+        title: "Parallel owners",
+        severity: "warning" as const,
+        state: "active" as const,
+        observedValue: 120,
+        thresholdValue: 100,
+        unit: "bytes" as const,
+      }
+      for (let index = 0; index < 1000; index++) {
+        ObservabilityIssues.observeCondition({ ...input, scopeID: "parallel_a" })
+        ObservabilityIssues.observeCondition({ ...input, scopeID: "parallel_a", owner: "agent-pool" })
+        ObservabilityIssues.observeCondition({ ...input, scopeID: "parallel_b" })
+      }
+      const issues = ObservabilityIssues.list({ module: "process" })
+      expect(issues).toHaveLength(3)
+      expect(issues.every((issue) => issue.occurrenceCount === 1000)).toBe(true)
+      expect(writes).toHaveBeenCalledTimes(3)
+    }))
+
+  test("retains an open condition across Runtime reopen until healthy evidence arrives", async () => {
+    const home = `${runtime.host.home}/condition-reopen`
+    const input = {
+      code: "PERF_TEST_CONDITION_REOPEN",
+      owner: "control-plane" as const,
+      module: "process" as const,
+      title: "Retained pressure",
+      severity: "warning" as const,
+      state: "active" as const,
+      observedValue: 200,
+      thresholdValue: 100,
+      unit: "bytes" as const,
+    }
+    const initial = await testRuntime({ home })
+    let first: ReturnType<typeof ObservabilityIssues.list>[number]
+    try {
+      first = initial.run(() => {
+        ObservabilityIssues.observeCondition(input)
+        return ObservabilityIssues.list({ module: "process" })[0]
+      })
+    } finally {
+      await initial.close()
+    }
+    await using reopened = await testRuntime({ home })
+    reopened.run(() => {
+      ObservabilityIssues.observeCondition({ ...input, observedValue: 130 })
+      expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([
+        {
+          issueId: first.issueId,
+          occurrenceCount: 2,
+          firstSeenTime: first.firstSeenTime,
+          evidence: { firstObservedValue: 200, peakObservedValue: 200, observedValue: 130 },
+        },
+      ])
+      ObservabilityIssues.observeCondition({ ...input, state: "normal", observedValue: 20 })
+      expect(ObservabilityIssues.list({ module: "process" })).toEqual([])
+      expect(ObservabilityIssues.list({ status: "resolved", module: "process" })).toMatchObject([
+        { issueId: first.issueId, occurrenceCount: 2 },
+      ])
+    })
+  })
+
+  test("accounts for observation weight when the inline queue overflows or its transaction rolls back", () =>
+    runtime.run(() => {
+      const first = ObservabilityIssues.raise({
+        code: "PERF_TEST_INLINE_WEIGHT",
+        module: "process",
+        severity: "warning",
+        title: "Inline weight",
+        message: "Inline weight",
+      })!
+      ObservabilityStore.flush()
+      const dropped = ObservabilityStore.stats().dropped
+      for (let index = 0; index < 10_001; index++) ObservabilityStore.insertIssue({ ...first, occurrenceCount: 7 })
+      expect(ObservabilityStore.stats()).toMatchObject({ pending: 9001, dropped: dropped + 7000 })
+      expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([{ occurrenceCount: 63_008 }])
+      const conn = ObservabilityStore.open()!
+      conn.exec(
+        "CREATE TRIGGER reject_issue BEFORE UPDATE ON obs_issues BEGIN SELECT RAISE(ABORT, 'rejected inline batch'); END",
+      )
+      try {
+        ObservabilityStore.insertIssue({ ...first, occurrenceCount: 7 })
+        ObservabilityStore.flush()
+        expect(ObservabilityStore.stats().dropped).toBe(dropped + 7007)
+        expect(ObservabilityIssues.list({ module: "process" })).toMatchObject([{ occurrenceCount: 63_008 }])
+      } finally {
+        conn.exec("DROP TRIGGER reject_issue")
+      }
     }))
 
   test("queryMetrics newestFirst returns rows in descending time order without JS reversal", () =>

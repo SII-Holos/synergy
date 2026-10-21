@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { ObservabilityConfig } from "../../src/observability/config"
+import { ObservabilityContext } from "../../src/observability/context"
+import { ObservabilityIssues } from "../../src/observability/issues"
 import { ObservabilityResources } from "../../src/observability/resources"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ProcessRegistry } from "../../src/process/registry"
@@ -117,6 +119,56 @@ describe("ObservabilityResources", () => {
         ProcessRegistry.remove(proc.id)
       }
     }))
+
+  test("recovers RSS only from healthy process evidence, not collection failure or stop", () =>
+    runtime.run(() =>
+      ObservabilityContext.withContextAsync({ scopeID: "resource_lifecycle" }, async () => {
+        ObservabilityConfig.refresh({ observability: { performance: { thresholds: { highRssBytes: 100 } } } })
+        using memory = spyOn(process, "memoryUsage").mockReturnValue({
+          rss: 200,
+          heapTotal: 100,
+          heapUsed: 50,
+          external: 0,
+          arrayBuffers: 0,
+        })
+        await ObservabilityResources.snapshot()
+        await ObservabilityResources.snapshot()
+        expect(
+          ObservabilityIssues.list({ scopeID: "resource_lifecycle" }).find(
+            (issue) => issue.code === "PERF_MEMORY_HIGH_RSS",
+          ),
+        ).toMatchObject({ occurrenceCount: 2 })
+        memory.mockImplementationOnce(
+          Object.assign(
+            () => {
+              throw new Error("unavailable resource sample")
+            },
+            { rss: () => 0 },
+          ),
+        )
+        await expect(ObservabilityResources.snapshot()).rejects.toThrow("unavailable resource sample")
+        await ObservabilityResources.stop()
+        expect(
+          ObservabilityIssues.list({ scopeID: "resource_lifecycle" }).some(
+            (issue) => issue.code === "PERF_MEMORY_HIGH_RSS",
+          ),
+        ).toBe(true)
+        memory.mockReturnValue({ rss: 40, heapTotal: 100, heapUsed: 50, external: 0, arrayBuffers: 0 })
+        await ObservabilityResources.snapshot()
+        expect(
+          ObservabilityIssues.list({ scopeID: "resource_lifecycle" }).some(
+            (issue) => issue.code === "PERF_MEMORY_HIGH_RSS",
+          ),
+        ).toBe(false)
+        memory.mockReturnValue({ rss: 300, heapTotal: 100, heapUsed: 50, external: 0, arrayBuffers: 0 })
+        await ObservabilityResources.snapshot()
+        expect(
+          ObservabilityIssues.list({ scopeID: "resource_lifecycle" }).find(
+            (issue) => issue.code === "PERF_MEMORY_HIGH_RSS",
+          ),
+        ).toMatchObject({ occurrenceCount: 1, evidence: { firstObservedValue: 300 } })
+      }),
+    ))
 
   test("periodic sampling completes 700ms queries at the 500ms interval without superseding them", () =>
     runtime.run(async () => {

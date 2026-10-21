@@ -155,14 +155,56 @@ describe("ObservabilityTelemetryClient worker", () => {
       expect(ObservabilityTelemetryClient.stats().workerReady).toBe(false)
     }))
 
-  test("counts sent-but-unconfirmed rows as dropped when the worker dies", () =>
+  test("counts observations rather than rows on overflow and rolled-back batches", () =>
     runtime.run(async () => {
       ObservabilityTelemetryClient.start({ dbPath, config: makeConfig() })
       await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
       const droppedAtStart = ObservabilityTelemetryClient.stats().dropped
+      const now = Date.now()
+      const issue = ObservabilitySchema.Issue.parse({
+        issueId: "weighted",
+        code: "PERF_TEST_WEIGHTED",
+        title: "Weighted",
+        message: "Weighted observations",
+        severity: "warning",
+        module: "process",
+        time: now,
+        iso: new Date(now).toISOString(),
+        firstSeenTime: now,
+        lastSeenTime: now,
+        occurrenceCount: 7,
+        fingerprint: "weighted",
+      })
+      for (let index = 0; index < 10_000; index++) ObservabilityTelemetryClient.enqueue({ kind: "issue", row: issue })
+      expect(ObservabilityTelemetryClient.stats().pending).toBe(9000)
+      expect(ObservabilityTelemetryClient.stats().dropped - droppedAtStart).toBe(7000)
+      await ObservabilityTelemetryClient.flushAndWait()
+      using reader = new Database(dbPath, { readonly: true })
+      expect(
+        reader.query("SELECT occurrence_count FROM obs_issues WHERE fingerprint = ?").get(issue.fingerprint),
+      ).toEqual({ occurrence_count: 63_000 })
+      using blocker = new Database(dbPath)
+      blocker.exec(
+        "CREATE TRIGGER reject_issue BEFORE UPDATE ON obs_issues BEGIN SELECT RAISE(ABORT, 'rejected observation batch'); END",
+      )
+      ObservabilityTelemetryClient.enqueue({ kind: "issue", row: issue })
+      await ObservabilityTelemetryClient.flushAndWait()
+      expect(ObservabilityTelemetryClient.stats().dropped - droppedAtStart).toBe(7007)
+      expect(ObservabilityTelemetryClient.stats().unconfirmed).toBe(0)
+      blocker.exec("DROP TRIGGER reject_issue")
+      ObservabilityTelemetryClient.enqueue({ kind: "issue", row: issue })
+      await ObservabilityTelemetryClient.flushAndWait()
+      expect(
+        reader.query("SELECT occurrence_count FROM obs_issues WHERE fingerprint = ?").get(issue.fingerprint),
+      ).toEqual({ occurrence_count: 63_007 })
+    }))
 
-      // Fill several chunks so multiple batches are in flight, then kill the
-      // worker. Rows it never confirmed must be counted as dropped.
+  test("reports sent-but-unconfirmed observations as uncertain without replay after worker loss", () =>
+    runtime.run(async () => {
+      ObservabilityTelemetryClient.start({ dbPath, config: makeConfig() })
+      await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
+      const uncertainAtStart = ObservabilityTelemetryClient.stats().uncertain
+
       for (let index = 0; index < 3000; index++) {
         ObservabilityTelemetryClient.enqueue(metricRow(`inflight_${index}`, "worker.test.inflight", index))
       }
@@ -178,12 +220,12 @@ describe("ObservabilityTelemetryClient worker", () => {
       )
       await waitFor(() => ObservabilityTelemetryClient.stats().pending === 0, 15_000)
 
-      // Accounting invariant: every enqueued row is either committed to the
-      // database or counted as dropped.
       const reader = new Database(dbPath, { readonly: true })
       try {
         const rows = reader.query("SELECT COUNT(*) AS c FROM obs_metrics").get() as { c: number }
-        expect(rows.c + (ObservabilityTelemetryClient.stats().dropped - droppedAtStart)).toBe(3000)
+        expect(rows.c).toBeLessThanOrEqual(3000)
+        expect(ObservabilityTelemetryClient.stats().uncertain - uncertainAtStart).toBe(3000)
+        expect(ObservabilityTelemetryClient.stats().unconfirmed).toBe(0)
       } finally {
         reader.close()
       }

@@ -17,7 +17,7 @@ import { StorageClosedError } from "../storage/errors"
 export namespace ObservabilityStore {
   export const schemaVersion = ObservabilityDbSchema.schemaVersion
   const MAX_PENDING = 10_000
-  const FLUSH_MS = 1000
+  const FLUSH_MS = 250
   const runtimeState = RuntimeContext.state(() => ({
     stopped: false,
     db: undefined as Database | undefined,
@@ -36,7 +36,7 @@ export namespace ObservabilityStore {
     maintenanceDeferred: false,
     checkpointIntervalMs: undefined as number | undefined,
     retentionIntervalMs: undefined as number | undefined,
-    pending: [] as Array<() => void>,
+    pending: [] as Array<{ run: () => void; observations: number }>,
     beforeFlushHooks: new Set<() => void>(),
     dataVersionCounter: 0,
     runtimeReady: false,
@@ -121,6 +121,7 @@ export namespace ObservabilityStore {
       return {
         pending: client.pending,
         dropped: instanceState.droppedJobs + client.dropped,
+        uncertain: client.uncertain,
         available: queryConnection() !== undefined,
         lastOpenError: instanceState.lastOpenError,
         capExceededBytes: client.capExceededBytes,
@@ -132,6 +133,7 @@ export namespace ObservabilityStore {
     return {
       pending: instanceState.pending.length,
       dropped: instanceState.droppedJobs,
+      uncertain: 0,
       available: !!instanceState.db,
       lastOpenError: instanceState.lastOpenError,
       capExceededBytes: instanceState.capExceededBytes,
@@ -145,7 +147,29 @@ export namespace ObservabilityStore {
     const instanceState = runtimeState()
 
     instanceState.beforeFlushHooks.add(hook)
-    return () => instanceState.beforeFlushHooks.delete(hook)
+    const removeWorkerHook = ObservabilityTelemetryClient.beforeFlush(hook)
+    return () => {
+      instanceState.beforeFlushHooks.delete(hook)
+      removeWorkerHook()
+    }
+  }
+
+  export function accepting() {
+    return !runtimeState().stopped && ObservabilityConfig.current().enabled
+  }
+
+  export function requestFlush() {
+    if (!accepting()) return
+    if (!inlineMode()) {
+      open()
+      ObservabilityTelemetryClient.requestFlush()
+      return
+    }
+    const instanceState = runtimeState()
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
+      instanceState.flushTimer.unref()
+    }
   }
 
   export function dir() {
@@ -389,7 +413,27 @@ export namespace ObservabilityStore {
     enqueue(() => {
       const conn = open()
       if (conn) ObservabilityDbWrites.insertIssue(conn, issue)
+    }, issue.occurrenceCount)
+  }
+
+  export function updateIssueStatus(update: TelemetryProtocol.IssueStatusUpdate) {
+    if (!accepting()) return
+    runtimeState().dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "issue-status", row: update })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.updateIssueStatus(conn, update)
     })
+  }
+
+  export function findPersistedOpenIssue(fingerprint: string) {
+    const conn = queryConnection()
+    return conn
+      ? getRow<StoredIssue>(conn, "SELECT * FROM obs_issues WHERE fingerprint = ? AND status = 'open'", fingerprint)
+      : undefined
   }
 
   export function insertBrowserBatch(input: {
@@ -927,17 +971,17 @@ export namespace ObservabilityStore {
     if (!instanceState.pending.length) return
     const conn = open()
     if (!conn) {
-      instanceState.droppedJobs += instanceState.pending.length
+      instanceState.droppedJobs += instanceState.pending.reduce((total, job) => total + job.observations, 0)
       instanceState.pending.length = 0
       return
     }
     const jobs = instanceState.pending.splice(0, instanceState.pending.length)
     try {
       conn.transaction(() => {
-        for (const job of jobs) job()
+        for (const job of jobs) job.run()
       })()
     } catch {
-      instanceState.droppedJobs += jobs.length
+      instanceState.droppedJobs += jobs.reduce((total, job) => total + job.observations, 0)
       return
     }
     if (instanceState.retentionQueued) {
@@ -1002,20 +1046,17 @@ export namespace ObservabilityStore {
     ObservabilityDbWrites.checkpoint(conn)
   }
 
-  function enqueue(job: () => void) {
+  function enqueue(job: () => void, observations = 1) {
     const instanceState = runtimeState()
 
     if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
     if (instanceState.pending.length >= MAX_PENDING) {
       const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
-      instanceState.pending.splice(0, dropCount)
-      instanceState.droppedJobs += dropCount
+      const dropped = instanceState.pending.splice(0, dropCount)
+      instanceState.droppedJobs += dropped.reduce((total, item) => total + item.observations, 0)
     }
-    instanceState.pending.push(job)
-    if (!instanceState.flushTimer) {
-      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
-      instanceState.flushTimer.unref()
-    }
+    instanceState.pending.push({ run: job, observations })
+    requestFlush()
   }
 
   function queueRetention() {

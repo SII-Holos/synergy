@@ -21,6 +21,7 @@ export namespace ObservabilityMigration {
   export const resourceCgroupId = "20260722-observability-resource-cgroup-v5"
   export const metricSlimId = "20260814-observability-metric-slim-v6"
   export const issueScopeAttributionId = "20261021-observability-issue-scope-attribution"
+  export const conditionEpisodesId = "20261021-observability-condition-episodes"
 
   export async function migrateLegacyPerformance(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
@@ -146,6 +147,28 @@ export namespace ObservabilityMigration {
                evidence_json = json_set(evidence_json, '$.suppressionReason', ?)
            WHERE status = 'open' AND fingerprint = code || ':' || module`,
           "Legacy default fingerprint did not separate Scopes; historical attribution cannot be reconstructed.",
+        )
+      })
+      .immediate()
+    progress(1, 1)
+  }
+
+  export async function suppressLegacyPressureAggregates(
+    progress: (current: number, total: number) => void = () => {},
+  ) {
+    const target = ObservabilityStore.initializeForMigration()
+    target
+      .transaction(() => {
+        runStatement(
+          target,
+          `UPDATE obs_issues
+           SET status = 'suppressed',
+               evidence_json = json_set(evidence_json, '$.suppressionReason', ?)
+           WHERE status = 'open' AND module = 'process'
+             AND code IN ('PERF_MEMORY_HIGH_RSS','PERF_MEMORY_HIGH_HEAP_RATIO','PERF_CPU_HIGH_UTILIZATION','PERF_EVENT_LOOP_LAG','PERF_MEMORY_HIGH_EXTERNAL','PERF_MEMORY_HIGH_ARRAY_BUFFERS')
+             AND ((scope_id IS NULL AND fingerprint = code || ':process:global')
+               OR (scope_id IS NOT NULL AND fingerprint = code || ':process:scope:' || scope_id))`,
+          "Legacy resource threshold aggregate predates condition episodes; owner and recovery history cannot be reconstructed.",
         )
       })
       .immediate()
@@ -815,6 +838,18 @@ const migrations: Migration[] = [
     dependsOn: [ObservabilityMigration.metricSlimId],
     async up(progress) {
       await ObservabilityMigration.suppressLegacyIssueAggregates(progress)
+    },
+  },
+  {
+    scope: "global",
+    execution: "startup",
+    id: ObservabilityMigration.conditionEpisodesId,
+    description: "Suppress legacy resource aggregates without recoverable condition ownership",
+    domain: "observability",
+    version: String(ObservabilityMigration.schemaVersion),
+    dependsOn: [ObservabilityMigration.issueScopeAttributionId],
+    async up(progress) {
+      await ObservabilityMigration.suppressLegacyPressureAggregates(progress)
     },
   },
 ]
