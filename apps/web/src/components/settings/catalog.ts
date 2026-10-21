@@ -617,7 +617,7 @@ const BUILTIN_SETTINGS_COPY = {
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("account", "personal", 30, "settings.account", ["holos"]),
   section("personalize", "personal", 20, "settings.personalize"),
-  section("digital-twin", "personal", 30, "action.predict", ["digital-twin"]),
+  section("digital-twin", "personal", 30, "digital-twin.main", ["digital-twin"]),
   section("general", "personal", 10, "settings.general", ["general"]),
   section("browser", "personal", 15, "browser.main"),
   section("models", "core", 20, "settings.models", ["models"]),

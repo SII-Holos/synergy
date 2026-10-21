@@ -1,6 +1,7 @@
-import { For } from "solid-js"
+import { createMemo } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { SettingsPage, SettingsSection } from "../settings/components/SettingsPrimitives"
 import { SettingRow } from "../settings/components/SettingsSettingRow"
 import type { ProviderModel, SettingsState } from "../settings/types"
@@ -12,6 +13,13 @@ export function DigitalTwinSettings(props: {
   change(value: SettingsState["digitalTwin"]): void
 }) {
   const { _ } = useLingui()
+  const models = createMemo(() => [
+    { value: "", label: _(twinCopy.follow) },
+    ...props.models.map((model) => ({
+      value: `${model.providerId}/${model.modelId}`,
+      label: `${model.providerName} / ${model.modelName}`,
+    })),
+  ])
   return (
     <SettingsPage title={_(twinCopy.title)} description={_(twinCopy.description)}>
       <SettingsSection>
@@ -31,21 +39,12 @@ export function DigitalTwinSettings(props: {
         <SettingRow
           title={_(twinCopy.model)}
           trailing={
-            <select
-              class="ds-input"
-              aria-label={_(twinCopy.model)}
+            <MenuField
+              ariaLabel={_(twinCopy.model)}
+              options={models()}
               value={props.value.model}
-              onChange={(event) => props.change({ ...props.value, model: event.currentTarget.value })}
-            >
-              <option value="">{_(twinCopy.follow)}</option>
-              <For each={props.models}>
-                {(model) => (
-                  <option value={`${model.providerId}/${model.modelId}`}>
-                    {model.providerName} / {model.modelName}
-                  </option>
-                )}
-              </For>
-            </select>
+              onChange={(model) => props.change({ ...props.value, model })}
+            />
           }
         />
       </SettingsSection>

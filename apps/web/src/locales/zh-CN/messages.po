@@ -12130,7 +12130,7 @@ msgstr "预测模型"
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.settings.title"
-msgstr "数字孪生"
+msgstr "数字分身"
 
 #. js-lingui-explicit-id
 msgid "directory.navigation.cancel"
@@ -19601,7 +19601,7 @@ msgstr "权限模式 | 受控 | 无人值守 | 完全访问权限 | 全权限"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.digitalTwin.searchTerms"
-msgstr "数字孪生 预测 输入建议 自动 模型"
+msgstr "数字分身 预测 输入建议 自动 模型"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.email.description"

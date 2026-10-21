@@ -29,7 +29,7 @@ beforeAll(async () => {
   const source = path.resolve(import.meta.dir, "../../../src")
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "services.ts"),
@@ -66,12 +66,15 @@ beforeAll(async () => {
     import {setupI18n} from "@lingui/core"
     import {I18nProvider} from "@lingui/solid"
     import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import {MarkedProvider} from "@ericsanchezok/synergy-ui/context/marked"
     import {DigitalTwinComposer} from "@/components/digital-twin/composer"
     import {DigitalTwinSettings} from "@/components/digital-twin/settings"
     import {ComposerDocumentController} from "@/components/prompt-input/composer-document"
-    import {DefaultComposerEditor} from "@/plugin/default-composer-editor"
+    import {DefaultComposer} from "@/plugin/default-composer"
+    import {ComposerPresentation,bindComposerPresentation} from "@/components/prompt-input/composer-presentation"
     import {sdk,session,model,controls,setConfig} from "./services"
     import "@ericsanchezok/synergy-ui/styles"
+    import "@/index.css"
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     const [text,setText]=createSignal(""),[settings,setSettings]=createSignal({automatic:true,model:""})
     const controller=new ComposerDocumentController({read:()=>({sessionId:session(),text:text(),selection:{start:0,end:0},mode:"normal"}),applyEdits:edits=>{for(const edit of edits)setText(value=>value.slice(0,edit.range.start)+edit.text+value.slice(edit.range.end))}})
@@ -80,18 +83,18 @@ beforeAll(async () => {
     const [completionRevision,setCompletionRevision]=createSignal(0)
     controller.subscribe(()=>setCompletionRevision(value=>value+1))
     let editor
-    const input={readOnly:()=>false,current:()=>({mode:"normal"}),setComposing:value=>controller.setComposing(value),editor:{
+    const input={readOnly:()=>false,current:()=>({mode:"normal",text:text(),revision:0}),composing:()=>controller.composing(),setComposing:value=>controller.setComposing(value),className:()=>"",dragging:()=>false,primaryAction:()=>"submit",submit:async()=>{},editor:{
       label:()=>"Completion preview",mount:element=>{editor=element;return ()=>{editor=undefined}},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{},
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
-    }}
+    },render:part=>part==="toolbar"?<div class="prompt-input-toolbar"><Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show></div>:null}
+    bindComposerPresentation(input,{state:new ComposerPresentation(),preview:()=>({text:text(),references:[]})})
     function Contents(){return <>
       <DigitalTwinSettings value={settings()} models={[{providerId:"fixture",providerName:"Fixture",modelId:"large",modelName:"Large"}]} change={value=>{setSettings(value);setConfig("digitalTwin","automatic",value.automatic)}}/>
-      <DefaultComposerEditor context={{input}} onError={error=>{throw error}}/>
+      <DefaultComposer context={{input}}/>
       <textarea aria-label="Draft" value={text()} onInput={event=>{setText(event.currentTarget.value);controller.changed()}}/>
-      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show>
     </>}
-    render(()=><I18nProvider i18n={i18n}><ThemeProvider><Contents/></ThemeProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><ThemeProvider><MarkedProvider><div class="synergy-workbench-canvas"><Contents/></div></MarkedProvider></ThemeProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
   fixture = await createBrowserFixture({
@@ -173,10 +176,9 @@ test("the two rendered settings retain manual prediction when automatic predicti
   await page.goto(fixture.url)
   const toggle = page.getByRole("switch", { name: "Automatic next-input prediction" })
   expect(await toggle.isChecked()).toBe(true)
-  const model = page.getByRole("combobox", { name: "Prediction model" })
-  expect(await model.inputValue()).toBe("")
+  const model = page.getByRole("button", { name: /^Prediction model:/ })
+  expect(await model.innerText()).toBe("Follow current Session model")
   expect(await page.getByRole("switch").count()).toBe(1)
-  expect(await page.getByRole("combobox").count()).toBe(1)
   await toggle.focus()
   await toggle.press("Space")
   expect(await toggle.isChecked()).toBe(false)
@@ -203,7 +205,74 @@ test("the two rendered settings retain manual prediction when automatic predicti
   expect(
     await page.getByRole("textbox", { name: "Draft" }).evaluate((element) => element === document.activeElement),
   ).toBe(true)
-  await model.selectOption("fixture/large")
-  expect(await model.inputValue()).toBe("fixture/large")
+  await model.focus()
+  await model.press("ArrowDown")
+  await page.getByRole("option", { name: "Fixture / Large", exact: true }).click()
+  expect(await model.innerText()).toBe("Fixture / Large")
+  await model.press("ArrowDown")
+  expect(await page.getByRole("option", { name: "Fixture / Large", exact: true }).getAttribute("aria-selected")).toBe(
+    "true",
+  )
+  await page.getByRole("listbox", { name: "Prediction model" }).press("Escape")
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("aria-label") === "Prediction model: Fixture / Large",
+  )
+  expect(await model.innerText()).toBe("Fixture / Large")
+  await model.press("ArrowDown")
+  await page.getByRole("option", { name: "Follow current Session model", exact: true }).click()
+  expect(await model.innerText()).toBe("Follow current Session model")
   expect(errors).toEqual([])
 })
+
+test.each([
+  { width: 900, colorScheme: "dark" as const, hasTouch: false },
+  { width: 375, colorScheme: "light" as const, hasTouch: false },
+  { width: 375, colorScheme: "dark" as const, hasTouch: true },
+])(
+  "prediction controls stay reachable without covering editor content: %o",
+  async ({ width, colorScheme, hasTouch }) => {
+    const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, hasTouch })
+    page.setDefaultTimeout(4000)
+    page.on("pageerror", (error) => errors.push(error.message))
+    try {
+      await page.goto(fixture.url)
+      const button = page.getByRole("button", { name: "Predict next input", exact: true })
+      await button.waitFor()
+      const editor = page.getByRole("textbox", { name: "Completion preview" })
+      const expand = page.getByRole("button", { name: "Expand editor", exact: true })
+      const actionBounds = (await button.boundingBox())!
+      const editorBounds = (await editor.boundingBox())!
+      const expandBounds = (await expand.boundingBox())!
+      expect(actionBounds.y).toBeLessThan(editorBounds.y + 16)
+      expect(actionBounds.x).toBeGreaterThan(editorBounds.x + editorBounds.width / 2)
+      expect(expandBounds.x + expandBounds.width).toBeLessThanOrEqual(actionBounds.x)
+      const textEnd = await editor.evaluate((element) => {
+        const box = element.getBoundingClientRect()
+        return box.right - Number.parseFloat(getComputedStyle(element).paddingInlineEnd)
+      })
+      expect(textEnd).toBeLessThanOrEqual(expandBounds.x)
+      expect(await button.innerText()).toBe("")
+      if (hasTouch) {
+        expect(actionBounds.width).toBeGreaterThanOrEqual(44)
+        expect(actionBounds.height).toBeGreaterThanOrEqual(44)
+      }
+      const model = page.getByRole("button", { name: /^Prediction model:/ })
+      await model.click()
+      const menu = page.getByRole("listbox", { name: "Prediction model" })
+      await menu.waitFor()
+      const menuBounds = (await menu.boundingBox())!
+      expect(menuBounds.x).toBeGreaterThanOrEqual(0)
+      expect(menuBounds.x + menuBounds.width).toBeLessThanOrEqual(width)
+      await menu.press("Escape")
+      await button.hover()
+      expect(await page.getByRole("tooltip").innerText()).toBe("Predict next input")
+      await expand.click()
+      expect(errors).toEqual([])
+      await page.getByRole("button", { name: "Collapse editor", exact: true }).waitFor({ state: "visible" })
+      expect(await button.isVisible()).toBe(true)
+      expect(errors).toEqual([])
+    } finally {
+      await page.close()
+    }
+  },
+)

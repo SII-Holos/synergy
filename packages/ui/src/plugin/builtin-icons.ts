@@ -227,6 +227,8 @@ const builtinIconNames = [
   "sliders-horizontal",
   "sparkles",
   "wand-sparkles",
+  "text-cursor-input",
+  "user-round",
   "split",
   "spline",
   "square",

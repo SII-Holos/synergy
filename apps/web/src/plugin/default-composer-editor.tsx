@@ -23,12 +23,12 @@ export function DefaultComposerEditor(
         onCompositionStart={() => input.setComposing(true)}
         onCompositionEnd={() => input.setComposing(false)}
         onKeyDown={input.editor.keyDown}
-        class="select-text w-full px-4 py-3 pr-12 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap [&_[data-type=file]]:text-syntax-property"
+        class="session-composer-text select-text w-full px-4 py-3 text-14-regular text-text-strong focus:outline-none whitespace-pre-wrap [&_[data-type=file]]:text-syntax-property"
         classList={{ "font-mono!": input.current().mode === "shell" }}
       />
       <Show when={input.editor.completion()}>
         {(completion) => (
-          <div class="absolute top-0 inset-x-0 px-4 py-3 pr-12 text-14-regular pointer-events-none whitespace-pre-wrap text-text-subtle">
+          <div class="session-composer-text absolute top-0 inset-x-0 px-4 py-3 text-14-regular pointer-events-none whitespace-pre-wrap text-text-subtle">
             <span class="invisible">{completion().prefix}</span>
             <span>{completion().text}</span>
           </div>
@@ -36,7 +36,7 @@ export function DefaultComposerEditor(
       </Show>
       <Show when={!input.editor.completion() && input.editor.placeholder()}>
         {(placeholder) => (
-          <div class="absolute top-0 inset-x-0 px-4 py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
+          <div class="session-composer-text absolute top-0 inset-x-0 px-4 py-3 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
             {placeholder()}
           </div>
         )}
