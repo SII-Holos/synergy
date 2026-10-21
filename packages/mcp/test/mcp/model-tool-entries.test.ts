@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { MCP } from "../../src/index"
 import { McpSupervisor } from "../../src/supervisor"
@@ -83,6 +83,44 @@ require("node:readline").createInterface({input:process.stdin}).on("line", line 
           )
           const changed = (await ToolMcpSource.get()!.toolEntries({ audience: "model" }))[0]!
           expect(changed.presentation?.description ?? changed.tool.description).toBe(handle.toolDefs[0]!.description)
+          handle.toolDefs = Array.from({ length: 80 }, (_, index) => ({
+            name: `icon_fixture_${index}`,
+            inputSchema: { type: "object" as const, properties: {} },
+            icons: [{ src: "https://api.anysearch.com/shared.svg" }],
+          }))
+          let active = 0
+          let peak = 0
+          let requests = 0
+          using fetching = spyOn(globalThis, "fetch").mockImplementation(
+            Object.assign(
+              async () => {
+                requests++
+                active++
+                peak = Math.max(peak, active)
+                await Bun.sleep(5)
+                active--
+                return new Response(Buffer.from(icon.split(",")[1]!, "base64"), {
+                  headers: { "content-type": "image/svg+xml" },
+                })
+              },
+              { preconnect: fetch.preconnect },
+            ),
+          )
+          const sharedIcons = await MCP.toolEntries()
+          expect(sharedIcons).toHaveLength(80)
+          expect(requests).toBe(1)
+          expect(
+            sharedIcons.every((entry) => Array.isArray(entry.display?.icon) && entry.display.icon[0]?.src === icon),
+          ).toBe(true)
+          handle.toolDefs = handle.toolDefs.map((tool, index) => ({
+            ...tool,
+            icons: [{ src: `https://api.anysearch.com/icon-${index}.svg` }],
+          }))
+          const distinctIcons = await MCP.toolEntries()
+          expect(distinctIcons).toHaveLength(80)
+          expect(requests).toBe(81)
+          expect(peak).toBeLessThanOrEqual(4)
+          expect(active).toBe(0)
           await supervisor.disconnect(handle.name)
           expect(await MCP.toolEntries({ audience: "model" })).toEqual([])
         } finally {

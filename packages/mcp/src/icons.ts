@@ -28,6 +28,7 @@ async function loadIcon(
   icon: Icon,
   serverUrl: string | undefined,
   fetcher: FetchIcon,
+  signal: AbortSignal = AbortSignal.timeout(2000),
 ): Promise<ToolIconSource | undefined> {
   try {
     let bytes: Uint8Array
@@ -45,7 +46,7 @@ async function loadIcon(
       const response = await fetcher(url.href, {
         credentials: "omit",
         redirect: "error",
-        signal: AbortSignal.timeout(2000),
+        signal,
       })
       if (!response.ok || !response.body || Number(response.headers.get("content-length")) > MAX_TOOL_ICON_BYTES) {
         await response.body?.cancel()
@@ -87,16 +88,42 @@ async function loadIcon(
   }
 }
 
+export function createMcpIconResolver(fetcher: FetchIcon = fetch) {
+  const pending = new Map<string, Promise<ToolIconSource | undefined>>()
+  const lanes: Promise<unknown>[] = Array.from({ length: 4 }, () => Promise.resolve())
+  let next = 0
+  return async (icons: Icon[] | undefined, serverUrl?: string): Promise<ToolIconSource[]> => {
+    const deadline = performance.now() + 2000
+    const loaded = await Promise.all(
+      (icons ?? []).slice(0, 6).map((icon) => {
+        const key = JSON.stringify([serverUrl, icon])
+        const existing = pending.get(key)
+        if (existing) return existing
+        const lane = next++ % lanes.length
+        const task = lanes[lane]!.then(() => {
+          const remaining = Math.ceil(deadline - performance.now())
+          if (remaining <= 0) return undefined
+          return loadIcon(icon, serverUrl, fetcher, AbortSignal.timeout(remaining))
+        })
+        pending.set(key, task)
+        lanes[lane] = task
+        void task.finally(() => pending.delete(key))
+        return task
+      }),
+    )
+    const themes = new Set<string>()
+    return loaded.filter((icon): icon is ToolIconSource => {
+      if (!icon || themes.has(icon.theme ?? "any")) return false
+      themes.add(icon.theme ?? "any")
+      return true
+    })
+  }
+}
+
 export async function resolveMcpIcons(
   icons: Icon[] | undefined,
   serverUrl?: string,
   fetcher: FetchIcon = fetch,
 ): Promise<ToolIconSource[]> {
-  const loaded = await Promise.all((icons ?? []).slice(0, 6).map((icon) => loadIcon(icon, serverUrl, fetcher)))
-  const themes = new Set<string>()
-  return loaded.filter((icon): icon is ToolIconSource => {
-    if (!icon || themes.has(icon.theme ?? "any")) return false
-    themes.add(icon.theme ?? "any")
-    return true
-  })
+  return createMcpIconResolver(fetcher)(icons, serverUrl)
 }

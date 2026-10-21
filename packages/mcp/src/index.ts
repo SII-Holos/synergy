@@ -1,4 +1,4 @@
-import { resolveMcpIcons } from "./icons"
+import { createMcpIconResolver } from "./icons"
 import type { ToolDisplay, ToolIconSource } from "@ericsanchezok/synergy-util/tool-display"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Tool as HarnessTool } from "@ericsanchezok/synergy-harness/tool/tool"
@@ -41,6 +41,7 @@ import {
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const runtimeState = RuntimeContext.state(() => ({
+    resolveIcons: createMcpIconResolver((url, init) => fetch(url, init)),
     toolCallTimeouts: new Map<string, number | undefined>(),
     toolIcons: new WeakMap<MCPToolDef, Promise<ToolIconSource[]>>(),
     serverIcons: new WeakMap<Client, Promise<ToolIconSource[]>>(),
@@ -109,16 +110,18 @@ export namespace MCP {
     const cache = runtimeState().toolIcons
     let icons = cache.get(mcpTool)
     if (!icons) {
-      icons = resolveMcpIcons(mcpTool.icons, serverUrl).then((value) => {
-        if (value.length) return value
-        const serverCache = runtimeState().serverIcons
-        let serverIcons = serverCache.get(client)
-        if (!serverIcons) {
-          serverIcons = resolveMcpIcons(client.getServerVersion()?.icons, serverUrl)
-          serverCache.set(client, serverIcons)
-        }
-        return serverIcons
-      })
+      icons = runtimeState()
+        .resolveIcons(mcpTool.icons, serverUrl)
+        .then((value) => {
+          if (value.length) return value
+          const serverCache = runtimeState().serverIcons
+          let serverIcons = serverCache.get(client)
+          if (!serverIcons) {
+            serverIcons = runtimeState().resolveIcons(client.getServerVersion()?.icons, serverUrl)
+            serverCache.set(client, serverIcons)
+          }
+          return serverIcons
+        })
       cache.set(mcpTool, icons)
     }
     const resolvedIcons = await icons

@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test"
-import { resolveMcpIcons } from "../../src/icons"
+import { expect, spyOn, test } from "bun:test"
+import { createMcpIconResolver, resolveMcpIcons } from "../../src/icons"
 
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20H2z"/></svg>`
 const src = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`
@@ -65,4 +65,28 @@ test("failed, oversized and redirected icon responses leave the tool usable", as
       throw new Error("offline")
     }),
   ).toEqual([])
+})
+
+test("queued icons share one deadline and release their request state after completion", async () => {
+  let now = 0
+  using clock = spyOn(performance, "now").mockImplementation(() => now)
+  const release = Promise.withResolvers<void>()
+  let calls = 0
+  const resolve = createMcpIconResolver(async () => {
+    calls++
+    await release.promise
+    return new Response(svg, { headers: { "content-type": "image/svg+xml" } })
+  })
+  const requests = Array.from({ length: 20 }, (_, index) =>
+    resolve([{ src: `https://service.invalid/${index}.svg` }], "https://service.invalid/mcp"),
+  )
+  await Bun.sleep(0)
+  expect(calls).toBe(4)
+  now = 2001
+  release.resolve()
+  const results = await Promise.all(requests)
+  expect(calls).toBe(4)
+  expect(results.filter((result) => result.length)).toHaveLength(4)
+  expect(await resolve([{ src: "https://service.invalid/0.svg" }], "https://service.invalid/mcp")).toHaveLength(1)
+  expect(calls).toBe(5)
 })
