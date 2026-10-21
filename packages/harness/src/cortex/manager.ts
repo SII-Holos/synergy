@@ -43,7 +43,7 @@ export namespace Cortex {
     stopped: false,
     background: new Map<Promise<void>, string>(),
     backgroundErrors: [] as unknown[],
-    retentionTimers: new Set<ReturnType<typeof setTimeout>>(),
+    retentionTimers: new Map<string, ReturnType<typeof setTimeout>[]>(),
     tasks: new Map() as Map<string, CortexTypes.Task>,
     taskWaiters: new Map() as Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>>,
     taskRuns: new Map() as Map<string, Promise<void>>,
@@ -746,6 +746,7 @@ export namespace Cortex {
         task.error = undefined
         task.output = undefined
         instanceState.tasks.set(taskID, task)
+        retainTask(taskID, task.sessionID)
         await record(() =>
           Session.update(task.sessionID, (draft) => {
             if (!draft.cortex) return
@@ -764,6 +765,7 @@ export namespace Cortex {
         task.completedAt ??= Date.now()
         task.error = instanceState.timeoutErrors.get(taskID)
         instanceState.tasks.set(taskID, task)
+        retainTask(taskID, task.sessionID)
         await record(() =>
           Session.update(task.sessionID, (draft) => {
             if (!draft.cortex) return
@@ -861,6 +863,7 @@ export namespace Cortex {
       // the terminal transition at this single, ordered boundary.
       Object.assign(task, terminalTask)
       instanceState.tasks.set(taskID, task)
+      retainTask(taskID, task.sessionID)
       log.info("task status updated", { taskID, status: terminalTask.status })
       emitPluginTaskObservability(terminalTask, terminalTask.status)
       publishVisibleTasksUpdate()
@@ -945,23 +948,6 @@ export namespace Cortex {
         instanceState.taskWaiters.delete(taskID)
         log.info("task result delivered to waiters", { taskID, waiterCount: waiters.size })
       }
-
-      retain(() => {
-        const task = instanceState.tasks.get(taskID)
-        if (task) {
-          task.prompt = truncate(task.prompt, 4096)
-          task.progress = undefined
-          log.info("task compacted", { taskID })
-        }
-      }, PROMPT_COMPACT_DELAY_MS)
-
-      retain(() => {
-        instanceState.tasks.delete(taskID)
-        instanceState.taskBudgets.delete(taskID)
-        instanceState.acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(terminalTask.sessionID)
-        log.info("task cleaned up", { taskID })
-      }, TASK_CLEANUP_DELAY_MS)
     } finally {
       // Once the terminal state is published, isTerminal() is the durable race
       // guard. Keeping task IDs here would turn this lock into a lifetime leak.
@@ -1434,15 +1420,28 @@ export namespace Cortex {
     state.background.set(tracked, taskID)
   }
 
-  function retain(action: () => void, delay: number) {
+  function retainTask(taskID: string, sessionID: string) {
     const state = runtimeState()
-    if (state.stopped) return
-    const timer = setTimeout(() => {
-      state.retentionTimers.delete(timer)
-      action()
-    }, delay)
-    timer.unref()
-    state.retentionTimers.add(timer)
+    if (state.stopped || state.retentionTimers.has(taskID)) return
+    const compact = setTimeout(() => {
+      const task = state.tasks.get(taskID)
+      if (task) {
+        task.prompt = truncate(task.prompt, 4096)
+        task.progress = undefined
+        log.info("task compacted", { taskID })
+      }
+    }, PROMPT_COMPACT_DELAY_MS)
+    const cleanup = setTimeout(() => {
+      state.retentionTimers.delete(taskID)
+      state.tasks.delete(taskID)
+      state.taskBudgets.delete(taskID)
+      state.acquiredTasks.delete(taskID)
+      SessionManager.unregisterRuntime(sessionID)
+      log.info("task cleaned up", { taskID })
+    }, TASK_CLEANUP_DELAY_MS)
+    compact.unref()
+    cleanup.unref()
+    state.retentionTimers.set(taskID, [compact, cleanup])
   }
 
   export async function drain(taskID?: string): Promise<void> {
@@ -1642,7 +1641,7 @@ export namespace Cortex {
   export function reset(): void {
     const instanceState = runtimeState()
 
-    for (const timer of instanceState.retentionTimers) clearTimeout(timer)
+    for (const timers of instanceState.retentionTimers.values()) for (const timer of timers) clearTimeout(timer)
     instanceState.retentionTimers.clear()
     instanceState.tasks.clear()
     instanceState.taskRuns.clear()

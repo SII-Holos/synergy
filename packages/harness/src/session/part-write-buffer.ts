@@ -55,7 +55,6 @@ export class PartWriteBuffer<T, P = string> {
 
   flush(key: string): Promise<void> {
     const entry = this.latest.get(key)
-    this.cancel(key)
     if (entry) return this.execute(key, entry.path, entry.value)
     return this.running.get(key)?.promise ?? Promise.resolve()
   }
@@ -71,9 +70,18 @@ export class PartWriteBuffer<T, P = string> {
     // flight; the snapshot is what makes the persisted state the flush-time
     // state and keeps later mutations out of the write.
     const entry: Entry<T, P> = { path, value: snapshot, bytes: Buffer.byteLength(JSON.stringify(snapshot)) }
-    if (this.bytes + entry.bytes > 64 * 1024 * 1024)
+    const failure = this.failures.get(key)
+    const replaced = (this.latest.get(key)?.bytes ?? 0) + (failure?.entry.bytes ?? 0)
+    if (this.bytes - replaced + entry.bytes > 64 * 1024 * 1024)
       return Promise.reject(new StorageBusyError("Streaming persistence buffer is full"))
+    this.cancel(key)
+    this.bytes -= failure?.entry.bytes ?? 0
+    this.failures.delete(key)
     this.bytes += entry.bytes
+    return this.writeEntry(key, entry, write)
+  }
+
+  private writeEntry(key: string, entry: Entry<T, P>, write = this.write): Promise<void> {
     const previous = this.running.get(key)?.promise
     let writing: Promise<void>
     try {
@@ -86,11 +94,12 @@ export class PartWriteBuffer<T, P = string> {
     const promise = writing.then(
       () => {
         this.bytes -= entry.bytes
+        this.bytes -= this.failures.get(key)?.entry.bytes ?? 0
         this.failures.delete(key)
         if (this.running.get(key)?.promise === promise) this.running.delete(key)
       },
       (error: unknown) => {
-        this.bytes -= entry.bytes
+        this.bytes -= this.failures.get(key)?.entry.bytes ?? 0
         this.failures.set(key, { entry, error })
         if (this.running.get(key)?.promise === promise) this.running.delete(key)
         throw error
@@ -103,7 +112,6 @@ export class PartWriteBuffer<T, P = string> {
   }
 
   async writeNow(key: string, path: P, value: T, write = this.write): Promise<void> {
-    this.cancel(key)
     await this.execute(key, path, value, write)
   }
 
@@ -123,10 +131,13 @@ export class PartWriteBuffer<T, P = string> {
     // Retained failures retry at every drain boundary instead of poisoning
     // later turns: one transient storage error must not wedge a session
     // until the Runtime restarts. Keys with a newer buffered or running
-    // entry flush that entry instead, and its success clears the failure.
+    // entry flush that entry instead, transferring the retained bytes on admission.
     const retries = [...this.failures.entries()]
       .filter(([key, { entry }]) => predicate(entry.value, entry.path) && !keys.has(key))
-      .map(([key, { entry }]) => this.execute(key, entry.path, entry.value))
+      .map(([key, { entry }]) => {
+        this.failures.delete(key)
+        return this.writeEntry(key, entry)
+      })
     const results = await Promise.allSettled([...keys].map((key) => this.flush(key)).concat(retries))
     const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
     if (errors.length === 1) throw errors[0]

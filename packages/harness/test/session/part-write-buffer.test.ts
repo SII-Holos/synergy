@@ -191,6 +191,82 @@ describe("PartWriteBuffer", () => {
     )
   })
 
+  test("failed snapshots retain their bytes and retry in place at the 64 MiB limit", async () => {
+    const snapshots = new Map<string, { text: string }>()
+    const errors = Array.from({ length: 8 }, (_, index) => new Error(`disk unavailable ${index}`))
+    const release = Promise.withResolvers<void>()
+    let recovering = false
+    const writes: string[] = []
+    const buffer = new PartWriteBuffer<{ text: string }>(async (path, value) => {
+      if (snapshots.has(path)) expect(value).toBe(snapshots.get(path)!)
+      else snapshots.set(path, value)
+      if (!recovering) throw errors[Number(path)]
+      await release.promise
+      writes.push(path)
+    }, 10_000)
+    const text = "x".repeat(8 * 1024 * 1024 - Buffer.byteLength(JSON.stringify({ text: "" })))
+    const part = { text }
+    for (let index = 0; index < errors.length; index++) {
+      await expect(buffer.writeNow(String(index), String(index), part)).rejects.toBe(errors[index])
+    }
+    expect(() => buffer.defer("overflow", "overflow", { text: "more" })).toThrow("buffer is full")
+    await expect(buffer.writeNow("0", "0", { text: part.text + "y" })).rejects.toThrow("buffer is full")
+    const repeated = await buffer.flushAll().catch((error: unknown) => error)
+    expect(repeated).toBeInstanceOf(AggregateError)
+    expect((repeated as AggregateError).errors).toEqual(errors)
+    part.text = "caller mutation"
+    recovering = true
+    const pending = buffer.flushAll()
+    const concurrent = buffer.flushAll()
+    try {
+      expect(() => buffer.defer("overflow", "overflow", { text: "more" })).toThrow("buffer is full")
+    } finally {
+      release.resolve()
+    }
+    await Promise.all([pending, concurrent])
+    expect(writes.sort()).toEqual([...snapshots.keys()].sort())
+    for (const [key, snapshot] of snapshots) {
+      expect(snapshot.text === text).toBe(true)
+      expect(() => buffer.assertDrained(key)).not.toThrow()
+    }
+    buffer.defer("after", "after", { text: "more" })
+    await buffer.flushAll()
+  })
+
+  test("same-key failures replace their bytes while running and latest snapshots remain charged", async () => {
+    const release = Promise.withResolvers<void>()
+    const firstError = new Error("first write failed")
+    const replacementError = new Error("replacement failed")
+    let attempts = 0
+    const writes: number[] = []
+    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
+      attempts++
+      if (attempts === 1) throw firstError
+      if (attempts === 2) {
+        await release.promise
+        throw replacementError
+      }
+      writes.push(value.length)
+    }, 10_000)
+    const replacement = "x".repeat(40 * 1024 * 1024 - 2)
+    await expect(buffer.writeNow("part", "part", replacement)).rejects.toBe(firstError)
+    const pending = buffer.writeNow("part", "part", replacement).catch((error: unknown) => error)
+    try {
+      buffer.defer("part", "part", "y".repeat(24 * 1024 * 1024 - 2))
+      expect(() => buffer.defer("overflow", "overflow", "z")).toThrow("buffer is full")
+    } finally {
+      release.resolve()
+    }
+    expect(await pending).toBe(replacementError)
+    expect(() => buffer.defer("overflow", "overflow", "z")).toThrow("buffer is full")
+    await buffer.flushAll()
+    expect(writes).toEqual([24 * 1024 * 1024 - 2])
+    expect(() => buffer.assertDrained("part")).not.toThrow()
+    buffer.defer("full", "full", "z".repeat(64 * 1024 * 1024 - 2))
+    await buffer.flushAll()
+    expect(writes).toEqual([24 * 1024 * 1024 - 2, 64 * 1024 * 1024 - 2])
+  })
+
   test("incremental defers persist the final accumulated state, not the caller's later mutation", async () => {
     const r = recorder()
     const buf = new PartWriteBuffer<{ type: "text"; text: string }>(r.write, 10_000)
