@@ -1,5 +1,5 @@
 import * as LibraryConfigSchema from "@ericsanchezok/synergy-library/config-schema"
-import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { Server } from "@ericsanchezok/synergy-server/server/server"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -11,6 +11,7 @@ import { ExperienceReencode } from "@ericsanchezok/synergy-library/experience-re
 import { MemoryRecall } from "@ericsanchezok/synergy-library/memory-recall"
 import { Embedding } from "@ericsanchezok/synergy-library/vector/embedding"
 import { LibraryStatsEngine } from "@ericsanchezok/synergy-library"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -211,10 +212,11 @@ describe("Library API DTO contracts", () => {
       })
     }))
 
-  test("experience page returns stable card fields", () =>
+  test("experience page returns bounded stored script previews without detail-only content", () =>
     runtime.run(async () => {
       await using project = await tmpdir({ git: true })
       const scope = await project.scope()
+      const script = "Inspect changes, apply the fix, and run tests.\n".repeat(20)
 
       insertExperience({
         id: "exp_page_1",
@@ -228,23 +230,92 @@ describe("Library API DTO contracts", () => {
         turnsRemaining: 2,
         createdAt: 1710000000000,
         updatedAt: 1710000001000,
-        script: "echo hi",
+        script,
         raw: "raw body",
         metadata: '{"kind":"test"}',
       })
+      insertExperience({
+        id: "exp_page_2",
+        sessionID: "ses_page_2",
+        scopeID: scope.id,
+        intent: "Await stored trajectory",
+        rewardStatus: "pending",
+        reward: null,
+        rewards: {},
+        qValues: {},
+        qVisits: 0,
+        turnsRemaining: null,
+        createdAt: 1710000002000,
+        updatedAt: 1710000003000,
+        raw: "Do not use raw as a preview",
+      })
+      insertExperience({
+        id: "exp_page_3",
+        sessionID: "ses_page_3",
+        scopeID: scope.id,
+        intent: "Missing content row",
+        reward: 0,
+        rewards: {},
+        qValues: {},
+        qVisits: 0,
+        turnsRemaining: null,
+        createdAt: 1710000004000,
+        updatedAt: 1710000005000,
+      })
+      LibraryDB.connection().prepare("DELETE FROM experience_content WHERE id = ?1").run("exp_page_3")
 
       await ScopeContext.provide({
         scope,
         fn: async () => {
           const app = Server.App()
-          const response = await app.request(
-            `/library/experience/page?filter=scope&scopeID=${scope.id}&sort=newest&limit=10&offset=0`,
-          )
-          expect(response.status).toBe(200)
+          const getContent = spyOn(LibraryDB.Experience, "getContent")
+          const getContentMany = spyOn(LibraryDB.Experience, "getContentMany")
+          try {
+            const queries: string[] = []
+            const response = await ObservabilityMetrics.withForwarder(
+              (metric) => {
+                if (metric.name === "library.sqlite.query.duration") queries.push(String(metric.labels?.operation))
+              },
+              () =>
+                app.request(`/library/experience/page?filter=scope&scopeID=${scope.id}&sort=oldest&limit=2&offset=0`),
+            )
+            expect(response.status).toBe(200)
+            const body = (await response.json()) as { items: Array<Record<string, unknown>> }
+            expect(body).toMatchObject({ total: 3, limit: 2, offset: 0, hasMore: true })
+            expect(body.items).toHaveLength(2)
+            expectExperienceCardFields(body.items[0])
+            expect(body.items[0]).toMatchObject({ id: "exp_page_1", scriptPreview: script.slice(0, 320) })
+            expect(body.items[1]).toMatchObject({ id: "exp_page_2", scriptPreview: null })
+            expect(queries).toEqual(["select.experience", "select.experience", "select.experience"])
+            for (const item of body.items) {
+              expect(item).not.toHaveProperty("script")
+              expect(item).not.toHaveProperty("raw")
+              expect(item).not.toHaveProperty("metadata")
+            }
 
-          const body = (await response.json()) as { items: Array<Record<string, unknown>> }
-          expect(body.items).toHaveLength(1)
-          expectExperienceCardFields(body.items[0])
+            const next = await app.request(
+              `/library/experience/page?filter=scope&scopeID=${scope.id}&sort=oldest&limit=2&offset=2`,
+            )
+            expect(next.status).toBe(200)
+            expect(await next.json()).toMatchObject({
+              items: [{ id: "exp_page_3", scriptPreview: null }],
+              total: 3,
+              offset: 2,
+              hasMore: false,
+            })
+            const empty = await app.request(`/library/experience/page?filter=scope&scopeID=${scope.id}&offset=3`)
+            expect(empty.status).toBe(200)
+            expect(await empty.json()).toMatchObject({ items: [], total: 3, hasMore: false })
+            expect(getContent).not.toHaveBeenCalled()
+            expect(getContentMany).not.toHaveBeenCalled()
+          } finally {
+            getContent.mockRestore()
+            getContentMany.mockRestore()
+          }
+
+          const detail = await app.request("/library/experience/exp_page_1")
+          expect(detail.status).toBe(200)
+          expect(await detail.json()).toMatchObject({ script, raw: "raw body", metadata: '{"kind":"test"}' })
         },
       })
     }))
@@ -325,6 +396,7 @@ describe("Library API DTO contracts", () => {
       runtime.run(async () => {
         await using project = await tmpdir({ git: true })
         const scope = await project.scope()
+        const script = "🧪".repeat(400)
 
         insertExperience({
           id: "exp_list_1",
@@ -338,6 +410,8 @@ describe("Library API DTO contracts", () => {
           turnsRemaining: 1,
           createdAt: 1710000005000,
           updatedAt: 1710000006000,
+          script,
+          raw: "Do not expose raw in cards",
         })
         LibraryDB.connection().prepare("UPDATE experience SET rewards = '{broken' WHERE id = 'exp_list_1'").run()
 
@@ -350,12 +424,16 @@ describe("Library API DTO contracts", () => {
             expect(all.status).toBe(200)
             const allBody = (await all.json()) as Array<Record<string, unknown>>
             expect(allBody.map((row) => row.id)).toContain("exp_list_1")
+            expect(allBody[0].scriptPreview).toBe("🧪".repeat(320))
+            expect(allBody[0]).not.toHaveProperty("raw")
+            expect(allBody[0]).not.toHaveProperty("script")
 
             const scoped = await app.request(`/library/experience?scopeID=${scope.id}`)
             expect(scoped.status).toBe(200)
             const scopedBody = (await scoped.json()) as Array<Record<string, unknown>>
             expect(scopedBody).toHaveLength(1)
             expectExperienceCardFields(scopedBody[0])
+            expect(scopedBody[0].scriptPreview).toBe("🧪".repeat(320))
 
             const invalidPage = await app.request("/library/experience/page?filter=scope")
             expect(invalidPage.status).toBe(400)
@@ -365,32 +443,36 @@ describe("Library API DTO contracts", () => {
         })
       }))
 
-    test("searches experiences through the recall pipeline", () =>
+    test("searches experiences with bounded stored script previews through the recall pipeline", () =>
       runtime.run(async () => {
         await using project = await tmpdir({ git: true })
         const scope = await project.scope()
+        const scripts = ["🧪".repeat(400), "Run focused tests", null]
 
-        ;(ExperienceRecall.retrieve as any) = mock(async () => [
-          {
-            id: "exp_search_1",
+        ExperienceRecall.retrieve = mock(async () =>
+          scripts.map((script, index) => ({
+            id: `exp_search_${index + 1}`,
             sessionID: "ses_search_1",
             scopeID: scope.id,
             intent: "Ship the search route",
             sourceProviderID: "provider-a",
             sourceModelID: "model-a",
-            rewardStatus: "evaluated",
+            rewardStatus: "evaluated" as const,
             reward: 0.5,
             rewards: { outcome: 0.5 },
             qValue: 0.5,
             qValues: { outcome: 0.5 },
             qVisits: 2,
+            retrievalCount: 0,
             turnsRemaining: 1,
             createdAt: 1710000007000,
             updatedAt: 1710000008000,
             similarity: 0.91,
             score: 0.87,
-          },
-        ])
+            script,
+            raw: "Private raw digest is not a script preview",
+          })),
+        )
 
         await ScopeContext.provide({
           scope,
@@ -403,7 +485,8 @@ describe("Library API DTO contracts", () => {
             expect(response.status).toBe(200)
 
             const body = (await response.json()) as Array<Record<string, unknown>>
-            expect(body).toHaveLength(1)
+            expect(body).toHaveLength(3)
+            expect(body.map((item) => item.scriptPreview)).toEqual(["🧪".repeat(320), "Run focused tests", null])
             expect(body[0]).toEqual(
               expect.objectContaining({
                 id: "exp_search_1",
@@ -412,6 +495,10 @@ describe("Library API DTO contracts", () => {
                 qValue: 0.5,
               }),
             )
+            for (const item of body) {
+              expect(item).not.toHaveProperty("raw")
+              expect(item).not.toHaveProperty("script")
+            }
           },
         })
       }))

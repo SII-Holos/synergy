@@ -665,10 +665,6 @@
   border-radius: 6px;
 }
 
-.library-header-home {
-  flex-direction: column;
-  align-items: stretch;
-}
 .library-header-controls > :first-child {
   max-width: 100%;
   overflow-x: auto;
@@ -681,7 +677,7 @@
 .library-search-field input {
   min-width: 0;
 }
-.library-header-home .library-search-field {
+.library-header-controls .library-search-field {
   width: 100%;
   max-width: none;
   min-height: 36px;
@@ -835,9 +831,87 @@
   gap: 4px 12px;
   margin-top: 4px;
 }
-.library-experience-summary {
-  white-space: pre-line;
+.library-skill-notices {
+  flex-shrink: 0;
+  margin-top: 24px;
+  padding-block: 12px;
+  border-top: 1px solid var(--border-weaker-base);
+}
+.library-skill-notices > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+.library-skill-notices > summary::-webkit-details-marker {
+  display: none;
+}
+.library-skill-notices[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.library-skill-failures {
+  flex-shrink: 0;
+  margin-bottom: 12px;
+}
+.library-skill-failures summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.library-skill-diagnostic {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-block: 12px;
   overflow-wrap: anywhere;
+}
+.library-experience-summary {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.library-experience-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+@container (min-width: 680px) {
+  .library-experience-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.library-experience-card {
+  min-width: 0;
+}
+.library-experience-toggle {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 16px;
+  text-align: left;
+}
+.library-experience-toggle:focus-visible {
+  border-radius: 12px;
+}
+.library-experience-footer {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+.library-experience-origin {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  gap: 6px;
+}
+.library-experience-status {
+  white-space: nowrap;
 }
 .library-card-surface {
   border-radius: 12px;

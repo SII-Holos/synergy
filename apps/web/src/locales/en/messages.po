@@ -4431,10 +4431,6 @@ msgid "app.library.experience.visits"
 msgstr "{visits} visits"
 
 #. js-lingui-explicit-id
-msgid "app.library.home.empty"
-msgstr "Your memories and experiences will appear here."
-
-#. js-lingui-explicit-id
 msgid "app.library.home.groupFailed"
 msgstr "Unable to refresh {group}. Other results remain available."
 
@@ -4445,10 +4441,6 @@ msgstr "Loading library…"
 #. js-lingui-explicit-id
 msgid "app.library.home.noMatches"
 msgstr "No matching results"
-
-#. js-lingui-explicit-id
-msgid "app.library.home.recent"
-msgstr "Recently updated"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.allCategories"
@@ -4513,10 +4505,6 @@ msgstr "Experiences"
 #. js-lingui-explicit-id
 msgid "app.library.nav.experiencesCount"
 msgstr "Experiences {count}"
-
-#. js-lingui-explicit-id
-msgid "app.library.nav.home"
-msgstr "Overview"
 
 #. js-lingui-explicit-id
 msgid "app.library.nav.memories"
@@ -4605,10 +4593,6 @@ msgstr "Select all"
 #. js-lingui-explicit-id
 msgid "app.library.skills.card.compatLabel"
 msgstr "{level} compatibility"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.diagnosticsCount"
-msgstr "{count, plural, one {# diagnostic} other {# diagnostics}}"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.card.openDetails"
@@ -4715,16 +4699,16 @@ msgid "app.library.skills.diagnostics.failed"
 msgstr "{count, plural, one {# skill failed to load} other {# skills failed to load}}"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.failedGroup"
-msgstr "Failed to load"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.shadowed"
-msgstr "{count, plural, one {# skill shadowed} other {# skills shadowed}}"
+msgid "app.library.skills.diagnostics.overridden"
+msgstr "{count, plural, one {# duplicate source overridden} other {# duplicate sources overridden}}"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.diagnostics.shadowedGroup"
 msgstr "Shadowed"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.title"
+msgstr "Sources and compatibility"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"

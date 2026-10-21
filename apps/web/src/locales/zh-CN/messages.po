@@ -4431,10 +4431,6 @@ msgid "app.library.experience.visits"
 msgstr "已使用 {visits} 次"
 
 #. js-lingui-explicit-id
-msgid "app.library.home.empty"
-msgstr "你的记忆和经验将在这里显示。"
-
-#. js-lingui-explicit-id
 msgid "app.library.home.groupFailed"
 msgstr "无法刷新{group}，其他结果仍然可用。"
 
@@ -4445,10 +4441,6 @@ msgstr "正在加载知识库…"
 #. js-lingui-explicit-id
 msgid "app.library.home.noMatches"
 msgstr "没有匹配结果"
-
-#. js-lingui-explicit-id
-msgid "app.library.home.recent"
-msgstr "最近更新"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.allCategories"
@@ -4513,10 +4505,6 @@ msgstr "经验"
 #. js-lingui-explicit-id
 msgid "app.library.nav.experiencesCount"
 msgstr "经验 {count}"
-
-#. js-lingui-explicit-id
-msgid "app.library.nav.home"
-msgstr "概览"
 
 #. js-lingui-explicit-id
 msgid "app.library.nav.memories"
@@ -4605,10 +4593,6 @@ msgstr "选择全部"
 #. js-lingui-explicit-id
 msgid "app.library.skills.card.compatLabel"
 msgstr "{level} 兼容性"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.diagnosticsCount"
-msgstr "{count, plural, one {# 条诊断} other {# 条诊断}}"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.card.openDetails"
@@ -4715,16 +4699,16 @@ msgid "app.library.skills.diagnostics.failed"
 msgstr "{count, plural, other {# 个技能无法加载}}"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.failedGroup"
-msgstr "无法加载"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.shadowed"
-msgstr "{count, plural, other {# 个技能被遮蔽}}"
+msgid "app.library.skills.diagnostics.overridden"
+msgstr "{count, plural, other {# 个同名技能覆盖}}"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.diagnostics.shadowedGroup"
 msgstr "被遮蔽"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.title"
+msgstr "来源与兼容性说明"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"

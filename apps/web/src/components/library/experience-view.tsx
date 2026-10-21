@@ -1,6 +1,6 @@
 import { experiencePreview } from "./experience-preview"
 import { Dynamic } from "solid-js/web"
-import { createEffect, createMemo, createSignal, createResource, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, createResource, For, on, onCleanup, Show } from "solid-js"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { createLibraryCollection } from "./library-collection"
@@ -163,24 +163,28 @@ export function ExperienceView(props: {
     }
   })
 
-  createEffect(() => {
-    props.search
-    props.currentScopeID
-    if (detailDialog) dialog.close(detailDialog)
-    listHandle?.scrollTo(0)
-    if (selecting()) exitSelection()
-  })
+  createEffect(
+    on(
+      () => [props.search, props.currentScopeID],
+      () => {
+        if (detailDialog) dialog.close(detailDialog)
+        listHandle?.scrollTo(0)
+        if (selecting()) exitSelection()
+      },
+    ),
+  )
 
-  createEffect(() => {
-    if (props.isSearching) return
-    effectiveFilter()
-    serverSort()
-    props.currentScopeID
-    props.currentSessionID
-    listHandle?.scrollTo(0)
-    if (selecting()) exitSelection()
-    void loadPage(true)
-  })
+  createEffect(
+    on(
+      () => [props.isSearching, effectiveFilter(), serverSort(), props.currentScopeID, props.currentSessionID] as const,
+      ([searching]) => {
+        if (searching) return
+        listHandle?.scrollTo(0)
+        if (selecting()) exitSelection()
+        void loadPage(true)
+      },
+    ),
+  )
 
   createEffect(() => {
     if (props.isSearching) return
@@ -217,11 +221,11 @@ export function ExperienceView(props: {
   const rows = createMemo<ExperienceRow[]>(() => {
     const items = displayedItems()
     const next: ExperienceRow[] = []
-    for (let index = 0; index < items.length; index += 1) {
+    for (let index = 0; index < items.length; index += 2) {
       const left = items[index]
       next.push({
         kind: "items",
-        items: [left, undefined],
+        items: [left, items[index + 1]],
       })
     }
     if (!props.isSearching && (items.length > 0 || initialLoading() || pageError())) {
@@ -630,9 +634,10 @@ export function ExperienceView(props: {
 
                   return (
                     <div class="py-1.5">
-                      <div class="library-result-list">
+                      <div class="library-experience-grid">
                         <ExperienceCard
                           item={left}
+                          sourceScopeName={props.scopeLabel?.(left.scopeID)}
                           expanded={false}
                           similarity={experienceSimilarity(left)}
                           searching={props.isSearching}
@@ -650,6 +655,7 @@ export function ExperienceView(props: {
                           {(item) => (
                             <ExperienceCard
                               item={item()}
+                              sourceScopeName={props.scopeLabel?.(item().scopeID)}
                               expanded={false}
                               similarity={experienceSimilarity(item())}
                               searching={props.isSearching}
@@ -814,363 +820,421 @@ export function ExperienceCard(props: {
     void copyExperience.copy()
   }
 
-  const preview = createMemo(() => experiencePreview(props.item.intent))
+  const preview = createMemo(() => experiencePreview(props.item.intent, props.item.scriptPreview))
+  const statusLabel = () =>
+    props.item.rewardStatus === "encoding_failed"
+      ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
+      : props.item.rewardStatus === "pending"
+        ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
+        : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })
+  const scopeName = () =>
+    props.sourceScopeName ||
+    (scopeID() === "home"
+      ? _({ id: "app.sidebar.section.home", message: "Home" })
+      : _({ id: "app.library.experience.scopeNameUnavailable", message: "Scope name unavailable" }))
 
   return (
     <div
       data-panel-item={props.item.id}
       classList={{
         [libraryCardBaseClass]: true,
+        "library-experience-card": !props.expanded,
         [libraryCardExpandedClass]: props.expanded && !props.selecting,
         [libraryCardHoverClass]: !props.expanded && !props.selecting,
         "workbench-selected-surface ring-1 ring-inset ring-border-base/32": props.selecting && props.selected,
         "hover:bg-surface-raised-base/98": props.selecting && !props.selected,
       }}
     >
-      <div class="flex flex-col gap-3 p-4">
-        <div class="flex items-start gap-2">
-          <Dynamic
-            data-panel-focus-entry={props.detailPresentation ? undefined : true}
-            component={props.detailPresentation ? "h2" : "button"}
-            type={props.detailPresentation ? undefined : "button"}
-            class="library-card-toggle flex items-start gap-2 min-w-0 flex-1 text-left"
-            aria-expanded={undefined}
+      <Show
+        when={props.expanded}
+        fallback={
+          <button
+            type="button"
+            class="library-card-toggle library-experience-toggle"
+            data-panel-focus-entry
             aria-pressed={props.selecting ? props.selected : undefined}
-            aria-haspopup={!props.detailPresentation && !props.selecting ? "dialog" : undefined}
-            onClick={props.detailPresentation ? undefined : props.onToggle}
+            aria-haspopup={props.selecting ? undefined : "dialog"}
+            onClick={props.onToggle}
           >
-            <Show when={props.selecting}>
-              <span class="shrink-0 pt-0.5" aria-hidden="true">
-                <SelectionCheckbox selected={props.selected} />
-              </span>
-            </Show>
-            <span class="min-w-0 flex-1">
-              <span
-                classList={{
-                  "block app-panel-row-title text-text-strong leading-snug [overflow-wrap:anywhere]": true,
-                  "line-clamp-2": !props.expanded || props.selecting,
-                }}
-              >
-                {(props.detailPresentation
-                  ? _({ id: "app.library.experience.contentTitle", message: "Experience" })
-                  : preview().title) ||
+            <span class="flex items-start gap-2 min-w-0">
+              <Show when={props.selecting}>
+                <span class="shrink-0 pt-0.5" aria-hidden="true">
+                  <SelectionCheckbox selected={props.selected} />
+                </span>
+              </Show>
+              <span class="app-panel-row-title text-text-strong line-clamp-2 [overflow-wrap:anywhere]">
+                {preview().title ||
                   (props.item.rewardStatus === "encoding_failed"
                     ? _({ id: "app.library.experience.encodingFailedTitle", message: "Experience encoding failed" })
                     : _({ id: "app.library.experience.missingIntent", message: "Intent not recorded" }))}
               </span>
-              <Show when={!props.detailPresentation && preview().summary}>
-                <span class="library-experience-summary mt-1 block app-panel-copy text-text-weak line-clamp-2">
-                  {preview().summary}
-                </span>
-              </Show>
-              <span class="mt-1 block app-panel-caption text-text-weak">
-                {props.item.rewardStatus === "encoding_failed"
-                  ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
-                  : props.item.rewardStatus === "pending"
-                    ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
-                    : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })}
-              </span>
             </span>
-          </Dynamic>
-          <div class="flex shrink-0 items-center gap-1.5 self-start">
-            <Show when={props.searching && props.similarity !== undefined}>
-              <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-                {Math.round((props.similarity ?? 0) * 100)}%
+            <Show when={preview().summary}>
+              <span class="library-experience-summary app-panel-copy text-text-weak line-clamp-2">
+                {preview().summary}
               </span>
             </Show>
-            <Show when={props.expanded && !props.selecting}>
-              <button
-                type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
-                onClick={handleCopyExperience}
-                title={copyExperience.tooltip()}
-                aria-label={copyExperience.tooltip()}
-                data-copy-state={copyExperience.state()}
-                disabled={copyExperience.disabled()}
-              >
-                <Show when={copyExperience.copied()} fallback={<Icon name={copyExperience.icon()} size="small" />}>
-                  <Icon name={getSemanticIcon("state.success")} size="small" class="text-text-on-success-base" />
-                </Show>
-              </button>
-              <Show when={props.onDelete}>
-                <button
-                  type="button"
-                  class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
-                  aria-label={_({ id: "app.library.experience.delete", message: "Delete experience" })}
-                  onClick={props.onDelete}
-                >
-                  <Icon name={getSemanticIcon("action.remove")} size="small" />
-                </button>
-              </Show>
-            </Show>
-          </div>
-        </div>
-
-        <Show when={!props.selecting}>
-          <Show when={props.item.rewardStatus === "encoding_failed"}>
-            <p class="app-panel-caption text-text-weak">
-              {_({
-                id: "app.library.experience.encodingFailedHint",
-                message: "This turn could not be encoded. Open the source session to inspect the original content.",
-              })}
-            </p>
-          </Show>
-
-          <Show when={props.detailPresentation && props.item.intent}>
-            <Markdown text={props.item.intent} class="library-detail-markdown" />
-          </Show>
-          <Show when={props.expanded}>
-            <section class="library-experience-source">
-              <h3 class="app-panel-section-title">{_({ id: "app.library.experience.source", message: "Source" })}</h3>
-              <p class="app-panel-caption text-text-weak">
-                {props.sourceScopeName ||
-                  (scopeID() === "home"
-                    ? _({ id: "app.sidebar.section.home", message: "Home" })
-                    : _({ id: "app.library.experience.scopeNameUnavailable", message: "Scope name unavailable" }))}
-              </p>
-              <Show when={scopeID() && sessionID()}>
-                <A
-                  class="library-source-link app-panel-control text-text-interactive-base"
-                  href={`/${base64Encode(scopeID())}/session/${sessionID()}`}
-                >
-                  {sourceSession.latest?.title ||
-                    _({ id: "app.library.experience.openSession", message: "Open source session" })}
-                </A>
-              </Show>
-              <Show when={sourceSession.latest?.unavailable}>
-                <p class="app-panel-caption text-text-weak">
-                  {_({
-                    id: "app.library.experience.sourceUnavailable",
-                    message: "Source session information is unavailable.",
-                  })}{" "}
-                  <button type="button" class="library-plain-action" onClick={() => void retrySource()}>
-                    {_(L.retry)}
-                  </button>
-                </p>
-              </Show>
-            </section>
-            <Show when={props.detailError}>
-              <div role="alert" class="flex items-center justify-between gap-3 app-panel-caption text-text-weak">
-                <span>
-                  {_({
-                    id: "app.library.experience.detailFailed",
-                    message: "Unable to load details. This card is still available.",
-                  })}
+            <span class="library-experience-footer app-panel-caption text-text-weak">
+              <span class="library-experience-origin">
+                <span class="truncate">{scopeName()}</span>
+                <span aria-hidden="true">·</span>
+                <span class="shrink-0">{relativeTime(fmt, updated() ?? props.item.createdAt)}</span>
+              </span>
+              <span class="library-experience-status">{statusLabel()}</span>
+            </span>
+          </button>
+        }
+      >
+        <div class="flex flex-col gap-3 p-4">
+          <div class="flex items-start gap-2">
+            <Dynamic
+              data-panel-focus-entry={props.detailPresentation ? undefined : true}
+              component={props.detailPresentation ? "h2" : "button"}
+              type={props.detailPresentation ? undefined : "button"}
+              class="library-card-toggle flex items-start gap-2 min-w-0 flex-1 text-left"
+              aria-expanded={undefined}
+              aria-pressed={props.selecting ? props.selected : undefined}
+              aria-haspopup={!props.detailPresentation && !props.selecting ? "dialog" : undefined}
+              onClick={props.detailPresentation ? undefined : props.onToggle}
+            >
+              <Show when={props.selecting}>
+                <span class="shrink-0 pt-0.5" aria-hidden="true">
+                  <SelectionCheckbox selected={props.selected} />
                 </span>
-                <button
-                  type="button"
-                  class="library-action"
-                  onClick={(event) => {
-                    const trigger = event.currentTarget
-                    const surface = trigger.closest<HTMLElement>('[role="dialog"]')
-                    props.onRetry()
-                    queueMicrotask(() => {
-                      if (!trigger.isConnected && document.activeElement === document.body) surface?.focus()
-                    })
+              </Show>
+              <span class="min-w-0 flex-1">
+                <span
+                  classList={{
+                    "block app-panel-row-title text-text-strong leading-snug [overflow-wrap:anywhere]": true,
+                    "line-clamp-2": !props.expanded || props.selecting,
                   }}
                 >
-                  {_(L.retry)}
-                </button>
-              </div>
-            </Show>
-            <details class="library-experience-technical">
-              <summary class="app-panel-control text-text-weak">
-                {_({ id: "app.library.experience.technicalDetails", message: "Technical details" })}
-              </summary>
-              <div
-                class={`mt-1 flex flex-col gap-2.5 border-t border-border-base/28 pt-3`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Show
-                  when={props.detail}
-                  fallback={
-                    <Show when={!props.detailError}>
-                      <Spinner class="size-3.5 my-1 text-icon-weak-base" />
-                    </Show>
-                  }
+                  {(props.detailPresentation
+                    ? _({ id: "app.library.experience.contentTitle", message: "Experience" })
+                    : preview().title) ||
+                    (props.item.rewardStatus === "encoding_failed"
+                      ? _({ id: "app.library.experience.encodingFailedTitle", message: "Experience encoding failed" })
+                      : _({ id: "app.library.experience.missingIntent", message: "Intent not recorded" }))}
+                </span>
+                <Show when={!props.detailPresentation && preview().summary}>
+                  <span class="library-experience-summary mt-1 block app-panel-copy text-text-weak line-clamp-2">
+                    {preview().summary}
+                  </span>
+                </Show>
+                <span class="mt-1 block app-panel-caption text-text-weak">
+                  {props.item.rewardStatus === "encoding_failed"
+                    ? _({ id: "app.library.experience.status.failed", message: "Encoding failed" })
+                    : props.item.rewardStatus === "pending"
+                      ? _({ id: "app.library.experience.status.pending", message: "Pending evaluation" })
+                      : _({ id: "app.library.experience.status.evaluated", message: "Evaluated" })}
+                </span>
+              </span>
+            </Dynamic>
+            <div class="flex shrink-0 items-center gap-1.5 self-start">
+              <Show when={props.searching && props.similarity !== undefined}>
+                <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-base ring-1 ring-inset ring-border-base/35">
+                  {Math.round((props.similarity ?? 0) * 100)}%
+                </span>
+              </Show>
+              <Show when={props.expanded && !props.selecting}>
+                <button
+                  type="button"
+                  class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
+                  onClick={handleCopyExperience}
+                  title={copyExperience.tooltip()}
+                  aria-label={copyExperience.tooltip()}
+                  data-copy-state={copyExperience.state()}
+                  disabled={copyExperience.disabled()}
                 >
-                  {(detail) => (
-                    <>
-                      <Show when={detail().script}>
-                        <CollapsibleSection
-                          label={_({ id: "app.library.experience.script", message: "Script" })}
-                          expanded={props.expandedSections.has(`${props.item.id}-script`)}
-                          onToggle={() => props.onToggleSection(`${props.item.id}-script`)}
-                        >
-                          <Markdown
-                            text={detail().script!}
-                            class={
-                              props.detailPresentation
-                                ? "library-detail-markdown"
-                                : "app-panel-caption text-text-weak leading-relaxed max-h-64 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_pre]:app-panel-caption [&_pre]:rounded-lg [&_pre]:p-2 [&_p]:my-0.5"
-                            }
-                          />
-                        </CollapsibleSection>
-                      </Show>
-                      <Show when={detail().raw}>
-                        <CollapsibleSection
-                          label={_({ id: "app.library.experience.raw", message: "Raw" })}
-                          expanded={props.expandedSections.has(`${props.item.id}-raw`)}
-                          onToggle={() => props.onToggleSection(`${props.item.id}-raw`)}
-                        >
-                          <Markdown
-                            text={detail().raw!}
-                            class={
-                              props.detailPresentation
-                                ? "library-detail-markdown"
-                                : "app-panel-caption text-text-weak leading-relaxed max-h-64 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_pre]:app-panel-caption [&_pre]:rounded-lg [&_pre]:p-2 [&_p]:my-0.5"
-                            }
-                          />
-                        </CollapsibleSection>
-                      </Show>
-                    </>
-                  )}
-                </Show>
-                <dl class={`grid gap-3 sm:grid-cols-3 ${libraryInsetClass} px-3.5 py-3`}>
-                  <div class="min-w-0">
-                    <dt class={libraryMetaLabelClass}>{_({ id: "app.library.experience.model", message: "Model" })}</dt>
-                    <dd class="mt-1 app-panel-caption text-text-base [overflow-wrap:anywhere]">
-                      {sourceModel() ?? _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
-                    </dd>
-                  </div>
-                  <div class="min-w-0">
-                    <dt class={libraryMetaLabelClass}>{_({ id: "app.library.experience.scope", message: "Scope" })}</dt>
-                    <dd class="mt-1 app-panel-caption text-text-base [overflow-wrap:anywhere]">
-                      {scopeID() || _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
-                    </dd>
-                  </div>
-                  <div class="min-w-0">
-                    <dt class={libraryMetaLabelClass}>
-                      {_({ id: "app.library.experience.session", message: "Session" })}
-                    </dt>
-                    <dd class="mt-1 app-panel-caption text-text-base [overflow-wrap:anywhere]">
-                      {sessionID() || _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
-                    </dd>
-                  </div>
-                </dl>
-              </div>
-            </details>
-          </Show>
-
-          <Show when={props.expanded && props.item.rewardStatus !== "encoding_failed"}>
-            <details class="library-experience-metrics">
-              <summary class="app-panel-caption font-medium text-text-weak cursor-pointer">
-                {_({ id: "app.library.experience.metrics", message: "Evaluation details" })}
-              </summary>
-              <div class="mt-3 flex flex-col gap-2">
-                <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${libraryInsetClass}`}>
-                  <Show when={reward() !== null}>
-                    <span
-                      classList={{
-                        "rounded-full px-2.5 py-1 app-panel-caption font-medium ring-1 ring-inset": true,
-                        "bg-surface-success-weak text-text-on-success-base ring-border-success-base": reward()! >= 0.5,
-                        "bg-surface-warning-weak text-text-on-warning-base ring-icon-warning-base/12":
-                          reward()! >= 0 && reward()! < 0.5,
-                        "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-text-diff-delete-base/12":
-                          reward()! < 0,
-                      }}
-                    >
-                      {_({ id: "app.library.experience.stat.reward", message: "R" })} {reward()!.toFixed(2)}
-                    </span>
+                  <Show when={copyExperience.copied()} fallback={<Icon name={copyExperience.icon()} size="small" />}>
+                    <Icon name={getSemanticIcon("state.success")} size="small" class="text-text-on-success-base" />
                   </Show>
-                  <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-                    {_({ id: "app.library.experience.stat.qValue", message: "Q" })} {qValue().toFixed(2)}
-                  </span>
-                  <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                    {_({
-                      id: "app.library.experience.visits",
-                      message: "{visits} visits",
-                      values: { visits: String(qVisits()) },
-                    })}
-                  </span>
-                  <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
-                    <span class="rounded-full bg-surface-warning-weak px-2.5 py-1 app-panel-caption font-medium text-text-on-warning-base ring-1 ring-inset ring-icon-warning-base/12">
-                      {_({
-                        id: "app.library.experience.remaining",
-                        message: "{remaining} remaining",
-                        values: { remaining: String(turnsRemaining()!) },
-                      })}
-                    </span>
-                  </Show>
-                  <Show when={rewards()?.confidence !== undefined}>
-                    <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                      {_({ id: "app.library.experience.stat.confidence", message: "C" })}{" "}
-                      {rewards()!.confidence!.toFixed(2)}
-                    </span>
-                  </Show>
-                  <Show when={props.searching && searchScore() !== undefined}>
-                    <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                      {_({ id: "app.library.experience.stat.score", message: "S" })} {searchScore()!.toFixed(2)}
-                    </span>
-                  </Show>
-                </div>
-                <Show when={rewards()}>
-                  <RewardDimensions rewards={rewards()} />
-                </Show>
-                <Show when={qValues()}>
-                  <QValueDimensions qValues={qValues()!} />
-                </Show>
-                <Show when={rewards()?.reason}>
-                  <p
-                    classList={{
-                      "rounded-[0.9rem] bg-surface-inset-base px-3 py-2 app-panel-caption italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
-                      "line-clamp-2": !props.expanded,
-                    }}
+                </button>
+                <Show when={props.onDelete}>
+                  <button
+                    type="button"
+                    class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+                    aria-label={_({ id: "app.library.experience.delete", message: "Delete experience" })}
+                    onClick={props.onDelete}
                   >
-                    {rewards()!.reason}
-                  </p>
-                </Show>
-              </div>
-            </details>
-          </Show>
-
-          <div
-            classList={{
-              "mt-0.5 flex items-center justify-between border-t border-border-base/28 pt-2.5": props.expanded,
-              "mt-0.5 flex items-center justify-between": !props.expanded,
-            }}
-          >
-            <span class="app-panel-caption text-text-weaker">
-              <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
-                {absoluteDate(fmt, props.item.createdAt)}
-                <Show when={updated() && updated() !== props.item.createdAt}>
-                  {_({
-                    id: "app.library.experience.updated",
-                    message: " · Updated {date}",
-                    values: { date: absoluteDate(fmt, updated()!) },
-                  })}
+                    <Icon name={getSemanticIcon("action.remove")} size="small" />
+                  </button>
                 </Show>
               </Show>
-            </span>
-            <Show when={!props.detailPresentation}>
-              <button
-                type="button"
-                aria-label={
-                  props.expanded
-                    ? _({ id: "app.library.experience.collapse", message: "Collapse experience" })
-                    : _({ id: "app.library.experience.expand", message: "View experience" })
-                }
-                aria-haspopup="dialog"
-                onClick={props.onToggle}
-                classList={{
-                  "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
-                  "rotate-180 bg-surface-raised-base-hover": props.expanded,
-                }}
-              >
-                <Icon name={getSemanticIcon("action.view")} size="small" />
-              </button>
-            </Show>
+            </div>
           </div>
-        </Show>
 
-        <Show when={props.selecting}>
-          <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
-            <span class="app-panel-caption text-text-weaker">
-              {relativeTime(fmt, updated() ?? props.item.createdAt)}
-            </span>
-          </div>
-        </Show>
-      </div>
+          <Show when={!props.selecting}>
+            <Show when={props.item.rewardStatus === "encoding_failed"}>
+              <p class="app-panel-caption text-text-weak">
+                {_({
+                  id: "app.library.experience.encodingFailedHint",
+                  message: "This turn could not be encoded. Open the source session to inspect the original content.",
+                })}
+              </p>
+            </Show>
+
+            <Show when={props.detailPresentation && props.item.intent}>
+              <Markdown text={props.item.intent} class="library-detail-markdown" />
+            </Show>
+            <Show when={props.expanded}>
+              <section class="library-experience-source">
+                <h3 class="app-panel-section-title">{_({ id: "app.library.experience.source", message: "Source" })}</h3>
+                <p class="app-panel-caption text-text-weak">
+                  {props.sourceScopeName ||
+                    (scopeID() === "home"
+                      ? _({ id: "app.sidebar.section.home", message: "Home" })
+                      : _({ id: "app.library.experience.scopeNameUnavailable", message: "Scope name unavailable" }))}
+                </p>
+                <Show when={scopeID() && sessionID()}>
+                  <A
+                    class="library-source-link app-panel-control text-text-interactive-base"
+                    href={`/${base64Encode(scopeID())}/session/${sessionID()}`}
+                  >
+                    {sourceSession.latest?.title ||
+                      _({ id: "app.library.experience.openSession", message: "Open source session" })}
+                  </A>
+                </Show>
+                <Show when={sourceSession.latest?.unavailable}>
+                  <p class="app-panel-caption text-text-weak">
+                    {_({
+                      id: "app.library.experience.sourceUnavailable",
+                      message: "Source session information is unavailable.",
+                    })}{" "}
+                    <button type="button" class="library-plain-action" onClick={() => void retrySource()}>
+                      {_(L.retry)}
+                    </button>
+                  </p>
+                </Show>
+              </section>
+              <Show when={props.detailError}>
+                <div role="alert" class="flex items-center justify-between gap-3 app-panel-caption text-text-weak">
+                  <span>
+                    {_({
+                      id: "app.library.experience.detailFailed",
+                      message: "Unable to load details. This card is still available.",
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    class="library-action"
+                    onClick={(event) => {
+                      const trigger = event.currentTarget
+                      const surface = trigger.closest<HTMLElement>('[role="dialog"]')
+                      props.onRetry()
+                      queueMicrotask(() => {
+                        if (!trigger.isConnected && document.activeElement === document.body) surface?.focus()
+                      })
+                    }}
+                  >
+                    {_(L.retry)}
+                  </button>
+                </div>
+              </Show>
+              <details class="library-experience-technical">
+                <summary class="app-panel-control text-text-weak">
+                  {_({ id: "app.library.experience.technicalDetails", message: "Technical details" })}
+                </summary>
+                <div
+                  class={`mt-1 flex flex-col gap-2.5 border-t border-border-base/28 pt-3`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Show
+                    when={props.detail}
+                    fallback={
+                      <Show when={!props.detailError}>
+                        <Spinner class="size-3.5 my-1 text-icon-weak-base" />
+                      </Show>
+                    }
+                  >
+                    {(detail) => (
+                      <>
+                        <Show when={detail().script}>
+                          <CollapsibleSection
+                            label={_({ id: "app.library.experience.script", message: "Script" })}
+                            expanded={props.expandedSections.has(`${props.item.id}-script`)}
+                            onToggle={() => props.onToggleSection(`${props.item.id}-script`)}
+                          >
+                            <Markdown
+                              text={detail().script!}
+                              class={
+                                props.detailPresentation
+                                  ? "library-detail-markdown"
+                                  : "app-panel-caption text-text-weak leading-relaxed max-h-64 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_pre]:app-panel-caption [&_pre]:rounded-lg [&_pre]:p-2 [&_p]:my-0.5"
+                              }
+                            />
+                          </CollapsibleSection>
+                        </Show>
+                        <Show when={detail().raw}>
+                          <CollapsibleSection
+                            label={_({ id: "app.library.experience.raw", message: "Raw" })}
+                            expanded={props.expandedSections.has(`${props.item.id}-raw`)}
+                            onToggle={() => props.onToggleSection(`${props.item.id}-raw`)}
+                          >
+                            <Markdown
+                              text={detail().raw!}
+                              class={
+                                props.detailPresentation
+                                  ? "library-detail-markdown"
+                                  : "app-panel-caption text-text-weak leading-relaxed max-h-64 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_pre]:app-panel-caption [&_pre]:rounded-lg [&_pre]:p-2 [&_p]:my-0.5"
+                              }
+                            />
+                          </CollapsibleSection>
+                        </Show>
+                      </>
+                    )}
+                  </Show>
+                  <dl class={`grid gap-3 sm:grid-cols-3 ${libraryInsetClass} px-3.5 py-3`}>
+                    <div class="min-w-0">
+                      <dt class={libraryMetaLabelClass}>
+                        {_({ id: "app.library.experience.model", message: "Model" })}
+                      </dt>
+                      <dd class="mt-1 app-panel-caption text-text-base [overflow-wrap:anywhere]">
+                        {sourceModel() ?? _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
+                      </dd>
+                    </div>
+                    <div class="min-w-0">
+                      <dt class={libraryMetaLabelClass}>
+                        {_({ id: "app.library.experience.scope", message: "Scope" })}
+                      </dt>
+                      <dd class="mt-1 app-panel-caption text-text-base [overflow-wrap:anywhere]">
+                        {scopeID() || _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
+                      </dd>
+                    </div>
+                    <div class="min-w-0">
+                      <dt class={libraryMetaLabelClass}>
+                        {_({ id: "app.library.experience.session", message: "Session" })}
+                      </dt>
+                      <dd class="mt-1 app-panel-caption text-text-base [overflow-wrap:anywhere]">
+                        {sessionID() || _({ id: "app.library.experience.notRecorded", message: "Not recorded" })}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              </details>
+            </Show>
+
+            <Show when={props.expanded && props.item.rewardStatus !== "encoding_failed"}>
+              <details class="library-experience-metrics">
+                <summary class="app-panel-caption font-medium text-text-weak cursor-pointer">
+                  {_({ id: "app.library.experience.metrics", message: "Evaluation details" })}
+                </summary>
+                <div class="mt-3 flex flex-col gap-2">
+                  <div class={`flex items-center gap-1.5 flex-wrap px-3 py-2.5 ${libraryInsetClass}`}>
+                    <Show when={reward() !== null}>
+                      <span
+                        classList={{
+                          "rounded-full px-2.5 py-1 app-panel-caption font-medium ring-1 ring-inset": true,
+                          "bg-surface-success-weak text-text-on-success-base ring-border-success-base":
+                            reward()! >= 0.5,
+                          "bg-surface-warning-weak text-text-on-warning-base ring-icon-warning-base/12":
+                            reward()! >= 0 && reward()! < 0.5,
+                          "bg-text-diff-delete-base/12 text-text-diff-delete-base ring-text-diff-delete-base/12":
+                            reward()! < 0,
+                        }}
+                      >
+                        {_({ id: "app.library.experience.stat.reward", message: "R" })} {reward()!.toFixed(2)}
+                      </span>
+                    </Show>
+                    <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-base ring-1 ring-inset ring-border-base/35">
+                      {_({ id: "app.library.experience.stat.qValue", message: "Q" })} {qValue().toFixed(2)}
+                    </span>
+                    <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                      {_({
+                        id: "app.library.experience.visits",
+                        message: "{visits} visits",
+                        values: { visits: String(qVisits()) },
+                      })}
+                    </span>
+                    <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
+                      <span class="rounded-full bg-surface-warning-weak px-2.5 py-1 app-panel-caption font-medium text-text-on-warning-base ring-1 ring-inset ring-icon-warning-base/12">
+                        {_({
+                          id: "app.library.experience.remaining",
+                          message: "{remaining} remaining",
+                          values: { remaining: String(turnsRemaining()!) },
+                        })}
+                      </span>
+                    </Show>
+                    <Show when={rewards()?.confidence !== undefined}>
+                      <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                        {_({ id: "app.library.experience.stat.confidence", message: "C" })}{" "}
+                        {rewards()!.confidence!.toFixed(2)}
+                      </span>
+                    </Show>
+                    <Show when={props.searching && searchScore() !== undefined}>
+                      <span class="rounded-full bg-surface-inset-base px-2.5 py-1 app-panel-caption font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
+                        {_({ id: "app.library.experience.stat.score", message: "S" })} {searchScore()!.toFixed(2)}
+                      </span>
+                    </Show>
+                  </div>
+                  <Show when={rewards()}>
+                    <RewardDimensions rewards={rewards()} />
+                  </Show>
+                  <Show when={qValues()}>
+                    <QValueDimensions qValues={qValues()!} />
+                  </Show>
+                  <Show when={rewards()?.reason}>
+                    <p
+                      classList={{
+                        "rounded-[0.9rem] bg-surface-inset-base px-3 py-2 app-panel-caption italic leading-snug text-text-weak/80 ring-1 ring-inset ring-border-base/25 [overflow-wrap:anywhere]": true,
+                        "line-clamp-2": !props.expanded,
+                      }}
+                    >
+                      {rewards()!.reason}
+                    </p>
+                  </Show>
+                </div>
+              </details>
+            </Show>
+
+            <div
+              classList={{
+                "mt-0.5 flex items-center justify-between border-t border-border-base/28 pt-2.5": props.expanded,
+                "mt-0.5 flex items-center justify-between": !props.expanded,
+              }}
+            >
+              <span class="app-panel-caption text-text-weaker">
+                <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
+                  {absoluteDate(fmt, props.item.createdAt)}
+                  <Show when={updated() && updated() !== props.item.createdAt}>
+                    {_({
+                      id: "app.library.experience.updated",
+                      message: " · Updated {date}",
+                      values: { date: absoluteDate(fmt, updated()!) },
+                    })}
+                  </Show>
+                </Show>
+              </span>
+              <Show when={!props.detailPresentation}>
+                <button
+                  type="button"
+                  aria-label={
+                    props.expanded
+                      ? _({ id: "app.library.experience.collapse", message: "Collapse experience" })
+                      : _({ id: "app.library.experience.expand", message: "View experience" })
+                  }
+                  aria-haspopup="dialog"
+                  onClick={props.onToggle}
+                  classList={{
+                    "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
+                    "rotate-180 bg-surface-raised-base-hover": props.expanded,
+                  }}
+                >
+                  <Icon name={getSemanticIcon("action.view")} size="small" />
+                </button>
+              </Show>
+            </div>
+          </Show>
+
+          <Show when={props.selecting}>
+            <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
+              <span class="app-panel-caption text-text-weaker">
+                {relativeTime(fmt, updated() ?? props.item.createdAt)}
+              </span>
+            </div>
+          </Show>
+        </div>
+      </Show>
     </div>
   )
 }

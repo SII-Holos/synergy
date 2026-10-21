@@ -37,6 +37,8 @@ For credential recovery, remount the connection form through a Settings section 
 
 Verify experience states through the persisted reward status and generated DTO, including a failed stub with no intent and an evaluated zero reward. Test detail failure, duplicate reads, local retry and disposal independently of encoding. Unified search keeps result ownership by query and content group. Test a pending group under the real Suspense owner: independent fetches alone do not prevent the parent fallback from hiding ready results. Do not infer timestamps absent from a public summary. For sparse daily statistics, cover skipped dates, month/year and leap-day boundaries, snapshot-relative ranges and local date labels; a successful refresh must publish one response without a second compute request.
 
+Library preview cards consume the page's batched stored-script projection rather than fetching full details per row or generating model summaries. Exercise an odd item count, absent previews, paired virtual rows reflowing to one column and retained selection during resizing. Test ordinary skill diagnostics after the list separately from real load failures above it, including keyboard disclosure and complete source information in details. Preserve the shared page typography roles instead of enlarging card titles to fill unused space.
+
 ## Preserve State and API Ownership
 
 Bind global navigation actions to their shell owner instead of a task-owned command override. Test the rendered action beside the real task control and command registry with disabled and uploading states, retaining task-specific draft transfer in the Composer. See [sidebar project creation ownership](../../../../docs/decisions/implemented/bug-fix/2026-10-14-sidebar-project-creation-ownership.md).

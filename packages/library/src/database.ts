@@ -913,6 +913,13 @@ export namespace LibraryDB {
       raw?: string
     }
 
+    export const SCRIPT_PREVIEW_LENGTH = 320
+
+    export interface ScriptPreviewRow {
+      id: string
+      script_preview: string | null
+    }
+
     export function getContent(id: string): ContentRow | null {
       const conn = open()
       return conn.prepare("SELECT * FROM experience_content WHERE id = ?1").get(id) as ContentRow | null
@@ -923,6 +930,18 @@ export namespace LibraryDB {
       const conn = open()
       const placeholders = ids.map(() => "?").join(",")
       return conn.prepare(`SELECT * FROM experience_content WHERE id IN (${placeholders})`).all(...ids) as ContentRow[]
+    }
+
+    export function getScriptPreviews(ids: string[]): ScriptPreviewRow[] {
+      if (ids.length === 0) return []
+      const conn = open()
+      const placeholders = ids.map(() => "?").join(",")
+      return conn
+        .prepare(
+          `SELECT id, NULLIF(substr(script, 1, ${SCRIPT_PREVIEW_LENGTH}), '') AS script_preview
+           FROM experience_content WHERE id IN (${placeholders})`,
+        )
+        .all(...ids) as ScriptPreviewRow[]
     }
 
     function buildPageWhere(input: PageInput) {

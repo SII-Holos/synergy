@@ -187,6 +187,53 @@ describe.serial("LibraryDB", () => {
         expect(LibraryDB.Experience.getContent("no-such-id")).toBeNull()
       }))
 
+    test("getScriptPreviews batches only bounded script text for requested content", () =>
+      runtime.run(() => {
+        const script = "Inspect the stored trajectory.\n".repeat(40)
+        makeExperience("exp-preview-long", { content: { script, raw: "private raw digest" } })
+        makeExperience("exp-preview-short", { content: { script: "Run focused tests", raw: "private raw digest" } })
+        makeExperience("exp-preview-null", { content: { raw: "No script yet" } })
+        makeExperience("exp-preview-empty", { content: { script: "" } })
+        makeExperience("exp-preview-unicode", { content: { script: "🧪".repeat(400) } })
+        makeExperience("exp-preview-unrequested", { content: { script: "Do not include this row" } })
+
+        const prepare = spyOn(LibraryDB.connection(), "prepare")
+        try {
+          const previews = LibraryDB.Experience.getScriptPreviews([
+            "exp-preview-short",
+            "exp-preview-long",
+            "exp-preview-null",
+            "exp-preview-empty",
+            "exp-preview-unicode",
+            "exp-preview-missing",
+            "exp-preview-short",
+          ])
+          expect(prepare).toHaveBeenCalledTimes(1)
+          expect(prepare.mock.results[0].value).toHaveProperty("columnNames", ["id", "script_preview"])
+          expect(previews.sort((left, right) => left.id.localeCompare(right.id))).toEqual([
+            { id: "exp-preview-empty", script_preview: null },
+            { id: "exp-preview-long", script_preview: script.slice(0, 320) },
+            { id: "exp-preview-null", script_preview: null },
+            { id: "exp-preview-short", script_preview: "Run focused tests" },
+            { id: "exp-preview-unicode", script_preview: "🧪".repeat(320) },
+          ])
+        } finally {
+          prepare.mockRestore()
+        }
+        expect(LibraryDB.Experience.getContent("exp-preview-long")?.script).toBe(script)
+      }))
+
+    test("getScriptPreviews skips the database for an empty batch", () =>
+      runtime.run(() => {
+        const prepare = spyOn(LibraryDB.connection(), "prepare")
+        try {
+          expect(LibraryDB.Experience.getScriptPreviews([])).toEqual([])
+          expect(prepare).not.toHaveBeenCalled()
+        } finally {
+          prepare.mockRestore()
+        }
+      }))
+
     test("insert with upsert semantics", () =>
       runtime.run(() => {
         makeExperience("exp-upsert", { intent: "Original intent" })

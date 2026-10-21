@@ -12322,6 +12322,10 @@ export type ExperienceSearchResult = {
   sessionID: string
   scopeID: string
   intent: string
+  /**
+   * First 320 characters of the stored trajectory script
+   */
+  scriptPreview?: string | null
   sourceProviderID: string | null
   sourceModelID: string | null
   rewardStatus: "evaluated" | "pending" | "encoding_failed"
@@ -12342,6 +12346,10 @@ export type ExperienceInfo = {
   sessionID: string
   scopeID: string
   intent: string
+  /**
+   * First 320 characters of the stored trajectory script
+   */
+  scriptPreview?: string | null
   sourceProviderID: string | null
   sourceModelID: string | null
   rewardStatus: "evaluated" | "pending" | "encoding_failed"
@@ -12378,6 +12386,10 @@ export type ExperienceDetailInfo = {
   sessionID: string
   scopeID: string
   intent: string
+  /**
+   * First 320 characters of the stored trajectory script
+   */
+  scriptPreview?: string | null
   sourceProviderID: string | null
   sourceModelID: string | null
   rewardStatus: "evaluated" | "pending" | "encoding_failed"

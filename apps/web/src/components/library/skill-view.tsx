@@ -122,7 +122,6 @@ export function SkillView(props: {
   })
   const [filter, setFilter] = createSignal<SkillScope>("all")
   const [reloading, setReloading] = createSignal(false)
-  const [diagnosticsExpanded, setDiagnosticsExpanded] = createSignal(false)
 
   const [skills, { refetch }] = createResource<SkillListData>(async () => {
     const result = await scopedClient().skill.list()
@@ -164,22 +163,13 @@ export function SkillView(props: {
   const diagnostics = createMemo(() => partitionSkillDiagnostics(skills()?.diagnostics ?? []))
 
   const diagnosticsSummary = createMemo(() => {
-    const { failed, shadowed, compat } = diagnostics()
+    const { shadowed, compat } = diagnostics()
     const segments: string[] = []
-    if (failed.length > 0) {
-      segments.push(
-        _({
-          id: "app.library.skills.diagnostics.failed",
-          message: "{count, plural, one {# skill failed to load} other {# skills failed to load}}",
-          values: { count: failed.length },
-        }),
-      )
-    }
     if (shadowed.length > 0) {
       segments.push(
         _({
-          id: "app.library.skills.diagnostics.shadowed",
-          message: "{count, plural, one {# skill shadowed} other {# skills shadowed}}",
+          id: "app.library.skills.diagnostics.overridden",
+          message: "{count, plural, one {# duplicate source overridden} other {# duplicate sources overridden}}",
           values: { count: shadowed.length },
         }),
       )
@@ -197,12 +187,8 @@ export function SkillView(props: {
   })
 
   const diagnosticGroups = createMemo(() => {
-    const { failed, shadowed, compat } = diagnostics()
+    const { shadowed, compat } = diagnostics()
     return [
-      {
-        title: _({ id: "app.library.skills.diagnostics.failedGroup", message: "Failed to load" }),
-        items: failed,
-      },
       {
         title: _({ id: "app.library.skills.diagnostics.shadowedGroup", message: "Shadowed" }),
         items: shadowed,
@@ -590,44 +576,26 @@ export function SkillView(props: {
       </Show>
 
       <Show when={!skills.loading}>
-        <Show when={diagnosticGroups().length > 0}>
-          <div class="mb-3 rounded-[1.15rem] border border-border-warning-base/35 bg-surface-warning-weak px-4 py-3 ring-1 ring-inset ring-border-weaker-base">
-            <button
-              type="button"
-              class="flex w-full cursor-pointer items-center gap-2 app-panel-caption font-medium text-text-strong"
-              onClick={() => setDiagnosticsExpanded((prev) => !prev)}
-            >
-              <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base shrink-0" />
-              <span class="flex-1 text-left">{diagnosticsSummary()}</span>
-              <Icon
-                name={getSemanticIcon("navigation.expand")}
-                size="small"
-                class="shrink-0 text-text-weaker transition-transform duration-180"
-                classList={{ "rotate-90": diagnosticsExpanded() }}
-              />
-            </button>
-            <Show when={diagnosticsExpanded()}>
-              <div class="mt-2 flex flex-col gap-2">
-                <For each={diagnosticGroups()}>
-                  {(group) => (
-                    <div class="flex flex-col gap-2">
-                      <div class="mt-1 app-panel-caption font-medium text-text-weaker">{group.title}</div>
-                      <For each={group.items}>
-                        {(item) => (
-                          <div class={`rounded-[0.95rem] px-3 py-2 ${libraryInsetClass}`}>
-                            <div class="app-panel-caption font-medium text-text-strong">{item.name}</div>
-                            <div class="mt-0.5 app-panel-caption text-text-diff-delete-base break-words">
-                              {item.message}
-                            </div>
-                            <div class="mt-1 app-panel-caption text-text-weaker break-all">{item.path}</div>
-                          </div>
-                        )}
-                      </For>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </Show>
+        <Show when={diagnostics().failed.length > 0}>
+          <div class="library-skill-failures" role="alert">
+            <details>
+              <summary class="app-panel-caption text-text-diff-delete-base">
+                {_({
+                  id: "app.library.skills.diagnostics.failed",
+                  message: "{count, plural, one {# skill failed to load} other {# skills failed to load}}",
+                  values: { count: diagnostics().failed.length },
+                })}
+              </summary>
+              <For each={diagnostics().failed}>
+                {(item) => (
+                  <div class="library-skill-diagnostic app-panel-caption">
+                    <span class="text-text-strong">{item.name}</span>
+                    <span class="text-text-diff-delete-base">{item.message}</span>
+                    <span class="text-text-weak">{item.path}</span>
+                  </div>
+                )}
+              </For>
+            </details>
           </div>
         </Show>
 
@@ -658,6 +626,35 @@ export function SkillView(props: {
             </For>
           </div>
         </Show>
+        <Show when={diagnosticGroups().length > 0}>
+          <details class="library-skill-notices">
+            <summary>
+              <span class="min-w-0 flex-1">
+                <span class="block app-panel-control text-text-base">
+                  {_({ id: "app.library.skills.diagnostics.title", message: "Sources and compatibility" })}
+                </span>
+                <span class="mt-1 block app-panel-caption text-text-weak">{diagnosticsSummary()}</span>
+              </span>
+              <Icon name={getSemanticIcon("navigation.expand")} size="small" class="text-icon-weak-base shrink-0" />
+            </summary>
+            <For each={diagnosticGroups()}>
+              {(group) => (
+                <section class="mt-4">
+                  <h3 class="app-panel-control text-text-base">{group.title}</h3>
+                  <For each={group.items}>
+                    {(item) => (
+                      <div class="library-skill-diagnostic app-panel-caption">
+                        <span class="text-text-base">{item.name}</span>
+                        <span class="text-text-weak">{item.message}</span>
+                        <span class="text-text-weak">{item.path}</span>
+                      </div>
+                    )}
+                  </For>
+                </section>
+              )}
+            </For>
+          </details>
+        </Show>
       </Show>
     </div>
   )
@@ -666,10 +663,6 @@ export function SkillView(props: {
 function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
   const { _ } = useLingui()
   const scopeLabel = () => skillScopeLabel(props.skill, _)
-  const displayLocation = () => skillPathLabel(props.skill.location)
-  const compatibility = () => compatibilityLabel(props.skill.compatibility?.level, _)
-  const declaredCompatibility = () => skillDeclaredCompatibility(props.skill)
-  const diagnostics = () => skillCanonicalDiagnostics(props.skill)
 
   return (
     <button
@@ -690,24 +683,7 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
           <span>{scopeLabel()}</span>
         </Show>
         <span>{skillInvocationLabel(props.skill, _)}</span>
-        <Show when={compatibility()}>
-          <span class={compatibilityTone(props.skill.compatibility?.level)}>{compatibility()}</span>
-        </Show>
-        <Show when={diagnostics().length}>
-          <span>
-            {_({
-              id: "app.library.skills.card.diagnosticsCount",
-              message: "{count, plural, one {# diagnostic} other {# diagnostics}}",
-              values: { count: diagnostics().length },
-            })}
-          </span>
-        </Show>
       </span>
-      <Show when={displayLocation()}>
-        <span class="app-panel-caption text-text-weaker truncate" title={props.skill.location}>
-          {displayLocation()}
-        </span>
-      </Show>
     </button>
   )
 }
