@@ -207,6 +207,18 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       register(createContextWorkbenchPanel(i18n._(E.title))),
       register({
+        id: "trajectory",
+        label: i18n._(E.trajectory),
+        icon: getSemanticIcon("performance.trace"),
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: true,
+        pluginId: "builtin",
+        order: 13,
+        loader: async () => ({ default: (await import("../execution/panel")).ExecutionTrajectoryWorkbenchContent }),
+        title: () => i18n._(E.trajectory),
+      }),
+      register({
         id: "session-review",
         label: i18n._(P.review),
         icon: getSemanticIcon("command.review"),

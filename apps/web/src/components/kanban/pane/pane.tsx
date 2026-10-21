@@ -1,3 +1,4 @@
+import { E } from "@/components/execution/i18n"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { KanbanReorderMenu, type KanbanReorderAction } from "./reorder-menu"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -77,6 +78,7 @@ export function KanbanPane(props: {
   follow: () => boolean
   onToggleFollow: () => void
   onOpen: () => void
+  onOpenTrajectory?: () => void
   onActivate?: () => void
   onPinToggle?: () => void
   /** Reactive pinned flag: must be an accessor because Solid's keyed For
@@ -238,6 +240,18 @@ export function KanbanPane(props: {
           </div>
         </div>
         <div class="kanban-pane-actions">
+          <Show when={props.pane.kind === "live" && props.onOpenTrajectory && globalSDK.capabilities.has("workbench")}>
+            <Tooltip value={_(E.trajectory)}>
+              <button
+                type="button"
+                class="kanban-pane-action"
+                aria-label={_(E.trajectory)}
+                onClick={() => props.onOpenTrajectory?.()}
+              >
+                <Icon name={getSemanticIcon("performance.trace")} size="small" />
+              </button>
+            </Tooltip>
+          </Show>
           <Show when={props.onActivate}>
             <button
               type="button"

@@ -2,7 +2,9 @@ import { runtimeFeatureAvailable } from "@/components/runtime-features"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { AppPanel } from "@/components/app-panel"
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+import { openWorkbenchPanelTab } from "@/context/workbench/panel-model"
+import { batch, For, Show, createEffect, createMemo, createSignal, onCleanup, type Accessor } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
 import { useNavigate } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
@@ -193,6 +195,25 @@ export function KanbanPanel() {
     navigate(`/${base64Encode(pane.scopeKey)}/session/${pane.sessionID}`)
   }
 
+  const openTrajectory = (pane: BoardPane) => {
+    if (pane.kind !== "live" || !pane.entry || !globalSDK.capabilities.has("workbench")) return
+    const target = layout.surface(`${base64Encode(pane.scopeKey)}/${pane.sessionID}`, "side")
+    const next = openWorkbenchPanelTab({
+      panelId: "trajectory",
+      cardinality: "singleton",
+      tabs: target.tabs(),
+      createId: () => `trajectory:${generateUUID()}`,
+      replaceEmpty: false,
+    })
+    batch(() => {
+      target.setTabs(next.tabs)
+      target.setActive(next.active)
+      target.setReveal({ ...target.reveal(), interacted: true })
+      target.open()
+    })
+    openSession(pane)
+  }
+
   const loadStateFor = (pane: BoardPane) => () =>
     pane.kind === "live" ? loadStates[`${pane.scopeKey}\n${pane.sessionID}`] : undefined
   const retryPane = (pane: BoardPane) => () => {
@@ -301,6 +322,7 @@ export function KanbanPanel() {
         follow={() => followFor(pane())()}
         onToggleFollow={() => toggleFollow(pane())}
         onOpen={() => openSession(pane())}
+        onOpenTrajectory={() => openTrajectory(pane())}
         onActivate={onActivate}
         onPinToggle={() => (store.pinned.includes(pane().key) ? unpinPane(pane()) : pinKey(pane().key))}
         pinned={() => store.pinned.includes(pane().key)}

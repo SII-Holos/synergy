@@ -50,6 +50,16 @@ afterAll(() => {
 
 let config: Record<string, unknown> = {}
 const configWrites: unknown[] = []
+const navigations: string[] = []
+const surfaces = new Map<
+  string,
+  {
+    tabs: Array<{ id: string; panelId: string }>
+    active?: string
+    opened?: boolean
+    reveal?: { interacted?: boolean; consumed?: boolean }
+  }
+>()
 const sessionWrites: Array<{ sessionID: string; controlProfile: string; resolvePendingPermissions?: boolean }> = []
 
 mock.module("../../../src/context/global-sync", () => ({
@@ -130,6 +140,26 @@ const navEntry = {
 
 mock.module("../../../src/context/layout", () => ({
   useLayout: () => ({
+    surface: (key: string) => {
+      const state = surfaces.get(key) ?? { tabs: [] }
+      surfaces.set(key, state)
+      return {
+        tabs: () => state.tabs,
+        reveal: () => state.reveal,
+        setReveal: (value: { interacted?: boolean; consumed?: boolean }) => {
+          state.reveal = value
+        },
+        setTabs: (tabs: Array<{ id: string; panelId: string }>) => {
+          state.tabs = tabs
+        },
+        setActive: (active: string) => {
+          state.active = active
+        },
+        open: () => {
+          state.opened = true
+        },
+      }
+    },
     nav: {
       recentEntries: () => [navEntry],
       rootNavEntries: () => [],
@@ -138,7 +168,7 @@ mock.module("../../../src/context/layout", () => ({
   }),
 }))
 
-mock.module("@solidjs/router", () => ({ useNavigate: () => () => {} }))
+mock.module("@solidjs/router", () => ({ useNavigate: () => (path: string) => navigations.push(path) }))
 mock.module("../../../src/components/workspace/mobile-header-close", () => ({
   useWorkspaceMobileHeaderClose: () => () => {},
 }))
@@ -212,6 +242,8 @@ async function selectProfile(label: string) {
 
 afterEach(() => {
   config = {}
+  navigations.length = 0
+  surfaces.clear()
   configWrites.length = 0
   sessionWrites.length = 0
   localStorage.clear()
@@ -305,4 +337,25 @@ describe("Full Access acknowledgement on the kanban pane selector", () => {
       harness.dispose()
     }
   })
+})
+
+test("a Kanban task opens its own trajectory without replacing another resource tab", async () => {
+  surfaces.set("aG9tZQ/ses_board", { tabs: [{ id: "draft", panelId: "notes" }] })
+  const harness = mount()
+  try {
+    await settle()
+    const trigger = harness.root.querySelector<HTMLButtonElement>('button[aria-label="Execution trajectory"]')
+    expect(trigger).not.toBeNull()
+    trigger!.click()
+    expect(navigations).toEqual(["/aG9tZQ/session/ses_board"])
+    expect(surfaces.get("aG9tZQ/ses_board")).toMatchObject({
+      opened: true,
+      reveal: { interacted: true },
+      tabs: [{ id: "draft", panelId: "notes" }, { panelId: "trajectory" }],
+    })
+    trigger!.click()
+    expect(surfaces.get("aG9tZQ/ses_board")!.tabs).toHaveLength(2)
+  } finally {
+    harness.dispose()
+  }
 })

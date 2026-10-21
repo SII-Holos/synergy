@@ -62,7 +62,7 @@ export function TaskDetailsPopover(props: {
   const tasks = createMemo(() => compactTasks(execution.state.summary?.tasks ?? []))
   const showFull = (nodeID?: string) => {
     toggle(false)
-    void execution.open(undefined, nodeID)
+    void execution.openTrajectory(undefined, nodeID)
   }
   const cancel = async (task: TaskDetailsTask) => {
     if (!cancellableTask(task) || !task.cortex || pending().has(task.sessionID)) return

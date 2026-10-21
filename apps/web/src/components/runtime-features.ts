@@ -30,6 +30,7 @@ const requirements: Record<
   },
   panel: {
     context: "workbench",
+    trajectory: "workbench",
     notes: "note",
     lattice: "lattice",
     boss: "boss",

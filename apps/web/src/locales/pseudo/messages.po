@@ -12921,6 +12921,10 @@ msgid "execution.trajectory"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.trajectory.short"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.type"
 msgstr ""
 

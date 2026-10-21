@@ -21,6 +21,7 @@ import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useWorkbenchPanels } from "@/context/workbench"
 import { useExecution } from "@/context/execution"
 import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
@@ -80,7 +81,7 @@ export function ExecutionPanelBody(
   props: WorkbenchPanelContentProps & {
     runID: string
     scopeLabel: string
-    onBack: () => void
+    onBack?: () => void
     onStateChange: (state: Record<string, unknown>) => void
     snapshot?: (nodeID: string) => ExecutionContextSnapshot | undefined
   },
@@ -543,13 +544,15 @@ export function ExecutionPanelBody(
       }}
     >
       <header class="execution-records-header">
-        <button type="button" class="execution-dashboard-back" onClick={props.onBack}>
-          <Icon name={getSemanticIcon("navigation.back")} size="small" />
-          {_(D.back)}
-        </button>
-        <span class="execution-records-separator" aria-hidden="true">
-          /
-        </span>
+        <Show when={props.onBack}>
+          <button type="button" class="execution-dashboard-back" onClick={() => props.onBack?.()}>
+            <Icon name={getSemanticIcon("navigation.back")} size="small" />
+            {_(D.back)}
+          </button>
+          <span class="execution-records-separator" aria-hidden="true">
+            /
+          </span>
+        </Show>
         <h2>{_(E.recordsTitle)}</h2>
         <span class="execution-records-scope" title={props.scopeLabel}>
           {props.scopeLabel}
@@ -940,5 +943,21 @@ export function ExecutionPanelBody(
         </Show>
       </div>
     </div>
+  )
+}
+
+export function ExecutionTrajectoryWorkbenchContent(props: WorkbenchPanelContentProps) {
+  const panels = useWorkbenchPanels()
+  const { _ } = useLingui()
+  const value = () =>
+    props.tab.state && typeof props.tab.state === "object" ? (props.tab.state as Record<string, unknown>) : {}
+  return (
+    <ExecutionPanelBody
+      {...props}
+      tab={{ ...props.tab, state: { mode: "records", actor: "all", ...value() } }}
+      runID={typeof value().runID === "string" ? (value().runID as string) : ""}
+      scopeLabel={_(E.allTasks)}
+      onStateChange={(state) => panels.updateTab(props.tab.id, { state })}
+    />
   )
 }

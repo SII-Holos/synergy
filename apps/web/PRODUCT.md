@@ -596,3 +596,7 @@ Automatic process collection preserves the visible answer while following. Remov
 While a tool generates its input, the activity header shows its waiting state. An empty body must not first reserve a line, collapse when fetched, and expand again when input arrives.
 
 Inactive presentations are hidden and non-interactive. They pause detailed subscriptions, clocks and layout measurements. Residency follows LRU and the existing content budget; draft and resource ownership stays in the owning domain when DOM is evicted. Browser pages and Terminal processes are not closed by presentation eviction. Third-party instances require an explicit pause/resume contract; module loading is deduplicated for every panel.
+
+## Execution trajectory entry
+
+The conversation header exposes Trajectory, and the workbench launcher offers Execution trajectory for the selected Session. These open one lazy, read-only trajectory panel with all recorded events across the task tree. Requests, system/context sources, user and assistant content, tool inputs and results remain inspectable through the existing verified reader. The compact task details full-trajectory action opens the same panel. A live Kanban pane offers a trajectory action that opens that task’s conversation with its own trajectory selected, preserving other resource tabs. The launcher and task actions require the server’s Workbench capability. Context composition and usage remain in the context dashboard. Narrow headers keep the labeled action accessible through its icon and tooltip.
