@@ -116,9 +116,9 @@ export namespace SessionCorpus {
     const records = await Storage.readMany<PartContent.Stored>(selected)
     const parts: MessageV2.TextPart[] = []
     for (const [index, record] of records.entries()) {
-      if (!record || MessageV2.isSystemPart(record)) continue
+      if (!record) continue
       const part = await PartContent.hydrate(selected[index]!, record)
-      if (part.type === "text") parts.push(part)
+      if (part.type === "text" && !MessageV2.isSystemPart(part)) parts.push(part)
     }
     return parts
   }
