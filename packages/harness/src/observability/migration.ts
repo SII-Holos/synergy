@@ -20,6 +20,7 @@ export namespace ObservabilityMigration {
   export const schemaMetadataId = "20260712-observability-schema-metadata-v4"
   export const resourceCgroupId = "20260722-observability-resource-cgroup-v5"
   export const metricSlimId = "20260814-observability-metric-slim-v6"
+  export const issueScopeAttributionId = "20261021-observability-issue-scope-attribution"
 
   export async function migrateLegacyPerformance(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
@@ -128,6 +129,23 @@ export namespace ObservabilityMigration {
           target,
           "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
           String(schemaVersion),
+        )
+      })
+      .immediate()
+    progress(1, 1)
+  }
+
+  export async function suppressLegacyIssueAggregates(progress: (current: number, total: number) => void = () => {}) {
+    const target = ObservabilityStore.initializeForMigration()
+    target
+      .transaction(() => {
+        runStatement(
+          target,
+          `UPDATE obs_issues
+           SET status = 'suppressed',
+               evidence_json = json_set(evidence_json, '$.suppressionReason', ?)
+           WHERE status = 'open' AND fingerprint = code || ':' || module`,
+          "Legacy default fingerprint did not separate Scopes; historical attribution cannot be reconstructed.",
         )
       })
       .immediate()
@@ -785,6 +803,18 @@ const migrations: Migration[] = [
     dependsOn: [ObservabilityMigration.resourceCgroupId],
     async up(progress) {
       await ObservabilityMigration.slimMetrics(progress)
+    },
+  },
+  {
+    scope: "global",
+    execution: "startup",
+    id: ObservabilityMigration.issueScopeAttributionId,
+    description: "Suppress legacy default issue aggregates with unrecoverable Scope attribution",
+    domain: "observability",
+    version: String(ObservabilityMigration.schemaVersion),
+    dependsOn: [ObservabilityMigration.metricSlimId],
+    async up(progress) {
+      await ObservabilityMigration.suppressLegacyIssueAggregates(progress)
     },
   },
 ]

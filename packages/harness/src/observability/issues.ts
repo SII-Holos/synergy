@@ -38,30 +38,35 @@ export namespace ObservabilityIssues {
     // data version stay quiet (a growing data version would defeat the
     // summary cache even when nothing is stored).
     if (!RuntimeContext.tryCurrent() || !ObservabilityConfig.current().enabled) return undefined
-    const context = ObservabilityContext.merge({
-      correlationId: input.correlationId,
-      traceId: input.traceId,
-      spanId: input.spanId,
-      scopeID: input.scopeID,
-      sessionID: input.sessionID,
-      messageID: input.messageID,
-      callID: input.callID,
-      rid: input.rid,
-      module: input.module,
-      source: "backend",
-    })
+    const context = ObservabilityContext.merge(
+      ObservabilityContext.compact({
+        correlationId: input.correlationId,
+        traceId: input.traceId,
+        spanId: input.spanId,
+        scopeID: input.scopeID,
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+        callID: input.callID,
+        rid: input.rid,
+        module: input.module,
+        source: "backend" as const,
+      }),
+    )
     const time = ObservabilityClock.now()
     const evidence = ObservabilityRedaction.redactRecord({
       ...input.evidence,
       latestCorrelationId: context.correlationId,
       latestTraceId: context.traceId,
       latestSpanId: context.spanId,
+      latestScopeID: context.scopeID,
       latestSessionID: context.sessionID,
       latestMessageID: context.messageID,
       latestCallID: context.callID,
       latestRequestID: context.rid,
     })
-    const fingerprint = input.fingerprint ?? [input.code, input.module].join(":")
+    const fingerprint =
+      input.fingerprint ??
+      [input.code, input.module, context.scopeID === undefined ? "global" : `scope:${context.scopeID}`].join(":")
     const issue = ObservabilitySchema.Issue.parse({
       issueId: ObservabilityClock.id("iss"),
       time,

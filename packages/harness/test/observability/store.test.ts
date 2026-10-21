@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test"
 import { mkdirSync, statSync } from "fs"
+import { ObservabilityClock } from "../../src/observability/clock"
 import { ObservabilityConfig } from "../../src/observability/config"
+import { ObservabilityContext } from "../../src/observability/context"
 import { ObservabilityEvents } from "../../src/observability/events"
 import { ObservabilityIssues } from "../../src/observability/issues"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
@@ -85,7 +87,7 @@ describe("ObservabilityStore", () => {
 
   test("storage queue depth retains the last value and peak without sharding by request", () =>
     runtime.run(() => {
-      let now = performance.now()
+      let now = Math.ceil(performance.now())
       using clock = spyOn(performance, "now").mockImplementation(() => now)
       const rowsForQueue = () =>
         ObservabilityStore.queryMetrics({
@@ -254,36 +256,95 @@ describe("ObservabilityStore", () => {
       expect(ObservabilityStore.queryEvents({ traceId: "trace_jsonl" })).toEqual([])
     }))
 
-  test("deduplicates implicit issue fingerprints across trace IDs", () =>
+  test("refreshes an open aggregate with the latest observation while retaining its lifetime", () =>
     runtime.run(() => {
-      ObservabilityIssues.raise({
+      let now = Date.now()
+      using clock = spyOn(ObservabilityClock, "now").mockImplementation(() => now)
+      const first = ObservabilityIssues.raise({
         code: "PERF_TEST_DEDUPE",
         severity: "warning",
         module: "observability",
-        title: "Dedupe issue",
-        message: "Dedupe issue",
+        title: "First issue",
+        message: "First observation",
+        recommendation: "First recommendation",
         traceId: "trace_1",
+        spanId: "span_1",
+        correlationId: "corr_1",
+        scopeID: "scope_1",
+        sessionID: "ses_1",
+        messageID: "msg_1",
         callID: "call_1",
-      })
-      ObservabilityIssues.raise({
+        rid: "request_1",
+        fingerprint: "owner:aggregate",
+        evidence: { observedValue: 100 },
+      })!
+      now += 100
+      const latest = {
         code: "PERF_TEST_DEDUPE",
-        severity: "warning",
-        module: "observability",
-        title: "Dedupe issue",
-        message: "Dedupe issue",
+        severity: "critical" as const,
+        module: "observability" as const,
+        title: "Latest issue",
+        message: "Latest observation",
+        recommendation: "Latest recommendation",
         traceId: "trace_2",
+        spanId: "span_2",
+        correlationId: "corr_2",
+        scopeID: "scope_2",
+        sessionID: "ses_2",
+        messageID: "msg_2",
         callID: "call_2",
-      })
+        rid: "request_2",
+        fingerprint: "owner:aggregate",
+        evidence: { observedValue: 200 },
+      }
+      ObservabilityIssues.raise(latest)
 
       const issues = ObservabilityIssues.list({ module: "observability" }).filter(
         (issue) => issue.code === "PERF_TEST_DEDUPE",
       )
 
       expect(issues).toHaveLength(1)
-      expect(issues[0]?.fingerprint).toBe("PERF_TEST_DEDUPE:observability")
-      expect(issues[0]?.occurrenceCount).toBe(2)
-      expect(issues[0]?.evidence.latestTraceId).toBe("trace_2")
-      expect(issues[0]?.evidence.latestCallID).toBe("call_2")
+      expect(issues[0]).toMatchObject({
+        ...latest,
+        issueId: first.issueId,
+        time: first.time,
+        iso: first.iso,
+        firstSeenTime: first.firstSeenTime,
+        lastSeenTime: now,
+        occurrenceCount: 2,
+        evidence: { observedValue: 200, latestTraceId: "trace_2", latestCallID: "call_2" },
+      })
+    }))
+
+  test("groups default issues by ambient Scope without splitting Sessions or calls", () =>
+    runtime.run(() => {
+      const input = {
+        code: "PERF_TEST_SCOPE",
+        severity: "warning" as const,
+        module: "observability" as const,
+        title: "Scope issue",
+        message: "Scope observation",
+        scopeID: undefined,
+      }
+      for (const [scopeID, sessionID, callID] of [
+        ["scope_a", "ses_1", "call_1"],
+        ["scope_a", "ses_2", "call_2"],
+        ["scope_b", "ses_3", "call_3"],
+      ]) {
+        ObservabilityContext.withContext({ scopeID, sessionID, callID }, () => ObservabilityIssues.raise(input))
+      }
+      ObservabilityIssues.raise(input)
+
+      const issues = ObservabilityIssues.list({ module: "observability" })
+      expect(issues).toHaveLength(3)
+      expect(new Set(issues.map((issue) => issue.fingerprint)).size).toBe(3)
+      expect(ObservabilityIssues.list({ scopeID: "scope_a" })).toMatchObject([
+        { scopeID: "scope_a", sessionID: "ses_2", callID: "call_2", occurrenceCount: 2 },
+      ])
+      expect(ObservabilityIssues.list({ scopeID: "scope_b" })).toMatchObject([
+        { scopeID: "scope_b", occurrenceCount: 1 },
+      ])
+      expect(issues.find((issue) => issue.scopeID === undefined)?.occurrenceCount).toBe(1)
     }))
 
   test("queryMetrics newestFirst returns rows in descending time order without JS reversal", () =>

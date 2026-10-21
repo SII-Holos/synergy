@@ -158,7 +158,7 @@ export namespace ObservabilityDbWrites {
       .query(
         `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,correlation_id,trace_id,span_id,scope_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
-         ON CONFLICT(fingerprint) WHERE status = 'open' DO UPDATE SET last_seen_time=excluded.last_seen_time, occurrence_count=obs_issues.occurrence_count+1, evidence_json=excluded.evidence_json, redaction_json=excluded.redaction_json`,
+         ON CONFLICT(fingerprint) WHERE status = 'open' DO UPDATE SET severity=excluded.severity,title=excluded.title,message=excluded.message,recommendation=excluded.recommendation,correlation_id=excluded.correlation_id,trace_id=excluded.trace_id,span_id=excluded.span_id,scope_id=excluded.scope_id,session_id=excluded.session_id,message_id=excluded.message_id,call_id=excluded.call_id,rid=excluded.rid,last_seen_time=excluded.last_seen_time,occurrence_count=obs_issues.occurrence_count+1,evidence_json=excluded.evidence_json,redaction_json=excluded.redaction_json`,
       )
       .run(
         issue.issueId,
