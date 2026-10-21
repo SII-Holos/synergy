@@ -9,6 +9,7 @@ import { WorkspaceEvidence } from "../workspace/evidence"
 import { WorkspaceMounts } from "../workspace/mount"
 import { Log } from "../util/log"
 import { Snapshot } from "./snapshot"
+import { SnapshotStore } from "./snapshot-store"
 import { MessageV2 } from "./message-v2"
 import type { RolloutLedger } from "./rollout/ledger"
 import type { Workspace } from "./workspace-schema"
@@ -119,8 +120,13 @@ export namespace SessionFileChanges {
     segment.closed = true
     const { Session } = await import("./index")
     try {
-      for (const pending of segment.captures.values()) {
-        const { workspace, source, part } = await pending
+      const prepared = await Promise.allSettled(segment.captures.values())
+      const captures = prepared.flatMap((result) => {
+        if (result.status === "fulfilled") return [result.value]
+        log.error("baseline publication failed", { error: result.reason })
+        return []
+      })
+      const actions = captures.map(({ workspace, source, part }) => async () => {
         await ScopeContext.provide({
           scope: segment.scope,
           workspace,
@@ -146,7 +152,11 @@ export namespace SessionFileChanges {
             await Session.updatePart({ ...part, files, checkpoint })
           },
         })
-      }
+      })
+      const publishing = actions.length === 1 ? actions[0]!() : SnapshotStore.parallel(input.sessionID, actions)
+      await publishing.catch((error) => {
+        if (!(error instanceof Storage.NotFoundError)) log.error("checkpoint publication failed", { error })
+      })
       if (segment.captures.size) {
         const { SessionSummary } = await import("./summary")
         await ScopeContext.provide({
