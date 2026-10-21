@@ -57,6 +57,11 @@ const ExperienceCardInfo = z.object({
   sessionID: z.string(),
   scopeID: z.string(),
   intent: z.string(),
+  scriptPreview: z
+    .string()
+    .nullable()
+    .optional()
+    .meta({ description: "First 320 characters of the stored trajectory script" }),
   sourceProviderID: z.string().nullable(),
   sourceModelID: z.string().nullable(),
   rewardStatus: z.enum(LibraryDB.Experience.REWARD_STATUSES),
@@ -286,8 +291,11 @@ function toExperienceCardInfo(row: LibraryDB.Experience.Row): z.infer<typeof Exp
   }
 }
 
-function toExperienceInfo(row: LibraryDB.Experience.Row): z.infer<typeof ExperienceInfo> {
-  return toExperienceCardInfo(row)
+function toExperienceInfos(rows: LibraryDB.Experience.Row[]): z.infer<typeof ExperienceInfo>[] {
+  const previews = new Map(
+    LibraryDB.Experience.getScriptPreviews(rows.map((row) => row.id)).map((row) => [row.id, row.script_preview]),
+  )
+  return rows.map((row) => ({ ...toExperienceCardInfo(row), scriptPreview: previews.get(row.id) ?? null }))
 }
 
 function toExperienceDetail(
@@ -308,6 +316,10 @@ function toExperienceSearchResult(result: ExperienceRecall.Result): z.infer<type
     sessionID: result.sessionID,
     scopeID: result.scopeID,
     intent: result.intent,
+    scriptPreview:
+      Array.from(result.script ?? "")
+        .slice(0, LibraryDB.Experience.SCRIPT_PREVIEW_LENGTH)
+        .join("") || null,
     sourceProviderID: result.sourceProviderID,
     sourceModelID: result.sourceModelID,
     rewardStatus: result.rewardStatus,
@@ -473,7 +485,7 @@ export const LibraryRoute = () =>
           rewardWeights: LibraryConfigSchema.REWARD_WEIGHT_DEFAULTS,
         })
         return c.json({
-          items: page.items.map(toExperienceInfo),
+          items: toExperienceInfos(page.items),
           total: page.total,
           limit: page.limit,
           offset: page.offset,
@@ -607,7 +619,7 @@ export const LibraryRoute = () =>
       async (c) => {
         const { scopeID } = c.req.valid("query")
         const rows = scopeID ? LibraryDB.Experience.list(scopeID) : LibraryDB.Experience.listAll()
-        return c.json(rows.map(toExperienceInfo))
+        return c.json(toExperienceInfos(rows))
       },
     )
 

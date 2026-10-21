@@ -14,15 +14,15 @@ import { MemoryCard } from "./memory-view"
 import type { View } from "./shared"
 
 type RecentItem = { kind: "memory"; item: MemoryInfo } | { kind: "experience"; item: ExperienceInfo }
-export type LibraryHomeSync = { sync: () => Promise<void>; syncing: () => boolean }
+export type LibrarySearchSync = { sync: () => Promise<void>; syncing: () => boolean }
 
-export function LibraryHome(props: {
+export function LibrarySearch(props: {
   sdk: ReturnType<typeof useGlobalSDK>
   search: string
   scopeID?: string
   scopeLabel?: (id: string) => string | undefined
   onBrowse: (view: View, search?: string) => void
-  registerSync: (handle: LibraryHomeSync | undefined) => void
+  registerSync: (handle: LibrarySearchSync | undefined) => void
 }) {
   const { _ } = useLingui()
   const dialog = useDialog()
@@ -30,27 +30,20 @@ export function LibraryHome(props: {
   const memories = createLibraryCollection<MemoryInfo>(
     () => props.search,
     async (query, signal) => {
-      const result = query
-        ? await props.sdk.client.library.search({ query, topK: 20 }, { signal, throwOnError: true })
-        : await props.sdk.client.library.list(undefined, { signal, throwOnError: true })
+      if (!query) return []
+      const result = await props.sdk.client.library.search({ query, topK: 20 }, { signal, throwOnError: true })
       return result.data ?? []
     },
   )
   const experiences = createLibraryCollection<ExperienceInfo>(
     () => props.search,
     async (query, signal) => {
-      if (query) {
-        const result = await props.sdk.client.library.experience.search(
-          { query, topK: 20 },
-          { signal, throwOnError: true },
-        )
-        return result.data ?? []
-      }
-      const result = await props.sdk.client.library.experience.page(
-        { sort: "updated", limit: 20 },
+      if (!query) return []
+      const result = await props.sdk.client.library.experience.search(
+        { query, topK: 20 },
         { signal, throwOnError: true },
       )
-      return result.data?.items ?? []
+      return result.data ?? []
     },
   )
   const skills = createLibraryCollection<SkillSummary>(
@@ -98,14 +91,6 @@ export function LibraryHome(props: {
     if (detailDialog) dialog.close(detailDialog)
     detailDialog = undefined
   })
-  const recent = createMemo<RecentItem[]>(() =>
-    [
-      ...memories.items().map((item) => ({ kind: "memory" as const, item })),
-      ...experiences.items().map((item) => ({ kind: "experience" as const, item })),
-    ]
-      .sort((a, b) => b.item.updatedAt - a.item.updatedAt)
-      .slice(0, 20),
-  )
   const matchingSkills = createMemo(() => {
     const query = props.search.toLocaleLowerCase()
     return skills.items().filter((item) => `${item.name} ${item.description}`.toLocaleLowerCase().includes(query))
@@ -165,7 +150,8 @@ export function LibraryHome(props: {
       <div class="library-home-results">
         <For each={entries}>
           {(entry) => {
-            const preview = () => (entry.kind === "experience" ? experiencePreview(entry.item.intent) : undefined)
+            const preview = () =>
+              entry.kind === "experience" ? experiencePreview(entry.item.intent, entry.item.scriptPreview) : undefined
             return (
               <div class="library-home-item">
                 <button type="button" class="library-home-result" aria-haspopup="dialog" onClick={() => toggle(entry)}>
@@ -232,78 +218,47 @@ export function LibraryHome(props: {
           {_({ id: "app.library.home.loading", message: "Loading library…" })}
         </p>
       </Show>
-      <Show
-        when={!props.search}
-        fallback={
-          <>
-            <For each={["memory", "experience"] as const}>
-              {(kind) => (
-                <section>
-                  <h2>{labels()[kind]}</h2>
-                  {rows(
-                    kind === "memory"
-                      ? memories.items().map((item) => ({ kind, item }))
-                      : experiences.items().map((item) => ({ kind, item })),
-                  )}
-                  <Show
-                    when={
-                      !(kind === "memory"
-                        ? memories.loading() || memories.error() || memories.items().length
-                        : experiences.loading() || experiences.error() || experiences.items().length)
-                    }
-                  >
-                    <p class="library-home-empty">
-                      {_({ id: "app.library.home.noMatches", message: "No matching results" })}
-                    </p>
-                  </Show>
-                </section>
-              )}
-            </For>
-            <section>
-              <h2>{labels().skill}</h2>
-              <div class="library-home-results">
-                <For each={matchingSkills()}>
-                  {(skill) => (
-                    <button
-                      type="button"
-                      class="library-home-result"
-                      onClick={() => props.onBrowse("skill", skill.name)}
-                    >
-                      <span class="library-home-result-main">
-                        <span class="app-panel-row-title text-text-strong">{skill.name}</span>
-                        <span class="app-panel-caption text-text-weak">{skill.description}</span>
-                      </span>
-                    </button>
-                  )}
-                </For>
-              </div>
-              <Show when={!skills.loading() && !skills.error() && !matchingSkills().length}>
-                <p class="library-home-empty">
-                  {_({ id: "app.library.home.noMatches", message: "No matching results" })}
-                </p>
-              </Show>
-            </section>
-          </>
-        }
-      >
-        <section>
-          <h2>{_({ id: "app.library.home.recent", message: "Recently updated" })}</h2>
-          {rows(recent())}
-          <Show
-            when={
-              !memories.loading() &&
-              !experiences.loading() &&
-              !memories.error() &&
-              !experiences.error() &&
-              !recent().length
-            }
-          >
-            <p class="library-home-empty">
-              {_({ id: "app.library.home.empty", message: "Your memories and experiences will appear here." })}
-            </p>
-          </Show>
-        </section>
-      </Show>
+      <For each={["memory", "experience"] as const}>
+        {(kind) => (
+          <section>
+            <h2>{labels()[kind]}</h2>
+            {rows(
+              kind === "memory"
+                ? memories.items().map((item) => ({ kind, item }))
+                : experiences.items().map((item) => ({ kind, item })),
+            )}
+            <Show
+              when={
+                !(kind === "memory"
+                  ? memories.loading() || memories.error() || memories.items().length
+                  : experiences.loading() || experiences.error() || experiences.items().length)
+              }
+            >
+              <p class="library-home-empty">
+                {_({ id: "app.library.home.noMatches", message: "No matching results" })}
+              </p>
+            </Show>
+          </section>
+        )}
+      </For>
+      <section>
+        <h2>{labels().skill}</h2>
+        <div class="library-home-results">
+          <For each={matchingSkills()}>
+            {(skill) => (
+              <button type="button" class="library-home-result" onClick={() => props.onBrowse("skill", skill.name)}>
+                <span class="library-home-result-main">
+                  <span class="app-panel-row-title text-text-strong">{skill.name}</span>
+                  <span class="app-panel-caption text-text-weak">{skill.description}</span>
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
+        <Show when={!skills.loading() && !skills.error() && !matchingSkills().length}>
+          <p class="library-home-empty">{_({ id: "app.library.home.noMatches", message: "No matching results" })}</p>
+        </Show>
+      </section>
     </div>
   )
 }

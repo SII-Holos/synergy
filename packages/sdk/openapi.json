@@ -75331,6 +75331,10 @@
           "intent": {
             "type": "string"
           },
+          "scriptPreview": {
+            "description": "First 320 characters of the stored trajectory script",
+            "type": ["string", "null"]
+          },
           "sourceProviderID": {
             "type": ["string", "null"]
           },
@@ -75406,6 +75410,10 @@
           },
           "intent": {
             "type": "string"
+          },
+          "scriptPreview": {
+            "description": "First 320 characters of the stored trajectory script",
+            "type": ["string", "null"]
           },
           "sourceProviderID": {
             "type": ["string", "null"]
@@ -75510,6 +75518,10 @@
           },
           "intent": {
             "type": "string"
+          },
+          "scriptPreview": {
+            "description": "First 320 characters of the stored trajectory script",
+            "type": ["string", "null"]
           },
           "sourceProviderID": {
             "type": ["string", "null"]
