@@ -146,7 +146,7 @@ try {
       const errors: string[] = []
       page.on("pageerror", (error) => errors.push(error.message))
       const reads = new Map<string, number>()
-      const traffic = { frames: 0, bytes: 0, contentBytes: 0 }
+      const traffic = { frames: 0, bytes: 0, contentBytes: 0, contentKinds: {} as Record<string, number> }
       page.on("request", (request) => {
         if (request.url().includes("/content") && request.url().includes(`/session/${session.id}/`))
           reads.set(request.url(), (reads.get(request.url()) ?? 0) + 1)
@@ -156,10 +156,42 @@ try {
           traffic.frames++
           traffic.bytes += typeof payload === "string" ? Buffer.byteLength(payload) : payload.length
           const event = JSON.parse(String(payload)).payload
-          if (event?.properties?.summary?.sessionID === session.id && event.properties.content)
-            traffic.contentBytes += Buffer.byteLength(JSON.stringify(event.properties.content))
+          if (event?.properties?.summary?.sessionID === session.id && event.properties.content) {
+            const bytes = Buffer.byteLength(JSON.stringify(event.properties.content))
+            traffic.contentBytes += bytes
+            const kind = String(event.properties.content.kind)
+            traffic.contentKinds[kind] = (traffic.contentKinds[kind] ?? 0) + bytes
+          }
         }),
       )
+      await page.addInitScript((sessionID) => {
+        const state = window as unknown as { backgroundInterestReleased: boolean; interestGeneration: number }
+        const send = WebSocket.prototype.send
+        WebSocket.prototype.send = function (data) {
+          send.call(this, data)
+          if (typeof data !== "string") return
+          const payload = JSON.parse(data).payload as {
+            type: string
+            properties: { generation: number; parts: { sessionID: string }[]; active?: { sessionID: string } }
+          }
+          if (payload?.type !== "client.view.interests" && payload?.type !== "client.content.interests") return
+          const generation = payload.properties.generation
+          state.interestGeneration = generation
+          state.backgroundInterestReleased = false
+          if (
+            payload.properties.active?.sessionID === sessionID ||
+            payload.properties.parts.some((part) => part.sessionID === sessionID)
+          )
+            return
+          const acknowledged = (event: MessageEvent) => {
+            if (typeof event.data !== "string" || JSON.parse(event.data).payload?.type !== "server.pong") return
+            this.removeEventListener("message", acknowledged)
+            if (state.interestGeneration === generation) state.backgroundInterestReleased = true
+          }
+          this.addEventListener("message", acknowledged)
+          send.call(this, JSON.stringify({ payload: { type: "client.ping" } }))
+        }
+      }, session.id)
       const route = `${url.origin}/aG9tZQ/session/`
       await page.goto(route + session.id)
       await client.session.promptAsync(
@@ -206,7 +238,10 @@ try {
       const before = Object.fromEntries(reads)
       await page.getByText(peer.title, { exact: true }).first().click()
       await page.waitForURL(route + peer.id)
-      const hiddenTraffic = { ...traffic }
+      await page.waitForFunction(
+        () => (window as unknown as { backgroundInterestReleased: boolean }).backgroundInterestReleased,
+      )
+      const hiddenTraffic = { ...traffic, contentKinds: { ...traffic.contentKinds } }
       const hiddenReads = Object.fromEntries(reads)
       streams.get(key)!.append(addition)
       if (ended) {
@@ -226,6 +261,12 @@ try {
         frames: traffic.frames - hiddenTraffic.frames,
         bytes: traffic.bytes - hiddenTraffic.bytes,
         contentBytes: traffic.contentBytes - hiddenTraffic.contentBytes,
+        contentKinds: Object.fromEntries(
+          Object.entries(traffic.contentKinds).map(([kind, bytes]) => [
+            kind,
+            bytes - (hiddenTraffic.contentKinds[kind] ?? 0),
+          ]),
+        ),
       }
       const cdp = await context.newCDPSession(page)
       let image = 0

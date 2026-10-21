@@ -26,17 +26,27 @@ test("continuous reasoning with changing or missing item IDs has one keyboard di
   expect(await page.locator("[data-reasoning-part]").allTextContents()).toEqual(
     Array.from({ length: 8 }, (_, index) => `Summary paragraph ${index}`),
   )
-  await page.waitForFunction(
-    () => !document.querySelector('[data-slot="process-reasoning-panel"][data-motion-changing]'),
-  )
-  const fragmentGaps = await page
-    .locator("[data-reasoning-part]")
-    .evaluateAll((parts) =>
-      parts
-        .slice(1)
-        .map((part, index) => part.getBoundingClientRect().top - parts[index].getBoundingClientRect().bottom),
+  await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
+  await page.evaluate(async () => {
+    await document.fonts.ready
+    await Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+        .map((animation) => animation.finished.catch(() => undefined)),
     )
-  for (const gap of fragmentGaps) expect(Math.abs(gap - 8)).toBeLessThanOrEqual(1)
+  })
+  await frames()
+  const fragmentGaps = await page.locator("[data-reasoning-part]").evaluateAll((parts) =>
+    parts.slice(1).map((part, index) => ({
+      gap: part.getBoundingClientRect().top - parts[index].getBoundingClientRect().bottom,
+      current: part.getAttribute("data-reasoning-part"),
+      previous: parts[index].getAttribute("data-reasoning-part"),
+      sameParent: part.parentElement === parts[index].parentElement,
+    })),
+  )
+  for (const fragment of fragmentGaps)
+    expect(Math.abs(fragment.gap - 8), JSON.stringify(fragmentGaps)).toBeLessThanOrEqual(1)
   const ids = await page
     .locator('[data-slot="process-reasoning-detail"]')
     .evaluateAll((panels) => panels.map((panel) => panel.id))
@@ -68,16 +78,16 @@ test("parent and batch disclosures preserve independent choices and tool inspect
   expect(await batches.last().getAttribute("aria-expanded")).toBe("false")
   expect(await page.locator('[data-slot="activity-step-trigger"]').count()).toBe(0)
   await batches.last().press("Enter")
-  const tool = page.locator('[data-slot="activity-step-trigger"]').first()
+  const tool = page.locator('[data-part-id="many-19"] [data-slot="activity-step-trigger"]')
   await tool.waitFor()
   expect(await tool.textContent()).toContain("pwd")
   expect(await tool.textContent()).not.toContain("Check the project directory")
   await tool.click()
   expect(await page.evaluate(() => window.__processSelection)).toMatchObject({
     sessionID: "session",
-    messageID: "work",
-    partID: "command-0",
-    callID: "command-0",
+    messageID: "more",
+    partID: "many-19",
+    callID: "many-19",
   })
   expect(await page.getByRole("dialog").count()).toBe(0)
   await trigger.press("Enter")
@@ -145,14 +155,44 @@ test("cold process disclosure keeps a bounded reading window while tool bodies a
   expect(await page.evaluate(() => window.__conversationProcess.retained())).toBeLessThan(8)
   const contraction = await page.evaluate(async () => {
     const pending = document.querySelector<HTMLElement>('[data-part-id="cold-prose"]')!
+    const row = pending.closest("[data-display-row]")!
     const before = pending.getBoundingClientRect().height
-    document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!.click()
-    for (let frame = 0; frame < 8; frame++) await new Promise(requestAnimationFrame)
-    return { before, during: pending.getBoundingClientRect().height, connected: pending.isConnected }
+    const animate = Element.prototype.animate
+    const animations: Animation[] = []
+    Element.prototype.animate = function (frames, options) {
+      const animation = animate.call(this, frames, options)
+      if (this === row) {
+        animation.pause()
+        animation.currentTime = Number(animation.effect!.getTiming().duration) / 2
+        animations.push(animation)
+      }
+      return animation
+    }
+    try {
+      document.querySelector<HTMLButtonElement>('[data-slot="turn-process-trigger"]')!.click()
+      await new Promise(requestAnimationFrame)
+      const during = pending.getBoundingClientRect().height
+      const connected = pending.isConnected
+      const resizing = animations.some(
+        (animation) =>
+          animation.effect instanceof KeyframeEffect &&
+          animation.effect.getKeyframes().some((frame) => "height" in frame || "minHeight" in frame),
+      )
+      for (const animation of animations) animation.finish()
+      await new Promise(requestAnimationFrame)
+      await new Promise(requestAnimationFrame)
+      return { before, during, connected, resizing, captured: animations.length, removed: !pending.isConnected }
+    } finally {
+      Element.prototype.animate = animate
+      for (const animation of animations) if (animation.playState !== "finished") animation.finish()
+    }
   })
+  expect(contraction.captured).toBe(1)
+  expect(contraction.resizing).toBe(false)
   expect(contraction.connected).toBe(true)
   expect(contraction.during).toBeGreaterThan(0)
   expect(contraction.during).toBeCloseTo(contraction.before, 1)
+  expect(contraction.removed).toBe(true)
   await parent.press("Enter")
   await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
   expect(await page.locator('[data-part-id="cold-prose"]').count()).toBe(1)

@@ -165,6 +165,62 @@ function createScrollHarness() {
 }
 
 describe("createAutoScroll", () => {
+  for (const revoke of ["remove", "replace"] as const) {
+    test(`${revoke} of the motion target settles an in-flight follow without waiting for resize or losing follow intent`, () => {
+      const harness = createScrollHarness()
+      const style = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle")
+      Object.defineProperty(globalThis, "getComputedStyle", {
+        configurable: true,
+        value: () => ({ getPropertyValue: () => "" }),
+      })
+      const animations: { cancelled: boolean }[] = []
+      const target = () =>
+        ({
+          animate() {
+            const state = { cancelled: false }
+            animations.push(state)
+            return {
+              onfinish: null,
+              cancel: () => {
+                state.cancelled = true
+              },
+            }
+          },
+        }) as unknown as HTMLElement
+      let dispose = () => {}
+      try {
+        const element = harness.makeScroller()
+        const first = target()
+        const owner = createRoot((cleanup) => {
+          dispose = cleanup
+          const [motionTarget, setTarget] = createSignal<HTMLElement | undefined>(first)
+          return { autoScroll: createAutoScroll({ working: () => true, motionTarget }), setTarget }
+        })
+        owner.autoScroll.scrollRef(element)
+        owner.autoScroll.forceScrollToBottom({ untilInteraction: true })
+        harness.flushFrames()
+        element.scrollHeight += 32
+        harness.lastObserver()!.fire(element)
+        expect(animations).toHaveLength(1)
+        const before = element.scrollTop
+        owner.setTarget(revoke === "remove" ? undefined : target())
+        expect(animations[0].cancelled).toBe(true)
+        expect(element.scrollTop).toBe(before)
+        expect(owner.autoScroll.userScrolled()).toBe(false)
+        owner.setTarget(first)
+        expect(animations).toHaveLength(1)
+        element.scrollHeight += 32
+        harness.lastObserver()!.fire(element)
+        expect(animations).toHaveLength(2)
+      } finally {
+        dispose()
+        harness.restore()
+        if (style) Object.defineProperty(globalThis, "getComputedStyle", style)
+        else Reflect.deleteProperty(globalThis, "getComputedStyle")
+      }
+    })
+  }
+
   test("explicit history navigation releases the old reading anchor until native reading resumes", async () => {
     const harness = createScrollHarness()
     let dispose = () => {}

@@ -20,6 +20,8 @@ Coalesce readiness notifications rather than restarting the frame window on ever
 
 This partially supersedes [cold following](2026-10-12-cold-conversation-following.md)'s visible-during-settlement choice, [display admission](2026-10-07-session-switch-display-admission.md) and [rendering lifetime](../architecture/2026-10-07-conversation-rendering-lifetime.md)'s entrance fade, and [targeted execution invalidation](2026-10-07-targeted-conversation-execution-invalidation.md)'s failure clearing. Their remaining ownership, bounded preparation, following and request-coalescing decisions still apply.
 
+Recovery revocation is refined by [Recovery motion ownership](2026-10-20-conversation-recovery-motion-ownership.md). Visibility admission, execution retention and source-classified live receipts retain the responsibilities described here.
+
 ## Alternatives considered
 
 **Clear state on inactivity or refresh failure.** Neither condition proves that accepted execution evidence disappeared. Clearing creates a loading gap on a retained view and repeats reads even when no root changed.

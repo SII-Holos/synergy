@@ -1,5 +1,5 @@
 import { I18nProvider } from "@lingui/solid"
-import { createSignal, For } from "solid-js"
+import { createSignal, For, Show } from "solid-js"
 import { render } from "solid-js/web"
 import {
   captureProcessReadingAnchor,
@@ -33,6 +33,7 @@ export type FixtureHarness = {
   active(value: boolean): void
   visible(value: boolean): void
   ready(value: boolean): void
+  remount(): void
   widths: number[]
 }
 
@@ -51,6 +52,7 @@ const [parentFollowing, setParentFollowing] = createSignal(true)
 const [active, setActive] = createSignal(true)
 const [visible, setVisible] = createSignal(true)
 const [ready, setReady] = createSignal(true)
+const [mounted, setMounted] = createSignal(true)
 const widths: number[] = []
 const body = (position: "above" | "below") => document.querySelector(`[data-body="${position}"]`)!
 const targetID = (target?: Element) => target?.id || null
@@ -91,6 +93,10 @@ const harness: FixtureHarness = {
   visible: setVisible,
   ready: setReady,
   widths,
+  remount() {
+    setMounted(false)
+    setMounted(true)
+  },
   appendTool() {
     const added = document.createElement("div")
     added.style.height = "32px"
@@ -107,6 +113,7 @@ const harness: FixtureHarness = {
     harness.disclosure = undefined
   },
   async positionReading() {
+    await frames(2)
     const paragraph = document.getElementById("reading-paragraph")!
     viewport.scrollTop += paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top + 8
     viewport.dispatchEvent(new Event("scroll"))
@@ -143,67 +150,69 @@ render(
       <ViewActivityProvider active={visible}>
         <ConversationMotionProvider ready={ready}>
           <div style={{ display: visible() ? undefined : "none" }}>
-            <ProcessViewport
-              identity="process-viewport-fixture"
-              active={active()}
-              onWidthChange={(width) => widths.push(width)}
-              parentFollowing={parentFollowing()}
-              ref={(element) => (viewport = element)}
-              onReading={(value) => notifications.push(value)}
-              onInteraction={() => harness.interactions++}
-              isLayoutMutation={
-                consumerClassification
-                  ? (record) => record.type !== "childList" || record.target !== virtualRoot
-                  : undefined
-              }
-              controls={(controls) => (pause = controls.pause)}
-              anchor={
-                instrumented
-                  ? (target) => {
-                      const anchor = captureProcessReadingAnchor(viewport, target)
-                      captures.push({
-                        target: targetID(target),
-                        height: viewport.scrollHeight,
-                        restores: restores.length,
-                        anchor: anchor && { ...anchor },
-                      })
-                      return anchor
-                    }
-                  : undefined
-              }
-              restoreAnchor={
-                instrumented
-                  ? (anchor) => {
-                      restores.push({ ...anchor })
-                      return restoreProcessReadingAnchor(viewport, anchor)
-                    }
-                  : undefined
-              }
-              onBeforeLayoutChange={(event) =>
-                beforeLayouts.push({
-                  target: targetID(event.target instanceof Element ? event.target : undefined),
-                  height: viewport.scrollHeight,
-                })
-              }
-            >
-              <div ref={(element) => (virtualRoot = element)} data-slot="process-virtualizer">
-                <For each={rows}>
-                  {(index) => (
-                    <div data-display-row={`row-${index}`}>
-                      <section data-slot="activity-step" data-part-id={`part-${index}`}>
-                        <p data-body={index === 2 ? "above" : index === 24 ? "below" : undefined}>
-                          Earlier output for activity {index}.
-                        </p>
-                        <p id={index === 12 ? "reading-paragraph" : undefined}>
-                          Reading activity {index} remains in place.
-                        </p>
-                        {index === 12 ? <Disclosure /> : <button type="button">Inspect activity {index}</button>}
-                      </section>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </ProcessViewport>
+            <Show when={mounted()}>
+              <ProcessViewport
+                identity="process-viewport-fixture"
+                active={active()}
+                onWidthChange={(width) => widths.push(width)}
+                parentFollowing={parentFollowing()}
+                ref={(element) => (viewport = element)}
+                onReading={(value) => notifications.push(value)}
+                onInteraction={() => harness.interactions++}
+                isLayoutMutation={
+                  consumerClassification
+                    ? (record) => record.type !== "childList" || record.target !== virtualRoot
+                    : undefined
+                }
+                controls={(controls) => (pause = controls.pause)}
+                anchor={
+                  instrumented
+                    ? (target) => {
+                        const anchor = captureProcessReadingAnchor(viewport, target)
+                        captures.push({
+                          target: targetID(target),
+                          height: viewport.scrollHeight,
+                          restores: restores.length,
+                          anchor: anchor && { ...anchor },
+                        })
+                        return anchor
+                      }
+                    : undefined
+                }
+                restoreAnchor={
+                  instrumented
+                    ? (anchor) => {
+                        restores.push({ ...anchor })
+                        return restoreProcessReadingAnchor(viewport, anchor)
+                      }
+                    : undefined
+                }
+                onBeforeLayoutChange={(event) =>
+                  beforeLayouts.push({
+                    target: targetID(event.target instanceof Element ? event.target : undefined),
+                    height: viewport.scrollHeight,
+                  })
+                }
+              >
+                <div ref={(element) => (virtualRoot = element)} data-slot="process-virtualizer">
+                  <For each={rows}>
+                    {(index) => (
+                      <div data-display-row={`row-${index}`}>
+                        <section data-slot="activity-step" data-part-id={`part-${index}`}>
+                          <p data-body={index === 2 ? "above" : index === 24 ? "below" : undefined}>
+                            Earlier output for activity {index}.
+                          </p>
+                          <p id={index === 12 ? "reading-paragraph" : undefined}>
+                            Reading activity {index} remains in place.
+                          </p>
+                          {index === 12 ? <Disclosure /> : <button type="button">Inspect activity {index}</button>}
+                        </section>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </ProcessViewport>
+            </Show>
           </div>
         </ConversationMotionProvider>
       </ViewActivityProvider>

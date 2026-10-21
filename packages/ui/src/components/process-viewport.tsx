@@ -143,6 +143,9 @@ export function ProcessViewport(
   const [below, setBelow] = createSignal(false)
   let viewport!: HTMLDivElement, content!: HTMLDivElement, motionTarget!: HTMLDivElement
   const motion = createScrollMotion(() => motionTarget)
+  createEffect(() => {
+    if (!motionReady()) motion.cancel()
+  })
   let followReady = false
   let resuming = false
   let frame: number | undefined
@@ -155,7 +158,7 @@ export function ProcessViewport(
   let movementPending = false
   let notifiedReading = false
   let resumeRequested = false
-  let explicitFollow = false
+  let explicitFollow = saved?.following ?? false
   let previousOffset = 0
   let readingAnchor = saved?.anchor
   let restoring = !!saved?.anchor && !saved.following

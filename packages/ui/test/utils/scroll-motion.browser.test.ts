@@ -48,16 +48,22 @@ test("growth pins canonical geometry while preserving the painted paragraph, ret
     const target = document.querySelector<HTMLElement>("#target")!
     const anchor = document.querySelector<HTMLElement>("#anchor")!
     const y = () => anchor.getBoundingClientRect().top
+    const advance = async () => {
+      const animation = target.getAnimations()[0]
+      animation.pause()
+      animation.currentTime = 60
+      await new Promise(requestAnimationFrame)
+    }
     const before = y()
     target.style.height = "332px"
     motion.move(viewport, viewport.scrollHeight, true)
     const first = { y: y(), top: viewport.scrollTop, height: viewport.scrollHeight }
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await advance()
     const intermediate = y()
     target.style.height = "364px"
     motion.move(viewport, viewport.scrollHeight, true)
     const retargeted = y()
-    await new Promise((resolve) => setTimeout(resolve, 60))
+    await advance()
     const interruptedFrom = y()
     motion.interrupt(viewport)
     return {

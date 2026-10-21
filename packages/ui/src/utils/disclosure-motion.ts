@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, untrack } from "solid-js"
+import { useViewActivity } from "../context/view-activity"
 
 type Preparation = { read(): void; release(): void; measure(): void; play(): void }
 const preparations = new Set<Preparation>()
@@ -200,26 +201,33 @@ export function createDisclosureMotionRef(options: {
   onHidden?: () => void
   onSettled?: () => void
 }) {
+  const active = useViewActivity()
   const [element, setElement] = createSignal<HTMLElement>()
   const visible = createMemo(options.visible)
+  const state = createMemo(() => ({ visible: visible(), animate: active() && options.animate() }))
   createEffect(() => {
     const target = element()
     if (!target) return
     const motion = createDisclosureMotion(target, options.content, options.onHidden, options.resize, options.onSettled)
     const child = target.firstElementChild
     if (options.observeResize && child && typeof ResizeObserver !== "undefined") {
-      let height = child.getBoundingClientRect().height
-      const observer = new ResizeObserver(() => {
-        const next = child.getBoundingClientRect().height
-        if (height > 0 && !child.querySelector("[data-motion-changing]")) untrack(() => motion.resize(height, next))
-        height = next
+      createEffect(() => {
+        if (!active()) return
+        let height = child.getBoundingClientRect().height
+        const observer = new ResizeObserver(() => {
+          if (!active()) return
+          const next = child.getBoundingClientRect().height
+          if (state().animate && height > 0 && !child.querySelector("[data-motion-changing]"))
+            untrack(() => motion.resize(height, next))
+          height = next
+        })
+        observer.observe(child)
+        onCleanup(() => observer.disconnect())
       })
-      observer.observe(child)
-      onCleanup(() => observer.disconnect())
     }
     createEffect(() => {
-      const next = visible()
-      untrack(() => motion.setVisible(next, options.animate(), options.appear?.()))
+      const next = state()
+      untrack(() => motion.setVisible(next.visible, next.animate, options.appear?.()))
     })
     onCleanup(() => motion.dispose())
   })

@@ -179,6 +179,193 @@ for (const ended of [false, true]) {
     }, ended)
     expect(result.every((frame) => frame.animations === 0 && Math.abs(frame.gap) <= 2)).toBe(true)
   })
+
+  test(`readiness revocation settles an in-flight follow in a remounted ${ended ? "completed" : "running"} process`, async () => {
+    const result = await page.evaluate(async (ended) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      harness.active(!ended)
+      document
+        .querySelector<HTMLElement>('[data-component="process-viewport"]')!
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
+      await harness.frames(20)
+      harness.remount()
+      await harness.frames(6)
+      const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      const target = viewport.querySelector<HTMLElement>('[data-slot="process-viewport-motion"]')!
+      const animate = target.animate.bind(target)
+      let animation: Animation | undefined
+      target.animate = (frames, options) => {
+        animation = animate(frames, options)
+        animation.pause()
+        animation.currentTime = 60
+        return animation
+      }
+      harness.appendTool()
+      await harness.frames(2)
+      const started = !!animation && target.getAnimations().length > 0
+      const before = viewport.scrollTop
+      harness.ready(false)
+      const cancelled = animation?.playState === "idle" && target.getAnimations().length === 0
+      const preserved = viewport.scrollTop === before
+      harness.ready(true)
+      const replay = target.getAnimations().length
+      target.animate = animate
+      harness.appendTool()
+      await harness.frames(20)
+      return {
+        started,
+        cancelled,
+        preserved,
+        replay,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+      }
+    }, ended)
+    expect(result.started).toBe(true)
+    expect(result.cancelled).toBe(true)
+    expect(result.preserved).toBe(true)
+    expect(result.replay).toBe(0)
+    expect(Math.abs(result.gap)).toBeLessThanOrEqual(2)
+  })
+
+  test(`a remounted ${ended ? "completed" : "running"} process restores following through delayed hydration and later growth`, async () => {
+    const result = await page.evaluate(async (ended) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      let viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      harness.active(!ended)
+      viewport.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
+      await harness.frames(20)
+      const before = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
+      const previous = viewport
+      const widths = [...harness.widths]
+      harness.visible(false)
+      harness.ready(false)
+      harness.clear()
+      harness.remount()
+      viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      harness.growChildList("below")
+      await harness.frames()
+      const hidden = {
+        widths: [...harness.widths],
+        captures: harness.captures.length,
+        restores: harness.restores.length,
+      }
+      const motion = viewport.querySelector<HTMLElement>('[data-slot="process-viewport-motion"]')!
+      const sample = () => ({
+        animations: motion.getAnimations().length,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        height: viewport.scrollHeight,
+        client: viewport.clientHeight,
+      })
+      harness.visible(true)
+      const samples = [sample()]
+      for (let frame = 0; frame < 6; frame++) {
+        if (frame === 2) {
+          const body = document.createElement("p")
+          body.style.height = "160px"
+          body.textContent = "A late historical body finishes loading."
+          motion.append(body)
+        }
+        await harness.frames(2)
+        samples.push(sample())
+      }
+      harness.ready(true)
+      await harness.frames()
+      samples.push(sample())
+      harness.growChildList("below")
+      await harness.frames(20)
+      return {
+        before,
+        remounted: viewport !== previous && !previous.isConnected,
+        widths,
+        hidden,
+        samples,
+        after: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+      }
+    }, ended)
+    expect(result.remounted).toBe(true)
+    expect(Math.abs(result.before)).toBeLessThanOrEqual(2)
+    expect(result.hidden).toEqual({ widths: result.widths, captures: 0, restores: 0 })
+    expect(result.samples.at(-1)!.height - result.samples[0].height).toBe(160)
+    expect(result.samples[0].client).toBeGreaterThan(160)
+    expect(result.samples.every((sample) => sample.animations === 0)).toBe(true)
+    expect(Math.max(...result.samples.map((sample) => Math.abs(sample.gap)))).toBeLessThanOrEqual(2)
+    expect(Math.abs(result.after)).toBeLessThanOrEqual(2)
+  })
+
+  test(`a remounted ${ended ? "completed" : "running"} process restores its reading paragraph through delayed body hydration`, async () => {
+    const result = await page.evaluate(async (ended) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      let viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      const previous = document.getElementById("reading-paragraph")!
+      harness.active(!ended)
+      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -20, bubbles: true }))
+      await harness.frames()
+      const offset = previous.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+      harness.ready(false)
+      harness.remount()
+      viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      const paragraph = document.getElementById("reading-paragraph")!
+      const displacements = []
+      for (const grow of [harness.growCharacterData, harness.growChildList]) {
+        await harness.frames()
+        grow("above")
+        grow("below")
+        await harness.frames()
+        displacements.push(paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset)
+      }
+      harness.ready(true)
+      harness.growCharacterData("above")
+      await harness.frames()
+      displacements.push(paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset)
+      return {
+        remounted: paragraph !== previous && !previous.isConnected,
+        displacements,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        notifications: harness.notifications,
+      }
+    }, ended)
+    expect(result.remounted).toBe(true)
+    expect(Math.max(...result.displacements.map(Math.abs))).toBeLessThanOrEqual(1)
+    expect(result.gap).toBeGreaterThan(100)
+    expect(result.notifications).toEqual([true, false, true])
+  })
+
+  test(`reading input cancels restored following before a remounted ${ended ? "completed" : "running"} process finishes hydration`, async () => {
+    const result = await page.evaluate(async (ended) => {
+      const harness = (window as unknown as FixtureWindow).processViewportFixture
+      let viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      harness.active(!ended)
+      viewport.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }))
+      await harness.frames(20)
+      harness.ready(false)
+      harness.remount()
+      viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+      const paragraph = document.getElementById("reading-paragraph")!
+      const motion = viewport.querySelector<HTMLElement>('[data-slot="process-viewport-motion"]')!
+      viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -600, bubbles: true }))
+      viewport.scrollTop += paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top + 8
+      viewport.dispatchEvent(new Event("scroll"))
+      const offset = paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+      harness.growCharacterData("above")
+      harness.growChildList("below")
+      await harness.frames()
+      const pending = paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset
+      harness.ready(true)
+      harness.growChildList("above")
+      harness.growCharacterData("below")
+      await harness.frames(20)
+      return {
+        displacements: [pending, paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset],
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        animations: motion.getAnimations().length,
+        notifications: harness.notifications,
+      }
+    }, ended)
+    expect(Math.max(...result.displacements.map(Math.abs))).toBeLessThanOrEqual(1)
+    expect(result.gap).toBeGreaterThan(100)
+    expect(result.animations).toBe(0)
+    expect(result.notifications).toEqual([true])
+  })
 }
 
 test("an explicit location owns its reading anchor before native scroll delivery and body hydration", async () => {

@@ -43,7 +43,7 @@ import { useExecution } from "@/context/execution"
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
   onAdmitted?: (sessionID: string) => void
-  onHydrated?: (sessionID: string) => void
+  onHydrationChange?: (sessionID: string, hydrated: boolean) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -56,7 +56,7 @@ export function SessionConversation(input: SessionConversationProps) {
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
           onAdmitted={input.onAdmitted}
-          onHydrated={input.onHydrated}
+          onHydrationChange={input.onHydrationChange}
         />
       )}
     </Show>
@@ -90,10 +90,6 @@ function SessionConversationView(input: SessionConversationProps) {
       view.release()
       setArrivalView(undefined)
     })
-  })
-  createEffect(() => {
-    const view = arrivalView()
-    view?.ready(admitted())
   })
   const takePartArrival = (partID: string) =>
     active() && (arrivalView()?.take(partID) ?? false) && document.visibilityState === "visible"
@@ -362,13 +358,15 @@ function SessionConversationView(input: SessionConversationProps) {
       setAdmitted(true)
     }
   })
+  const restorationReady = () =>
+    active() &&
+    sdk.connected() &&
+    globalSync.reconnectVersion() > 0 &&
+    !globalSync.scopeRecoveryPending(sdk.scopeKey) &&
+    (!input.initialScrollSettled || input.initialScrollSettled())
   const hydrated = createConversationHydration({
-    active,
-    ready: () =>
-      (!input.initialScrollSettled || input.initialScrollSettled()) &&
-      !sdk.content.pending(sdk.scopeKey, props.sessionID) &&
-      rowsReady() &&
-      !executionPending(),
+    active: restorationReady,
+    ready: () => !sdk.content.pending(sdk.scopeKey, props.sessionID) && rowsReady() && !executionPending(),
     surface: () => scrollRef()?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
     onHydrated: () =>
       batch(() => {
@@ -376,8 +374,12 @@ function SessionConversationView(input: SessionConversationProps) {
           input.onAdmitted?.(props.sessionID)
           setAdmitted(true)
         }
-        input.onHydrated?.(props.sessionID)
       }),
+  })
+  createEffect(() => arrivalView()?.ready(admitted() && restorationReady()))
+  createEffect(() => {
+    const ready = hydrated()
+    untrack(() => input.onHydrationChange?.(props.sessionID, ready))
   })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,

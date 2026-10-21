@@ -103,6 +103,9 @@ declare global {
     __setTimeline: (messages: unknown[]) => void
     __enableContent(): void
     __viewActive(value: boolean): void
+    __motionReady(): boolean
+    __recoveryGate: { connection(value: boolean): void; scope(value: boolean): void }
+    __hydrationChanges(): boolean[]
     __partArrival: {
       add(session: string, partID: string, source?: "live" | "replay" | "discovery"): void
       peer(): void
@@ -195,7 +198,7 @@ beforeAll(async () => {
       stubPath,
       `
         import { createMemo, createSignal } from "solid-js"
-        import { useConversationMotion } from "@ericsanchezok/synergy-ui/conversation-motion"
+        import { useConversationMotion, useConversationMotionReady } from "@ericsanchezok/synergy-ui/conversation-motion"
         import { ExecutionCompletion } from ${JSON.stringify(`/@fs/${completionPath}`)}
         import { createPartArrivalState } from ${JSON.stringify(`/@fs/${arrivalPath}`)}
         import { createSessionTransitionState } from ${JSON.stringify(`/@fs/${transitionPath}`)}
@@ -222,6 +225,7 @@ beforeAll(async () => {
           const [mounted] = createSignal(++mountCount)
           const root = createMemo(() => props.rootMessage)
           window.__partArrival.take = useConversationMotion()
+          window.__motionReady = useConversationMotionReady()
           return (
             <div data-slot="session-turn-stub" data-message-id={props.messageID} data-mount={mounted()} data-part-count={props.segment?.parts.length} data-execution={props.executionState?.status}>
               <span data-root-text>{root()?.text ?? ""}</span>
@@ -249,6 +253,9 @@ beforeAll(async () => {
         const [scope, setScope] = createSignal("scope")
         const [session, setSession] = createSignal("ses_1")
         const [recovery, setRecovery] = createSignal(1)
+        const [connected, setConnected] = createSignal(true)
+        const [scopePending, setScopePending] = createSignal(false)
+        window.__recoveryGate = {connection: setConnected, scope: setScopePending}
         const [revision, setRevision] = createSignal(0)
         const [ready, setReady] = createSignal(true)
         const [hasSession, setHasSession] = createSignal(true)
@@ -357,7 +364,7 @@ beforeAll(async () => {
           hasHandoff: () => !!transitions.get(session())?.handoff,
         }
         export const useSDK = () => ({
-          get url() { return server() }, get scopeKey() { return scope() }, get client() { return client() }, connected: () => true,
+          get url() { return server() }, get scopeKey() { return scope() }, get client() { return client() }, connected,
           content: { pending: checkpointPending },
           event: {on: (type, listener) => {
             if (!listeners.has(type)) listeners.set(type, new Set())
@@ -374,7 +381,7 @@ beforeAll(async () => {
           peer: () => partArrival.open([server(), scope(), "ses_peer"]).ready(true),
           take: () => false,
         }
-        export const useGlobalSync = () => ({partArrival, peekScopeState: () => [{messageWindow: {[session()]: {}}}], reconnectVersion: recovery, ready: true, scopeRecoveryPending: () => false})
+        export const useGlobalSync = () => ({partArrival, peekScopeState: () => [{messageWindow: {[session()]: {}}}], reconnectVersion: recovery, ready: true, scopeRecoveryPending: scopePending})
         export const SessionSubmissionStatus = () => null
         export const createOptimisticSubmissionActivity = () => () => undefined
         const transitions = createSessionTransitionState()
@@ -444,6 +451,7 @@ beforeAll(async () => {
           const pendingBodies: { resolve(): void; reject(error: Error): void }[] = []
           const bodyReleases: string[] = []
           const hydratedSessions: string[] = []
+          const hydrationChanges: boolean[] = []
           const recoveryMode = window.location.search.includes("content-recovery")
           const [version, setVersion] = createSignal("one")
           const [checkpoint, setCheckpoint] = createSignal()
@@ -461,6 +469,7 @@ beforeAll(async () => {
           }
           Object.assign(window, {
             __hydratedSessions: () => [...hydratedSessions],
+            __hydrationChanges: () => [...hydrationChanges],
             __holdBodies: () => { holdBody = true },
             __settleBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.resolve() },
             __failBodies: () => { holdBody = false; for (const entry of pendingBodies.splice(0)) entry.reject(new Error("Fixture content unavailable")) },
@@ -491,7 +500,7 @@ beforeAll(async () => {
             turnMessagesFor: (m: AnyMsg) => [m],
             compactionParentIDs: () => [],
           })
-          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, onHydrated: id => hydratedSessions.push(id), context: {
+          return createComponent(SessionConversation, { initialScrollSettled: layoutReady, onHydrationChange: (id, ready) => { hydrationChanges.push(ready); if (ready) hydratedSessions.push(id) }, context: {
             get content() { return contentEnabled() ? {
               summaries: id => Array.from({length: id === "huge" ? 1001 : 1}, (_, index) => ({id: "part-"+String(index).padStart(4,"0"),messageID:id,sessionID:sessionID(),type:"text",preview:"",content:{version:recoveryMode ? version() : "one",bytes:10}})),
               page: readProjectionPage,load: async () => {},retain: summary => recoveryMode ? materializer.retain(summary) : ({ready:holdBody ? new Promise<void>((resolve,reject) => pendingBodies.push({resolve,reject})) : Promise.resolve(),release() {bodyReleases.push(JSON.stringify([summary.sessionID, summary.messageID, summary.id]))}}),
@@ -1733,6 +1742,64 @@ describe("conversation execution request owner", () => {
     expect(pageErrors).toEqual([])
   })
 })
+
+for (const gate of ["connection", "scope", "placement"] as const) {
+  test(`${gate} recovery revokes motion and historical arrivals without hiding admitted content`, async () => {
+    await page.goto(new URL("?admission", page.url()).href)
+    await page.waitForFunction(() => typeof window.__setTimeline === "function")
+    await page.evaluate(() => {
+      window.__setTimeline([{ id: "accepted", sessionID: "ses_1", role: "user", time: { created: 1 } }])
+      window.__enableContent()
+      ;(window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
+    })
+    await page.waitForFunction(() => window.__motionReady?.())
+    const viewport = await page.locator("[data-conversation-viewport]").elementHandle()
+    const revoke = await page.evaluate((gate) => {
+      if (gate === "placement") (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(false)
+      else window.__recoveryGate[gate](gate === "scope")
+      window.__partArrival.add("ses_1", "recovery-part")
+      return { ready: window.__motionReady(), arrival: window.__partArrival.take("recovery-part") }
+    }, gate)
+    expect(revoke).toEqual({ ready: false, arrival: false })
+    expect(await page.evaluate(() => window.__hydrationChanges().at(-1))).toBe(false)
+    await page.evaluate((gate) => {
+      ;(window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(true)
+      window.__holdExecutions()
+      window.__executionOwner.reconnect()
+      if (gate === "placement") (window as unknown as { __layoutReady(value: boolean): void }).__layoutReady(true)
+      else window.__recoveryGate[gate](gate !== "scope")
+    }, gate)
+    await page.waitForFunction(() => window.__pendingExecutions() > 0)
+    await executionFrames()
+    expect(await page.evaluate(() => window.__motionReady())).toBe(false)
+    const restoredArrivals = await page.evaluate(() => {
+      window.__partArrival.add("ses_1", "historical-replay", "replay")
+      window.__partArrival.add("ses_1", "historical-discovery", "discovery")
+      window.__partArrival.add("ses_1", "fresh-during-hydration")
+      return ["recovery-part", "historical-replay", "historical-discovery", "fresh-during-hydration"].map(
+        window.__partArrival.take,
+      )
+    })
+    expect(restoredArrivals).toEqual([false, false, false, true])
+    expect(await viewport!.evaluate((el) => el.isConnected && el.getAttribute("data-ready") === "true")).toBe(true)
+    await page.evaluate(() => window.__settleExecutions())
+    await executionFrames()
+    expect(await page.evaluate(() => window.__motionReady())).toBe(false)
+    await page.evaluate(() =>
+      (window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(false),
+    )
+    await page.waitForFunction(() => window.__motionReady())
+    expect(await page.evaluate(() => window.__hydrationChanges().at(-1))).toBe(true)
+    expect(await viewport!.evaluate((el) => el === document.querySelector("[data-conversation-viewport]"))).toBe(true)
+    const live = await page.evaluate(() => {
+      ;(window as unknown as { __checkpointPending(value: boolean): void }).__checkpointPending(true)
+      window.__partArrival.add("ses_1", "live-part")
+      return { ready: window.__motionReady(), arrival: window.__partArrival.take("live-part") }
+    })
+    expect(live).toEqual({ ready: true, arrival: true })
+    expect(pageErrors).toEqual([])
+  })
+}
 
 test("warm return retains admission while renewed body and Markdown layout settle", async () => {
   await page.goto(new URL("?admission", page.url()).href)
