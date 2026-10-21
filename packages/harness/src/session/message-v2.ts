@@ -1833,7 +1833,12 @@ export namespace MessageV2 {
     }
 
     const [rawState, storedMarkers] = await Promise.all([
-      Storage.read<unknown>(StoragePath.sessionMessageOrderState(scopeID, sessionID)).catch(() => undefined),
+      Storage.read<unknown>(StoragePath.sessionMessageOrderState(scopeID, sessionID), { silentNotFound: true }).catch(
+        (error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        },
+      ),
       Storage.scan(StoragePath.sessionMessageOrderMarkersRoot(scopeID, sessionID)),
     ])
     const state = MessageOrderState.safeParse(rawState)

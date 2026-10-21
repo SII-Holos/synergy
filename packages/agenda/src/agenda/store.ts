@@ -37,7 +37,7 @@ export namespace AgendaStore {
   type IndexedRun = RunIndexEntry & { scopeID: Identifier.ScopeID }
 
   async function readRunIndex(scopeID: Identifier.ScopeID): Promise<RunIndex> {
-    return Storage.read<RunIndex>(StoragePath.agendaRunIndex(scopeID)).catch((error) => {
+    return Storage.read<RunIndex>(StoragePath.agendaRunIndex(scopeID), { silentNotFound: true }).catch((error) => {
       if (error instanceof Storage.NotFoundError) return { entries: [] }
       throw error
     })
