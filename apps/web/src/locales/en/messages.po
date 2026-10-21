@@ -18220,6 +18220,10 @@ msgid "session.progress.expand"
 msgstr "Expand"
 
 #. js-lingui-explicit-id
+msgid "session.progress.inactive"
+msgstr "{activity, select, waiting {Waiting for you} paused {Paused} idle {Unfinished} other {Status unknown}}"
+
+#. js-lingui-explicit-id
 msgid "session.progress.needsAttention"
 msgstr "Needs attention · {count, plural, one {# failed} other {# failed}}"
 

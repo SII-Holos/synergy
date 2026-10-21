@@ -1,5 +1,6 @@
 import type { I18n } from "@lingui/core"
 import type { ProgressIslandSnapshot } from "./session-progress-summary"
+import type { SessionActivity } from "@/utils/session-status"
 
 export const S = {
   historyCopyTitle: { id: "session.history.copyTitle", message: "Copy conversation text" },
@@ -275,6 +276,10 @@ export const S = {
     message: "Working {count, plural, one {# task} other {# tasks}}",
   },
   progressWorking: { id: "session.progress.working", message: "Working" },
+  progressInactive: {
+    id: "session.progress.inactive",
+    message: "{activity, select, waiting {Waiting for you} paused {Paused} idle {Unfinished} other {Status unknown}}",
+  },
 
   // session-progress-island
   progressSessionLabel: { id: "session.progress.sessionLabel", message: "Session progress" },
@@ -475,14 +480,27 @@ export const S = {
   scopesTasksCount: { id: "scopes.tasksCount", message: "{count} tasks" },
 }
 
-export function describeProgress(snapshot: ProgressIslandSnapshot, i18n: I18n): string {
+export function describeProgress(
+  snapshot: ProgressIslandSnapshot,
+  i18n: I18n,
+  activity: SessionActivity | "unknown",
+): string {
   if (snapshot.status === "hidden") return i18n._(S.progressSessionLabel)
-  if (snapshot.status === "complete") return i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+  if (snapshot.status === "complete") {
+    const label =
+      snapshot.total === 0
+        ? i18n._(S.progressEnded)
+        : i18n._({ ...S.progressCompleteAria, values: { count: snapshot.total } })
+    return snapshot.cancelled > 0
+      ? `${label}. ${i18n._({ ...S.progressCancelled, values: { count: snapshot.cancelled } })}`
+      : label
+  }
   if (snapshot.failed > 0 && snapshot.blocked > 0)
     return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressAttentionAria, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked") return i18n._({ ...S.progressBlockedAria, values: { count: snapshot.blocked } })
-  return i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
+  const label = i18n._({ ...S.progressActiveAria, values: { completed: snapshot.completed, total: snapshot.total } })
+  return activity === "working" ? label : `${i18n._({ ...S.progressInactive, values: { activity } })}. ${label}`
 }
 
 export function progressExpandCollapse(expanded: boolean, i18n: I18n): string {
@@ -493,16 +511,23 @@ export function formatProgressLabel(
   snapshot: ProgressIslandSnapshot,
   activeLabel: string | undefined,
   i18n: I18n,
+  activity: SessionActivity | "unknown",
 ): string {
   if (snapshot.status === "hidden") return ""
-  if (snapshot.status === "complete" && snapshot.total === 0) return i18n._(S.progressEnded)
-  if (snapshot.status === "complete") return i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+  if (snapshot.status === "complete") {
+    const label =
+      snapshot.total === 0 ? i18n._(S.progressEnded) : i18n._({ ...S.progressDone, values: { count: snapshot.total } })
+    return snapshot.cancelled > 0
+      ? `${label} · ${i18n._({ ...S.progressCancelled, values: { count: snapshot.cancelled } })}`
+      : label
+  }
   if (snapshot.failed > 0 && snapshot.blocked > 0)
     return i18n._({ ...S.progressNeedsAttentionMixed, values: { failed: snapshot.failed, blocked: snapshot.blocked } })
   if (snapshot.tone === "failed") return i18n._({ ...S.progressNeedsAttention, values: { count: snapshot.failed } })
   if (snapshot.tone === "blocked")
     return i18n._({ ...S.progressNeedsAttentionBlocked, values: { count: snapshot.blocked } })
   const fraction = `${snapshot.completed}/${snapshot.total}`
+  if (activity !== "working") return `${i18n._({ ...S.progressInactive, values: { activity } })} · ${fraction}`
   const label = activeLabel?.trim()
   if (label) return `${label} · ${fraction}`
   if (snapshot.tone === "ready") return i18n._({ ...S.progressReady, values: { fraction } })

@@ -18220,6 +18220,10 @@ msgid "session.progress.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "session.progress.inactive"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.progress.needsAttention"
 msgstr ""
 

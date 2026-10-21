@@ -26,6 +26,8 @@ Todo remains read-only and fully wrapping. DAG retains node details, readiness, 
 
 This supersedes the progress-retirement decision in [integrated session surface cleanup](2026-10-03-integrated-session-surface-cleanup.md) only. Its Task details, request collision and conversation focus decisions remain in effect.
 
+[Task-owned progress lifetime](2026-10-20-task-owned-progress-lifetime.md) supersedes the execution-end receipt trigger and automatic closure during expanded reading. The layout, retained graph and subagent interactions in this record remain applicable.
+
 ## Alternatives considered
 
 **Use task details as the only execution surface.** It removes the direct child-session and cancellation gestures and the expandable progress view the bottom controls provide.

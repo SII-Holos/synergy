@@ -172,6 +172,37 @@ describe("computeProgressIslandSnapshot", () => {
     expect(snapshot.total).toBe(1)
   })
 
+  test("unfinished work outranks the selected completed view without combining task counts", () => {
+    const dag = computeDagSummary([n("a", "running"), n("b", "pending")])
+    const todo = computeTodoSummary([t("x", "completed")])
+    const snapshot = computeProgressIslandSnapshot("todo", dag, todo)
+
+    expect(snapshot.status).toBe("active")
+    expect(snapshot.source).toBe("dag")
+    expect(snapshot.total).toBe(2)
+
+    const reverse = computeProgressIslandSnapshot(
+      "dag",
+      computeDagSummary([n("a", "completed")]),
+      computeTodoSummary([t("x", "pending"), t("y", "pending"), t("z", "completed")]),
+    )
+    expect(reverse.status).toBe("active")
+    expect(reverse.source).toBe("todo")
+    expect(reverse.total).toBe(3)
+  })
+
+  test("attention outranks the selected Todo view and preserves mixed attention counts", () => {
+    const snapshot = computeProgressIslandSnapshot(
+      "todo",
+      computeDagSummary([n("a", "blocked"), n("b", "failed")]),
+      computeTodoSummary([t("x", "in_progress")]),
+    )
+    expect(snapshot.source).toBe("dag")
+    expect(snapshot.status).toBe("attention")
+    expect(snapshot.failed).toBe(1)
+    expect(snapshot.blocked).toBe(1)
+  })
+
   test("failed work takes attention priority and stays explicit", () => {
     const dag = computeDagSummary([n("a", "running"), n("b", "blocked"), n("c", "failed")])
     const snapshot = computeProgressIslandSnapshot("dag", dag)
@@ -206,15 +237,6 @@ describe("computeProgressIslandSnapshot", () => {
 
     expect(snapshot.status).toBe("active")
     expect(snapshot.tone).toBe("ready")
-  })
-
-  test("pending-only work stays visible without lifecycle suppression", () => {
-    const dag = computeDagSummary([n("a", "pending"), n("b", "pending")])
-    const snapshot = computeProgressIslandSnapshot("dag", dag)
-
-    expect(snapshot.status).toBe("active")
-    expect(snapshot.tone).toBe("ready")
-    expect(snapshot.total).toBe(2)
   })
 
   test("work with attention stays visible", () => {
