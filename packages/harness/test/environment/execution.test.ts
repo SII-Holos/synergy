@@ -5,6 +5,7 @@ import { EnvironmentProviders } from "../../src/environment/provider"
 import type { Executor, ExecutionProtocol } from "../../src/environment/executor"
 import { testRuntime } from "../support/runtime"
 import { Storage } from "../../src/storage/storage"
+import { EnvironmentControl } from "../../src/environment/control"
 
 function fixture(state: "running" | "exited" = "exited") {
   let starts = 0
@@ -93,7 +94,7 @@ test("unchanged execution observation does not enter the writer queue and cancel
     }
     await EnvironmentExecution.cancel("observed", "scope")
     expect((await EnvironmentExecution.get("observed", "scope")).state).toBe("exited")
-    await EnvironmentExecution.complete("observed", "scope", async () => ({}))
+    await EnvironmentExecution.complete("observed", "scope", async () => ({ saved: {} }))
     expect((await EnvironmentExecution.get("observed", "scope")).state).toBe("completed")
     expect(f.starts()).toBe(1)
   })
@@ -145,7 +146,7 @@ test("reconciliation refreshes a moved endpoint without changing allocation iden
     expect(ready.allocation?.id).toBe(submitted.target.allocationID)
     expect(ready.generation).toBe(submitted.target.generation)
     expect((await EnvironmentExecution.reconcile("moving", "scope")).state).toBe("exited")
-    await EnvironmentExecution.complete("moving", "scope", async () => ({}))
+    await EnvironmentExecution.complete("moving", "scope", async () => ({ saved: {} }))
     expect(f.starts()).toBe(1)
     expect(await Environment.uses(environment.id)).toHaveLength(0)
   })
@@ -181,7 +182,7 @@ test("execution intent precedes dispatch, duplicate operation IDs never repeat a
       "different input",
     )
     expect(f.starts()).toBe(1)
-    await EnvironmentExecution.complete(input.id, "scope", async () => ({ revision: "saved-1" }))
+    await EnvironmentExecution.complete(input.id, "scope", async () => ({ saved: { revision: "saved-1" } }))
     expect(f.releases()).toBe(1)
     expect(await Environment.uses(environment.id)).toHaveLength(0)
   })
@@ -220,7 +221,7 @@ test("failed checkpoint retains the use and retries saving without re-executing"
     const checkpoint = async () => {
       saves++
       await Bun.sleep(10)
-      return { revision: "saved-2" }
+      return { saved: { revision: "saved-2" } }
     }
     const results = await Promise.all([
       EnvironmentExecution.complete("operation", "scope", checkpoint),
@@ -271,7 +272,7 @@ test("compiler artifacts may change on replay while the original command intent 
     )
     await expect(EnvironmentExecution.start({ ...input, intentDigest: undefined })).rejects.toThrow("different input")
     expect(f.starts()).toBe(1)
-    await EnvironmentExecution.complete(input.id, "scope", async () => ({}))
+    await EnvironmentExecution.complete(input.id, "scope", async () => ({ saved: {} }))
   })
 })
 
@@ -333,6 +334,75 @@ test.each(["ack-lost", "unknown", "release-lost"] as const)(
     })
   },
 )
+
+test("checkpoint failures survive a lost release acknowledgement, restart and allocation release", async () => {
+  const { runtimeHome } = await import("../support/runtime-home")
+  const f = fixture()
+  let available = true
+  const provider = {
+    id: "checkpoint-failure",
+    allocate: async (request: { requestID: string }) => ({ id: request.requestID, capabilities: ["exec"] }),
+    inspect: async (request: { requestID: string }) => {
+      if (!available) throw new Error("Provider is offline")
+      return { state: "ready" as const, allocation: { id: request.requestID, capabilities: ["exec"] } }
+    },
+    async deallocate() {},
+    connect: async () => f.executor,
+  }
+  const checkpointFailures = [
+    {
+      mount: { id: "old-mount", workspaceID: "workspace", generation: 3 },
+      failure: {
+        name: "WorkspaceDirectoryIdentityChangedError",
+        message: "Workspace directory changed",
+        code: "WORKSPACE_DIRECTORY_IDENTITY_CHANGED",
+      },
+    },
+  ]
+  await using home = await runtimeHome()
+  const first = await testRuntime({ home: home.host.home, register: () => EnvironmentProviders.register(provider) })
+  let environmentID = ""
+  const release = f.executor.release.bind(f.executor)
+  try {
+    await first.run(async () => {
+      environmentID = (await Environment.bind({ scopeID: "scope", ownerID: "owner", provider: provider.id, spec: {} }))
+        .id
+      await EnvironmentExecution.start({ id: "failed-checkpoint", scopeID: "scope", environmentID, command })
+      f.executor.release = async (id) => {
+        await release(id)
+        throw new Error("release acknowledgement lost")
+      }
+      await expect(
+        EnvironmentExecution.complete("failed-checkpoint", "scope", async () => ({ saved: {}, checkpointFailures })),
+      ).rejects.toThrow("release acknowledgement lost")
+      expect(await EnvironmentExecution.get("failed-checkpoint", "scope")).toMatchObject({
+        state: "saved",
+        saved: {},
+        checkpointFailures,
+      })
+      expect(await Environment.uses(environmentID)).toHaveLength(1)
+    })
+  } finally {
+    await first.close()
+    f.executor.release = release
+  }
+  await using second = await testRuntime({
+    home: home.host.home,
+    register: () => EnvironmentProviders.register(provider),
+  })
+  await second.run(async () => {
+    const completed = await EnvironmentExecution.get("failed-checkpoint", "scope")
+    expect(completed).toMatchObject({ state: "completed", saved: {}, checkpointFailures })
+    expect(f.starts()).toBe(1)
+    expect(await Environment.uses(environmentID)).toHaveLength(0)
+    expect(await EnvironmentExecution.listActive("scope")).toEqual([])
+    await Environment.deallocate(environmentID, { scopeID: "scope" })
+    available = false
+    const input = { scopeID: "scope", environmentID, operationID: "failed-checkpoint" }
+    expect(await EnvironmentControl.recoverExecution(input)).toEqual(completed)
+    expect(await EnvironmentControl.cancelExecution(input)).toEqual(completed)
+  })
+})
 
 test("the active-operation migration indexes unfinished records and excludes completed history", async () => {
   const { environmentMigrations } = await import("../../src/environment/migration")

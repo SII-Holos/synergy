@@ -13,6 +13,13 @@ export namespace WorkspaceErrors {
   export class LimitError extends Error {
     override name = "WorkspaceFileTooLargeError"
   }
+  export class DirectoryIdentityChangedError extends Error {
+    override name = "WorkspaceDirectoryIdentityChangedError"
+    readonly code = "WORKSPACE_DIRECTORY_IDENTITY_CHANGED"
+    constructor(message = "Workspace directory changed; rebind it before executing") {
+      super(message)
+    }
+  }
   export class PartialError extends Error {
     override name = "WorkspaceFilePartialMutationError"
     constructor(
@@ -45,15 +52,18 @@ export namespace WorkspaceErrors {
 
   export function restore(failure: Failure): Error {
     const error =
-      failure.name === "WorkspaceFileWriteConflictError"
-        ? new ConflictError()
-        : failure.name === "WorkspaceFileAccessDeniedError"
-          ? new AccessDeniedError(failure.message)
-          : failure.name === "WorkspaceFileTooLargeError"
-            ? new LimitError(failure.message)
-            : failure.name === "WorkspaceFilePartialMutationError"
-              ? new PartialError(failure.message, failure.completed ?? [])
-              : Object.assign(new Error(failure.message), { name: failure.name })
+      failure.name === "WorkspaceDirectoryIdentityChangedError" &&
+      failure.code === "WORKSPACE_DIRECTORY_IDENTITY_CHANGED"
+        ? new DirectoryIdentityChangedError(failure.message)
+        : failure.name === "WorkspaceFileWriteConflictError"
+          ? new ConflictError()
+          : failure.name === "WorkspaceFileAccessDeniedError"
+            ? new AccessDeniedError(failure.message)
+            : failure.name === "WorkspaceFileTooLargeError"
+              ? new LimitError(failure.message)
+              : failure.name === "WorkspaceFilePartialMutationError"
+                ? new PartialError(failure.message, failure.completed ?? [])
+                : Object.assign(new Error(failure.message), { name: failure.name })
     if (failure.code) Object.assign(error, { code: failure.code })
     return error
   }

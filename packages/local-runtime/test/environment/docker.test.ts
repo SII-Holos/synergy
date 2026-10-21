@@ -212,7 +212,7 @@ test.skipIf(!image)(
           expect((await new Response(inspect.stdout).text()).trim()).toBe("synergy-execution-v1")
           expect(await inspect.exited).toBe(0)
         }
-        await EnvironmentExecution.complete(operation.id, "scope", async () => ({ backend: "none" }))
+        await EnvironmentExecution.complete(operation.id, "scope", async () => ({ saved: { backend: "none" } }))
         const executor = await EnvironmentExecution.connect(operation)
         const inputs = await executor.prepareInputs!({
           id: "sandboxed",

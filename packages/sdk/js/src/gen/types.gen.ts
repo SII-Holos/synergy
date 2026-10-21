@@ -11759,6 +11759,19 @@ export type EnvironmentExecutionInfo = {
   saved?: {
     [key: string]: unknown
   }
+  checkpointFailures?: Array<{
+    mount: {
+      id: string
+      workspaceID: string
+      generation: number
+    }
+    failure: {
+      name: string
+      message: string
+      code?: string
+      completed?: Array<string>
+    }
+  }>
   outputCursor: number
   createdAt: number
   updatedAt: number

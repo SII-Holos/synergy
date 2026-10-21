@@ -166,8 +166,16 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
     const mount = receipt.mount
     if (mount.workspaceID !== input.workspaceID || mount.generation !== input.generation)
       throw new Error("Workspace mount changed")
-    if ((await identifyFilesystemObject(mount.path)).physicalID !== mount.physicalID)
+    const actual = await identifyFilesystemObject(mount.path)
+    if (actual.physicalID !== mount.physicalID) {
+      const comparable =
+        (mount.physicalID.startsWith("volume-v1:") && actual.physicalID.startsWith("volume-v1:")) ||
+        (mount.physicalID.startsWith("overlay:") && actual.physicalID.startsWith("overlay:")) ||
+        (/^\d+:\d+:\d+$/.test(mount.physicalID) && /^\d+:\d+:\d+$/.test(actual.physicalID))
+      if (receipt.input.source.kind === "directory" && actual.directory && comparable)
+        throw new WorkspaceErrors.DirectoryIdentityChangedError()
       throw new Error("Workspace directory changed")
+    }
     return mount
   }
   private async required(reference: WorkspaceProtocol.Reference) {
