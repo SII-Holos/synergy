@@ -1,7 +1,7 @@
 import path from "node:path"
 import { AsyncLocalStorage } from "node:async_hooks"
 import os from "node:os"
-import { mkdir } from "node:fs/promises"
+import { mkdir, rename, writeFile } from "node:fs/promises"
 import { parseArgs } from "node:util"
 import { z } from "zod"
 import type { JSONSchema7 } from "ai"
@@ -18,7 +18,7 @@ import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
 import { infer, type Recipe } from "../src/inference"
 import { digitalTwin } from "../src/component"
 import { registerAgents } from "./evaluator-worker"
-import { loadHistory, temporalEvidence, type ReplayCase } from "./history"
+import { loadHistory, historySourceHash, temporalEvidence, type ReplayCase } from "./history"
 import { version } from "../package.json" with { type: "json" }
 
 export function evaluationComponent(): RuntimeComponent {
@@ -74,20 +74,35 @@ const Judgment = z
 const recipes: Recipe[] = ["context", "voice", "full"]
 const digest = (value: string) => new Bun.CryptoHasher("sha256").update(value).digest("hex")
 
+async function writeCheckpoint(filename: string, text: string) {
+  const temporary = `${filename}.${crypto.randomUUID()}.tmp`
+  await writeFile(temporary, text, { mode: 0o600 })
+  await rename(temporary, filename)
+}
+
 const measurementScope = new AsyncLocalStorage<string>()
 
-async function measured<T>(agent: string, action: () => Promise<T>) {
+type CallIdentity = Pick<RolloutSchema.CallRecord, "owner" | "id">
+
+async function measured<T>(agent: string, action: () => Promise<T>, onCall?: (call: CallIdentity) => Promise<void>) {
   const identity = crypto.randomUUID()
   const owners = new Set<string>()
   const calls = new Map<string, RolloutSchema.CallRecord>()
   const attempts = new Map<string, RolloutSchema.AttemptRecord>()
+  let checkpoint = Promise.resolve()
   const dispose = Bus.subscribeGlobal(RolloutEvents.Updated, ({ properties }) => {
     if (properties.owner.kind !== "operation") return
     const record = properties.record
     if (record.kind === "call" && record.value.agent === agent && measurementScope.getStore() === identity)
       owners.add(properties.owner.operationID)
     if (!owners.has(properties.owner.operationID)) return
-    if (record.kind === "call" && record.value.agent === agent) calls.set(record.value.id, record.value)
+    if (record.kind === "call" && record.value.agent === agent) {
+      if (!calls.has(record.value.id) && onCall) {
+        const identity = { owner: record.value.owner, id: record.value.id }
+        checkpoint = checkpoint.then(() => onCall(identity))
+      }
+      calls.set(record.value.id, record.value)
+    }
     if (record.kind === "attempt") attempts.set(record.value.id, record.value)
   })
   const started = performance.now()
@@ -99,6 +114,7 @@ async function measured<T>(agent: string, action: () => Promise<T>) {
     error = cause instanceof Error ? `${cause.name}: ${cause.message}` : "Unknown failure"
   } finally {
     dispose()
+    await checkpoint
   }
   return {
     value,
@@ -110,6 +126,8 @@ async function measured<T>(agent: string, action: () => Promise<T>) {
         id: call.id,
         model: call.model,
         usage: call.sdkUsage,
+        request: call.request,
+        response: call.response,
       })),
       attempts: [...attempts.values()]
         .filter((attempt) => calls.has(attempt.callID))
@@ -127,6 +145,7 @@ type Prediction = {
   elapsedMs?: number
   selectedEvidence?: ReturnType<typeof temporalEvidence>["evidence"]
   receipt?: Receipt
+  calls?: CallIdentity[]
 }
 type Result = {
   fingerprint: string
@@ -135,31 +154,46 @@ type Result = {
   predictions: Prediction[]
   labels: Record<string, Recipe>
   eligibility?: z.infer<typeof Label>
+  labelState?: "pending" | "complete"
   labelError?: string
   labelReceipt?: Receipt
+  labelCalls?: CallIdentity[]
   judgment?: z.infer<typeof Judgment>
+  judgeState?: "pending" | "complete"
   judgeError?: string
   judgeReceipt?: Receipt
+  judgeCalls?: CallIdentity[]
   complete?: boolean
 }
 
-async function assess<T extends z.ZodType>(model: Provider.Model, schema: T, name: string, payload: object) {
-  const measurement = await measured("digital-twin-evaluator", async () =>
-    AgentCall.text({
-      agent: "digital-twin-evaluator",
-      ownership: "operation",
-      small: false,
-      model,
-      timeoutMs: 180_000,
-      retries: 2,
-      maxOutputChars: 65_536,
-      messages: [{ role: "user", content: await SecretMask.apply(JSON.stringify(payload)) }],
-      outputTool: {
-        name,
-        description: "Return the requested independent assessment through this schema.",
-        schema: z.toJSONSchema(schema, { target: "draft-7" }) as JSONSchema7,
-      },
-    }),
+async function assess<T extends z.ZodType>(
+  model: Provider.Model,
+  schema: T,
+  name: string,
+  payload: object,
+  onCall: (call: CallIdentity) => Promise<void>,
+) {
+  const measurement = await measured(
+    "digital-twin-evaluator",
+    async () =>
+      AgentCall.text({
+        agent: "digital-twin-evaluator",
+        ownership: "operation",
+        small: false,
+        model,
+        timeoutMs: 180_000,
+        retries: 2,
+        maxOutputTokens: Math.min(model.limit.output, 16_384),
+        maxOutputChars: 65_536,
+        messages: [{ role: "user", content: await SecretMask.apply(JSON.stringify({ ...payload, outputTool: name })) }],
+        outputTool: {
+          name,
+          force: false,
+          description: "Return the requested independent assessment through this schema.",
+          schema: z.toJSONSchema(schema, { target: "draft-7" }) as JSONSchema7,
+        },
+      }),
+    onCall,
   )
   try {
     if (!measurement.value) throw new Error(measurement.error)
@@ -194,7 +228,7 @@ export function pairedInterval(values: Array<{ family: string; win: number }>) {
   return [Math.max(0, Math.min(samples[49]!, mean - radius)), Math.min(1, Math.max(samples[1949]!, mean + radius))]
 }
 
-function summarize(results: Result[]) {
+export function summarize(results: Result[], expectedCases: number) {
   let predictable = 0,
     covered = 0,
     emitted = 0,
@@ -262,10 +296,13 @@ function summarize(results: Result[]) {
       result.judgeError ||
       result.predictions.some((prediction) => prediction.state !== "complete"),
   ).length
+  const finished = results.length === expectedCases && results.every((result) => result.complete)
   return {
     latency,
     categories,
     cases: results.length,
+    expectedCases,
+    finished,
     labeled: results.filter((result) => result.eligibility).length,
     judged: paired.length,
     errors,
@@ -283,6 +320,7 @@ function summarize(results: Result[]) {
     paired95: interval,
     qualityResolved:
       results.length > 0 &&
+      finished &&
       !errors &&
       paired.length === results.length &&
       (coverage ?? 0) >= 0.8 &&
@@ -341,11 +379,13 @@ function report(results: Result[], summary: ReturnType<typeof summarize>, metada
         prediction.candidate ?? prediction.error ?? `Abstained: ${prediction.abstention}`,
         "```",
         "",
-        "Evidence actually supplied:",
+        prediction.selectedEvidence
+          ? "Evidence actually supplied:"
+          : "Selected evidence unavailable; inspect the immutable request in the call receipt.",
         "",
         "```json",
         JSON.stringify(
-          prediction.selectedEvidence?.map(({ id, kind, text, previous }) => ({ id, kind, text, previous })) ?? [],
+          prediction.selectedEvidence?.map(({ id, kind, text, previous }) => ({ id, kind, text, previous })) ?? null,
           null,
           2,
         ),
@@ -392,6 +432,8 @@ export async function evaluate(input: {
   const [model, judge] = await Promise.all([resolve(modelID), resolve(judgeID)])
   const started = performance.now()
   const dataset = input.dataset ?? (await loadHistory(progress))
+  if (dataset.version !== 2 || dataset.sourceHash !== (await historySourceHash()))
+    throw new Error("Historical evidence must be rebuilt with the current immutable extraction contract")
   const preparationMs = performance.now() - started
   const sources = await Promise.all(
     [
@@ -399,6 +441,10 @@ export async function evaluate(input: {
       "../src/inference.ts",
       "../src/evidence.ts",
       "../../harness/src/session/search-index.ts",
+      "../../harness/src/agent/call.ts",
+      "../../harness/src/session/llm.ts",
+      "../../harness/src/provider/transform.ts",
+      "../../harness/src/provider/thinking.ts",
       "./evaluator-worker.ts",
       "./history.ts",
       "./evaluate.ts",
@@ -424,8 +470,8 @@ export async function evaluate(input: {
     preparationMs: input.dataset ? null : preparationMs,
     targets: { predictableCoverage: 0.8, emittedContentAndVoice4: 0.8, fullWins: 0.65, paired95AboveChance: true },
   }
-  await Bun.write(path.join(directory, "manifest.json"), JSON.stringify(manifest, null, 2))
-  await Bun.write(path.join(input.output, "latest.json"), JSON.stringify({ experiment, directory }))
+  await writeCheckpoint(path.join(directory, "manifest.json"), JSON.stringify(manifest, null, 2))
+  await writeCheckpoint(path.join(input.output, "latest.json"), JSON.stringify({ experiment, directory }))
   progress({ stage: "prepared", ...manifest })
   const results: Result[] = []
   async function evaluateCase(item: ReplayCase) {
@@ -441,18 +487,32 @@ export async function evaluate(input: {
       : { fingerprint, item, availableEvidence: evidence.available, predictions: [], labels }
     if (result.fingerprint !== fingerprint) throw new Error("Experiment identity mismatch")
     const persist = async () => {
-      await Bun.write(filename, await SecretMask.apply(JSON.stringify({ ...result, retrievalMs }, null, 2)))
+      await writeCheckpoint(filename, await SecretMask.apply(JSON.stringify({ ...result, retrievalMs }, null, 2)))
     }
     if (!result.complete) {
+      if (result.labelState === "pending")
+        result.labelError = "Interrupted labeling call; no replacement sample was drawn"
       if (!result.eligibility && !result.labelError) {
-        const label = await assess(judge, Label, "label_continuation", {
-          task: "Label whether the actual continuation was predictable from the completed situation, without seeing any proposed candidates. Freeze this label.",
-          completedContext: item.current,
-          authenticNextMessage: item.reference,
-        })
+        result.labelState = "pending"
+        await persist()
+        const label = await assess(
+          judge,
+          Label,
+          "label_continuation",
+          {
+            task: "Label whether the actual continuation was predictable from the completed situation, without seeing any proposed candidates. Freeze this label.",
+            completedContext: item.current,
+            authenticNextMessage: item.reference,
+          },
+          async (call) => {
+            ;(result.labelCalls ??= []).push(call)
+            await persist()
+          },
+        )
         result.eligibility = label.value
         result.labelError = label.error
         result.labelReceipt = label.receipt
+        result.labelState = "complete"
         await persist()
       }
       for (const recipe of recipes) {
@@ -469,15 +529,25 @@ export async function evaluate(input: {
         result.predictions.push(prediction)
         await persist()
         progress({ stage: "predict", done: results.length, total: dataset.cases.length, recipe })
-        const measurement = await measured("digital-twin", () =>
-          infer({
-            current: item.current,
-            evidence: evidence.evidence,
-            statistics: evidence.statistics,
-            model,
-            recipe,
-            metadata: { source: "digital-twin-evaluation", case: item.id, recipe, experiment },
-          }),
+        const measurement = await measured(
+          "digital-twin",
+          () =>
+            infer({
+              current: item.current,
+              evidence: evidence.evidence,
+              statistics: evidence.statistics,
+              model,
+              recipe,
+              onPrepared: async (selected) => {
+                prediction.selectedEvidence = selected
+                await persist()
+              },
+              metadata: { source: "digital-twin-evaluation", case: item.id, recipe, experiment },
+            }),
+          async (call) => {
+            ;(prediction.calls ??= []).push(call)
+            await persist()
+          },
         )
         prediction.receipt = measurement.receipt
         if (measurement.value)
@@ -494,39 +564,57 @@ export async function evaluate(input: {
         }
         await persist()
       }
-      const judgment = await assess(judge, Judgment, "assess_predictions", {
-        task: "Score all blinded candidates independently, preserving the frozen eligibility label. A failed call is not abstention; score it 1 and never count it as a correct abstention.",
-        eligibility: result.eligibility,
-        completedContext: item.current,
-        authenticNextMessage: item.reference,
-        authenticEarlierWriting: evidence.evidence.filter((entry) => entry.kind === "voice").map((entry) => entry.text),
-        candidates: Object.entries(labels).map(([label, recipe]) => {
-          const prediction = result.predictions.find((prediction) => prediction.recipe === recipe)!
-          return {
-            label,
-            state: prediction.state,
-            text: prediction.candidate,
-            abstention: prediction.abstention,
-            error: prediction.error,
-          }
-        }),
-        comparisonPairs: [
-          ["A", "B"],
-          ["A", "C"],
-          ["B", "C"],
-        ],
-      })
-      result.judgment = judgment.value
-      result.judgeError = judgment.error
-      result.judgeReceipt = judgment.receipt
-      if (
-        result.judgment &&
-        (new Set(result.judgment.scores.map((score) => score.label)).size !== 3 ||
-          new Set(result.judgment.comparisons.map((pair) => [pair.a, pair.b].sort().join(""))).size !== 3 ||
-          result.judgment.comparisons.some((pair) => pair.a === pair.b))
-      ) {
-        result.judgment = undefined
-        result.judgeError = "Evaluator omitted a candidate or pair"
+      if (result.judgeState === "pending")
+        result.judgeError = "Interrupted judgment call; no replacement sample was drawn"
+      if (!result.judgment && !result.judgeError) {
+        result.judgeState = "pending"
+        await persist()
+        const judgment = await assess(
+          judge,
+          Judgment,
+          "assess_predictions",
+          {
+            task: "Score all blinded candidates independently, preserving the frozen eligibility label. A failed call is not abstention; score it 1 and never count it as a correct abstention.",
+            eligibility: result.eligibility,
+            completedContext: item.current,
+            authenticNextMessage: item.reference,
+            authenticEarlierWriting: evidence.evidence
+              .filter((entry) => entry.kind === "voice")
+              .map((entry) => entry.text),
+            candidates: Object.entries(labels).map(([label, recipe]) => {
+              const prediction = result.predictions.find((prediction) => prediction.recipe === recipe)!
+              return {
+                label,
+                state: prediction.state,
+                text: prediction.candidate,
+                abstention: prediction.abstention,
+                error: prediction.error,
+              }
+            }),
+            comparisonPairs: [
+              ["A", "B"],
+              ["A", "C"],
+              ["B", "C"],
+            ],
+          },
+          async (call) => {
+            ;(result.judgeCalls ??= []).push(call)
+            await persist()
+          },
+        )
+        result.judgment = judgment.value
+        result.judgeError = judgment.error
+        result.judgeReceipt = judgment.receipt
+        result.judgeState = "complete"
+        if (
+          result.judgment &&
+          (new Set(result.judgment.scores.map((score) => score.label)).size !== 3 ||
+            new Set(result.judgment.comparisons.map((pair) => [pair.a, pair.b].sort().join(""))).size !== 3 ||
+            result.judgment.comparisons.some((pair) => pair.a === pair.b))
+        ) {
+          result.judgment = undefined
+          result.judgeError = "Evaluator omitted a candidate or pair"
+        }
       }
       result.complete = true
       await persist()
@@ -538,14 +626,14 @@ export async function evaluate(input: {
     const count = offset === 0 ? 1 : 4
     results.push(...(await Promise.all(ordered.slice(offset, offset + count).map(evaluateCase))))
     offset += count
-    const summary = summarize(results)
-    await Bun.write(path.join(directory, "summary.json"), JSON.stringify(summary, null, 2))
-    await Bun.write(path.join(directory, "report.md"), await SecretMask.apply(report(results, summary, manifest)))
+    const summary = summarize(results, dataset.cases.length)
+    await writeCheckpoint(path.join(directory, "summary.json"), JSON.stringify(summary, null, 2))
+    await writeCheckpoint(path.join(directory, "report.md"), await SecretMask.apply(report(results, summary, manifest)))
     progress({ stage: "evaluation", done: results.length, total: dataset.cases.length, summary })
   }
-  const summary = summarize(results)
-  await Bun.write(path.join(directory, "summary.json"), JSON.stringify(summary, null, 2))
-  await Bun.write(path.join(directory, "report.md"), await SecretMask.apply(report(results, summary, manifest)))
+  const summary = summarize(results, dataset.cases.length)
+  await writeCheckpoint(path.join(directory, "summary.json"), JSON.stringify(summary, null, 2))
+  await writeCheckpoint(path.join(directory, "report.md"), await SecretMask.apply(report(results, summary, manifest)))
   return { ...summary, directory }
 }
 

@@ -186,6 +186,11 @@
       "entry": ["script/**/*.ts", "test/**/*.ts"],
       "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
     },
+    "packages/digital-twin": {
+      "entry": ["script/**/*.ts", "test/**/*.ts", "src/worker.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@ericsanchezok/synergy-server"],
+    },
     "packages/browser-runtime": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],

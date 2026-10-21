@@ -5669,6 +5669,9 @@ export type GithubConfig = {
   watch?: GithubWatchConfig
 }
 
+/**
+ * Next-input prediction: automatic defaults to true; model defaults to the current Session model
+ */
 export type DigitalTwinSettings = {
   /**
    * Automatically predict the next input after a completed task (default: true)

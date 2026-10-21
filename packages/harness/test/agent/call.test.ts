@@ -78,6 +78,12 @@ describe("AgentCall", () => {
       expect(streamInput?.toolChoice).toEqual({ type: "tool", toolName: "answer" })
       expect(Object.keys(streamInput?.tools as object)).toEqual(["answer"])
       expect((streamInput?.tools as Record<string, { execute?: unknown }>).answer.execute).toBeUndefined()
+      expect((await call({ outputTool: { ...outputTool, force: false } })).toolCalls).toEqual([
+        { name: "answer", input: { result: 17 } },
+      ])
+      expect(streamInput?.toolChoice).toBeUndefined()
+      expect(Object.keys(streamInput?.tools as object)).toEqual(["answer"])
+      expect((streamInput?.tools as Record<string, { execute?: unknown }>).answer.execute).toBeUndefined()
       await expect(call({ outputTool, maxOutputChars: 1 })).rejects.toMatchObject({ code: "output_too_large" })
     }))
   test("unwraps structured output without deleting a domain-owned workBrief field", () =>

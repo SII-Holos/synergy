@@ -3189,6 +3189,15 @@
         "functions": 75
       },
       "exempt": []
+    },
+    "packages/digital-twin": {
+      "command": "bun run test:coverage",
+      "lcov": "coverage/lcov.info",
+      "thresholds": {
+        "lines": 75,
+        "functions": 75
+      },
+      "exempt": []
     }
   }
 }

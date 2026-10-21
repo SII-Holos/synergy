@@ -52,6 +52,7 @@
     "@ericsanchezok/synergy-code-tools": "workspace:*",
     "@ericsanchezok/synergy-computer-runtime": "workspace:*",
     "@ericsanchezok/synergy-connections": "workspace:*",
+    "@ericsanchezok/synergy-digital-twin": "workspace:*",
     "@ericsanchezok/synergy-email": "workspace:*",
     "@ericsanchezok/synergy-external-agents": "workspace:*",
     "@ericsanchezok/synergy-formatter": "workspace:*",
@@ -78,8 +79,7 @@
     "hono": "catalog:",
     "open": "11.0.4",
     "yargs": "18.2.0",
-    "zod": "catalog:",
-    "@ericsanchezok/synergy-digital-twin": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-blueprint": "workspace:*",

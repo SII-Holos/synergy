@@ -8,12 +8,14 @@ import { DigitalTwinContract } from "./contract"
 import { sketch, type Evidence, type Sketch } from "./evidence"
 import prompt from "./prompts/predict.txt"
 
-export const Prediction = z
+const Prediction = z
   .object({
     candidate: z.string().min(1).nullable(),
     abstention: z.enum(["insufficient-grounding", "no-clear-continuation"]).nullable(),
-    grounding: z.array(z.string()).min(1),
-    targets: z.array(z.string()),
+    grounding: z.array(z.string()).min(1).describe('Exact evidence IDs, always including "current". No explanations.'),
+    targets: z
+      .array(z.string())
+      .describe("Concrete names or paths copied verbatim from the current conversation; otherwise an empty array."),
   })
   .strict()
 
@@ -27,18 +29,31 @@ export async function infer(input: {
   metadata: Record<string, string>
   signal?: AbortSignal
   recipe?: Recipe
+  onPrepared?(evidence: Evidence[]): Promise<void>
 }) {
   const recipe = input.recipe ?? "full"
   const current = JSON.stringify(input.current)
   const contextText = await SecretMask.apply(current)
-  const available = input.model.limit.context - Math.min(input.model.limit.output, input.model.limit.context / 4)
+  const maxOutputTokens = Math.min(input.model.limit.output, 16_384)
+  const available = Math.min(input.model.limit.input ?? Infinity, input.model.limit.context - maxOutputTokens)
   const statistics = sketch([])
   for (const value of recipe === "context" ? [] : input.statistics) {
     for (const field of ["count", "characters", "han", "latin", "questions", "commas", "newlines"] as const)
       statistics[field] += value[field]
     statistics.lengths = statistics.lengths.map((count, index) => count + value.lengths[index]!)
   }
-  const schema = z.toJSONSchema(Prediction, { target: "draft-7" }) as JSONSchema7
+  const outputSchema = (evidence: Evidence[]) =>
+    z.toJSONSchema(
+      Prediction.extend({
+        grounding: z
+          .enum(["current", ...evidence.map((value) => value.id)])
+          .array()
+          .min(1)
+          .describe(Prediction.shape.grounding.description!),
+      }),
+      { target: "draft-7" },
+    ) as JSONSchema7
+  let schema = outputSchema(input.evidence)
   const payload = {
     current: { id: "current", conversation: JSON.parse(contextText) },
     historicalObservations: [] as Array<Pick<Evidence, "id" | "kind" | "previous" | "text">>,
@@ -61,7 +76,9 @@ export async function infer(input: {
     used += tokens
   }
   payload.historicalObservations = selected.map(({ id, kind, previous, text }) => ({ id, kind, previous, text }))
+  schema = outputSchema(selected)
   const messages: ModelMessage[] = [{ role: "user", content: await SecretMask.apply(JSON.stringify(payload)) }]
+  await input.onPrepared?.(selected)
   const started = performance.now()
   const output = await AgentCall.text({
     agent: "digital-twin",
@@ -73,9 +90,11 @@ export async function infer(input: {
     signal: input.signal,
     timeoutMs: 180_000,
     retries: 2,
-    maxOutputChars: Math.max(16_384, input.model.limit.output * 8),
+    maxOutputTokens,
+    maxOutputChars: maxOutputTokens * 8,
     outputTool: {
       name: "predict_next_input",
+      force: false,
       description: "Return one grounded editable next user message or abstain.",
       schema,
     },

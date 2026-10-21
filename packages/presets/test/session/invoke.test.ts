@@ -860,7 +860,9 @@ describe.serial("SessionInvoke memory recall", () => {
               const messages = await Session.messages({ sessionID: session.id })
               const user = messages.find((message) => message.info.role === "user")
               const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
-              expect(injectedContext?.memory).toContain('<entry title="Always workflow memory">')
+              expect(injectedContext).toMatchObject({
+                memory: expect.stringContaining('<entry title="Always workflow memory">'),
+              })
             } finally {
               await Session.remove(session.id)
             }
@@ -969,8 +971,12 @@ describe.serial("SessionInvoke memory recall", () => {
               const messages = await Session.messages({ sessionID: session.id })
               const user = messages.find((message) => message.info.role === "user")
               const injectedContext = user?.info.role === "user" ? user.info.metadata?.injectedContext : undefined
-              expect(injectedContext?.memory).toContain('<entry title="Always workflow memory">')
-              expect(injectedContext?.memory).toContain('<entry title="Contextual workflow memory" similarity="0.900">')
+              expect(injectedContext).toMatchObject({
+                memory: expect.stringContaining('<entry title="Always workflow memory">'),
+              })
+              expect(injectedContext).toMatchObject({
+                memory: expect.stringContaining('<entry title="Contextual workflow memory" similarity="0.900">'),
+              })
             } finally {
               await Session.remove(session.id)
             }

@@ -7,6 +7,7 @@
   "exports": {
     "./session/model-selection-schema": "./src/session/model-selection-schema.ts",
     "./session/context-snapshot": "./src/session/context-snapshot.ts",
+    "./session/context-usage-schema": "./src/session/context-usage-schema.ts",
     "./session/corpus": "./src/session/corpus.ts",
     "./attachment/delivery": "./src/attachment/delivery.ts",
     "./execution/model-execution": "./src/execution/model-execution.ts",

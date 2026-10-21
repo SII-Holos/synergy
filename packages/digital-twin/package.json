@@ -21,10 +21,10 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
+    "ai": "catalog:",
     "hono": "catalog:",
     "hono-openapi": "catalog:",
-    "zod": "catalog:",
-    "ai": "catalog:"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-agent-runtime": "workspace:*",
