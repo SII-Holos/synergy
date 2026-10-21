@@ -7,7 +7,7 @@ Read only sections relevant to the current change. Search the headings and domai
 
 ## Workbench Presentation Acceptance
 
-For first-send recovery, cross an accepted inbox item with concurrent Session detail reads while drive discovery and host admission are deliberately delayed. The task must remain unpaused before its execution lease exists; an unrelated orphaned Session must still recover as interrupted. Exercise both scheduled and awaited drive paths, plus a lease acquired during recovery evidence reads. Preserve the recovery receipt until the accepted work settles.
+For first-send recovery, cross an accepted inbox item with concurrent Session detail reads while drive discovery and host admission are deliberately delayed. The task must remain unpaused before its execution lease exists; an unrelated orphaned Session must still recover as interrupted. Exercise both scheduled and awaited drive paths, plus a lease acquired during recovery evidence reads. Preserve the recovery receipt until the accepted work settles. Cross a late stop after a terminal reply with the next input: it must create a new root and leave the previous Rollout terminal, while input at a real interrupted breakpoint still steers that root.
 
 For compaction acceptance, observe session idle and durable turn completion separately. Cross detached result settlement with a committed compaction, and verify that a request's pending process row yields to its canonical running, completed, failed or empty attempt across segmented rendering.
 

@@ -121,29 +121,27 @@ function installBasicLoopMocks(options?: {
 
   let callIndex = 0
 
-  ;(Provider.getModel as any) = mock(
-    async (): Promise<Provider.Model> => ({
-      id: "test-model",
-      providerID: "test-provider",
-      name: "Test Model",
-      limit: { context: 100_000, output: 8_192 },
-      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-      capabilities: {
-        toolcall: true,
-        attachment: false,
-        reasoning: false,
-        temperature: true,
-        input: { text: true, image: false, audio: false, video: false, pdf: false },
-        output: { text: true, image: false, audio: false, video: false, pdf: false },
-        interleaved: false,
-      },
-      api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
-      options: {},
-      headers: {},
-      status: "active",
-      release_date: "2026-10-01",
-    }),
-  )
+  ;(Provider.getModel as any) = mock(async (): Promise<Provider.Model> => ({
+    id: "test-model",
+    providerID: "test-provider",
+    name: "Test Model",
+    limit: { context: 100_000, output: 8_192 },
+    cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+    capabilities: {
+      toolcall: true,
+      attachment: false,
+      reasoning: false,
+      temperature: true,
+      input: { text: true, image: false, audio: false, video: false, pdf: false },
+      output: { text: true, image: false, audio: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
+    options: {},
+    headers: {},
+    status: "active",
+    release_date: "2026-10-01",
+  }))
   ;(Agent.get as any) = mock(async (name: string) => ({
     name,
     mode: "primary",
@@ -683,29 +681,27 @@ describe("SessionInvoke system prompt assembly", () => {
       let capturedLateSystem: string[] | undefined
 
       try {
-        ;(Provider.getModel as any) = mock(
-          async (): Promise<Provider.Model> => ({
-            id: "test-model",
-            providerID: "test-provider",
-            name: "Test Model",
-            limit: { context: 100_000, output: 8_192 },
-            cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
-            capabilities: {
-              toolcall: true,
-              attachment: false,
-              reasoning: false,
-              temperature: true,
-              input: { text: true, image: false, audio: false, video: false, pdf: false },
-              output: { text: true, image: false, audio: false, video: false, pdf: false },
-              interleaved: false,
-            },
-            api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
-            options: {},
-            headers: {},
-            status: "active",
-            release_date: "2026-10-01",
-          }),
-        )
+        ;(Provider.getModel as any) = mock(async (): Promise<Provider.Model> => ({
+          id: "test-model",
+          providerID: "test-provider",
+          name: "Test Model",
+          limit: { context: 100_000, output: 8_192 },
+          cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+          capabilities: {
+            toolcall: true,
+            attachment: false,
+            reasoning: false,
+            temperature: true,
+            input: { text: true, image: false, audio: false, video: false, pdf: false },
+            output: { text: true, image: false, audio: false, video: false, pdf: false },
+            interleaved: false,
+          },
+          api: { id: "test-model", url: "https://fixture.invalid/v1", npm: "@ai-sdk/openai" },
+          options: {},
+          headers: {},
+          status: "active",
+          release_date: "2026-10-01",
+        }))
         ;(Agent.get as any) = mock(async () => ({
           name: "synergy",
           mode: "primary",
@@ -2876,8 +2872,8 @@ async function withDeadline<T>(promise: Promise<T>, ms: number, message: string)
   }
 }
 
-for (const stoppedBy of ["abandonment", "run cancellation"] as const)
-  test(`new input after ${stoppedBy} keeps the old rollout cancelled and starts a new task`, () =>
+for (const stoppedBy of ["abandonment", "run cancellation", "completion", "completion with a late pause"] as const)
+  test(`new input after ${stoppedBy} preserves the terminal rollout and starts a new task`, () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const processed = Promise.withResolvers<string>()
@@ -2892,6 +2888,7 @@ for (const stoppedBy of ["abandonment", "run cancellation"] as const)
           fn: async () => {
             const session = await Session.create({})
             try {
+              const completed = stoppedBy.startsWith("completion")
               const rootID = Identifier.ascending("message")
               await Session.updateMessage({
                 ...(userMessage(rootID).info as MessageV2.User),
@@ -2904,15 +2901,19 @@ for (const stoppedBy of ["abandonment", "run cancellation"] as const)
                 ...(assistantMessage(Identifier.ascending("message"), rootID, "").info as MessageV2.Assistant),
                 sessionID: session.id,
                 rootID,
-                finish: "tool-calls",
+                finish: completed ? "stop" : "tool-calls",
                 time: { created: Date.now(), completed: Date.now() },
               })
               const owner = RolloutLifecycle.owner(session)
               await RolloutLifecycle.configuration(session, rootID)
-              await RolloutLifecycle.cancel(session.id, rootID)
+              if (completed) await RolloutLedger.finishRun(owner, rootID, "completed")
+              else await RolloutLifecycle.cancel(session.id, rootID)
               if (stoppedBy === "abandonment")
                 await SessionAbort.abort(session.id, { terminalize: true, abandonWorkflow: true })
-              expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+              if (stoppedBy === "completion with a late pause") {
+                await SessionAbort.abort(session.id)
+                expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("aborted")
+              } else expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
 
               const submitted = await submitInput({
                 sessionID: session.id,
@@ -2921,13 +2922,13 @@ for (const stoppedBy of ["abandonment", "run cancellation"] as const)
                 parts: [{ type: "text", text: "Start a different task" }],
               })
               if (submitted.status !== "queued") throw new Error("expected a queued task")
-              const processedRoot = await withDeadline(processed.promise, 5_000, "New task was not processed")
-              await SessionManager.waitForIdle(session.id)
               expect(submitted.item.mode).toBe("task")
               expect(submitted.runID).toBeUndefined()
+              const processedRoot = await withDeadline(processed.promise, 5_000, "New task was not processed")
+              await SessionManager.waitForIdle(session.id)
               expect(processedRoot).toBe(submitted.item.messageID)
               expect(processedRoot).not.toBe(rootID)
-              expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("cancelled")
+              expect((await RolloutLedger.getRun(owner, rootID)).status).toBe(completed ? "completed" : "cancelled")
             } finally {
               SessionManager.signalAbort(session.id)
               await SessionManager.waitForIdle(session.id)
