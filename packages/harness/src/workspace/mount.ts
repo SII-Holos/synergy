@@ -12,6 +12,7 @@ import { StorageRecovery } from "../storage/recovery"
 import { Log } from "../util/log"
 import { WorkspaceCheckpoints } from "./checkpoint"
 import { WorkspaceEvidence } from "./evidence"
+import { WorkspaceErrors } from "./errors"
 
 export namespace WorkspaceMounts {
   export type Selection = {
@@ -327,9 +328,10 @@ export namespace WorkspaceMounts {
     evidence?: { workspaceID: string; reference: WorkspaceEvidence.Reference }[]
   }) {
     const saved: Record<string, { revision: number; manifest: string | null }> = {}
+    const checkpointFailures: WorkspaceProtocol.CheckpointFailure[] = []
     if (input.status?.effectsStarted === false) {
       for (const item of input.evidence ?? []) await WorkspaceEvidence.incomplete(item.reference)
-      return saved
+      return { saved }
     }
     for (const reference of input.workspaces ?? []) {
       if (reference.readOnly) continue
@@ -346,12 +348,26 @@ export namespace WorkspaceMounts {
         })
       const files = await connect(info)
       const attempt = await WorkspaceCheckpoints.begin(info, checkpointID(input.id, reference.id))
-      const checkpoint = await files.checkpoint({
-        id: attempt.id,
-        mount: WorkspaceProtocol.Reference.parse(reference),
-        executionID: input.id,
-      })
       const evidence = input.evidence?.find((item) => item.workspaceID === info.id)?.reference
+      let checkpoint: WorkspaceProtocol.Checkpoint
+      try {
+        checkpoint = await files.checkpoint({
+          id: attempt.id,
+          mount: WorkspaceProtocol.Reference.parse(reference),
+          executionID: input.id,
+        })
+      } catch (error) {
+        // Provenance: https://github.com/SII-Holos/synergy/issues/1658
+        // Local adaptation: only a confirmed directory replacement can finish without a successful checkpoint.
+        if (info.backend?.provider === "objects" || !(error instanceof WorkspaceErrors.DirectoryIdentityChangedError))
+          throw error
+        await WorkspaceEvidence.incomplete(evidence)
+        checkpointFailures.push({
+          mount: WorkspaceProtocol.Reference.parse(reference),
+          failure: WorkspaceErrors.failure(error),
+        })
+        continue
+      }
       const before = input.status?.before?.find(
         (item) => item.id === reference.id && item.generation === reference.generation,
       )?.manifest
@@ -368,7 +384,7 @@ export namespace WorkspaceMounts {
       )
       if (published.content) saved[info.id] = published.content
     }
-    return saved
+    return { saved, checkpointFailures: checkpointFailures.length ? checkpointFailures : undefined }
   }
 
   export async function save(

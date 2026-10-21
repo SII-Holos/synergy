@@ -18,14 +18,16 @@ Rationale: `docs/decisions/`.
 
 - **Executive summary** — failure, cause, lesson.
 - **Summary** — failure details.
-- **Timeline** — observations and timing.
+- **Timeline** — dated observations.
 - **Root cause** — mechanism and missing safeguards.
-- **Guardrails** — tests, documentation and gates.
+- **Guardrails** — tests, docs, gates.
 - **Lessons** — durable takeaways.
 
 ## Index
 
 - [0082](0082-performance-evidence-and-failure-retention.md)
+
+- [0082](0082-replaced-directory-checkpoint-blocked-rebind.md)
 
 - [0081](0081-browser-navigation-timeouts.md)
 

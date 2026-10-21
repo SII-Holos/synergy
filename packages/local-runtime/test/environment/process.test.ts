@@ -1,12 +1,14 @@
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { once } from "node:events"
 import { EnvironmentProcess } from "@ericsanchezok/synergy-harness/environment/process"
 import { EnvironmentResources } from "@ericsanchezok/synergy-harness/environment/resources"
 import { EnvironmentExecution } from "@ericsanchezok/synergy-harness/environment/execution"
 import { ExecutionProtocol } from "@ericsanchezok/synergy-harness/environment/executor"
 import { Environment } from "@ericsanchezok/synergy-harness/environment"
-import { WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
+import { WorkspaceMounts } from "@ericsanchezok/synergy-harness/workspace/mount"
 import { WorkspaceBlobs, WorkspaceContent } from "@ericsanchezok/synergy-harness/workspace/content"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
 import { WorkspaceOperations } from "@ericsanchezok/synergy-harness/workspace/operations"
@@ -444,3 +446,112 @@ test("idle native execution waits for changes without repeatedly reading authori
     }
   })
 }, 20_000)
+
+test("a replaced directory reports checkpoint failure after output drainage and replay does not execute again", async () => {
+  await using tmp = await tmpdir()
+  const coordinator = new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") })
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceAccess.register(coordinator)
+      registerNativeEnvironment({ coordinator })
+    },
+  })
+  await runtime.run(async () => {
+    const scope = await tmp.scope()
+    const root = path.join(tmp.path, "workspace")
+    await fs.mkdir(root)
+    const workspace = await WorkspaceBinding.register(scope.id, root)
+    const environment = await Environment.bind({ scopeID: scope.id, ownerID: "owner", provider: "native", spec: {} })
+    await using resources = await EnvironmentResources.resolve({
+      scopeID: scope.id,
+      workspaceID: workspace.id,
+      environmentID: environment.id,
+      needs: { execution: "exec" },
+    })
+    const files = resources.executor!.files!
+    const original = files.checkpoint.bind(files)
+    const replacement = Promise.withResolvers<void>()
+    let checkpoints = 0
+    files.checkpoint = async (input) => {
+      if (input.executionID === "replaced-process") {
+        checkpoints++
+        await fs.rename(root, root + "-previous")
+        await fs.mkdir(root)
+        await Bun.write(path.join(root, "replacement"), "untouched")
+        replacement.resolve()
+      }
+      return original(input)
+    }
+    const command = {
+      command: process.execPath,
+      args: [
+        "-e",
+        "import {appendFileSync} from 'node:fs'; appendFileSync('count', '1'); process.stdout.write('x'.repeat(1024))",
+      ],
+      cwd: resources.directory!,
+      env: {},
+      useRoots: [],
+    }
+    const execution = await EnvironmentProcess.prepare({
+      id: "replaced-process",
+      scopeID: scope.id,
+      resources,
+      command,
+    })
+    let settled = false
+    void execution.completion.then(
+      () => (settled = true),
+      () => (settled = true),
+    )
+    execution.child.stdout.pause()
+    execution.child.stderr.resume()
+    try {
+      await execution.activate()
+      await replacement.promise
+      const deadline = Date.now() + 5000
+      while ((await EnvironmentExecution.get(execution.executionID, scope.id)).state !== "completed") {
+        if (Date.now() >= deadline) throw new Error("Replaced execution did not finish resource cleanup")
+        await Bun.sleep(10)
+      }
+      expect(settled).toBe(false)
+      expect(execution.child.stdout.readableLength).toBe(1024)
+      const output: Buffer[] = []
+      execution.child.stdout.on("data", (chunk: Buffer) => output.push(chunk))
+      execution.child.stdout.resume()
+      await expect(execution.completion).rejects.toMatchObject({
+        name: "EnvironmentProcessError",
+        data: {
+          stage: "saving",
+          checkpointFailures: [
+            {
+              mount: WorkspaceMounts.reference(resources.workspace!),
+              failure: { code: "WORKSPACE_DIRECTORY_IDENTITY_CHANGED" },
+            },
+          ],
+        },
+      })
+      expect(Buffer.concat(output)).toEqual(Buffer.alloc(1024, "x"))
+      expect(execution.child.exitCode).toBe(0)
+      const replay = await EnvironmentProcess.prepare({ id: "replaced-process", scopeID: scope.id, resources, command })
+      const replayed: Buffer[] = []
+      replay.child.stdout.on("data", (chunk: Buffer) => replayed.push(chunk))
+      replay.child.stderr.resume()
+      await replay.activate()
+      await expect(replay.completion).rejects.toMatchObject({
+        name: "EnvironmentProcessError",
+        data: { checkpointFailures: expect.any(Array) },
+      })
+      expect(Buffer.concat(replayed)).toEqual(Buffer.alloc(1024, "x"))
+      expect(checkpoints).toBe(1)
+      expect(await Bun.file(path.join(root + "-previous", "count")).text()).toBe("1")
+      expect(await Bun.file(path.join(root, "count")).exists()).toBe(false)
+      await resources.release()
+      expect(await Environment.uses(environment.id)).toEqual([])
+      expect(await coordinator.inspect()).toEqual([])
+    } finally {
+      files.checkpoint = original
+      execution.child.stdout.resume()
+      execution.child.stderr.resume()
+    }
+  })
+}, 30_000)

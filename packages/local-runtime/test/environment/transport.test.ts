@@ -9,6 +9,7 @@ import { RemoteExecutor } from "../../src/environment/remote-executor"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { z } from "zod"
 import { NativeFileMutation } from "../../src/file/mutation-core"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
 
 const Socket = WebSocket as unknown as { new (url: URL, options: Bun.WebSocketOptions): WebSocket }
 
@@ -53,6 +54,11 @@ test.skipIf(process.platform === "win32")(
     expect(await remote.files.write(overwrite)).toEqual(overwritten)
     expect((await remote.files.stat(mount, input.path))?.mode).toBe(0o751)
     await remote.files.acknowledge(overwrite.id)
+    await fs.rename(root, root + "-previous")
+    await fs.mkdir(root)
+    await expect(remote.files.checkpoint({ id: "replaced-directory", mount })).rejects.toBeInstanceOf(
+      WorkspaceErrors.DirectoryIdentityChangedError,
+    )
   },
 )
 

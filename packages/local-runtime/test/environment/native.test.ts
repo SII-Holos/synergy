@@ -96,7 +96,7 @@ test("native provider uses the durable execution path and saves output outside i
       execution = await EnvironmentExecution.reconcile(execution.id, "scope")
     }
     expect(execution.state).toBe("exited")
-    await EnvironmentExecution.complete(execution.id, "scope", async () => ({ backend: "directory" }))
+    await EnvironmentExecution.complete(execution.id, "scope", async () => ({ saved: { backend: "directory" } }))
     await Environment.deallocate(environment.id, { scopeID: "scope" })
     const output = await EnvironmentExecution.output(execution.id, "scope")
     expect(output.map((chunk) => Buffer.from(chunk.data, "base64").toString()).join("")).toBe("native")

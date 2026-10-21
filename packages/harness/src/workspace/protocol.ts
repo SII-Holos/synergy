@@ -11,6 +11,8 @@ export namespace WorkspaceProtocol {
     .regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$/)
   export const Reference = z.object({ id: ID, workspaceID: ID, generation: z.number().int().positive() })
   export type Reference = z.infer<typeof Reference>
+  export const CheckpointFailure = z.object({ mount: Reference, failure: WorkspaceErrors.Failure })
+  export type CheckpointFailure = z.infer<typeof CheckpointFailure>
   export const Observation = z.object({ epoch: z.string().uuid(), version: z.number().int().nonnegative() })
   export type Observation = z.infer<typeof Observation>
   export const MountInput = Reference.extend({

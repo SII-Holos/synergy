@@ -74352,6 +74352,62 @@
             },
             "additionalProperties": {}
           },
+          "checkpointFailures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mount": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                    },
+                    "workspaceID": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                    },
+                    "generation": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["id", "workspaceID", "generation"]
+                },
+                "failure": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "message": {
+                      "type": "string",
+                      "maxLength": 8192
+                    },
+                    "code": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "completed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["name", "message"]
+                }
+              },
+              "required": ["mount", "failure"]
+            }
+          },
           "outputCursor": {
             "type": "integer",
             "minimum": 0,
