@@ -10,6 +10,7 @@ import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import { DigitalTwinContract } from "./contract"
 import { collect } from "./evidence"
 import { infer, PredictionError } from "./inference"
+import { contextText } from "./context"
 import { representatives, representativesCurrent, useCorpus, stopPreparation } from "./preparation"
 import "./config-schema"
 
@@ -67,7 +68,7 @@ export namespace DigitalTwin {
         const prepared = await representatives()
         const current = await MessageV2.toModelMessage(snapshot.messages)
         const evidence = await collect({
-          current: JSON.stringify(current),
+          current: contextText(current),
           representatives: prepared.references,
           sessionID: input.sessionID,
           signal: controller.signal,

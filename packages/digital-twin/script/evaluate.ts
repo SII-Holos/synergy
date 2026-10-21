@@ -4,7 +4,7 @@ import os from "node:os"
 import { mkdir, rename, writeFile } from "node:fs/promises"
 import { parseArgs } from "node:util"
 import { z } from "zod"
-import type { JSONSchema7 } from "ai"
+import type { JSONSchema7, ModelMessage } from "ai"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
@@ -16,6 +16,7 @@ import { RolloutEvents } from "@ericsanchezok/synergy-harness/session/rollout/ev
 import { RolloutSchema } from "@ericsanchezok/synergy-harness/session/rollout/schema"
 import { SecretMask } from "@ericsanchezok/synergy-harness/secrets/mask"
 import { infer, type Recipe } from "../src/inference"
+import { contextMessages } from "../src/context"
 import { digitalTwin } from "../src/component"
 import { registerAgents } from "./evaluator-worker"
 import { loadHistory, historySourceHash, temporalEvidence, type ReplayCase } from "./history"
@@ -171,6 +172,7 @@ async function assess<T extends z.ZodType>(
   model: Provider.Model,
   schema: T,
   name: string,
+  current: ModelMessage[],
   payload: object,
   onCall: (call: CallIdentity) => Promise<void>,
 ) {
@@ -186,7 +188,7 @@ async function assess<T extends z.ZodType>(
         retries: 2,
         maxOutputTokens: model.limit.output,
         maxOutputChars: model.limit.output * 8,
-        messages: [{ role: "user", content: await SecretMask.apply(JSON.stringify({ ...payload, outputTool: name })) }],
+        messages: await contextMessages(current, { ...payload, outputTool: name }),
         outputTool: {
           name,
           force: false,
@@ -562,6 +564,7 @@ export async function evaluate(input: {
     [
       "../src/prompts/predict.txt",
       "../src/inference.ts",
+      "../src/context.ts",
       "../src/evidence.ts",
       "../src/preparation.ts",
       "../src/service.ts",
@@ -572,6 +575,7 @@ export async function evaluate(input: {
       "../../harness/src/storage/text-projection.ts",
       "../../harness/src/agent/call.ts",
       "../../harness/src/session/llm.ts",
+      "../../harness/src/session/prompt-budgeter.ts",
       "../../harness/src/provider/transform.ts",
       "../../harness/src/provider/thinking.ts",
       "./evaluator-worker.ts",
@@ -635,9 +639,9 @@ export async function evaluate(input: {
           judge,
           Label,
           "label_continuation",
+          item.current,
           {
             task: "Label whether the actual continuation was predictable from the completed situation, without seeing any proposed candidates. Freeze this label.",
-            completedContext: item.current,
             authenticNextMessage: item.reference,
           },
           async (call) => {
@@ -709,10 +713,10 @@ export async function evaluate(input: {
           judge,
           Judgment,
           "assess_predictions",
+          item.current,
           {
             task: "Score all blinded candidates independently, preserving the frozen eligibility label. A failed call is not abstention; score it 1 and never count it as a correct abstention.",
             eligibility: result.eligibility,
-            completedContext: item.current,
             authenticNextMessage: item.reference,
             authenticEarlierWriting: evidence.evidence
               .filter((entry) => entry.kind === "voice")

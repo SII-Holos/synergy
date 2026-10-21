@@ -21,6 +21,7 @@ import {
 } from "../src/evidence"
 import { SessionSearchIndex } from "@ericsanchezok/synergy-harness/session/search-index"
 import { ContextSourceSchema } from "@ericsanchezok/synergy-harness/session/context-usage-schema"
+import { contextText } from "../src/context"
 
 const Input = z.object({ message: MessageV2.Info, parts: z.array(MessageV2.Part) })
 const Request = z.object({
@@ -463,7 +464,7 @@ export async function loadHistory(progress: (value: object) => void) {
 
 export function temporalEvidence(item: ReplayCase, history: HistoricalInput[], catalog: RetrievalEntry[]) {
   const target = normalize(item.reference)
-  const tokens = [...new Set(SessionSearchIndex.tokenize(JSON.stringify(item.current)))]
+  const tokens = [...new Set(SessionSearchIndex.tokenize(contextText(item.current)))]
   const terms = tokens.slice(-32)
   const versions = new Map<string, RetrievalEntry>()
   for (const entry of catalog) {

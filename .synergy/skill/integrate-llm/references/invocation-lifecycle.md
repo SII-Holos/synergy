@@ -6,6 +6,8 @@ Text-only sessionless callers use `AgentCall.text()` without creating a durable 
 
 For every sessionless call:
 
+When consuming a completed conversation, pass native `ModelMessage` content through `AgentCall` and measure it with the shared prompt budgeter. Preserve media and tool-call/result pairs; do not stringify the conversation into user text or count encoded media as language tokens. Strip source-provider continuation metadata from independent operations, quote historical system instructions as data, and use the same projection in offline evaluation. Verify binary media, opaque reasoning, real text overflow and source immutability.
+
 1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
 2. Call `AgentCall.text()` with the Agent name, messages, explicit retry/timeout/input/output bounds, caller signal, and only a domain-owned fallback model when required. It owns Agent/model resolution, an empty serializable tool catalog, bounded collection, combined cancellation, Agent worker admission, and stream disposal.
 3. Keep prompt construction, fallback choice, retry count, structured parsing, persistence, and error mapping in the owning domain.
