@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test"
-import { confirmsReply, terminalText, temporalEvidence, type HistoricalInput, type ReplayCase } from "../script/history"
+import {
+  confirmsReply,
+  requestCatalog,
+  terminalText,
+  temporalEvidence,
+  type HistoricalInput,
+  type ReplayCase,
+} from "../script/history"
 import { pairedInterval, summarize } from "../script/evaluate"
 import type { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 
@@ -15,6 +22,52 @@ test("immutable response reconstruction uses real text deltas and refuses tool o
   expect(terminalText(text)).toBe("已完成 API")
   expect(terminalText(text + '\n{"type":"abort"}')).toBeUndefined()
   expect(terminalText(text.replace('"stop"', '"tool-calls"'))).toBeUndefined()
+})
+
+test("retrieval catalog accepts attributed text and rejects reasoning, invalid ranges and conflicting versions", () => {
+  const owner = { scopeID: "scope", sessionID: "session" }
+  const text = {
+    category: "assistantMessages" as const,
+    precision: "source" as const,
+    path: ["messages", "0"],
+    selector: ["content", "0", "text"],
+    messageID: "reply",
+    partID: "part",
+    source: "assistant",
+    characters: 3,
+  }
+  const request = {
+    messages: [
+      {
+        role: "assistant" as const,
+        content: [
+          { type: "text" as const, text: "API" },
+          { type: "reasoning" as const, text: "private" },
+        ],
+      },
+    ],
+    contextSources: [text, { ...text, selector: ["content", "1", "text"], partID: "reasoning", characters: 7 }],
+  }
+  expect(requestCatalog(request, owner, 4)).toEqual([
+    {
+      identity: "scope/session/reply",
+      sessionID: "session",
+      messageID: "reply",
+      available: 4,
+      role: "assistant",
+      parts: ["API"],
+    },
+  ])
+  expect(requestCatalog({ ...request, contextSources: [{ ...text, range: { start: 0, end: 9 } }] }, owner, 4)).toEqual(
+    [],
+  )
+  expect(
+    requestCatalog(
+      { ...request, contextSources: [text, { ...text, range: { start: 0, end: 1 }, characters: 1 }] },
+      owner,
+      4,
+    ),
+  ).toEqual([])
 })
 
 test("replay requires the terminal reply to survive into the next immutable request unchanged", () => {
@@ -85,6 +138,33 @@ test("a successful evaluation prefix cannot satisfy the complete experiment gate
   expect(summarize(results, 101)).toMatchObject({ expectedCases: 101, finished: false, qualityResolved: false })
 })
 
+test("ablation reporting separates ambiguous abstention, failures and provider latency", () => {
+  const result: Parameters<typeof summarize>[0][number] = {
+    fingerprint: "case",
+    item: { family: "family" } as ReplayCase,
+    availableEvidence: 0,
+    complete: true,
+    labels: { A: "context", B: "voice", C: "full" },
+    eligibility: { predictable: false, category: "ambiguous-new-task", reason: "new topic" },
+    predictions: [
+      { recipe: "context", state: "complete", candidate: "凭空编一个任务" },
+      { recipe: "voice", state: "complete", candidate: null, abstention: "no-clear-continuation" },
+      {
+        recipe: "full",
+        state: "failed",
+        candidate: null,
+        error: "provider unavailable",
+        receipt: { wallMs: 2, calls: [], attempts: [] },
+      },
+    ],
+  }
+  const summary = summarize([result], 1)
+  expect(summary.recipes.context).toMatchObject({ ambiguous: 1, ambiguousEmitted: 1, correctAbstentions: 0 })
+  expect(summary.recipes.voice).toMatchObject({ ambiguous: 1, correctAbstentions: 1 })
+  expect(summary.recipes.full).toMatchObject({ failed: 1, correctAbstentions: 0 })
+  expect(summary.latency.full).toMatchObject({ successful: { count: 0 }, failed: { count: 1 } })
+})
+
 test("temporal conditioning excludes future, held-out duplicates and the target source family", () => {
   const artifact = {
     version: 1 as const,
@@ -97,13 +177,14 @@ test("temporal conditioning excludes future, held-out duplicates and the target 
   }
   const source: HistoricalInput = {
     id: "past",
+    identity: "scope/past/message",
     sessionID: "past",
     family: "past",
     at: 1,
     text: "先检查 API 边界",
     revision: 1,
     input: artifact,
-    preceding: { reply: "API 实现完成", at: 0 },
+    preceding: { identity: "scope/past/previous", reply: "API 实现完成", at: 0 },
   }
   const item = {
     family: "target",
@@ -111,12 +192,33 @@ test("temporal conditioning excludes future, held-out duplicates and the target 
     reference: "继续实现",
     current: [{ role: "assistant", content: "API 通过测试" }],
   } as ReplayCase
-  const result = temporalEvidence(item, [
-    source,
-    { ...source, id: "future", at: 6 },
-    { ...source, id: "copy", family: "target" },
-    { ...source, id: "answer", text: "继续实现！" },
-  ])
+  const result = temporalEvidence(
+    item,
+    [
+      source,
+      { ...source, id: "future", at: 6 },
+      { ...source, id: "copy", family: "target" },
+      { ...source, id: "answer", text: "继续实现！" },
+    ],
+    [
+      {
+        identity: source.identity,
+        sessionID: source.sessionID,
+        messageID: "message",
+        available: 1,
+        role: "user",
+        parts: [source.text],
+      },
+      {
+        identity: source.preceding!.identity,
+        sessionID: source.sessionID,
+        messageID: "previous",
+        available: 0,
+        role: "assistant",
+        parts: [source.preceding!.reply],
+      },
+    ],
+  )
   expect(result.available).toBe(1)
   expect(result.evidence.map((example) => example.id)).toEqual(["past/pair", "past"])
   expect(result.statistics[0]?.count).toBe(1)
@@ -127,4 +229,55 @@ test("temporal conditioning excludes future, held-out duplicates and the target 
     ])[0],
   ).toBeLessThan(0.5)
   expect(pairedInterval([{ family: "a", win: 1 }])).toEqual([0, 1])
+})
+
+test("raw retrieval budgets include current-family and contaminated matches before eligibility filtering", () => {
+  const item = {
+    family: "target",
+    sessionID: "target",
+    cutoff: 100,
+    reference: "继续实现",
+    current: [{ role: "assistant", content: "api boundary ownership" }],
+  } as ReplayCase
+  const source = {
+    id: "past",
+    identity: "past/message",
+    sessionID: "past",
+    family: "past",
+    at: 1,
+    text: "api boundary",
+    preceding: { identity: "past/previous", reply: "api boundary ownership", at: 0 },
+  } as HistoricalInput
+  const catalog = Array.from({ length: 96 }, (_, index) => ({
+    identity: `target/message-${index}`,
+    sessionID: "target",
+    messageID: `message-${index}`,
+    available: 2,
+    parts: ["api boundary ownership"],
+    role: "user" as const,
+  }))
+  const ranked = temporalEvidence(
+    item,
+    [source],
+    [
+      ...catalog,
+      {
+        identity: source.identity,
+        sessionID: "past",
+        messageID: "message",
+        available: 1,
+        role: "user",
+        parts: [source.text],
+      },
+      {
+        identity: "past/previous",
+        sessionID: "past",
+        messageID: "previous",
+        available: 1,
+        parts: [source.preceding!.reply],
+        role: "assistant",
+      },
+    ],
+  )
+  expect(ranked.queryCandidates).toEqual([])
 })

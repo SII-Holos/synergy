@@ -90,6 +90,65 @@ export interface Evidence {
   references: SessionCorpus.Reference[]
 }
 
+export function evidenceScore(
+  text: string,
+  previous: string | undefined,
+  created: number,
+  tokens: string[],
+  now: number,
+) {
+  return (
+    SessionSearchIndex.overlapScore(`${previous ?? ""}\n${text}`, tokens) +
+    1 / (1 + Math.max(0, now - created) / 2_592_000_000)
+  )
+}
+
+export function selectEvidence(evidence: Evidence[]) {
+  return [
+    ...diversify(
+      evidence.filter((item) => item.kind === "continuation"),
+      12,
+    ),
+    ...diversify(
+      evidence.filter((item) => item.kind === "voice"),
+      16,
+    ),
+  ]
+}
+
+export function representativePool<T extends { fingerprint: string; created: number; family: string }>(
+  items: T[],
+  limit = 96,
+  perFamily = 2,
+) {
+  const recent = diversify(
+    items.map((item) => ({ ...item, text: item.fingerprint, score: item.created })),
+    Math.ceil(limit / 2),
+    perFamily,
+  )
+  const selected = new Set(recent.map((item) => item.fingerprint))
+  const stable = items
+    .filter((item) => !selected.has(item.fingerprint))
+    .toSorted((a, b) => a.fingerprint.localeCompare(b.fingerprint))
+  return [
+    ...recent,
+    ...diversify(
+      stable.map((item, index) => ({ ...item, text: item.fingerprint, score: stable.length - index })),
+      limit - recent.length,
+      perFamily,
+    ),
+  ]
+}
+
+export function familyProjections<T extends { family: string; statistics: Sketch }>(items: T[]) {
+  const families = new Map<string, T>()
+  for (const item of items) {
+    const previous = families.get(item.family)
+    if (!previous || previous.statistics.count < item.statistics.count) families.set(item.family, item)
+  }
+  return [...families.values()]
+}
+
 export async function collect(input: {
   current: string
   representatives: SessionCorpus.Reference[]
@@ -128,8 +187,7 @@ export async function collect(input: {
     const text = original(user)
     if (!text || (await SecretMask.apply(text)) !== text) continue
     const previous = neighborhood.message.info.role === "assistant" ? neighborhood.message : neighborhood.previous
-    const age = Math.max(0, Date.now() - user.info.time.created) / 86_400_000
-    const score = SessionSearchIndex.overlapScore(`${previous?.text ?? ""}\n${text}`, tokens) + 1 / (1 + age / 30)
+    const score = evidenceScore(text, undefined, user.info.time.created, tokens, Date.now())
     const voice: Evidence = {
       id: key,
       kind: "voice",
@@ -153,18 +211,10 @@ export async function collect(input: {
         id: `${key}/continuation`,
         kind: "continuation",
         previous: preceding,
+        score: evidenceScore(text, preceding, user.info.time.created, tokens, Date.now()),
         references: [previous.reference, user.reference],
       })
     }
   }
-  return [
-    ...diversify(
-      evidence.filter((item) => item.kind === "continuation"),
-      12,
-    ),
-    ...diversify(
-      evidence.filter((item) => item.kind === "voice"),
-      16,
-    ),
-  ]
+  return selectEvidence(evidence)
 }

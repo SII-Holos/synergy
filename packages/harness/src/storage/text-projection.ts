@@ -1,3 +1,4 @@
+import { TextSearch } from "../util/text-search"
 import type { SqlConnection, SqlRow, SqlValue } from "./sql-contract"
 import { StorageIntegrityError } from "./errors"
 
@@ -7,6 +8,7 @@ export interface TextProjectionState {
   version: string
   progress: number
   ready: boolean
+  lexical?: { version: string; progress: number; ready: boolean }
 }
 export interface TextProjectionAppend {
   key: string[]
@@ -34,12 +36,14 @@ export interface TextProjectionHit {
   category: TextCategory
   offset: number
   text: string
+  score?: number
 }
 
 // Provenance: https://www.sqlite.org/fts5.html#the_trigram_tokenizer
 // Local adaptation: overlap bounded text fragments for substring matches; short queries retain cursor-based scans.
-export const TEXT_FRAGMENT_CHARS = 8192
-export const TEXT_QUERY_CHARS = 512
+export const LEXICAL_VERSION = "1"
+export const TEXT_FRAGMENT_CHARS = TextSearch.fragmentCharacters
+export const TEXT_QUERY_CHARS = TextSearch.queryCharacters
 const normalize = (text: string) => text.normalize("NFC").toLowerCase()
 
 export function textProjectionSchema(backend: "sqlite" | "postgres") {
@@ -48,6 +52,9 @@ export function textProjectionSchema(backend: "sqlite" | "postgres") {
     `CREATE TABLE IF NOT EXISTS storage_text_sources (namespace TEXT NOT NULL, source_key ${key} NOT NULL, source_revision BIGINT NOT NULL, source_version TEXT NOT NULL, category TEXT NOT NULL, progress INTEGER NOT NULL, ready INTEGER NOT NULL, PRIMARY KEY(namespace, source_key))`,
     `CREATE TABLE IF NOT EXISTS storage_text_chunks (id ${backend === "sqlite" ? "INTEGER PRIMARY KEY AUTOINCREMENT" : "BIGSERIAL PRIMARY KEY"}, namespace TEXT NOT NULL, source_key ${key} NOT NULL, source_revision BIGINT NOT NULL, source_version TEXT NOT NULL, category TEXT NOT NULL, ordinal INTEGER NOT NULL, source_offset INTEGER NOT NULL, text TEXT NOT NULL, normalized TEXT NOT NULL, UNIQUE(namespace, source_key, source_revision, ordinal))`,
     "CREATE INDEX IF NOT EXISTS storage_text_chunks_source ON storage_text_chunks(namespace, source_key, source_revision)",
+    `CREATE TABLE IF NOT EXISTS storage_text_lexical_sources (namespace TEXT NOT NULL, source_key ${key} NOT NULL, source_revision BIGINT NOT NULL, version TEXT NOT NULL, progress INTEGER NOT NULL, ready INTEGER NOT NULL, PRIMARY KEY(namespace, source_key), FOREIGN KEY(namespace, source_key) REFERENCES storage_text_sources(namespace, source_key) ON DELETE CASCADE)`,
+    "CREATE TABLE IF NOT EXISTS storage_text_terms (namespace TEXT NOT NULL, term TEXT NOT NULL, chunk_id BIGINT NOT NULL REFERENCES storage_text_chunks(id) ON DELETE CASCADE, PRIMARY KEY(namespace, term, chunk_id))",
+    "CREATE INDEX IF NOT EXISTS storage_text_terms_chunk ON storage_text_terms(chunk_id)",
     `CREATE TABLE IF NOT EXISTS storage_text_gc (namespace TEXT NOT NULL, source_key ${key} NOT NULL, PRIMARY KEY(namespace, source_key))`,
     ...(backend === "sqlite"
       ? [
@@ -103,7 +110,7 @@ export class TextProjection {
 
   async state(key: string[]): Promise<TextProjectionState | undefined> {
     const [row] = await this.connection.query(
-      "SELECT source_revision, source_version, progress, ready FROM storage_text_sources WHERE namespace = ? AND source_key = ?",
+      "SELECT s.source_revision, s.source_version, s.progress, s.ready, l.version AS lexical_version, l.progress AS lexical_progress, l.ready AS lexical_ready FROM storage_text_sources s LEFT JOIN storage_text_lexical_sources l ON l.namespace = s.namespace AND l.source_key = s.source_key AND l.source_revision = s.source_revision WHERE s.namespace = ? AND s.source_key = ?",
       [this.namespace, this.key(key)],
     )
     return (
@@ -112,6 +119,14 @@ export class TextProjection {
         version: String(row.source_version),
         progress: Number(row.progress),
         ready: Boolean(Number(row.ready)),
+        lexical:
+          row.lexical_version === null
+            ? undefined
+            : {
+                version: String(row.lexical_version),
+                progress: Number(row.lexical_progress),
+                ready: Boolean(Number(row.lexical_ready)),
+              },
       }
     )
   }
@@ -132,7 +147,8 @@ export class TextProjection {
     if (!record || BigInt(record.revision as bigint) !== input.revision) return false
     const previous = await this.state(input.key)
     const current = previous?.revision === input.revision && previous.version === input.version
-    if (current && (previous.ready || previous.progress !== input.offset)) return false
+    const lexical = current && previous.lexical?.version === LEXICAL_VERSION ? previous.lexical : undefined
+    if (current && ((previous.ready && lexical?.ready) || (lexical?.progress ?? 0) !== input.offset)) return false
     if (!current && input.offset !== 0) return false
     if (!current)
       await this.connection.query(
@@ -140,8 +156,8 @@ export class TextProjection {
         [this.namespace, key, input.revision, input.version, input.category],
       )
     if (input.fragments.length) {
-      await this.connection.query(
-        `INSERT INTO storage_text_chunks(namespace, source_key, source_revision, source_version, category, ordinal, source_offset, text, normalized) VALUES ${input.fragments.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, source_key, source_revision, ordinal) DO UPDATE SET source_version = excluded.source_version, category = excluded.category, source_offset = excluded.source_offset, text = excluded.text, normalized = excluded.normalized`,
+      const chunks = await this.connection.query(
+        `INSERT INTO storage_text_chunks(namespace, source_key, source_revision, source_version, category, ordinal, source_offset, text, normalized) VALUES ${input.fragments.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, source_key, source_revision, ordinal) DO UPDATE SET source_version = excluded.source_version, category = excluded.category, source_offset = excluded.source_offset, text = excluded.text, normalized = excluded.normalized RETURNING id, ordinal`,
         input.fragments.flatMap((fragment, index) => [
           this.namespace,
           key,
@@ -154,10 +170,38 @@ export class TextProjection {
           normalize(fragment.text),
         ]),
       )
+      for (const chunk of chunks) {
+        const fragment = input.fragments[Number(chunk.ordinal) - input.offset]!
+        const terms = [...new Set(TextSearch.tokenize(fragment.text))]
+        await this.connection.query("DELETE FROM storage_text_terms WHERE chunk_id = ?", [chunk.id])
+        for (let start = 0; start < terms.length; start += 256) {
+          const batch = terms.slice(start, start + 256)
+          await this.connection.query(
+            `INSERT INTO storage_text_terms(namespace, term, chunk_id) VALUES ${batch.map(() => "(?, ?, ?)").join(",")}`,
+            batch.flatMap((term) => [this.namespace, term, chunk.id]),
+          )
+        }
+      }
     }
     await this.connection.query(
+      "INSERT INTO storage_text_lexical_sources(namespace, source_key, source_revision, version, progress, ready) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(namespace, source_key) DO UPDATE SET source_revision = excluded.source_revision, version = excluded.version, progress = excluded.progress, ready = excluded.ready",
+      [
+        this.namespace,
+        key,
+        input.revision,
+        LEXICAL_VERSION,
+        input.offset + input.fragments.length,
+        Number(input.complete),
+      ],
+    )
+    await this.connection.query(
       "UPDATE storage_text_sources SET progress = ?, ready = ? WHERE namespace = ? AND source_key = ?",
-      [input.offset + input.fragments.length, Number(input.complete), this.namespace, key],
+      [
+        Math.max(input.offset + input.fragments.length, current ? previous.progress : 0),
+        Number(input.complete || (current && previous.ready)),
+        this.namespace,
+        key,
+      ],
     )
     await this.connection.query(
       "DELETE FROM storage_text_chunks WHERE id IN (SELECT id FROM storage_text_chunks WHERE namespace = ? AND source_key = ? AND source_revision <> ? ORDER BY id LIMIT 4)",
@@ -166,10 +210,79 @@ export class TextProjection {
     return true
   }
 
+  private async ranked(input: TextProjectionQuery) {
+    const terms = [...new Set(input.terms!.flatMap(TextSearch.tokenize))]
+    const categories = input.categories ?? ["text"]
+    if (!terms.length || !categories.length) return { items: [], nextCursor: null, scanned: 0, indexed: true }
+    if (terms.length > 32 || terms.some((term) => [...term].length > TEXT_QUERY_CHARS))
+      throw new StorageIntegrityError("Search query exceeds its budget")
+    const cursor = input.cursor?.match(/^(\d+):([A-Za-z0-9_-]+)$/)
+    if (input.cursor && !cursor) throw new StorageIntegrityError("Invalid text search cursor")
+    const limit = Math.max(1, Math.min(100, input.limit ?? 50))
+    const conditions = [
+      "t.namespace = ?",
+      `t.term IN (${terms.map(() => "?").join(",")})`,
+      "s.ready = 1",
+      "l.ready = 1",
+      "l.version = ?",
+      "l.source_revision = s.source_revision",
+      "s.source_revision = c.source_revision",
+      "s.source_version = c.source_version",
+      "r.revision = s.source_revision",
+      "r.body IS NOT NULL",
+      `c.category IN (${categories.map(() => "?").join(",")})`,
+    ]
+    const values: SqlValue[] = [this.namespace, ...terms, LEXICAL_VERSION, ...categories]
+    for (const [column, value] of [
+      ["r.scope_id", input.scopeID],
+      ["r.session_id", input.sessionID],
+    ] as const) {
+      if (!value) continue
+      conditions.push(`${column} = ?`)
+      values.push(value)
+    }
+    const after = cursor ? "WHERE (matched.score < ? OR (matched.score = ? AND matched.identity < ?))" : ""
+    if (cursor) values.push(Number(cursor[1]), Number(cursor[1]), Buffer.from(cursor[2]!, "base64url").toString())
+    values.push(limit + 1)
+    const rows = await this.connection.query<SqlRow>(
+      `WITH matched AS (
+        SELECT MIN(c.id) AS id, COUNT(DISTINCT t.term) AS score, r.scope_id || '/' || r.session_id || '/' || r.message_id AS identity
+        FROM storage_text_terms t JOIN storage_text_chunks c ON c.id = t.chunk_id
+        JOIN storage_text_sources s ON s.namespace = c.namespace AND s.source_key = c.source_key
+        JOIN storage_text_lexical_sources l ON l.namespace = s.namespace AND l.source_key = s.source_key
+        JOIN storage_records r ON r.namespace = s.namespace AND r.key_id = s.source_key
+        WHERE ${conditions.join(" AND ")} GROUP BY r.scope_id, r.session_id, r.message_id
+      ) SELECT c.id, c.source_revision, c.source_version, c.category, c.source_offset, c.text, r.key_text, matched.score, matched.identity
+       FROM matched JOIN storage_text_chunks c ON c.id = matched.id
+       JOIN storage_records r ON r.namespace = c.namespace AND r.key_id = c.source_key
+       ${after} ORDER BY matched.score DESC, matched.identity DESC LIMIT ?`,
+      values,
+    )
+    const position = (row: SqlRow) => `${row.score}:${Buffer.from(String(row.identity)).toString("base64url")}`
+    const page = rows.slice(0, limit)
+    const items: TextProjectionHit[] = page.map((row) => ({
+      key: JSON.parse(String(row.key_text)) as string[],
+      cursor: position(row),
+      revision: String(row.source_revision),
+      version: String(row.source_version),
+      category: String(row.category) as TextCategory,
+      offset: Number(row.source_offset),
+      text: String(row.text),
+      score: Number(row.score),
+    }))
+    return {
+      items,
+      nextCursor: rows.length > limit ? position(page.at(-1)!) : null,
+      scanned: page.length,
+      indexed: true,
+    }
+  }
+
   async search(
     input: TextProjectionQuery,
   ): Promise<{ items: TextProjectionHit[]; nextCursor: string | null; scanned: number; indexed: boolean }> {
-    const terms = [...new Set((input.terms ?? [input.query]).map(normalize).filter(Boolean))]
+    if (input.terms) return this.ranked(input)
+    const terms = [...new Set([input.query].map(normalize).filter(Boolean))]
     const query = terms[0] ?? ""
     const categories = input.categories ?? ["text"]
     if (!query || !categories.length) return { items: [], nextCursor: null, scanned: 0, indexed: false }
@@ -203,18 +316,6 @@ export class TextProjection {
     if (indexed) {
       conditions.push("storage_text_fts MATCH ?")
       values.push(terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR "))
-    } else if (input.terms) {
-      const predicates: string[] = []
-      const long = this.backend === "sqlite" ? terms.filter((term) => [...term].length >= 3) : []
-      if (long.length) {
-        predicates.push("c.id IN (SELECT rowid FROM storage_text_fts WHERE storage_text_fts MATCH ?)")
-        values.push(long.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR "))
-      }
-      for (const term of terms.filter((term) => !long.includes(term))) {
-        predicates.push(`${this.backend === "sqlite" ? "instr" : "strpos"}(c.normalized, ?) > 0`)
-        values.push(term)
-      }
-      conditions.push(`(${predicates.join(" OR ")})`)
     }
     values.push(limit + 1)
     const rows = await this.connection.query<SqlRow>(

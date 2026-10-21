@@ -1,14 +1,14 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { UpgradeWork } from "../storage/upgrade-work"
-import { TEXT_FRAGMENT_CHARS, TEXT_QUERY_CHARS, type TextCategory } from "../storage/text-projection"
+import { LEXICAL_VERSION, TEXT_FRAGMENT_CHARS, TEXT_QUERY_CHARS, type TextCategory } from "../storage/text-projection"
 import { MessageV2 } from "./message-v2"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 
 export namespace SessionHistorySearch {
   interface State {
-    version: 1
+    version: 2
     encoding?: "hex" | "bytes"
     phase: "scan" | "dirty"
     cursor?: string[]
@@ -16,7 +16,7 @@ export namespace SessionHistorySearch {
     ready: boolean
     prepared: number
   }
-  const initial: State = { version: 1, phase: "scan", ready: false, prepared: 0 }
+  const initial: State = { version: 2, phase: "scan", ready: false, prepared: 0 }
   const batches = Storage.state(() => new Map<string, Promise<{ ready: boolean; prepared: number }>>())
   const background = Storage.state(() => ({
     pending: new Map<string, { scopeID: string; sessionID: string }>(),
@@ -83,7 +83,8 @@ export namespace SessionHistorySearch {
   export async function initialize(scopeID: string, sessionID: string) {
     const key = StoragePath.sessionTextState(scopeID, sessionID)
     const [state] = await Storage.readMany<State>([key])
-    if (!state) await Storage.write(key, { ...initial, encoding: Storage.current().store.keyEncodedAs })
+    if (!state || state.version !== initial.version)
+      await Storage.write(key, { ...initial, encoding: Storage.current().store.keyEncodedAs })
   }
 
   export async function partWritten(scopeID: string, part: Pick<MessageV2.Part, "sessionID" | "messageID" | "id">) {
@@ -115,14 +116,23 @@ export namespace SessionHistorySearch {
       const [revision] = await tx.revisions([key])
       if (revision === undefined) return undefined
       const projection = await tx.textProjectionState(key)
-      if (projection?.revision === revision && projection.ready) return { ready: true as const }
+      if (
+        projection?.revision === revision &&
+        projection.ready &&
+        projection.lexical?.version === LEXICAL_VERSION &&
+        projection.lexical.ready
+      )
+        return { ready: true as const }
       const record = await tx.versioned<MessageV2.Part>(key)
       return { ready: false as const, record, projection }
     })
     if (!source || source.ready) return true
     const version = MessageV2.summarizePart(source.record.value).content.version
-    const prepared = source.projection?.revision === source.record.revision && source.projection.version === version
-    const offset = prepared ? source.projection!.progress : 0
+    const prepared =
+      source.projection?.revision === source.record.revision &&
+      source.projection.version === version &&
+      source.projection.lexical?.version === LEXICAL_VERSION
+    const offset = prepared ? source.projection!.lexical!.progress : 0
     const body = content(source.record.value)
     const count = Math.ceil(body.text.length / TEXT_FRAGMENT_CHARS)
     const fragments = Array.from({ length: Math.min(4, Math.max(0, count - offset)) }, (_, index) => {
@@ -155,7 +165,8 @@ export namespace SessionHistorySearch {
       const source = await Storage.snapshot(async (tx) => {
         const [stored] = await tx.readMany<State>([stateKey])
         const encoding = Storage.current().store.keyEncodedAs
-        const state: State = stored?.encoding === encoding ? stored : { ...initial, encoding }
+        const state: State =
+          stored?.version === initial.version && stored.encoding === encoding ? stored : { ...initial, encoding }
         if (state.ready) return { state }
         const marker =
           state.phase === "dirty"

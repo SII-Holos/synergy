@@ -193,7 +193,16 @@ export namespace SessionCorpus {
     signal?: AbortSignal
   }) {
     const fingerprint = createHash("sha256")
-      .update(JSON.stringify([input.terms, input.roles, input.origins, input.before]))
+      .update(
+        JSON.stringify([
+          1,
+          SessionSearchIndex.TOKENIZER_VERSION,
+          input.terms,
+          input.roles,
+          input.origins,
+          input.before,
+        ]),
+      )
       .digest("hex")
     const previous = input.cursor
       ? z
@@ -258,7 +267,7 @@ export namespace SessionCorpus {
             text: hit.text,
             role: info.role,
             created: info.time.created,
-            score: SessionSearchIndex.overlapScore(hit.text, SessionSearchIndex.tokenize(input.terms.join(" "))),
+            score: hit.score!,
           })
           if (items.length >= limit) {
             position = hit.cursor

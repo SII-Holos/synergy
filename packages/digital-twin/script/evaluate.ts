@@ -151,6 +151,7 @@ type Result = {
   fingerprint: string
   item: ReplayCase
   availableEvidence: number
+  retrievalMs?: number
   predictions: Prediction[]
   labels: Record<string, Recipe>
   eligibility?: z.infer<typeof Label>
@@ -267,25 +268,143 @@ export function summarize(results: Result[], expectedCases: number) {
     else ties++
     paired.push({ family: result.item.family, win })
   }
-  const latency = Object.fromEntries(
+  const distribution = (values: number[]) => {
+    values.sort((a, b) => a - b)
+    return {
+      count: values.length,
+      medianMs: values[Math.floor(values.length / 2)] ?? null,
+      p95Ms: values[Math.max(0, Math.ceil(values.length * 0.95) - 1)] ?? null,
+    }
+  }
+  const ablations = Object.fromEntries(
     recipes.map((recipe) => {
-      const values = results
-        .flatMap((result) =>
-          result.predictions
-            .filter((prediction) => prediction.recipe === recipe && prediction.receipt)
-            .map((prediction) => prediction.receipt!.wallMs),
-        )
-        .sort((a, b) => a - b)
+      const counts = {
+        predictable: 0,
+        covered: 0,
+        ambiguous: 0,
+        ambiguousEmitted: 0,
+        correctAbstentions: 0,
+        failed: 0,
+        emitted: 0,
+        scored: 0,
+        content4: 0,
+        voice4: 0,
+        both4: 0,
+        integrityFailures: 0,
+      }
+      for (const result of results) {
+        const prediction = result.predictions.find((value) => value.recipe === recipe)
+        if (!prediction) continue
+        if (prediction.state !== "complete") counts.failed++
+        if (prediction.candidate) counts.emitted++
+        if (result.eligibility?.predictable) {
+          counts.predictable++
+          if (prediction.candidate) counts.covered++
+        } else if (result.eligibility) {
+          counts.ambiguous++
+          if (prediction.candidate) counts.ambiguousEmitted++
+          else if (prediction.state === "complete" && prediction.abstention) counts.correctAbstentions++
+        }
+        const label = Object.keys(result.labels).find((label) => result.labels[label] === recipe)
+        const score = result.judgment?.scores.find((score) => score.label === label)
+        if (!prediction.candidate || !score) continue
+        counts.scored++
+        counts.content4 += Number(score.content >= 4)
+        counts.voice4 += Number(score.voice >= 4)
+        counts.both4 += Number(score.content >= 4 && score.voice >= 4 && !score.integrityFailures.length)
+        counts.integrityFailures += Number(!!score.integrityFailures.length)
+      }
       return [
         recipe,
         {
-          count: values.length,
-          medianMs: values[Math.floor(values.length / 2)] ?? null,
-          p95Ms: values[Math.max(0, Math.ceil(values.length * 0.95) - 1)] ?? null,
+          ...counts,
+          coverage: counts.predictable ? counts.covered / counts.predictable : null,
+          quality: counts.emitted ? counts.both4 / counts.emitted : null,
         },
       ]
     }),
-  )
+  ) as Record<
+    Recipe,
+    {
+      predictable: number
+      covered: number
+      ambiguous: number
+      ambiguousEmitted: number
+      correctAbstentions: number
+      failed: number
+      emitted: number
+      scored: number
+      content4: number
+      voice4: number
+      both4: number
+      integrityFailures: number
+      coverage: number | null
+      quality: number | null
+    }
+  >
+  const latency = Object.fromEntries(
+    recipes.map((recipe) => {
+      const predictions = results.flatMap((result) => result.predictions.filter((value) => value.recipe === recipe))
+      const attempts = predictions.flatMap((value) => value.receipt?.attempts ?? [])
+      const reported = attempts.flatMap((attempt) => (attempt.usage ? [attempt.usage] : []))
+      const tokens = (field: (usage: NonNullable<Receipt["attempts"][number]["usage"]>) => number | null) => {
+        const values = reported.flatMap((usage) => {
+          const value = field(usage)
+          return value === null ? [] : [value]
+        })
+        return {
+          total: values.reduce((sum, value) => sum + value, 0),
+          reportedAttempts: values.length,
+          unknownAttempts: attempts.length - values.length,
+        }
+      }
+      return [
+        recipe,
+        {
+          successful: distribution(
+            predictions
+              .filter((value) => value.state === "complete" && value.receipt)
+              .map((value) => value.receipt!.wallMs),
+          ),
+          failed: distribution(
+            predictions
+              .filter((value) => value.state === "failed" && value.receipt)
+              .map((value) => value.receipt!.wallMs),
+          ),
+          firstToken: distribution(
+            attempts.flatMap((value) => (value.timing?.ttftMs === undefined ? [] : [value.timing.ttftMs])),
+          ),
+          provider: distribution(
+            attempts.flatMap((value) => (value.timing?.requestMs === undefined ? [] : [value.timing.requestMs])),
+          ),
+          usage: {
+            reportedAttempts: reported.length,
+            unknownAttempts: attempts.length - reported.length,
+            inputTokens: tokens((value) => value.input.total),
+            outputTokens: tokens((value) => value.output.total),
+            cacheReadTokens: tokens((value) => value.input.cacheRead),
+            cacheWriteTokens: tokens((value) => value.input.cacheWrite),
+          },
+        },
+      ]
+    }),
+  ) as Record<
+    Recipe,
+    {
+      successful: ReturnType<typeof distribution>
+      failed: ReturnType<typeof distribution>
+      firstToken: ReturnType<typeof distribution>
+      provider: ReturnType<typeof distribution>
+      usage: {
+        reportedAttempts: number
+        unknownAttempts: number
+        inputTokens: { total: number; reportedAttempts: number; unknownAttempts: number }
+        outputTokens: { total: number; reportedAttempts: number; unknownAttempts: number }
+        cacheReadTokens: { total: number; reportedAttempts: number; unknownAttempts: number }
+        cacheWriteTokens: { total: number; reportedAttempts: number; unknownAttempts: number }
+      }
+    }
+  >
   const interval = pairedInterval(paired)
   const coverage = predictable ? covered / predictable : null
   const quality = emitted ? passing / emitted : null
@@ -299,6 +418,10 @@ export function summarize(results: Result[], expectedCases: number) {
   const finished = results.length === expectedCases && results.every((result) => result.complete)
   return {
     latency,
+    recipes: ablations,
+    retrieval: distribution(
+      results.flatMap((result) => (result.retrievalMs === undefined ? [] : [result.retrievalMs])),
+    ),
     categories,
     cases: results.length,
     expectedCases,
@@ -432,7 +555,7 @@ export async function evaluate(input: {
   const [model, judge] = await Promise.all([resolve(modelID), resolve(judgeID)])
   const started = performance.now()
   const dataset = input.dataset ?? (await loadHistory(progress))
-  if (dataset.version !== 2 || dataset.sourceHash !== (await historySourceHash()))
+  if (dataset.version !== 3 || dataset.sourceHash !== (await historySourceHash()))
     throw new Error("Historical evidence must be rebuilt with the current immutable extraction contract")
   const preparationMs = performance.now() - started
   const sources = await Promise.all(
@@ -440,7 +563,13 @@ export async function evaluate(input: {
       "../src/prompts/predict.txt",
       "../src/inference.ts",
       "../src/evidence.ts",
+      "../src/preparation.ts",
+      "../src/service.ts",
       "../../harness/src/session/search-index.ts",
+      "../../harness/src/session/corpus.ts",
+      "../../harness/src/session/agent-turn/index.ts",
+      "../../harness/src/util/text-search.ts",
+      "../../harness/src/storage/text-projection.ts",
       "../../harness/src/agent/call.ts",
       "../../harness/src/session/llm.ts",
       "../../harness/src/provider/transform.ts",
@@ -467,7 +596,14 @@ export async function evaluate(input: {
     authenticInputs: dataset.history.length,
     eligibleCases: dataset.cases.length,
     exclusions: dataset.exclusions,
-    preparationMs: input.dataset ? null : preparationMs,
+    retrievalCatalog: {
+      entries: dataset.catalog.length,
+      gaps: dataset.catalogGaps,
+      availability: "first immutable source-attributed observation",
+      membership:
+        "unobserved messages, deletions and rollback cannot be reconstructed; results cover the observed catalog",
+    },
+    preparationMs: dataset.preparationMs ?? (input.dataset ? null : preparationMs),
     targets: { predictableCoverage: 0.8, emittedContentAndVoice4: 0.8, fullWins: 0.65, paired95AboveChance: true },
   }
   await writeCheckpoint(path.join(directory, "manifest.json"), JSON.stringify(manifest, null, 2))
@@ -478,16 +614,16 @@ export async function evaluate(input: {
     const fingerprint = digest(JSON.stringify({ experiment, item }))
     const filename = path.join(directory, "cases", digest(item.id) + ".json")
     const retrieval = performance.now()
-    const evidence = temporalEvidence(item, dataset.history)
+    const evidence = temporalEvidence(item, dataset.history, dataset.catalog)
     const retrievalMs = performance.now() - retrieval
     const shuffled = recipes.toSorted((a, b) => digest(item.id + a).localeCompare(digest(item.id + b)))
     const labels = Object.fromEntries(shuffled.map((recipe, index) => [["A", "B", "C"][index]!, recipe]))
     const result: Result = (await Bun.file(filename).exists())
       ? await Bun.file(filename).json()
-      : { fingerprint, item, availableEvidence: evidence.available, predictions: [], labels }
+      : { fingerprint, item, availableEvidence: evidence.available, retrievalMs, predictions: [], labels }
     if (result.fingerprint !== fingerprint) throw new Error("Experiment identity mismatch")
     const persist = async () => {
-      await writeCheckpoint(filename, await SecretMask.apply(JSON.stringify({ ...result, retrievalMs }, null, 2)))
+      await writeCheckpoint(filename, await SecretMask.apply(JSON.stringify(result, null, 2)))
     }
     if (!result.complete) {
       if (result.labelState === "pending")

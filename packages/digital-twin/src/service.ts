@@ -10,7 +10,7 @@ import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import { DigitalTwinContract } from "./contract"
 import { collect } from "./evidence"
 import { infer, PredictionError } from "./inference"
-import { representatives, useCorpus, stopPreparation } from "./preparation"
+import { representatives, representativesCurrent, useCorpus, stopPreparation } from "./preparation"
 import "./config-schema"
 
 type Flight = { controller: AbortController; consumers: number; result: Promise<DigitalTwinContract.Result> }
@@ -91,13 +91,8 @@ export namespace DigitalTwin {
         if (
           JSON.stringify(latestConfig) !== JSON.stringify(selectedModel) ||
           !(await SessionContextSnapshot.isCurrent(snapshot.stamp)) ||
-          !(await Storage.snapshot(async () => {
-            const revisions = await Storage.revisions(prepared.sources.map((source) => source.key))
-            return (
-              prepared.sources.every((source, index) => source.revision === (revisions[index]?.toString() ?? null)) &&
-              (await SessionCorpus.current(result.selected.flatMap((item) => item.references)))
-            )
-          }))
+          !representativesCurrent(prepared) ||
+          !(await Storage.snapshot(() => SessionCorpus.current(result.selected.flatMap((item) => item.references))))
         )
           throw new PredictionError("source_changed", "The conversation or selected evidence changed")
         const { sources: ignoredSources, ...stamp } = snapshot.stamp

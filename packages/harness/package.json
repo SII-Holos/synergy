@@ -53,6 +53,7 @@
     "./config/config": "./src/config/config.ts",
     "./provider/models-schemas": "./src/provider/models-schemas.ts",
     "./util/log": "./src/util/log.ts",
+    "./util/text-search": "./src/util/text-search.ts",
     "./provider/provider": "./src/provider/provider.ts",
     "./agent/agent": "./src/agent/agent.ts",
     "./global/installation": "./src/global/installation.ts",

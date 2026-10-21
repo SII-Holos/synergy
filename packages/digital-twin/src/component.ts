@@ -19,6 +19,15 @@ const migrations = [
       await Storage.write(StoragePath.digitalTwinCursor(), { version: 1, complete: false })
     },
   },
+  {
+    id: "20261021-reference-projection-v2",
+    scope: "global" as const,
+    execution: "startup" as const,
+    description: "Rebuild family projections with ranked lexical preparation on first use",
+    async up() {
+      await Storage.write(StoragePath.digitalTwinCursor(), { version: 2, complete: false })
+    },
+  },
 ]
 export function digitalTwin(): RuntimeComponent {
   return {

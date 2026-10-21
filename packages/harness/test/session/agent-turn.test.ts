@@ -43,7 +43,7 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       })
 
       const pending = AgentTurn.stream({
-        user: { id: "msg_user" },
+        user: { id: "msg_user", metadata: { source: "test-operation", sourceSessionID: "ses_source" } },
         sessionID: "ses_test",
         recording: { owner: { kind: "operation", scopeID: "home", operationID }, runID: operationID, purpose: "test" },
         model: {
@@ -106,6 +106,7 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       const chunks: Uint8Array[] = []
       for await (const chunk of RolloutArtifact.read(calls[0].owner, calls[0].request.id)) chunks.push(chunk)
       const recorded = JSON.parse(Buffer.concat(chunks).toString())
+      expect(recorded.userMetadata).toEqual({ source: "test-operation", sourceSessionID: "ses_source" })
       expect(recorded.tools.map((tool: { id: string }) => tool.id)).toEqual(["visible"])
       expect(
         recorded.contextSources.find((entry: { category: string }) => entry.category === "userMessages").characters,

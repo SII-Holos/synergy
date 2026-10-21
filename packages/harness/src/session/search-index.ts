@@ -1,3 +1,4 @@
+import { TextSearch } from "../util/text-search"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
 import { Storage } from "../storage/storage"
@@ -59,29 +60,7 @@ export namespace SessionSearchIndex {
     return `session-search-index:${scopeID}:${sessionID}`
   }
 
-  /**
-   * Lightweight Unicode tokenizer shared by relevance scoring and index
-   * consumers. ASCII identifiers/numbers become single tokens; CJK runs become
-   * overlapping bigrams (single characters stay single tokens) so mixed zh/en
-   * content participates in lexical scoring.
-   */
-  export function tokenize(text: string): string[] {
-    const out: string[] = []
-    const re = /[A-Za-z0-9_]+|[\u4e00-\u9fff]+/g
-    for (const match of text.matchAll(re)) {
-      const raw = match[0]
-      if (/^[A-Za-z0-9_]+$/.test(raw)) {
-        out.push(raw.toLowerCase())
-        continue
-      }
-      if (raw.length === 1) {
-        out.push(raw)
-        continue
-      }
-      for (let i = 0; i + 1 < raw.length; i++) out.push(raw.slice(i, i + 2))
-    }
-    return out
-  }
+  export const tokenize = TextSearch.tokenize
 
   /** Number of distinct pattern tokens present in text (deterministic, >= 0). */
   export function overlapScore(text: string, patternTokens: string[]): number {
