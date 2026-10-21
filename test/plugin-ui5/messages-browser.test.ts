@@ -5,7 +5,7 @@ import { startPluginPreview, approvePreviewPlugins, openPluginPreviewPage } from
 import { createFixtureProject, writeMinimalPlugin, minimalPluginSource } from "../../packages/plugin-kit/test/fixtures"
 import { buildPluginProject } from "../../packages/plugin-kit/src/commands/build"
 import { importPreviewConversation } from "./session-fixture"
-import type { SessionTimelinePage } from "../../packages/sdk/js/src/client"
+import type { Event, SessionTimelinePage } from "../../packages/sdk/js/src/client"
 
 const require = createRequire(path.resolve(import.meta.dir, "../../apps/web/package.json"))
 const { chromium } = await import(require.resolve("playwright"))
@@ -432,6 +432,7 @@ describe("production conversation history", () => {
       const warmExecution = Promise.withResolvers<void>()
       let warming = false
       let bodyReads = 0
+      let projectedBodies = 0
       let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
       type Frame = {
         phase: "cold" | "last-held" | "released" | "warm"
@@ -456,6 +457,23 @@ describe("production conversation history", () => {
       try {
         const page = await browser.newPage({ viewport: { width: 960, height: 900 }, reducedMotion: "no-preference" })
         page.setDefaultTimeout(20000)
+        await page.routeWebSocket("**/global/event/ws*", (socket) => {
+          const upstream = socket.connectToServer()
+          upstream.onMessage(async (message) => {
+            const { payload } = JSON.parse(message.toString()) as { payload?: Event }
+            if (
+              payload?.type === "message.part.summary" &&
+              payload.properties.summary.sessionID === target.id &&
+              payload.properties.content
+            ) {
+              projectedBodies++
+              await bodies.promise
+              if (!warming && payload.properties.summary.messageID !== messageID)
+                await new Promise((resolve) => setTimeout(resolve, 300))
+            }
+            socket.send(message)
+          })
+        })
         diagnostics = await openPluginPreviewPage({ ...preview, url: conversation.url }, page)
         const active = page.locator("[data-session-resident]:not([hidden])")
         await active.getByText("Answer 360", { exact: true }).waitFor()
@@ -654,6 +672,7 @@ describe("production conversation history", () => {
           () => (window as unknown as { switchFrames: Probe }).switchFrames.frames,
         )
         expect(bodyReads).toBeGreaterThan(0)
+        expect(projectedBodies).toBeGreaterThan(0)
         expect(cold.filter((frame) => frame.target).every((frame) => frame.shellOpacity === 1 && !frame.inert)).toBe(
           true,
         )
