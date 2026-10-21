@@ -912,9 +912,16 @@ function createGlobalSync() {
   // is the only path by which a paused session reaches a client at all, because
   // no producer publishes a pause latch on the event bus.
   async function loadGlobalSessionStatus() {
+    const tracker = globalRuntimeTracker
+    const requestRevision = tracker.captureStatusSnapshot()
     return globalSDK.client.session
       .statuses()
-      .then((x) => seedGlobalStatus(x.data ?? {}, x.response?.headers))
+      .then((x) => {
+        if (disposed || tracker !== globalRuntimeTracker) return
+        const statuses = x.data ?? {}
+        const merged = tracker.mergeStatus(requestRevision, statuses, globalStore.sessionStatus)
+        setGlobalStore("sessionStatus", reconcile(merged ?? statuses))
+      })
       .catch((err) => {
         console.error("Failed to load global session status", err)
       })
@@ -1233,7 +1240,11 @@ function createGlobalSync() {
         )
         if (Object.keys(adopt).length || drop.length) {
           const merged = { ...globalStore.sessionStatus }
-          for (const sessionID of drop) delete merged[sessionID]
+          for (const sessionID of drop) {
+            globalRuntimeTracker.scopeStatusWrite(sessionID)
+            delete merged[sessionID]
+          }
+          for (const sessionID of Object.keys(adopt)) globalRuntimeTracker.scopeStatusWrite(sessionID)
           Object.assign(merged, adopt)
           setGlobalStore("sessionStatus", reconcile(merged))
         }
@@ -1535,15 +1546,6 @@ function createGlobalSync() {
     })
     pruneRequestScopes()
     return true
-  }
-
-  // The cross-Scope status route is authoritative for the whole index, so a
-  // response without a comparable stamp replaces it wholesale — including the
-  // sessions it omits, which is how a status left stale by a missed `idle`
-  // converges without waiting for that session to be viewed.
-  function seedGlobalStatus(statuses: SessionStatusIndex, headers: Pick<Headers, "get"> | undefined) {
-    const merged = globalRuntimeTracker.mergeStatus(readSyncVersion(headers), statuses, globalStore.sessionStatus)
-    setGlobalStore("sessionStatus", reconcile(merged ?? statuses))
   }
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
@@ -1888,8 +1890,10 @@ function createGlobalSync() {
         // derived field, so fill a status the index holds no event for. A real
         // status event always wins, mirroring SessionManager.listStatuses.
         const working = info.working
-        if (working && globalStore.sessionStatus[info.id] === undefined)
+        if (working && globalStore.sessionStatus[info.id] === undefined) {
+          globalRuntimeTracker.statusWrite(stamp, info.id)
           setGlobalStore("sessionStatus", info.id, reconcile(sessionStatusFromWorking(working)))
+        }
         const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
           if (index !== -1) {
@@ -1941,7 +1945,7 @@ function createGlobalSync() {
       }
       case "session.status": {
         // Handles busy, retry, paused, and idle statuses
-        if (stamp) globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
+        globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
         // The global index is shared by every Scope and holds only non-idle
         // sessions, so an idle status deletes the key instead of storing it.
         if (event.properties.status.type === "idle") {
