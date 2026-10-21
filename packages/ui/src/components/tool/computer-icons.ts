@@ -1,7 +1,5 @@
-import type { IconName } from "../icon"
+import { getToolIcon } from "./icons"
 
-export const COMPUTER_TOOL_ICONS: Record<string, IconName> = {
-  computer_apps: "monitor",
-  computer_observe: "scan-eye",
-  computer_action: "mouse-pointer-click",
-}
+export const COMPUTER_TOOL_ICONS: Record<string, string> = Object.fromEntries(
+  ["computer_apps", "computer_observe", "computer_action"].map((tool) => [tool, getToolIcon(tool)]),
+)

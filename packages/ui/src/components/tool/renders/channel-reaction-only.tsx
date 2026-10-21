@@ -1,3 +1,4 @@
+import { getToolIcon } from "../icons"
 import { Show } from "solid-js"
 import { BasicTool } from "../../basic-tool"
 import { ToolRegistry } from "../../message-part"
@@ -10,7 +11,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "message-square-more",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC.channel_reaction_only,
           // The tool records its terminal intent in part metadata; input is
           // always an empty object because the tool takes no parameters.

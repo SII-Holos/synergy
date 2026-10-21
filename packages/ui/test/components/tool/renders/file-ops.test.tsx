@@ -82,7 +82,12 @@ beforeEach(() => {
 test("patch card retains partial and unresolved outcomes", () => {
   expect(registrations.has("apply_patch")).toBe(true)
   for (const outcome of ["partial", "unresolved"]) {
-    registrations.get("apply_patch")?.({ input: {}, metadata: { outcome, sections: [] }, status: "error" })
+    registrations.get("apply_patch")?.({
+      tool: "apply_patch",
+      input: {},
+      metadata: { outcome, sections: [] },
+      status: "error",
+    })
     expect(capturedTrigger?.tags).toEqual([
       { label: outcome === "partial" ? "Partially applied" : "Outcome unconfirmed", tone: "warning" },
     ])
@@ -91,6 +96,7 @@ test("patch card retains partial and unresolved outcomes", () => {
 
 test("move card renders the recorded destination replacement and source deletion", () => {
   registrations.get("apply_patch")?.({
+    tool: "apply_patch",
     input: {},
     status: "completed",
     metadata: {
@@ -119,6 +125,7 @@ test("move card renders the recorded destination replacement and source deletion
 
 test("partial move card renders only the recorded destination write", () => {
   registrations.get("apply_patch")?.({
+    tool: "apply_patch",
     input: {},
     status: "error",
     metadata: {
@@ -142,6 +149,7 @@ test("partial move card renders only the recorded destination write", () => {
 
 test("historical move card renders one saved diff at its recorded path", () => {
   registrations.get("apply_patch")?.({
+    tool: "apply_patch",
     input: {},
     status: "completed",
     metadata: {
@@ -162,6 +170,7 @@ test("historical move card renders one saved diff at its recorded path", () => {
 
 test("patch cards keep previewless files without inventing effects from empty or unknown receipts", () => {
   registrations.get("apply_patch")?.({
+    tool: "apply_patch",
     input: {},
     status: "error",
     metadata: {
@@ -215,7 +224,7 @@ describe("resolve_conflicts file-ops renderer", () => {
       output: "Resolved 2 conflict blocks.",
     })
     expect(trigger?.title).toBe("Resolve Conflicts")
-    expect(trigger?.icon).toBe("file-pen")
+    expect(trigger?.icon).toBe("git-merge-conflict")
     expect(trigger?.subtitlePath).toBe("/workspace/src/a.ts")
     expect(trigger?.changes).toEqual({ additions: 4, deletions: 2 })
     expect(trigger?.tags).toEqual([{ label: "2 resolved", tone: "success" }])

@@ -1,6 +1,5 @@
+import { getToolIcon } from "./icons"
 import { parseToolResultRows, toolCompactArgs, toolFirstString, toolHostname } from "./anysearch-info"
-
-const SCHOLIGHT_ICON = "graduation-cap"
 
 export const SCHOLIGHT_TOOL_NAMES = ["mcp__scholight__search_papers", "mcp__scholight__extract_url"] as const
 
@@ -39,7 +38,7 @@ export function getScholightToolInfo(name: ScholightToolName, input: Record<stri
   switch (name) {
     case "mcp__scholight__search_papers":
       return {
-        icon: SCHOLIGHT_ICON,
+        icon: getToolIcon(name, input),
         title: "Scholight",
         subtitle: toolFirstString(input.query),
         args: toolCompactArgs([
@@ -52,7 +51,7 @@ export function getScholightToolInfo(name: ScholightToolName, input: Record<stri
       }
     case "mcp__scholight__extract_url":
       return {
-        icon: "file-text",
+        icon: getToolIcon(name, input),
         title: "Scholight Extract",
         subtitle: toolFirstString(input.url),
         args: toolCompactArgs([toolHostname(input.url), toolFirstString(input.format)]),

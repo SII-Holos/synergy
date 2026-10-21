@@ -1,3 +1,4 @@
+import { getToolIcon, isBlueprintToolKind } from "./tool/icons"
 import { ResourceReferenceProvider } from "../context/resource-open"
 import { getComputerToolPresentation } from "./tool/classifier"
 import {
@@ -42,7 +43,6 @@ import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/syner
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { createAutoScroll } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
-import { getSemanticIcon } from "./semantic-icon"
 import { isToolCardHidden, toolFeatureAvailable } from "./tool-result-presentation"
 import { ToolResultBody } from "./tool-result-body"
 import { CompactionCard } from "./compaction-card"
@@ -188,35 +188,27 @@ function pushArg(args: string[], value: unknown) {
   args.push(String(value))
 }
 
-function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
-  if ((metadata.kind || input.kind) === "blueprint") return true
-  const kinds = metadata.kinds
-  return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
-}
-
-const BLUEPRINT_ICON = getSemanticIcon("blueprint.main")
-
-export const browserToolLabels: Record<string, { icon: IconName; title: MessageDescriptor }> = {
-  browser_navigation: { icon: "route", title: TOOL_TITLE_DESC["browser_navigation"] },
-  browser_snapshot: { icon: "binoculars", title: TOOL_TITLE_DESC["browser_snapshot"] },
-  browser_action: { icon: "mouse-pointer-click", title: TOOL_TITLE_DESC["browser_action"] },
-  browser_wait: { icon: "hourglass", title: TOOL_TITLE_DESC["browser_wait"] },
-  browser_read: { icon: "glasses", title: TOOL_TITLE_DESC["browser_read"] },
-  browser_inspect: { icon: "scan-eye", title: TOOL_TITLE_DESC["browser_inspect"] },
-  browser_screenshot: { icon: "image", title: TOOL_TITLE_DESC["browser_screenshot"] },
-  browser_eval: { icon: "braces", title: TOOL_TITLE_DESC["browser_eval"] },
-  browser_console: { icon: "file-terminal", title: TOOL_TITLE_DESC["browser_console"] },
-  browser_network: { icon: "network", title: TOOL_TITLE_DESC["browser_network"] },
-  browser_performance: { icon: "gauge", title: TOOL_TITLE_DESC["browser_performance"] },
-  browser_audit: { icon: "shield-check", title: TOOL_TITLE_DESC["browser_audit"] },
-  browser_emulate: { icon: "sliders-horizontal", title: TOOL_TITLE_DESC["browser_emulate"] },
-  browser_dialog: { icon: "message-square-more", title: TOOL_TITLE_DESC["browser_dialog"] },
-  browser_upload: { icon: "upload", title: TOOL_TITLE_DESC["browser_upload"] },
-  browser_downloads: { icon: "download-cloud", title: TOOL_TITLE_DESC["browser_downloads"] },
-  browser_clipboard: { icon: "clipboard-list", title: TOOL_TITLE_DESC["browser_clipboard"] },
-  browser_assets: { icon: "package", title: TOOL_TITLE_DESC["browser_assets"] },
-  browser_annotate: { icon: "square-pen", title: TOOL_TITLE_DESC["browser_annotate"] },
-  browser_view: { icon: "panel-right", title: TOOL_TITLE_DESC["browser_view"] },
+export const browserToolLabels: Record<string, { title: MessageDescriptor }> = {
+  browser_navigation: { title: TOOL_TITLE_DESC["browser_navigation"] },
+  browser_snapshot: { title: TOOL_TITLE_DESC["browser_snapshot"] },
+  browser_action: { title: TOOL_TITLE_DESC["browser_action"] },
+  browser_wait: { title: TOOL_TITLE_DESC["browser_wait"] },
+  browser_read: { title: TOOL_TITLE_DESC["browser_read"] },
+  browser_inspect: { title: TOOL_TITLE_DESC["browser_inspect"] },
+  browser_screenshot: { title: TOOL_TITLE_DESC["browser_screenshot"] },
+  browser_eval: { title: TOOL_TITLE_DESC["browser_eval"] },
+  browser_console: { title: TOOL_TITLE_DESC["browser_console"] },
+  browser_network: { title: TOOL_TITLE_DESC["browser_network"] },
+  browser_performance: { title: TOOL_TITLE_DESC["browser_performance"] },
+  browser_audit: { title: TOOL_TITLE_DESC["browser_audit"] },
+  browser_emulate: { title: TOOL_TITLE_DESC["browser_emulate"] },
+  browser_dialog: { title: TOOL_TITLE_DESC["browser_dialog"] },
+  browser_upload: { title: TOOL_TITLE_DESC["browser_upload"] },
+  browser_downloads: { title: TOOL_TITLE_DESC["browser_downloads"] },
+  browser_clipboard: { title: TOOL_TITLE_DESC["browser_clipboard"] },
+  browser_assets: { title: TOOL_TITLE_DESC["browser_assets"] },
+  browser_annotate: { title: TOOL_TITLE_DESC["browser_annotate"] },
+  browser_view: { title: TOOL_TITLE_DESC["browser_view"] },
 }
 
 function browserStateArgs(metadata: any = {}) {
@@ -282,7 +274,7 @@ export function getBrowserToolInfo(tool: string, input: any = {}, metadata: any 
   }
 
   return {
-    icon: info.icon,
+    icon: getToolIcon(tool, input, metadata),
     title: info.title,
     subtitle,
     args: args.length ? args : undefined,
@@ -363,7 +355,16 @@ function researchWikiArgs(input: any = {}, metadata: any = {}) {
   return args
 }
 
-export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo {
+export function getToolInfo(
+  tool: string,
+  value: unknown = {},
+  metadata: Record<string, unknown> = {},
+): ToolTriggerInfo {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
+  return { ...getToolDescription(tool, input, metadata), icon: getToolIcon(tool, input, metadata) }
+}
+
+function getToolDescription(tool: string, input: any = {}, metadata: any = {}): Omit<ToolTriggerInfo, "icon"> {
   const computer = getComputerToolPresentation(tool, input)
   if (computer) return computer
   const browser = getBrowserToolInfo(tool, input, metadata)
@@ -378,61 +379,52 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "read":
       return {
         objectKind: "path",
-        icon: "file-text",
         title: TOOL_TITLE_DESC["read"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "view_image":
       return {
         objectKind: "path",
-        icon: "image",
         title: TOOL_TITLE_DESC["view_image"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "view_file":
       return {
         objectKind: "path",
-        icon: "scan-eye",
         title: TOOL_TITLE_DESC["view_file"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "list":
       return {
-        icon: "folder",
         title: TOOL_TITLE_DESC["list"],
         subtitle: input.path ? getFilename(input.path) : undefined,
       }
     case "glob":
       return {
         objectKind: "query",
-        icon: "funnel",
         title: TOOL_TITLE_DESC["glob"],
         subtitle: [input.pattern, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "grep":
       return {
         objectKind: "query",
-        icon: "regex",
         title: TOOL_TITLE_DESC["grep"],
         subtitle: [input.pattern, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "file_search":
       return {
         objectKind: "query",
-        icon: "scan-document",
         title: TOOL_TITLE_DESC["file_search"],
         subtitle: [input.query, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "scan_files":
       return {
         objectKind: "query",
-        icon: "scan-search",
         title: TOOL_TITLE_DESC["scan_files"],
         subtitle: [input.pattern, input.path || input.directory].filter(Boolean).join(" · ") || undefined,
       }
     case "webfetch":
       return {
-        icon: "mouse-pointer-2",
         title: TOOL_TITLE_DESC["webfetch"],
         subtitle: input.url,
       }
@@ -440,7 +432,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return getTaskToolInfo(input)
     case "bash":
       return {
-        icon: "terminal",
         title: TOOL_TITLE_DESC["bash"],
         objectKind: "command",
         subtitle: input.command,
@@ -448,7 +439,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "edit":
       return {
         objectKind: "path",
-        icon: "pen-line",
         title: TOOL_TITLE_DESC["edit"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
@@ -456,7 +446,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const path = metadata.path || metadata.filepath || input.input?.match?.(/^\[([^#\]]+)/)?.[1]
       return {
         objectKind: "path",
-        icon: "file-pen",
         title: TOOL_TITLE_DESC["revise_file"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
@@ -465,7 +454,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const path = metadata.path || metadata.filepath || input.filePath
       return {
         objectKind: "path",
-        icon: "file-pen",
         title: TOOL_TITLE_DESC["resolve_conflicts"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
@@ -473,20 +461,17 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "multiedit":
       return {
         objectKind: "path",
-        icon: "pen-line",
         title: TOOL_TITLE_DESC["multiedit"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "apply_patch":
     case "patch":
       return {
-        icon: "diff",
         title: TOOL_TITLE_DESC[tool],
       }
     case "write":
       return {
         objectKind: "path",
-        icon: "file-pen",
         title: TOOL_TITLE_DESC["write"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
@@ -494,44 +479,36 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const path = metadata.path || metadata.filepath || input.filePath
       return {
         objectKind: "path",
-        icon: "file-pen",
         title: metadata.exists === false ? TOOL_TITLE_DESC["create_file"] : TOOL_TITLE_DESC["save_file"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
     }
     case "todowrite":
       return {
-        icon: "clipboard-check",
         title: TOOL_TITLE_DESC["todowrite"],
       }
     case "todoread":
       return {
-        icon: "list-filter",
         title: TOOL_TITLE_DESC["todoread"],
       }
     case "dagwrite":
       return {
-        icon: "route",
         title: TOOL_TITLE_DESC["dagwrite"],
       }
     case "dagread":
       return {
-        icon: "spline",
         title: TOOL_TITLE_DESC["dagread"],
       }
     case "dagpatch":
       return {
-        icon: "git-merge",
         title: TOOL_TITLE_DESC["dagwrite"],
       }
     case "question":
       return {
-        icon: "message-circle",
         title: TOOL_TITLE_DESC["question"],
       }
     case "look_at":
       return {
-        icon: "scan-eye",
         title: TOOL_TITLE_DESC["look_at"],
         subtitle: input.file_path
           ? getFilename(Array.isArray(input.file_path) ? input.file_path[0] : input.file_path)
@@ -539,105 +516,88 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
     case "scan_document":
       return {
-        icon: "scan-document",
         title: TOOL_TITLE_DESC["scan_document"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "ast_grep":
       return {
-        icon: "braces",
         title: TOOL_TITLE_DESC["ast_grep"],
         subtitle: input.pattern,
       }
     case "parse_code":
       return {
-        icon: "braces",
         title: TOOL_TITLE_DESC["parse_code"],
         subtitle: input.pattern,
       }
     case "lsp":
       return {
-        icon: "circuit-board",
         title: TOOL_TITLE_DESC["lsp"],
         subtitle: input.operation,
       }
     case "skill":
       return {
-        icon: "sparkles",
         title: TOOL_TITLE_DESC["skill"],
         subtitle: input.name + (input.reference ? ` (${input.reference})` : ""),
       }
     case "search_tools":
       return {
-        icon: "tool-search",
         title: TOOL_TITLE_DESC["search_tools"],
         subtitle: input.query,
       }
     case "expand_tools":
       return {
-        icon: "tool-expand",
         title: TOOL_TITLE_DESC["expand_tools"],
         subtitle: [...(input.groups ?? []), ...(input.tools ?? [])].join(", ") || input.reason,
       }
     case "process":
       return {
-        icon: "activity",
         title: TOOL_TITLE_DESC["process"],
         subtitle: input.action,
       }
     case "response_card":
       return {
-        icon: "message-square-more",
         title: TOOL_TITLE_DESC["response_card"],
         subtitle: input.title,
       }
     case "channel_reaction_only":
       return {
-        icon: "message-square-more",
         title: TOOL_TITLE_DESC["channel_reaction_only"],
         subtitle: metadata?.intent?.reaction,
       }
     case "openai_image_gen":
       return {
-        icon: "image",
         title: TOOL_TITLE_DESC["generate_image"],
         subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
       }
     case "openai_image_edit":
       return {
-        icon: "image",
         title: TOOL_TITLE_DESC["edit_image"],
         subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
       }
     case "speak":
       return {
-        icon: "audio-lines",
         title: TOOL_TITLE_DESC["speak"],
         subtitle: firstString(input.text, input.voice, input.instructions),
       }
     case "render":
       return {
-        icon: "code",
         title: TOOL_TITLE_DESC["render"],
         subtitle: input.artifactTitle,
       }
     case "note_list":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["blueprints"],
           subtitle: input.scope,
         }
       }
       return {
-        icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_list"],
         subtitle: input.scope,
       }
     case "note_read":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["read_blueprint"],
           subtitle: Array.isArray(input.noteIds)
             ? input.noteIds.length === 1
@@ -647,7 +607,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         }
       }
       return {
-        icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_read"],
         subtitle: Array.isArray(input.noteIds)
           ? input.noteIds.length === 1
@@ -658,46 +617,39 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "note_search":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["blueprint_search"],
           subtitle: input.pattern,
         }
       }
       return {
-        icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_search"],
         subtitle: input.pattern,
       }
     case "note_write":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["write_blueprint"],
           subtitle: input.noteTitle || input.mode,
         }
       }
       return {
-        icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_write"],
         subtitle: input.noteTitle || input.mode,
       }
     case "note_edit":
       if (isBlueprintToolKind(input, metadata)) {
         return {
-          icon: BLUEPRINT_ICON,
           title: TOOL_TITLE_DESC["edit_blueprint"],
           subtitle: input.noteTitle || input.noteId,
         }
       }
       return {
-        icon: "notebook-pen",
         title: TOOL_TITLE_DESC["note_edit"],
         subtitle: input.noteTitle || input.noteId,
       }
     case "note_archive": {
       const unarchive = input.unarchive as boolean | undefined
       return {
-        icon: "archive",
         title: unarchive ? TOOL_TITLE_DESC["note_unarchive"] : TOOL_TITLE_DESC["note_archive"],
         subtitle: Array.isArray(input.noteIds)
           ? input.noteIds.length === 1
@@ -708,103 +660,86 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     }
     case "note_delete":
       return {
-        icon: "trash-2",
         title: TOOL_TITLE_DESC["note_delete"],
         subtitle: input.noteId,
       }
     case "blueprint_loop_stop":
       return {
-        icon: "circle-pause",
         title: TOOL_TITLE_DESC["blueprint_loop_stop"],
         subtitle: input.summary,
       }
     case "blueprint_loop_approve":
       return {
-        icon: "file-check-2",
         title: TOOL_TITLE_DESC["blueprint_loop_approve"],
         subtitle: (input.summary as string) || (input.sessionID as string) || "",
       }
     case "blueprint_loop_reject":
       return {
-        icon: "clipboard-x",
         title: TOOL_TITLE_DESC["blueprint_loop_reject"],
         subtitle: (input.reason as string) || (input.sessionID as string) || "",
       }
     case "task_list":
       return {
-        icon: "list-todo",
         title: TOOL_TITLE_DESC["task_list"],
         subtitle: undefined,
       }
     case "task_output":
       return {
-        icon: "list-todo",
         title: TOOL_TITLE_DESC["task_output"],
         subtitle: input.taskId,
       }
     case "task_cancel":
       return {
-        icon: "circle-x",
         title: TOOL_TITLE_DESC["task_cancel"],
         subtitle: input.taskId,
       }
     case "loop_stop":
       return {
-        icon: "flag",
         title: TOOL_TITLE_DESC["loop_stop"],
         subtitle: (input.summary as string) || "",
       }
     case "light_loop_approve":
       return {
-        icon: "circle-check",
         title: TOOL_TITLE_DESC["light_loop_approve"],
         subtitle: (input.summary as string) || (input.sessionID as string) || "",
       }
     case "light_loop_reject":
       return {
-        icon: "rotate-ccw",
         title: TOOL_TITLE_DESC["light_loop_reject"],
         subtitle: (input.reason as string) || (input.sessionID as string) || "",
       }
     case "context7_resolve-library-id":
       return {
-        icon: "tag",
         title: TOOL_TITLE_DESC["context7_resolve_library"],
         subtitle: input.libraryName,
       }
     case "context7_query-docs":
       return {
-        icon: "scroll-text",
         title: TOOL_TITLE_DESC["context7_query_docs"],
         subtitle: input.query,
       }
     case "session_list":
       return {
-        icon: "list",
         title: TOOL_TITLE_DESC["session_list"],
         subtitle: input.scope,
       }
     case "scope_list":
       return {
-        icon: "folder-tree",
         title: TOOL_TITLE_DESC["scope_list"],
         subtitle: (input.query as string) || undefined,
       }
     case "session_read":
       return {
-        icon: "message-square",
         title: TOOL_TITLE_DESC["session_read"],
         subtitle: input.target,
       }
     case "session_search":
       return {
-        icon: "quote",
         title: TOOL_TITLE_DESC["session_search"],
         subtitle: input.pattern,
       }
     case "session_send":
       return {
-        icon: "share",
         title: TOOL_TITLE_DESC["session_send"],
         subtitle: input.target,
       }
@@ -813,37 +748,31 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       switch (action) {
         case "status":
           return {
-            icon: "radar",
             title: TOOL_TITLE_DESC["session_status"],
             subtitle: input.target,
           }
         case "compact":
           return {
-            icon: "layers",
             title: TOOL_TITLE_DESC["session_compact"],
             subtitle: input.target,
           }
         case "abort":
           return {
-            icon: "circle-stop",
             title: TOOL_TITLE_DESC["session_abort"],
             subtitle: input.target,
           }
         case "question_reply":
           return {
-            icon: "message-circle",
             title: TOOL_TITLE_DESC["session_answer_question"],
             subtitle: input.target,
           }
         case "question_reject":
           return {
-            icon: "circle-x",
             title: TOOL_TITLE_DESC["session_dismiss_question"],
             subtitle: input.target,
           }
         case "permission_reply":
           return {
-            icon: input.reply === "reject" ? "shield-alert" : "shield-check",
             title:
               input.reply === "reject"
                 ? TOOL_TITLE_DESC["session_deny_permission"]
@@ -852,7 +781,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           }
         default:
           return {
-            icon: "radar",
             title: TOOL_TITLE_DESC["session_control"],
             subtitle: input.target,
           }
@@ -863,7 +791,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.venue)
       pushArg(args, input.participation_mode)
-      return { icon: "flask-conical", title: TOOL_TITLE_DESC["research_init"], subtitle: input.project, args }
+      return { title: TOOL_TITLE_DESC["research_init"], subtitle: input.project, args }
     }
     case "research_state": {
       const args: string[] = []
@@ -871,7 +799,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.target_phase)
       pushArg(args, input.participation_mode)
       return {
-        icon: "sigma",
         title: TOOL_TITLE_DESC["research_state"],
         subtitle: researchStateSubtitle(input, metadata),
         args,
@@ -882,7 +809,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.round ? `round ${input.round}` : undefined)
       return {
-        icon: "lightbulb",
         title: TOOL_TITLE_DESC["research_idea"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -893,7 +819,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.idea)
       return {
-        icon: "map",
         title: TOOL_TITLE_DESC["research_plan"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -905,7 +830,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.group)
       pushArg(args, input.backend)
       return {
-        icon: "microscope",
         title: TOOL_TITLE_DESC["research_experiment"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -916,7 +840,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.paper_section)
       return {
-        icon: "scale",
         title: TOOL_TITLE_DESC["research_claim"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -927,7 +850,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.kind)
       return {
-        icon: "image",
         title: TOOL_TITLE_DESC["research_exhibit"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -938,7 +860,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action)
       pushArg(args, input.venue)
       return {
-        icon: "scroll-text",
         title: TOOL_TITLE_DESC["research_paper"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -950,7 +871,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.venue)
       pushArg(args, input.outcome)
       return {
-        icon: "send",
         title: TOOL_TITLE_DESC["research_submission"],
         subtitle: researchObjectSubtitle(input, metadata),
         args,
@@ -959,7 +879,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "research_wiki": {
       const args = researchWikiArgs(input, metadata)
       return {
-        icon: "telescope",
         title: TOOL_TITLE_DESC["research_wiki"],
         subtitle: researchWikiSubtitle(input, metadata),
         args,
@@ -971,7 +890,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.last ? `last ${input.last}` : undefined)
       pushArg(args, input.event_type)
       return {
-        icon: "clock",
         title: TOOL_TITLE_DESC["research_timeline"],
         subtitle: subtitleFromToolResult(metadata, input.summary),
         args,
@@ -979,100 +897,83 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     }
     case "profile_get":
       return {
-        icon: "scan",
         title: TOOL_TITLE_DESC["profile_get"],
         subtitle: input.name,
       }
     case "profile_update":
       return {
-        icon: "user-round-pen",
         title: TOOL_TITLE_DESC["profile_update"],
         subtitle: input.name,
       }
     case "agenda_schedule":
       return {
-        icon: "calendar-days",
         title: TOOL_TITLE_DESC["agenda_schedule"],
         subtitle: input.agendaTitle,
       }
     case "agenda_watch":
       return {
-        icon: "eye",
         title: TOOL_TITLE_DESC["agenda_watch"],
         subtitle: input.agendaTitle,
       }
     case "agenda_list":
       return {
-        icon: "clipboard-list",
         title: TOOL_TITLE_DESC["agenda_list"],
         subtitle: input.status,
       }
     case "agenda_update":
       return {
-        icon: "pencil",
         title: TOOL_TITLE_DESC["agenda_update"],
         subtitle: input.agendaItemId,
       }
     case "agenda_cancel":
       return {
-        icon: "trash-2",
         title: TOOL_TITLE_DESC["agenda_cancel"],
         subtitle: input.agendaItemId,
       }
     case "agenda_trigger":
       return {
-        icon: "zap",
         title: TOOL_TITLE_DESC["agenda_trigger"],
         subtitle: input.agendaItemId,
       }
     case "agenda_logs":
       return {
-        icon: "clock",
         title: TOOL_TITLE_DESC["agenda_logs"],
         subtitle: input.agendaItemId,
       }
     case "memory_search":
       return {
-        icon: "brain",
         title: TOOL_TITLE_DESC["memory_search"],
         subtitle: input.query,
       }
     case "memory_get":
       return {
-        icon: "brain",
         title: TOOL_TITLE_DESC["memory_get"],
       }
     case "memory_write":
       return {
-        icon: "brain",
         title: TOOL_TITLE_DESC["memory_write"],
         subtitle: input.memoryTitle,
       }
     case "memory_edit":
       return {
-        icon: "brain",
         title: TOOL_TITLE_DESC["memory_edit"],
         subtitle: input.memoryTitle,
       }
     case "email_send":
       return {
-        icon: "mail",
         title: TOOL_TITLE_DESC["email_send"],
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
       }
     case "clarus_submit_task_result":
       return {
-        icon: "send",
         title: TOOL_TITLE_DESC["clarus_submit_task_result"],
       }
     case "clarus_extend_task":
       return {
-        icon: "timer",
         title: TOOL_TITLE_DESC["clarus_extend_task"],
       }
     case "github_deliver_fix":
       return {
-        icon: "git-merge",
         title: TOOL_TITLE_DESC["github_deliver_fix"],
         subtitle: input?.branch,
       }
@@ -1081,7 +982,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.folder && input.folder !== "INBOX" ? input.folder : undefined)
       pushArg(args, input.search?.unseen ? "unread" : undefined)
       return {
-        icon: "mail-search",
         title:
           input.action === "search"
             ? TOOL_TITLE_DESC["email_search"]
@@ -1101,7 +1001,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
           : `${input.target.length} targets`
         : input.target
       return {
-        icon: "rotate-cw",
         title: TOOL_TITLE_DESC["runtime_reload"],
         subtitle: target || input.reason,
       }
@@ -1110,7 +1009,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input?.input?.strategy)
       return {
-        icon: "bot",
         title: TOOL_TITLE_DESC["agent_config"],
         subtitle: input?.input?.name ?? "",
         args,
@@ -1122,7 +1020,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input?.baseRef !== "current" ? input?.baseRef : undefined)
       pushArg(args, input?.force ? "force" : undefined)
       return {
-        icon: "worktree-enter",
         title: TOOL_TITLE_DESC["worktree_enter"],
         subtitle: (input?.target as string) ?? "New worktree",
         args,
@@ -1132,7 +1029,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input?.cleanup === "remove_if_clean" ? "remove if clean" : undefined)
       return {
-        icon: "worktree-leave",
         title: TOOL_TITLE_DESC["worktree_leave"],
         subtitle: metadata?.previous?.name ?? metadata?.previous?.path ?? "",
         args,
@@ -1144,7 +1040,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, metadata?.cleanup?.reason)
       pushArg(args, metadata?.cleanup?.error)
       return {
-        icon: "worktree-archive",
         title: TOOL_TITLE_DESC["worktree_archive"],
         subtitle: metadata?.worktree?.name ?? metadata?.worktree?.path ?? input?.target ?? "",
         args,
@@ -1154,7 +1049,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, metadata?.worktrees ? `${metadata.worktrees.length} total` : undefined)
       return {
-        icon: "worktree-list",
         title: TOOL_TITLE_DESC["worktree_list"],
         subtitle: metadata?.active?.name ?? "",
         args,
@@ -1166,7 +1060,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.workspace)
       pushArg(args, input.refresh ? "refresh" : undefined)
       return {
-        icon: "satellite",
         title: TOOL_TITLE_DESC["inspire_platform_status"],
         subtitle: input.project || metadata?.project_names?.[0] || "All",
         args,
@@ -1176,7 +1069,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.action === "set" && input.value !== undefined ? String(input.value) : undefined)
       return {
-        icon: "sliders-horizontal",
         title:
           input.action === "set"
             ? TOOL_TITLE_DESC["inspire_config_set_default"]
@@ -1190,7 +1082,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.target)
       pushArg(args, input.target === "harbor" ? input.registry : undefined)
       return {
-        icon: "lock-keyhole",
         title:
           input.target === "harbor" ? TOOL_TITLE_DESC["inspire_login_harbor"] : TOOL_TITLE_DESC["inspire_login_sii"],
         subtitle: input.username,
@@ -1201,7 +1092,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
-        icon: "disc",
         title: input.repo ? TOOL_TITLE_DESC["inspire_images_detail"] : TOOL_TITLE_DESC["inspire_images_search"],
         subtitle: input.repo || input.search || "Recent",
         args,
@@ -1211,7 +1101,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.name)
       pushArg(args, input.tag)
-      return { icon: "archive", title: TOOL_TITLE_DESC["inspire_image_push"], subtitle: input.image, args }
+      return { title: TOOL_TITLE_DESC["inspire_image_push"], subtitle: input.image, args }
     }
     case "inspire_submit": {
       const args: string[] = []
@@ -1219,20 +1109,19 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.compute_group)
       pushArg(args, input.image ? shortToken(input.image, 30) : undefined)
       pushArg(args, input.instances ? `${input.instances}× nodes` : undefined)
-      return { icon: "gpu", title: TOOL_TITLE_DESC["inspire_submit_gpu"], subtitle: input.name, args }
+      return { title: TOOL_TITLE_DESC["inspire_submit_gpu"], subtitle: input.name, args }
     }
     case "inspire_submit_hpc": {
       const args: string[] = []
       pushArg(args, input.workspace)
       pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
-      return { icon: "cpu", title: TOOL_TITLE_DESC["inspire_submit_hpc"], subtitle: input.name, args }
+      return { title: TOOL_TITLE_DESC["inspire_submit_hpc"], subtitle: input.name, args }
     }
     case "inspire_stop": {
       const args: string[] = []
       pushArg(args, input.workspace)
       pushArg(args, input.status && input.status !== "running" ? input.status : undefined)
       return {
-        icon: "circle-stop",
         title: input.job_id ? TOOL_TITLE_DESC["inspire_stop_job"] : TOOL_TITLE_DESC["inspire_stop_batch"],
         subtitle: input.job_id ? shortToken(input.job_id, 20) : input.workspace,
         args,
@@ -1245,7 +1134,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.type && input.type !== "all" ? input.type : undefined)
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
-        icon: "list-filter",
         title: TOOL_TITLE_DESC["inspire_jobs"],
         subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace || "All",
         args,
@@ -1253,7 +1141,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     }
     case "inspire_job_detail":
       return {
-        icon: "scan-search",
         title: TOOL_TITLE_DESC["inspire_job_detail"],
         subtitle: shortToken(input.job_id, 20),
       }
@@ -1262,17 +1149,15 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.keyword)
       pushArg(args, input.download ? "download" : undefined)
       return {
-        icon: "file-terminal",
         title: input.download ? TOOL_TITLE_DESC["inspire_logs_download"] : TOOL_TITLE_DESC["inspire_logs_view"],
         subtitle: shortToken(input.job_id, 20),
         args,
       }
     }
     case "inspire_metrics":
-      return { icon: "heart-pulse", title: TOOL_TITLE_DESC["inspire_metrics"], subtitle: shortToken(input.job_id, 20) }
+      return { title: TOOL_TITLE_DESC["inspire_metrics"], subtitle: shortToken(input.job_id, 20) }
     case "inspire_inference":
       return {
-        icon: "square-play",
         title:
           input.action === "create"
             ? TOOL_TITLE_DESC["inspire_inference_deploy"]
@@ -1286,7 +1171,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.keyword)
       pushArg(args, input.model_source_path ? "registered" : undefined)
       return {
-        icon: "boxes",
         title:
           input.action === "detail"
             ? TOOL_TITLE_DESC["inspire_models_detail"]
@@ -1305,7 +1189,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.gpu_count ? `${input.gpu_count}× GPU` : undefined)
       pushArg(args, input.priority)
       return {
-        icon: "code",
         title:
           input.action === "start"
             ? TOOL_TITLE_DESC["inspire_notebook_start"]
@@ -1322,7 +1205,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     }
     default:
       return {
-        icon: "settings",
         title: tool,
       }
   }

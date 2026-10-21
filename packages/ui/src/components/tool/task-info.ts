@@ -1,3 +1,4 @@
+import { getToolIcon } from "./icons"
 import { TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
 export function getTaskToolInfo(input: Record<string, unknown>) {
@@ -5,7 +6,7 @@ export function getTaskToolInfo(input: Record<string, unknown>) {
   const agentType = typeof input.subagent_type === "string" ? input.subagent_type : undefined
 
   return {
-    icon: "list-todo" as const,
+    icon: getToolIcon("task", input),
     title: TOOL_TITLE_DESC.task,
     subtitle: description,
     args: agentType ? [agentType] : undefined,

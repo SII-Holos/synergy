@@ -1,3 +1,4 @@
+import { getToolIcon } from "./tool/icons"
 import { useLingui } from "@lingui/solid"
 import { createEffect, createMemo, createResource, createSignal, onCleanup, Show, untrack } from "solid-js"
 import { RenderArtifact } from "@ericsanchezok/synergy-util/render-artifact"
@@ -360,7 +361,10 @@ export function RenderTool(
     <Show
       when={active() || !!html() || !!descriptor()}
       fallback={
-        <BasicTool {...props} trigger={{ icon: "code", title: TOOL_TITLE_DESC.render }}>
+        <BasicTool
+          {...props}
+          trigger={{ icon: getToolIcon(props.tool, props.input, props.metadata), title: TOOL_TITLE_DESC.render }}
+        >
           <Show when={props.output}>
             {(output) => (
               <div data-component="tool-output" data-scrollable>

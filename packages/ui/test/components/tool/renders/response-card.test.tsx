@@ -57,7 +57,7 @@ describe("registered response_card renderer", () => {
 
     expect(registeredName).toBe("response_card")
     expect(capturedTrigger).toEqual({
-      icon: "message-square-more",
+      icon: "message-circle",
       title: TOOL_TITLE_DESC.response_card,
       subtitle: "Choose a release path",
       tags: [{ label: "2 elements" }],

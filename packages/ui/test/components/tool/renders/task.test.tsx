@@ -73,7 +73,7 @@ describe("registered task tool renderer", () => {
     })
 
     expect(capturedTrigger).toEqual({
-      icon: "list-todo",
+      icon: "workflow",
       title: TOOL_TITLE_DESC.task,
       subtitle: "Inspect the tool registry",
       tags: [{ label: "explore" }, { label: "background" }],

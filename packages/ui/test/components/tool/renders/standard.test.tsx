@@ -64,7 +64,7 @@ mock.module("../../../../src/components/message-part", () => ({
 await import("../../../../src/components/tool/renders/standard")
 
 function renderTrigger(tool: string, props: Record<string, any>) {
-  registeredRenders[tool]?.(props)
+  registeredRenders[tool]?.({ tool, ...props })
   return capturedTrigger
 }
 

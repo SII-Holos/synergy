@@ -488,7 +488,7 @@ export function ActivityReasoningSummary(props: { item: ActivityReasoningSummary
       <span data-slot="reasoning-summary-leading" aria-hidden="true">
         <Show
           when={props.item.state === "pending"}
-          fallback={<Icon name={getSemanticIcon("performance.trace")} size="small" />}
+          fallback={<Icon name={getSemanticIcon("session.reasoning")} size="small" />}
         >
           <Spinner />
         </Show>
@@ -651,7 +651,7 @@ export function MinimalActivitySummary(props: { item: ActivitySummaryItem }) {
       aria-label={finalLabel()}
     >
       <span data-slot="minimal-activity-leading" aria-hidden="true">
-        <Icon name={getSemanticIcon("performance.trace")} size="small" />
+        <Icon name={getSemanticIcon("session.reasoning")} size="small" />
       </span>
       <span data-slot="minimal-activity-fact" aria-hidden="true">
         <AnimatedActivityCount value={props.item.total} identity={props.item.key} />

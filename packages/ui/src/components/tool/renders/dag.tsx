@@ -1,10 +1,10 @@
+import { getToolIcon } from "../icons"
 import { TOOL_TITLE_DESC, TOOL_MISC_DESC } from "../../tool-title-descriptors"
 import { Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { BasicTool } from "../../basic-tool"
 import { DagGraph } from "../../dag-graph"
 import { ToolRegistry } from "../../message-part"
-import { getSemanticIcon } from "../../semantic-icon"
 
 ToolRegistry.register({
   name: "dagwrite",
@@ -41,7 +41,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: getSemanticIcon("dag.main"),
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["dagwrite"],
           subtitle: firstReady() || "",
           tags: ratio() ? [{ label: ratio() }] : undefined,
@@ -74,7 +74,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: getSemanticIcon("dag.main"),
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["dagpatch"],
           subtitle: _(TOOL_MISC_DESC.updated),
           tags: ratio() ? [{ label: ratio() }] : undefined,
@@ -107,7 +107,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: getSemanticIcon("dag.main"),
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["dagread"],
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}

@@ -122,7 +122,7 @@ describe("remote MCP search renderer registration (render boundaries)", () => {
       output: JSON.stringify([{ title: "Retrieval-Augmented Generation", year: 2020 }]),
     })
     expect(capturedTrigger).toEqual({
-      icon: "graduation-cap",
+      icon: "telescope",
       title: "Scholight",
       subtitle: "retrieval augmented generation",
       tags: [{ label: "standard" }, { label: "cs.CL" }],
@@ -136,7 +136,7 @@ describe("remote MCP search renderer registration (render boundaries)", () => {
       output: "abstract text",
     })
     expect(capturedTrigger).toEqual({
-      icon: "file-text",
+      icon: "telescope",
       title: "Scholight Extract",
       subtitle: "https://arxiv.org/abs/2303.08774",
       tags: [{ label: "arxiv.org" }],

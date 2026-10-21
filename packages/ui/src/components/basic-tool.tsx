@@ -1,3 +1,4 @@
+import { getToolIcon } from "./tool/icons"
 import {
   createContext,
   createEffect,
@@ -93,7 +94,7 @@ function fromTrigger(
     if (t.icon) return withSubtitleClickHandler(trigger as ToolTriggerProps, onSubtitleClick)
     if (typeof t.title === "string") {
       return {
-        icon: icon ?? "settings",
+        icon: icon ?? getToolIcon(""),
         title: t.title as string,
         titleClass: t.titleClass as string | undefined,
         subtitle: t.subtitle as string | undefined,
@@ -111,7 +112,7 @@ function fromTrigger(
     const resolved = (trigger as () => LegacyTriggerValue)()
     if (!resolved || typeof resolved.title !== "string") return undefined
     return {
-      icon: icon ?? "settings",
+      icon: icon ?? getToolIcon(""),
       title: resolved.title,
       titleClass: resolved.titleClass,
       subtitle: resolved.subtitle,
@@ -254,7 +255,7 @@ export function SmartTool(props: {
   const icon = createMemo(() => {
     const fb = props.fallbackMeta
     if (fb?.icon) return fb.icon as IconName
-    return classified().spec.icon
+    return getToolIcon(props.tool, props.input, props.metadata)
   })
 
   const title = createMemo(() => {
