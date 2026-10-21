@@ -96,7 +96,10 @@ test("capability negotiation, real multi-client projection and disconnect releas
               properties: { sessionID: "session", context: "private-body".repeat(10000) },
             },
           })
-        await wait(() => b.frames.filter((frame) => frame.payload.type === "server.cursor").length === 30)
+        await wait(() => b.frames.some((frame) => frame.payload.type === "server.cursor"))
+        expect(
+          b.frames.filter((frame) => frame.payload.type === "server.cursor").map((frame) => frame.payload.properties),
+        ).toEqual([{ epoch: "fixture", fromSeq: 1, toSeq: 30 }])
         expect(b.frames.filter((frame) => frame.payload.type === "server.view.patch")).toHaveLength(0)
         expect(a.frames.filter((frame) => frame.payload.type === "server.view.patch")).toHaveLength(31)
         expect(JSON.stringify([...a.frames, ...b.frames])).not.toContain("private-body")

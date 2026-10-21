@@ -34,6 +34,7 @@ type Maintenance = {
   timeoutMs: number
 }
 const maintenanceLabels: Record<StorageMaintenanceOperation, string> = {
+  checkpoint: "Saving the database journal.",
   vacuum: "Rebuilding the database.",
   reclaim: "Reclaiming database space.",
   prune: "Removing expired execution evidence.",

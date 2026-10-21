@@ -213,7 +213,12 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         bun("native-workspace", ["script/native-workspace-coverage.ts"]),
         test(
           "windows-harness",
-          ["test/global/schema-publish.test.ts", "test/util/server-process-lock.test.ts"],
+          [
+            "test/global/schema-publish.test.ts",
+            "test/util/server-process-lock.test.ts",
+            "test/session/rollout-maintenance.test.ts",
+            "test/storage/maintenance.test.ts",
+          ],
           "packages/harness",
         ),
         test("windows-util", ["test/fs-lock.test.ts", "test/process-identity.test.ts"], "packages/util"),
@@ -223,6 +228,11 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
       return [
         bun("native-pty", ["packages/local-runtime/script/build-pty.ts"]),
         bun("native-workspace", ["script/native-workspace-coverage.ts"]),
+        test(
+          "portable-rollout",
+          ["test/session/rollout-maintenance.test.ts", "test/storage/maintenance.test.ts"],
+          "packages/harness",
+        ),
       ]
     case "benchmark-pure":
       return [

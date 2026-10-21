@@ -927,6 +927,7 @@ inspect, verify, recover, restore backups, and move authoritative Agent storage
 
 | Option | Description |
 | --- | --- |
+| `--apply` (boolean) | back up and compact history in resumable batches; default only reports pending work |
 | `--json` (boolean) | print only the final status as JSON |
 | `--target` (string) | JSONC configuration file containing the target storage domain; credentials use an environment reference |
 

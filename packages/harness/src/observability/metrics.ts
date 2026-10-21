@@ -9,7 +9,16 @@ import { ObservabilityStore } from "./store"
 
 export namespace ObservabilityMetrics {
   const AGGREGATE_FLUSH_MS = 1000
-  const AGGREGATED_COUNT_METRICS = new Set([
+  const AGGREGATED_SUM_METRICS = new Set([
+    "storage.record.write",
+    "storage.record.encoded_bytes",
+    "storage.transaction.count",
+    "storage.artifact.sync",
+    "storage.artifact.bytes",
+    "rollout.transport.blocks",
+    "rollout.transport.bytes",
+    "server.projection.frames",
+    "server.projection.bytes",
     "llm.stream.output_chars",
     "process.output.chars",
     "storage.operation.count",
@@ -143,7 +152,7 @@ export namespace ObservabilityMetrics {
   }
 
   function shouldAggregate(input: ResolvedMetricInput) {
-    return input.unit === "count" && AGGREGATED_COUNT_METRICS.has(input.name)
+    return AGGREGATED_SUM_METRICS.has(input.name)
   }
 
   function aggregate(input: ResolvedMetricInput) {

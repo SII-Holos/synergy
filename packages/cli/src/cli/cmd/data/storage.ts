@@ -42,7 +42,28 @@ export const DataStorageCommand = cmd({
                 recoveryRecords: recovery.length,
                 pendingEvents: await handle.store.pendingEventCount(),
                 maintenance: await StorageMaintenance.status(),
+                rollout: await StorageMaintenance.rolloutStatus(),
               },
+              null,
+              2,
+            ),
+          )
+        },
+      )
+      .command(
+        "compact-rollout",
+        "inspect historical Rollout metadata, or compact it offline after creating a recoverable backup",
+        (yargs) =>
+          yargs.option("apply", {
+            type: "boolean",
+            default: false,
+            describe: "back up and compact history in resumable batches; default only reports pending work",
+          }),
+        async (args) => {
+          await using handle = await StorageMaintenance.open({ migrate: false })
+          console.log(
+            JSON.stringify(
+              await StorageMaintenance.compactRollout({ apply: args.apply, signal: currentMaintenance()?.signal }),
               null,
               2,
             ),

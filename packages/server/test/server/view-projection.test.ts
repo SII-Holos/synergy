@@ -1,6 +1,12 @@
 import { expect, spyOn, test } from "bun:test"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
-import { createViewProjection, projectViewReplay, VIEW_FRAME_LIMIT } from "../../src/server/view-projection"
+import {
+  createViewProjection,
+  projectViewReplay,
+  VIEW_FRAME_LIMIT,
+  type ViewEvent,
+} from "../../src/server/view-projection"
+import { createProjectionCursors } from "../../src/server/projection-cursors"
 import { createEventProjection, projectReplayEvent } from "../../src/server/event-projection"
 
 const part = (text: string): MessageV2.TextPart => ({
@@ -96,15 +102,73 @@ test("authoritative append checkpoints carry metadata and a version anchor witho
   projection.dispose()
 })
 test("unrequested detail and evidence advance the same cursor in live and replay without sending bodies", () => {
-  const projection = createViewProjection(() => {})
-  const events = ["rollout.updated", "usage.recorded", "execution.updated"].map((type, i) => ({
-    scopeID: "scope",
-    payload: { type, epoch: "epoch", seq: i + 1, properties: { value: "secret-body".repeat(1000) } },
-  }))
-  const frames = events.map((event) => projection.project(event))
-  expect(frames.map((frame) => frame?.payload.type)).toEqual(["server.cursor", "server.cursor", "server.cursor"])
+  const frames: ViewEvent[] = []
+  const projection = createViewProjection((frame) => frames.push(frame))
+  const events = ["rollout.updated", "usage.recorded", "execution.updated", "lsp.client.diagnostics"].map(
+    (type, i) => ({
+      scopeID: "scope",
+      payload: { type, epoch: "epoch", seq: i + 1, properties: { value: "secret-body".repeat(1000) } },
+    }),
+  )
+  for (const event of events) expect(projection.project(event)).toBeNull()
+  const visible = { scopeID: "scope", payload: { type: "session.status", epoch: "epoch", seq: 5, properties: {} } }
+  expect(projection.project(visible)).toEqual(visible)
+  expect(frames).toHaveLength(1)
+  expect(frames[0].payload.properties).toEqual({ epoch: "epoch", fromSeq: 1, toSeq: 4 })
   expect(JSON.stringify(frames)).not.toContain("secret-body")
   expect(projectViewReplay(events.map((event) => event.payload))).toEqual(frames.map((frame) => frame!.payload))
+  projection.dispose()
+})
+
+test("cursor ranges preserve gaps, epochs and scopes, flush on deadline, and release their timer", () => {
+  const frames: ViewEvent[] = []
+  let due: (() => void) | undefined
+  const cursors = createProjectionCursors(
+    (frame) => frames.push(frame),
+    (flush, ms) => {
+      expect(ms).toBe(50)
+      due = flush
+      return () => {
+        due = undefined
+      }
+    },
+  )
+  const cursor = (scopeID: string, seq: number, epoch = "a"): ViewEvent => ({
+    scopeID,
+    payload: { type: "server.cursor", epoch, seq, properties: { epoch, fromSeq: seq, toSeq: seq } },
+  })
+  cursors.project(cursor("one", 1))
+  cursors.project(cursor("two", 1))
+  cursors.project(cursor("one", 2))
+  cursors.project(cursor("one", 4))
+  cursors.project(cursor("one", 1, "b"))
+  expect(frames.map((frame) => frame.payload.properties)).toEqual([
+    { epoch: "a", fromSeq: 1, toSeq: 2 },
+    { epoch: "a", fromSeq: 4, toSeq: 4 },
+  ])
+  due!()
+  expect(frames.slice(2).map((frame) => [frame.scopeID, frame.payload.epoch])).toEqual([
+    ["two", "a"],
+    ["one", "b"],
+  ])
+  expect(due).toBeUndefined()
+  for (let i = 0; i < 129; i++) cursors.project(cursor(String(i), 1))
+  expect(frames).toHaveLength(5)
+  cursors.dispose()
+  expect(due).toBeUndefined()
+  expect(frames).toHaveLength(5)
+  const closing = createProjectionCursors(
+    () => closing.dispose(),
+    (flush) => {
+      due = flush
+      return () => {
+        due = undefined
+      }
+    },
+  )
+  closing.project(cursor("one", 1))
+  closing.project(cursor("one", 3))
+  expect(due).toBeUndefined()
 })
 test("append traffic hashes only checkpoints and its byte work is proportional to new text", async () => {
   const frames: unknown[] = []

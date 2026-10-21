@@ -13,6 +13,7 @@ import { RuntimeContext } from "../lifecycle/context"
 import { SessionMigrationTarget } from "../migration/session-target"
 import type { Session } from "."
 import { RolloutMigration } from "./rollout/migration"
+import { RolloutJournalMaintenance } from "./rollout/journal-maintenance"
 import { $ } from "bun"
 import path from "path"
 import fs from "fs/promises"
@@ -2459,6 +2460,7 @@ export const migrations: Migration[] = [
   },
   RolloutMigration.migration,
   RolloutMigration.pricingMigration,
+  RolloutJournalMaintenance.migration,
   RolloutExecutionMigration.migration,
 
   {

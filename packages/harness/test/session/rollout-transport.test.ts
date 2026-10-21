@@ -134,6 +134,63 @@ test.each(["failure", "early-response"] as const)("request cancellation failure 
 })
 
 describe("rollout transport", () => {
+  test("delivers the first durable block immediately and batches later bytes at the deadline", async () => {
+    let producer!: ReadableStreamDefaultController<Uint8Array>
+    const admitted = Promise.withResolvers<void>()
+    const durable = Promise.withResolvers<void>()
+    const scheduled = Promise.withResolvers<() => void>()
+    const chunks: string[] = []
+    const response = await RolloutTransport.provide(
+      async (event) => {
+        if (event.type !== "chunk") return
+        chunks.push(new TextDecoder().decode(event.data))
+        if (chunks.length === 1) {
+          admitted.resolve()
+          await durable.promise
+        }
+      },
+      () =>
+        RolloutTransport.fetch(
+          async () =>
+            new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  producer = controller
+                  controller.enqueue(new TextEncoder().encode("first"))
+                },
+              }),
+            ),
+          "https://fixture.test",
+        ),
+      {
+        schedule: (flush, delay) => {
+          expect(delay).toBe(100)
+          scheduled.resolve(flush)
+          return () => {}
+        },
+      },
+    )
+    const reader = response.body!.getReader()
+    let delivered = false
+    const first = reader.read().then((value) => {
+      delivered = true
+      return value
+    })
+    await admitted.promise
+    expect(delivered).toBe(false)
+    durable.resolve()
+    expect(new TextDecoder().decode((await first).value)).toBe("first")
+    producer.enqueue(new TextEncoder().encode("second"))
+    const flush = await scheduled.promise
+    const second = reader.read()
+    expect(chunks).toEqual(["first"])
+    flush()
+    expect(new TextDecoder().decode((await second).value)).toBe("second")
+    producer.close()
+    expect((await reader.read()).done).toBe(true)
+    reader.releaseLock()
+  })
+
   test("records a buffered POST while retaining its content length through a real proxy", async () => {
     const payload = JSON.stringify({ messages: [{ role: "user", content: "read".repeat(50000) }] })
     const observed: { bytes?: string; length?: string | null; transfer?: string | null } = {}
@@ -260,6 +317,8 @@ describe("rollout transport", () => {
     )
     expect(result).toBe("hello".repeat(100))
     expect(events.filter((event) => event.type === "chunk").length).toBeLessThan(10)
+    const first = events.find((event) => event.type === "chunk" && event.channel === "response")
+    expect(first?.type === "chunk" && new TextDecoder().decode(first.data)).toBe("hello")
   })
 
   test("cancels the response if its metadata cannot be committed", async () => {

@@ -1,4 +1,6 @@
 import fs from "node:fs/promises"
+import { constants } from "node:fs"
+import { recordStorageTransaction } from "./measure"
 import path from "node:path"
 import {
   StorageBusyError,
@@ -196,6 +198,28 @@ export class SqliteDriver implements SqlDriver {
     return result.rows as Row[]
   }
 
+  async backup(filename: string): Promise<void> {
+    await this.readerQueue.run(() =>
+      this.maintenanceReaderQueue.run(() =>
+        this.writerQueue.run(async () => {
+          this.check()
+          if (!this.ownership) throw new StorageOwnershipError("Backup requires exclusive SQLite ownership")
+          // Provenance: https://www.sqlite.org/howtocorrupt.html#_backup_or_restore_while_a_transaction_is_active
+          // Local adaptation: hold ownership and all three queues through a complete WAL checkpoint and file copy.
+          const { rows } = await this.writer.request({
+            action: "query",
+            statement: "PRAGMA wal_checkpoint(TRUNCATE)",
+            maintenance: "checkpoint",
+            cacheStatement: false,
+          })
+          if (Number(rows[0]?.busy) !== 0 || Number(rows[0]?.log) !== Number(rows[0]?.checkpointed))
+            throw new StorageBusyError("SQLite backup requires a complete checkpoint")
+          await fs.copyFile(this.filename, filename, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+        }),
+      ),
+    )
+  }
+
   transaction<T>(body: (connection: SqlConnection) => Promise<T>, options: SqlTransactionOptions = {}): Promise<T> {
     const background = options.background ?? storageQueuePriority() === "background"
     const queue = options.readOnly ? (background ? this.maintenanceReaderQueue : this.readerQueue) : this.writerQueue
@@ -225,8 +249,10 @@ export class SqliteDriver implements SqlDriver {
         options.commitGuard?.()
         committing = true
         await query("COMMIT")
+        if (!options.readOnly) recordStorageTransaction("sqlite", "committed")
         return value
       } catch (error) {
+        if (!options.readOnly) recordStorageTransaction("sqlite", "failed")
         try {
           await query("ROLLBACK")
         } catch {

@@ -12,6 +12,7 @@ import { RolloutEvents } from "./events"
 import { ScopeContext } from "../../scope/context"
 import { Scope } from "../../scope"
 import { Log } from "../../util/log"
+import { RolloutJournalCodec } from "./journal-codec"
 
 export namespace RolloutJournal {
   const log = Log.create({ service: "rollout.journal" })
@@ -20,18 +21,7 @@ export namespace RolloutJournal {
     .object({ allocated: Revision, committed: Revision })
     .strict()
     .refine((value) => value.committed <= value.allocated, "Invalid rollout journal head")
-  const identity = { version: z.literal(1), seq: Revision.positive(), time: z.number() }
-  export const Event = z.discriminatedUnion("kind", [
-    z
-      .object({
-        ...identity,
-        kind: z.literal("record"),
-        key: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).min(1),
-        value: z.json(),
-      })
-      .strict(),
-    z.object({ ...identity, kind: z.literal("gap") }).strict(),
-  ])
+  export const Event = RolloutJournalCodec.Event
   export type Event = z.infer<typeof Event>
 
   export async function prepare(owner: RolloutSchema.Owner) {
@@ -49,15 +39,12 @@ export namespace RolloutJournal {
     return [...root(owner), "events", String(seq).padStart(12, "0")]
   }
   function capture(owner: RolloutSchema.Owner, event: Extract<Event, { kind: "record" }>) {
-    return Storage.enqueue(
-      {
-        id: crypto.randomUUID(),
-        scopeID: owner.scopeID,
-        type: RolloutEvents.RecordCommitted.type,
-        payload: { properties: { owner, revision: event.seq, time: event.time, key: event.key, value: event.value } },
-      },
-      async () => {},
-    )
+    return Storage.capture({
+      id: crypto.randomUUID(),
+      scopeID: owner.scopeID,
+      type: RolloutEvents.RecordCommitted.type,
+      payload: { properties: { owner, revision: event.seq, time: event.time, key: event.key, value: event.value } },
+    })
   }
   export async function head(owner: RolloutSchema.Owner) {
     // Owner enumeration probes most owners without a journal; the miss is expected control flow.
@@ -76,7 +63,7 @@ export namespace RolloutJournal {
       await Storage.transaction(async () => {
         let event: Event
         try {
-          event = Event.parse(await Storage.read(eventKey(owner, seq)))
+          ;[event] = await RolloutJournalCodec.decode(owner, [await Storage.read(eventKey(owner, seq))])
         } catch (error) {
           if (!(error instanceof Storage.NotFoundError)) throw error
           event = { version: 1, seq, time: Date.now(), kind: "gap" }
@@ -129,13 +116,15 @@ export namespace RolloutJournal {
         value: JSON.parse(JSON.stringify(value)),
       })
       if (event.kind !== "record") throw new Error("Invalid rollout record")
+      const encoded = RolloutJournalCodec.encode(event)
       // One commit carries the allocation, its evidence and the projection, so
       // a crash can never expose a head that disagrees with the persisted
       // event set or leave an applied projection without its evidence.
       await Storage.transaction(async () => {
         await publish?.()
         await RolloutPending.track(owner)
-        await Storage.write(eventKey(owner, seq), event)
+        if (encoded.context) await RolloutJournalCodec.publishContext(owner, encoded.context)
+        await Storage.write(eventKey(owner, seq), encoded.event)
         await Storage.write(key, event.value)
         await UsageLedger.capture(owner, seq, event.key, event.value)
         await UsageLedger.committed(owner, seq)
@@ -161,10 +150,12 @@ export namespace RolloutJournal {
     for (let start = after + 1; start <= through; start += 128) {
       const keys = Array.from({ length: Math.min(128, through - start + 1) }, (_, i) => eventKey(owner, start + i))
       const values = await Storage.readMany(keys)
+      const missing = values.findIndex((value) => value === undefined)
+      const decoded = await RolloutJournalCodec.decode(owner, missing < 0 ? values : values.slice(0, missing))
       for (let i = 0; i < keys.length; i++) {
         if (values[i] === undefined)
           throw new Storage.NotFoundError({ message: "Missing committed rollout journal event" })
-        const event = Event.parse(values[i])
+        const event = decoded[i]
         if (event.seq !== start + i) throw new Error("Rollout journal sequence mismatch")
         yield event
       }

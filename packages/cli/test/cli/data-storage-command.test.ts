@@ -125,6 +125,28 @@ test("prune requires exclusive storage ownership and releases it on completion",
     expect(await ServerProcessLock.read()).toBeUndefined()
   }))
 
+test("rollout compaction defaults to inspection, refuses a running Home, and preserves a recoverable backup", () =>
+  runtime.run(async () => {
+    await invoke(["storage", "resume"])
+    const lock = await ServerProcessLock.acquire()
+    try {
+      await expect(invoke(["storage", "compact-rollout", "--apply"])).rejects.toThrow()
+    } finally {
+      await lock.release()
+    }
+    await invoke(["storage", "compact-rollout"])
+    expect(report()).toMatchObject({ writing: "context-v2", legacyAttempts: 0 })
+    expect(report().progress.backup).toBeUndefined()
+    await invoke(["storage", "compact-rollout", "--apply"])
+    expect(report()).toMatchObject({ phase: "completed", rewritten: 0 })
+    expect(report().backup).toMatchObject({ bytes: expect.any(Number), sha256: expect.any(String) })
+    const backup = path.join(Global.Path.data, "storage", "backups", report().backup.file)
+    expect((await fs.stat(backup)).size).toBe(report().backup.bytes)
+    await invoke(["storage", "compact-rollout", "--apply"])
+    expect(report().backup.file).toBe(path.basename(backup))
+    expect(await ServerProcessLock.read()).toBeUndefined()
+  }))
+
 test("resume preserves an interrupted JSON import and migrate activates a verified target", () =>
   runtime.run(async () => {
     const legacy = path.join(Global.Path.data, "notes", "home", "retained.json")

@@ -135,6 +135,8 @@ For hierarchical deletion, measure missing-key and batched-key cleanup beside a 
 
 For storage queues and worker changes, hold the preceding operation past the waiter's deadline and verify it never executes later. Check inherited cancellation, caller context and shutdown drain. Suspend or terminate owned reader and writer processes independently; two connections in a shared synchronous process do not establish read availability. Preserve the distinct ordinary-work and maintenance budgets.
 
+For journal encoding changes, separate immutable owner-local context from complete dynamic snapshots; keep public replay canonical and reject missing context. Preserve revisions and retention timestamps during historical rewrites, and commit the resumable cursor with each bounded batch. Keep compaction in an explicit maintenance migration with a verified consistent backup; do not trigger it during startup. Count record mutations, transactions, artifact syncs and encoded bytes separately, including bulk writes, and aggregate hot-path counters before telemetry persistence.
+
 Bound batch writes by encoded parameter bytes as well as row count. Use real-engine fixtures with several individually valid large records, and verify a later failure rolls back every statement and its migration checkpoint.
 
 Keep orphan collection outside ordinary Runtime admission; verify restart preserves referenced and unpublished bytes, then explicitly recover offline and assert only unreferenced, unpinned packs are removed. Test requested owner preparation, including conversation search, while automatic history import remains paused.
