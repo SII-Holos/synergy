@@ -80,7 +80,7 @@ const toolFeatures: ReadonlyArray<readonly [RegExp, string]> = [
   [/^email_/, "email"],
   [/^holos_/, "holos"],
   [/^github_/, "github"],
-  [/^(worktree_|project_|session_control$)/, "workbench"],
+  [/^(worktree_|project_|workbench_view$|session_control$)/, "workbench"],
   [/^browser_/, "browser"],
   [/^computer_/, "computer"],
   [/^(openai_image_|speak$|look_at$|scan_document$|render$)/, "media"],

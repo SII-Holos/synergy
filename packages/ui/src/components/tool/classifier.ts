@@ -5,6 +5,7 @@ import {
 } from "@ericsanchezok/synergy-util/activity"
 import type { IconName } from "../icon"
 import { COMPUTER_TOOL_ICONS } from "./computer-icons"
+import { getWorkbenchViewInfo } from "./workbench-info"
 import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "../semantic-icon"
 import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
@@ -238,6 +239,18 @@ export function classifyTool(
   const category = classifySemanticCategory(toolName, input)
 
   const spec = CATEGORIES[category]
+
+  if (toolName === "workbench_view") {
+    const info = getWorkbenchViewInfo(input, metadata)
+    return {
+      category,
+      spec: { ...spec, icon: info.icon },
+      title: info.title.message ?? toolName,
+      titleDescriptor: info.title,
+      subtitle: info.subtitle,
+      args: info.args,
+    }
+  }
 
   const titleDescriptor = toolTitleDescriptor(toolName, spec)
   const title = titleDescriptor?.message ?? humanizeToolName(toolName)

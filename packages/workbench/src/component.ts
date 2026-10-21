@@ -14,6 +14,8 @@ import { registerProjectSessionHealth } from "./project/session-health"
 import { registerConfig } from "./config-schema"
 import { Usage } from "@ericsanchezok/synergy-harness/usage"
 import { ExecutionService } from "./execution/service"
+import { WorkbenchPresentation } from "./presentation/service"
+import { registerPresentationTools } from "./presentation/tools"
 
 export function workbench(): RuntimeComponent {
   return {
@@ -26,14 +28,18 @@ export function workbench(): RuntimeComponent {
       let dispose: (() => void) | undefined
       let stopUsage: (() => Promise<void>) | undefined
       let stopExecution: (() => void) | undefined
+      let stopPresentation: (() => void) | undefined
       return {
         resident: {
           async start() {
             dispose = PushBridge.init()
             stopUsage = Usage.service()
             stopExecution = ExecutionService.init()
+            stopPresentation = WorkbenchPresentation.init()
           },
           async stop() {
+            stopPresentation?.()
+            stopPresentation = undefined
             await stopUsage?.()
             stopExecution?.()
             stopUsage = undefined
@@ -56,6 +62,7 @@ export function workbench(): RuntimeComponent {
       registerProjectMigrations()
       registerWorkbenchAgents()
       registerProjectTools()
+      registerPresentationTools()
       registerProjectStartup()
       registerProjectSessionHealth()
     },

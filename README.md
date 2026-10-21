@@ -67,7 +67,7 @@ The separation also provides an integration point for additional Environment pro
 
 Use **Atlas** for general work, **Forge** for software engineering, and **Pico** for lightweight tasks. Sessions retain their history, files, tool evidence, and operating context across Web, Desktop, CLI, and background work. Plan produces a durable Blueprint; Light Loop works toward a verified goal; BlueprintLoop adds independent final acceptance. Specialist subagents and Boss Mode support coordinated work.
 
-Build applications, investigate a repository, write documents, or explore an interactive result in the same workbench. Review file changes beside the conversation, open an artifact in Desktop's native Browser, and retain reusable memory and experience in Library. Skills, MCP, plugins, and Channels extend the selected runtime. [The product overview](docs/product/overview.md) covers these workflows.
+Build applications, investigate a repository, write documents, or explore an interactive result in the same workbench. Review file changes beside the conversation, open an artifact in Desktop's native Browser, and retain reusable memory and experience in Library. Agents can explicitly [present existing resources](docs/architecture/workbench-presentation.md) through a confirmed frontend request without taking keyboard focus. Skills, MCP, plugins, and Channels extend the selected runtime. [The product overview](docs/product/overview.md) covers these workflows.
 
 ## What makes Synergy different
 

@@ -8,10 +8,6 @@
 
 Otherwise, test.
 
-## Placement
-
-Rationale: `docs/decisions/`.
-
 ## Format
 
 `NNNN-kebab-case-title.md` sections:
@@ -30,6 +26,8 @@ Rationale: `docs/decisions/`.
 - [0082](0082-performance-evidence-and-failure-retention.md)
 
 - [0082](0082-replaced-directory-checkpoint-blocked-rebind.md)
+
+- [0082](0082-browser-view-completed-without-presentation.md)
 
 - [0081](0081-browser-navigation-timeouts.md)
 

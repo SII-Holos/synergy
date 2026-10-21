@@ -141,6 +141,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   worktree_archive: d("tool.title.archive-worktree", "Archive isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
   agent_config: d("tool.title.agent-config", "Manage agents"),
+  workbench_view: d("tool.title.workbench-view", "Manage resource views"),
 
   // Render
   render: d("tool.title.render", "Render content"),

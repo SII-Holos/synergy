@@ -493,9 +493,23 @@ export namespace Server {
     | "scoped-integrations"
 
   export type ViewProjectionContribution = ProjectionContribution
+  export type EventClientActive = { scopeID: string; sessionID: string; generation: number }
+  export type EventClientFrame = {
+    scopeID: string | null
+    payload: { type: string; properties: Record<string, unknown> }
+  }
+  export interface EventClientConnection {
+    receive(payload: unknown): void
+    active(active: EventClientActive | undefined): void
+    dispose(): void
+  }
+  export interface EventClientContribution {
+    connect(client: { clientId: string; send(frame: EventClientFrame): boolean }): EventClientConnection
+  }
   export interface Contributions {
     features?: readonly string[]
     projections?: ViewProjectionContribution[]
+    eventClients?: EventClientContribution[]
     routes?: Partial<Record<RouteStage, Hono>>
     providerRoutes?: Hono
     bootstrap?: BootstrapContributions
@@ -539,6 +553,7 @@ export namespace Server {
     instanceState.contributions = {
       routes,
       projections: contributions.flatMap((contribution) => contribution.projections ?? []),
+      eventClients: contributions.flatMap((contribution) => contribution.eventClients ?? []),
       bootstrap,
       providerRoutes,
       scopeConflictSchema: conflicts.length > 1 ? z.union(conflicts) : conflicts[0],
@@ -1084,6 +1099,15 @@ export namespace Server {
           // event loop (#524).
           const globalEventClients = GlobalEventClients.createRegistry({
             onRemove(key) {
+              const connection = eventClients.get(key)
+              eventClients.delete(key)
+              for (const handler of connection?.handlers ?? []) {
+                try {
+                  handler.dispose()
+                } catch (error) {
+                  log.warn("event client disposal failed", { error })
+                }
+              }
               for (const release of legacy.get(key) ?? []) release()
               legacy.delete(key)
               views.get(key)?.dispose()
@@ -1098,6 +1122,7 @@ export namespace Server {
           const projections = new Map<unknown, ReturnType<typeof createEventProjection>>()
           const legacy = new Map<unknown, Array<() => void>>()
           const views = new Map<unknown, ReturnType<typeof createViewProjection>>()
+          const eventClients = new Map<unknown, { generation: number; handlers: EventClientConnection[] }>()
           const broadcastHandler = (event: ViewEvent) => {
             let summary: MessageV2.PartSummary | undefined
             let header: ReturnType<typeof SessionHistory.summarizeMessage> | undefined
@@ -1214,6 +1239,29 @@ export namespace Server {
               onOpen(_event, ws) {
                 log.info("global event ws connected", { mode })
                 globalEventClients.add(ws, mode)
+                const key = GlobalEventClients.connectionKey(ws)
+                const connection = { generation: -1, handlers: [] as EventClientConnection[] }
+                eventClients.set(key, connection)
+                const clientId = crypto.randomUUID()
+                try {
+                  for (const contribution of instanceState.contributions?.eventClients ?? []) {
+                    const handler = contribution.connect({
+                      clientId,
+                      send: (frame) =>
+                        eventClients.get(key) === connection &&
+                        globalEventClients.reply(ws, JSON.stringify(frame)) === "sent",
+                    })
+                    if (eventClients.get(key) !== connection) {
+                      handler.dispose()
+                      return
+                    }
+                    connection.handlers.push(handler)
+                  }
+                } catch (error) {
+                  log.warn("event client connection failed", { error })
+                  globalEventClients.remove(ws)
+                  return
+                }
                 if (mode !== "projection-v2")
                   legacy.set(
                     GlobalEventClients.connectionKey(ws),
@@ -1251,22 +1299,10 @@ export namespace Server {
                 )
               },
               onClose(_event, ws) {
-                for (const release of legacy.get(GlobalEventClients.connectionKey(ws)) ?? []) release()
-                legacy.delete(GlobalEventClients.connectionKey(ws))
-                views.get(GlobalEventClients.connectionKey(ws))?.dispose()
-                views.delete(GlobalEventClients.connectionKey(ws))
-                projections.get(GlobalEventClients.connectionKey(ws))?.dispose()
-                projections.delete(GlobalEventClients.connectionKey(ws))
                 globalEventClients.remove(ws)
                 log.info("global event ws disconnected")
               },
               onError(_event, ws) {
-                for (const release of legacy.get(GlobalEventClients.connectionKey(ws)) ?? []) release()
-                legacy.delete(GlobalEventClients.connectionKey(ws))
-                views.get(GlobalEventClients.connectionKey(ws))?.dispose()
-                views.delete(GlobalEventClients.connectionKey(ws))
-                projections.get(GlobalEventClients.connectionKey(ws))?.dispose()
-                projections.delete(GlobalEventClients.connectionKey(ws))
                 globalEventClients.remove(ws)
               },
               onMessage(_event, ws) {
@@ -1281,6 +1317,13 @@ export namespace Server {
                       mode === "projection-v2"
                         ? ViewInterests.parse(data.payload.properties)
                         : ContentInterests.parse(data.payload.properties)
+                    if (mode === "projection-v2") {
+                      const publication = ViewInterests.parse(interests)
+                      const connection = eventClients.get(GlobalEventClients.connectionKey(ws))
+                      if (!connection || publication.generation <= connection.generation) return
+                      connection.generation = publication.generation
+                      for (const handler of connection.handlers) handler.active(publication.active)
+                    }
                     const read = async (interest: z.infer<typeof ContentInterests>["parts"][number]) => {
                       const session = await SessionManager.requireSession(interest.sessionID)
                       if (session.scope.id !== interest.scopeID)
@@ -1321,7 +1364,10 @@ export namespace Server {
                         },
                       }),
                     )
+                    return
                   }
+                  for (const handler of eventClients.get(GlobalEventClients.connectionKey(ws))?.handlers ?? [])
+                    handler.receive(data?.payload)
                 } catch {}
               },
             }

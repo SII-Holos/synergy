@@ -44,7 +44,7 @@ export interface OpenWorkbenchPanelOptions {
   replaceEmpty?: boolean
   replaceCurrent?: boolean
   replaceTab?: string
-  intent?: "user" | "restore" | "output"
+  intent?: "user" | "restore" | "output" | "agent"
   init?: WorkbenchPanelTabInit
   canCommit?: () => boolean
   onOpening?: (tabId: string) => void
@@ -241,17 +241,17 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
           Object.values(openings).some(
             (opening) => opening.session === boundSession && opening.surface === surfaceName,
           ),
-        open: () => {
+        open: (intent: "user" | "agent" = "user") => {
           changeSelection(boundSession, surfaceName)
-          interact()
+          if (intent === "user") interact()
           batch(() => {
             prepareDefault(surfaceName)
             value.open()
           })
         },
-        close: () => {
+        close: (intent: "user" | "agent" = "user") => {
           changeSelection(boundSession, surfaceName)
-          interact()
+          if (intent === "user") interact()
           value.close()
         },
         toggle: () => {
@@ -783,12 +783,12 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
         await openPanel(input.panelId, { intent: "output", init: input.init, replaceCurrent: true })
         if (focus instanceof HTMLElement && focus.isConnected && document.activeElement !== focus) focus.focus()
       },
-      activateTab(surfaceName: WorkbenchPanelSurface, tabId: string) {
-        interact()
+      activateTab(surfaceName: WorkbenchPanelSurface, tabId: string, intent: "user" | "agent" = "user") {
+        if (intent === "user") interact()
         const target = surface(surfaceName)
         if (!target.tabs().some((tab) => tab.id === tabId)) return
         target.setActive(tabId)
-        target.open()
+        target.open(intent)
       },
       beforeClose(tabId: string, handler: () => boolean | Promise<boolean>) {
         return closePolicy.register(sessionKey(), tabId, handler)

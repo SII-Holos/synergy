@@ -30,6 +30,7 @@ beforeAll(async () => {
     export const start = event => { const origin = event.currentTarget; finish = () => setNavigation({ id: Date.now(),
       location: { kind: "text", line: 120 }, focusTarget: () => origin }) }
     window.finishReference = () => finish?.()
+    window.agentReference = () => setNavigation({ id: Date.now(), origin: "agent", location: { kind: "text", line: 120 } })
   `,
   )
   await Bun.write(
@@ -43,6 +44,7 @@ beforeAll(async () => {
     import { start } from "./bridge"
     import { FileSourceView } from ${JSON.stringify(`/@fs/${source}/components/file-workbench/source-view.tsx`)}
     const content = Array.from({length: 200}, (_, i) => "const sample" + (i+1) + " = " + (i+1)).join("\\n")
+    window.editorSelection = async () => (await import("monaco-editor/editor/editor.api.js")).editor.getEditors()[0].getSelection()
     render(() => <><button data-resource-reference="a.ts#L120" onClick={start}>First reference</button>
       <button data-resource-reference="b.ts#L2">Next reference</button><input aria-label="Composer" />
       <style>{".file-source-view-editor { width: 700px; height: 420px }"}</style>
@@ -106,4 +108,55 @@ test.each(["Next reference", "Composer", "First reference"])(
     expect(errors).toEqual([])
   },
   30_000,
+)
+
+test.each(["Composer", "Editor", "Body"])(
+  "Agent navigation preserves focus and caret: %s",
+  async (target) => {
+    errors.length = 0
+    await page.goto(url)
+    const editor = page.locator(".monaco-editor")
+    await editor.locator(".view-lines").waitFor()
+    if (target === "Composer") {
+      const composer = page.getByRole("textbox", { name: "Composer" })
+      await composer.fill("composer draft")
+      await composer.press("ArrowLeft")
+    } else if (target === "Editor") {
+      await editor.locator("textarea").focus()
+      await page.keyboard.press("ArrowRight")
+      await page.keyboard.press("ArrowRight")
+    } else await page.evaluate(() => (document.activeElement as HTMLElement)?.blur())
+    const before = await page.evaluate(async () => {
+      const focused = document.activeElement
+      return {
+        selection: await Reflect.get(window, "editorSelection")(),
+        focus: focused?.tagName,
+        composer:
+          focused instanceof HTMLInputElement
+            ? [focused.value, focused.selectionStart, focused.selectionEnd]
+            : undefined,
+      }
+    })
+    await page.evaluate(() => Reflect.get(window, "agentReference")())
+    await page.waitForFunction(() =>
+      document.querySelector(".monaco-editor .view-lines")?.textContent?.includes("sample120"),
+    )
+    const after = await page.evaluate(async () => {
+      const focused = document.activeElement
+      return {
+        selection: await Reflect.get(window, "editorSelection")(),
+        focus: focused?.tagName,
+        composer:
+          focused instanceof HTMLInputElement
+            ? [focused.value, focused.selectionStart, focused.selectionEnd]
+            : undefined,
+      }
+    })
+    expect(after.focus).toBe(before.focus)
+    expect(after.composer).toEqual(before.composer)
+    if (target === "Editor") expect(after.selection).toEqual(before.selection)
+    else expect(await editor.evaluate((element) => element.contains(document.activeElement))).toBe(false)
+    expect(errors).toEqual([])
+  },
+  30000,
 )

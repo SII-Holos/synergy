@@ -6,6 +6,8 @@ The harness owns permission policy and the `SandboxHost` wrapper contract. The l
 
 Tools declare execution requirements separately from Workspace requirements. Bash selects its Session Environment before containment and may use the target's scratch directory without a Workspace. Executor sandbox preparation supplies the target's actual containment verdict; See [Environments](environments.md) for target lifetime and durable completion.
 
+An initialized tool may augment its static requirements through `resourceNeeds(args)`. Mixed actions such as resource presentation acquire a Workspace only for file targets. The same resolver selects resources before constructing the gate, so relative paths are classified against the actual captured root. File-bearing operations retain resolved-path permission requests; conditional admission cannot weaken a static requirement.
+
 ## Execution Pipeline
 
 Embedded hosts register ToolPolicySource before composition seals. Its requestPermission callback can own domain consent through the public permission protocol, using the resolved tool and caller identity. A false result preserves generic permission handling; a true result acknowledges completed domain consent. Callback failure or cancellation stops the call. Selection, execution authorization, capability gates and sandbox containment remain separate decisions.

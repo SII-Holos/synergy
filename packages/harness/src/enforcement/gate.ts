@@ -794,8 +794,16 @@ export namespace EnforcementGate {
         }
         return { capabilities: caps }
       }
-      if (toolName === "browser_view") {
+      if (toolName === "workbench_view") {
         caps.push({ class: "session_state", nonBypassable: false })
+        const command = args.input
+        if (command?.action === "open" && command.target?.kind === "workspace-file") {
+          const target = command.target.path
+          if (typeof target === "string") {
+            classifyProtectedPathCapability(caps, target, "read", { activeWorkspace, originalCheckout, synergyRoot })
+            classifyPathCapability(caps, target, pathOptions)
+          }
+        }
         return { capabilities: caps }
       }
 

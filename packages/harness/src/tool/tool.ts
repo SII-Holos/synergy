@@ -140,6 +140,7 @@ export namespace Tool {
     init: (ctx?: InitContext) => Promise<{
       description: string
       parameters: Parameters
+      resourceNeeds?(args: unknown): EnvironmentResources.Needs
       execute(args: z.infer<Parameters>, ctx: Context): Promise<ExecutionResult<M>>
       afterPersist?(args: z.infer<Parameters>, ctx: Context, result: ExecutionResult<M>): Promise<void> | void
       formatValidationError?(error: z.ZodError): string

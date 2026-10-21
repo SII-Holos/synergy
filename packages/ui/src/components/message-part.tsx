@@ -49,6 +49,7 @@ import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
 import { getScholightToolInfo, isScholightToolName } from "./tool/scholight-info"
 import { getTaskToolInfo } from "./tool/task-info"
+import { getWorkbenchViewInfo } from "./tool/workbench-info"
 import type { MessageDescriptor } from "@lingui/core"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 import { MESSAGE_PART_DESC } from "./tool-title-descriptors"
@@ -1106,6 +1107,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: target || input.reason,
       }
     }
+    case "workbench_view":
+      return getWorkbenchViewInfo(input, metadata)
     case "agent_config": {
       const args: string[] = []
       pushArg(args, input?.input?.strategy)

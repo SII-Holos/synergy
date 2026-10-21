@@ -8,6 +8,8 @@ The sync layer optimizes identity stability, reconnect recovery, streaming cost,
 
 Cortex collections retain the same bounded `TaskSummary` in list, bootstrap and created/completed/updated events. Public Session metadata does not restore prompt, result or full error payloads to that global index. Complete task details remain consumer-owned, identity-qualified reads through the [Cortex detail API](cortex.md#task-and-session-identity). The replay journal releases expired payload references while idle and clears on Scope disposal without changing sequence or reset behavior.
 
+Live Agent resource-presentation requests share the existing connection but are not canonical state events, tool-result effects or replayable history. Workbench owns their target-client selection and execution receipts; see [Workbench presentation](workbench-presentation.md).
+
 ## Connection Model
 
 `GlobalSDKProvider` opens one WebSocket to:

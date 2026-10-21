@@ -30,19 +30,34 @@ async function schemaFields(file: string, name: string, seen = new Set<string>()
   if (seen.has(key)) return []
   seen.add(key)
   const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
+  const parts = name.split(".")
   for (const statement of source.statements) {
     if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier)) {
       const bindings = statement.importClause?.namedBindings
       if (!bindings || !ts.isNamedImports(bindings)) continue
-      const binding = bindings.elements.find((item) => item.name.text === name)
+      const binding = bindings.elements.find((item) => item.name.text === parts[0])
       if (!binding) continue
       const imported = Bun.resolveSync(statement.moduleSpecifier.text, path.dirname(file))
-      return schemaFields(imported, binding.propertyName?.text ?? name, seen)
+      return schemaFields(imported, [binding.propertyName?.text ?? parts[0], ...parts.slice(1)].join("."), seen)
     }
+  }
+  let statements: readonly ts.Statement[] = source.statements
+  for (const part of parts.slice(0, -1)) {
+    const namespace = statements.find(
+      (statement): statement is ts.ModuleDeclaration =>
+        ts.isModuleDeclaration(statement) && statement.name.text === part,
+    )
+    if (!namespace?.body || !ts.isModuleBlock(namespace.body)) return []
+    statements = namespace.body.statements
+  }
+  for (const statement of statements) {
     if (!ts.isVariableStatement(statement)) continue
-    const declaration = statement.declarationList.declarations.find((item) => item.name.getText(source) === name)
+    const declaration = statement.declarationList.declarations.find(
+      (item) => item.name.getText(source) === parts.at(-1),
+    )
     if (!declaration?.initializer) continue
-    if (ts.isIdentifier(declaration.initializer)) return schemaFields(file, declaration.initializer.text, seen)
+    if (ts.isIdentifier(declaration.initializer))
+      return schemaFields(file, [...parts.slice(0, -1), declaration.initializer.text].join("."), seen)
     let expression = declaration.initializer
     while (ts.isCallExpression(expression) && ts.isPropertyAccessExpression(expression.expression)) {
       const callee = expression.expression
@@ -52,13 +67,19 @@ async function schemaFields(file: string, name: string, seen = new Set<string>()
         return shape.properties.flatMap((property) => {
           if (!ts.isPropertyAssignment(property)) return []
           const initializer = property.initializer
-          const alias = ts.isIdentifier(initializer)
-            ? source.statements
+          let base = initializer
+          while (ts.isCallExpression(base) && ts.isPropertyAccessExpression(base.expression))
+            base = base.expression.expression
+          const alias = ts.isIdentifier(base)
+            ? statements
                 .filter(ts.isVariableStatement)
                 .flatMap((item) => [...item.declarationList.declarations])
-                .find((item) => item.name.getText(source) === initializer.text)?.initializer
+                .find((item) => item.name.getText(source) === base.getText(source))?.initializer
             : undefined
-          return parseObjectFields(`${property.name.getText(source)}: ${(alias ?? initializer).getText(source)}`)
+          const value = alias
+            ? alias.getText(source) + initializer.getText(source).slice(base.getText(source).length)
+            : initializer.getText(source)
+          return parseObjectFields(`${property.name.getText(source)}: ${value}`)
         })
       }
       expression = callee.expression
@@ -251,7 +272,7 @@ async function parseToolFile(
   const description = await descriptionOf(file, source, body)
 
   let parameters: Array<{ name: string; type: string | null; description: string | null; optional: boolean }> = []
-  const identifier = body.match(/parameters\s*:\s*(\w+)\s*,/)?.[1]
+  const identifier = body.match(/parameters\s*:\s*([\w.]+)\s*,/)?.[1]
   if (identifier && identifier !== "z") {
     parameters = await schemaFields(file, identifier)
   } else if (/parameters\s*,/.test(body)) {

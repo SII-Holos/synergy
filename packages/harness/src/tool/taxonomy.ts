@@ -43,6 +43,7 @@ export type ToolKind =
   | "orchestration.research"
   | "platform.config"
   | "platform.tooling"
+  | "platform.presentation"
   | "platform.compute"
   | "platform.collaboration"
   | "platform.external"
@@ -174,6 +175,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   // platform
   search_tools: entry("platform.tooling", { auxiliary: true }),
   expand_tools: entry("platform.tooling", { stateful: true, auxiliary: true }),
+  workbench_view: entry("platform.presentation", { stateful: true, auxiliary: true }),
   runtime_reload: entry("platform.config", { stateful: true }),
   worktree_enter: entry("platform.config", { stateful: true }),
   worktree_leave: entry("platform.config", { stateful: true }),
@@ -229,7 +231,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   browser_eval: entry("browser.inspect", { stateful: true }),
   browser_clipboard: entry("browser.interact", { externalIO: true, stateful: true }),
   browser_assets: entry("browser.inspect", { externalIO: true, stateful: true }),
-  browser_view: entry("browser.inspect", { stateful: true }),
   browser_performance: entry("browser.inspect", { externalIO: true, stateful: true }),
   browser_audit: entry("browser.inspect"),
   browser_emulate: entry("browser.inspect", { stateful: true }),
@@ -332,6 +333,7 @@ export namespace ToolTaxonomy {
     "orchestration.research": "Research",
     "platform.config": "Config",
     "platform.tooling": "Tools",
+    "platform.presentation": "Presentation",
     "platform.compute": "Compute",
     "platform.collaboration": "Collaboration",
     "platform.external": "Tool",

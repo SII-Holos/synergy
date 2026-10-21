@@ -21,22 +21,23 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Architecture Documents
 
-| Document                                         | Contract                                                                                                                        |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| [Runtime and Scope](runtime-and-scope.md)        | Server lifecycle, global and project runtimes, Scope resolution, workspace binding, and request context.                        |
-| [Workspace and files](workspace-and-files.md)    | Worktrees, workspace-file routes, file search/read, anchored editing, formatting, diagnostics, snapshots, and restore.          |
-| [Sessions and messages](session-and-messages.md) | Durable session state, canonical message semantics, task roots, inbox modes, history, fork, and recovery.                       |
-| [LLM loop and compaction](llm-loop.md)           | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.                      |
-| [Usage accounting](usage-accounting.md)          | Retained execution meters, billing snapshots, timing, coverage, historical capture, clearing, and queries.                      |
-| [Frontend data sync](frontend-data-sync.md)      | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.                   |
-| [Frontend localization](localization.md)         | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.                 |
-| [Channels](channels.md)                          | Channel targets, provider lifecycle, managed Project ownership, task routing, borrowed transports, diagnostics, and projection. |
-| [Execution boundaries](execution-boundaries.md)  | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.                       |
-| [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                            |
-| [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                            |
-| [Browser runtime](browser-runtime.md)            | Desktop pages, identities, permissions, native presentation, migration and recovery.                                            |
-| [GitHub Channel](github-channel.md)              | GitHub as a Channel: polling, event gating, per-thread checkouts, agentic review/QA/fix sessions, and comment delivery.         |
-| [Push notifications](push.md)                    | Web Push delivery: event bridge, per-subscription categories, VAPID keys, routes, service-worker contract, and iOS PWA limits.  |
+| Document                                            | Contract                                                                                                                        |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Runtime and Scope](runtime-and-scope.md)           | Server lifecycle, global and project runtimes, Scope resolution, workspace binding, and request context.                        |
+| [Workspace and files](workspace-and-files.md)       | Worktrees, workspace-file routes, file search/read, anchored editing, formatting, diagnostics, snapshots, and restore.          |
+| [Sessions and messages](session-and-messages.md)    | Durable session state, canonical message semantics, task roots, inbox modes, history, fork, and recovery.                       |
+| [LLM loop and compaction](llm-loop.md)              | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.                      |
+| [Usage accounting](usage-accounting.md)             | Retained execution meters, billing snapshots, timing, coverage, historical capture, clearing, and queries.                      |
+| [Frontend data sync](frontend-data-sync.md)         | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.                   |
+| [Workbench presentation](workbench-presentation.md) | Directed Agent resource presentation, frontend receipts, attention and transient request lifetime.                              |
+| [Frontend localization](localization.md)            | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.                 |
+| [Channels](channels.md)                             | Channel targets, provider lifecycle, managed Project ownership, task routing, borrowed transports, diagnostics, and projection. |
+| [Execution boundaries](execution-boundaries.md)     | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.                       |
+| [Cortex and delegated work](cortex.md)              | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                            |
+| [Workflow engine](workflows.md)                     | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                            |
+| [Browser runtime](browser-runtime.md)               | Desktop pages, identities, permissions, native presentation, migration and recovery.                                            |
+| [GitHub Channel](github-channel.md)                 | GitHub as a Channel: polling, event gating, per-thread checkouts, agentic review/QA/fix sessions, and comment delivery.         |
+| [Push notifications](push.md)                       | Web Push delivery: event bridge, per-subscription categories, VAPID keys, routes, service-worker contract, and iOS PWA limits.  |
 
 ## Dependency and deployment principles
 

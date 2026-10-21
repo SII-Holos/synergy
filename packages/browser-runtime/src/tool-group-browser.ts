@@ -20,7 +20,6 @@ export function registerToolGroup() {
         "browser_read",
         "browser_clipboard",
         "browser_eval",
-        "browser_view",
         "browser_assets",
         "browser_performance",
         "browser_audit",

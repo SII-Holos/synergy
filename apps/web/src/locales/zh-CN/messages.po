@@ -26648,6 +26648,10 @@ msgid "tool.title.wiki"
 msgstr "管理研究资料"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.workbench-view"
+msgstr "管理资源视图"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.worktrees"
 msgstr "查看隔离工作区"
 

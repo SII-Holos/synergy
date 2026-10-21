@@ -12,6 +12,8 @@ The harness owns permission policy and the `SandboxHost` execution contract. OS 
 
 Embedded tool admission uses `tool/policy-source`: a host can narrow visible and deferred identities and authorize exact calls before execution resources are acquired. The source cannot widen the registry or replace permission and sandbox decisions. The public `cortex/tools` entry exposes the complete suite for explicit registration.
 
+Initialized tools may declare `resourceNeeds(args)` for input-dependent Workspace or execution requirements. Those requirements augment static declarations and use the same resource admission, capability gate and release path. Directory-independent actions remain usable without allocating a Workspace; precise file operations retain their resolved-path permission requests.
+
 The `environment` host entries own durable allocation and operation identities. Register providers before opening a Runtime; missing providers fail explicitly. See [Environments](../../docs/architecture/environments.md) for execution, checkpoint and recovery semantics.
 
 Hosts supply immutable environment and paths, composition, and storage ownership to `RuntimeHandle.open()`. Imports have no registration side effects. Enter work with `handle.run()` or capture callbacks with `handle.bind()`; await `close()` or use `await using`. Multiple handles can coexist in one process. See [Runtime and Scope](../../docs/architecture/runtime-and-scope.md) for lifecycle and workspace semantics.

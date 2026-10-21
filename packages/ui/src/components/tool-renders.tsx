@@ -112,3 +112,4 @@ export * from "./tool/renders/scholight"
 export * from "./tool/renders/batch"
 
 export * from "./tool/renders/computer"
+export * from "./tool/renders/workbench-view"

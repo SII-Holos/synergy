@@ -16,6 +16,7 @@ import { useBrowser } from "./browser-store"
 import { browser as B } from "@/locales/messages"
 
 export type AddressBarProps = {
+  autoFocus?: boolean
   recent?: () => Array<{ url: string; title: string }>
   activeUrl: () => string
   isLoading: () => boolean
@@ -215,7 +216,7 @@ export function AddressBar(props: AddressBarProps) {
     if (action === "zoomReset") void scale(1)
   }
   onMount(() => {
-    if (!props.activeUrl() || props.activeUrl() === "about:blank") focusAddress()
+    if (props.autoFocus !== false && (!props.activeUrl() || props.activeUrl() === "about:blank")) focusAddress()
     const remove = props.onShortcut?.(shortcut)
     const key = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.isComposing || !root.parentElement?.contains(event.target as Node)) return

@@ -16,7 +16,6 @@ import { BrowserNavigationTool } from "./tools/browser-navigation"
 import { BrowserAssetsTool } from "./tools/browser-assets"
 import { BrowserActionTool } from "./tools/browser-action"
 import { BrowserEvalTool } from "./tools/browser-eval"
-import { BrowserViewTool } from "./tools/browser-view"
 import { BrowserPerformanceTool } from "./tools/browser-performance"
 import { BrowserAuditTool } from "./tools/browser-audit"
 import { BrowserEmulateTool } from "./tools/browser-emulate"
@@ -57,7 +56,6 @@ export function registerBrowserTools(): void {
     BrowserAssetsTool,
     BrowserActionTool,
     BrowserEvalTool,
-    BrowserViewTool,
     BrowserPerformanceTool,
     BrowserAuditTool,
     BrowserEmulateTool,
