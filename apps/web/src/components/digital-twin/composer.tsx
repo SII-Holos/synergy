@@ -125,6 +125,11 @@ export function DigitalTwinComposer(props: {
     failed: setFailure,
   })
   createEffect(() => {
+    if (!failure()) return
+    const timeout = setTimeout(() => setFailure(undefined), 4000)
+    onCleanup(() => clearTimeout(timeout))
+  })
+  createEffect(() => {
     const snapshot = state()
     untrack(() => requests.update())
     if (!snapshot.eligible) setCompletedRoot(undefined)

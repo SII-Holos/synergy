@@ -12,7 +12,7 @@ type Control = {
   composing(value: boolean): void
   complete(): void
   editSource(): void
-  resolve(index: number): void
+  resolve(index: number, candidate?: string | null): void
   reject(index: number): void
   requests(): boolean[]
   ghost(): string | undefined
@@ -57,7 +57,7 @@ beforeAll(async () => {
       editSource:()=>emit("message.part.summary",{summary:{sessionID:session()}}),
       requests:()=>requests.map(value=>value.signal.aborted),
       reject:index=>requests[index].reject(new Error("Fixture prediction failed")),
-      resolve:index=>requests[index].resolve({data:{proposalID:"proposal-"+index,candidate:"再检查一下 API 的边界",stamp:requests[index].input.expected}})}
+      resolve:(index,candidate="再检查一下 API 的边界")=>requests[index].resolve({data:{proposalID:"proposal-"+index,candidate,stamp:requests[index].input.expected}})}
   `,
   )
   await Bun.write(
@@ -253,6 +253,49 @@ test.each([
     expect(await button.getAttribute("aria-busy")).toBe("false")
     expect(await button.isDisabled()).toBe(true)
     expect(await button.locator("svg").evaluate((element) => getComputedStyle(element).color)).toBe(disabledColor)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
+
+test("prediction feedback expires without input and a retry receives its own reading time", async () => {
+  const page = await browser.newPage()
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url)
+    const button = page.getByRole("button", { name: "Predict next input", exact: true })
+    const status = page.getByRole("status").filter({ hasText: /No clear continuation yet|Prediction unavailable/ })
+    const draft = page.getByRole("textbox", { name: "Draft" })
+    await button.click()
+    await page.clock.install()
+    await page.evaluate(() => window.twinFixture.resolve(0, null))
+    expect(await status.innerText()).toBe("No clear continuation yet.")
+    await page.clock.runFor(3000)
+    expect(await status.isVisible()).toBe(true)
+    await page.clock.runFor(1100)
+    expect(await status.count()).toBe(0)
+    expect(await draft.inputValue()).toBe("")
+    expect(await button.isEnabled()).toBe(true)
+
+    await button.click()
+    await page.evaluate(() => window.twinFixture.reject(1))
+    expect(await status.innerText()).toBe("Prediction unavailable. Try again.")
+    await page.clock.runFor(3000)
+    await button.click()
+    expect(await status.count()).toBe(0)
+    await page.evaluate(() => window.twinFixture.resolve(2, null))
+    await page.clock.runFor(1100)
+    expect(await status.innerText()).toBe("No clear continuation yet.")
+    await page.clock.runFor(3000)
+    expect(await status.count()).toBe(0)
+
+    await button.click()
+    await page.evaluate(() => window.twinFixture.resolve(3, null))
+    expect(await status.isVisible()).toBe(true)
+    await draft.fill("自己的草稿")
+    expect(await status.count()).toBe(0)
+    expect(await draft.inputValue()).toBe("自己的草稿")
     expect(errors).toEqual([])
   } finally {
     await page.close()
