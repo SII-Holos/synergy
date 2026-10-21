@@ -56,6 +56,9 @@ type Fixture = {
       key: string,
       events?: Array<{ type: string; properties: Record<string, unknown>; seq: number }>,
     ): void
+    holdStatuses(): void
+    waitForStatusRequest(count?: number): Promise<void>
+    completeStatuses(data: Record<string, unknown>, version: SnapshotVersion): void
     watchPeek(key: string, sink: (state: ScopeState | undefined) => void): () => void
     resolveEntry(sessionID: string): { tone?: string; pulse?: boolean }
   }
@@ -74,6 +77,9 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     import { createSignal } from "solid-js"
     export const requests = []
     export const replays = []
+    export const statusRequests = []
+    let statusesHeld = false
+    export const holdStatuses = () => { statusesHeld = true }
     const pending = new Map()
     const [connected, setConnected] = createSignal(false)
     export const connect = () => setConnected(true)
@@ -92,7 +98,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     }
     export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({transports:{projection:"projection-v2"}})},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
       config:{global:()=>ok({})},global:{health:()=>ok({healthy:true}),paths:{get:()=>ok({})},agenda:{list:()=>ok([])}},
-      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>stamped({})},
+      scope:{list:()=>ok([])},provider:{list:()=>ok({all:[]}),auth:()=>ok({})},session:{statuses:()=>statusesHeld ? new Promise(resolve=>statusRequests.push(resolve)) : stamped({})},
       cortex:{list:()=>ok([])},
     }})
     export const LocaleConfigReconciler=()=>null
@@ -115,14 +121,16 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, replays, emit, connect, setPending } from ${JSON.stringify(stub)}
+    import { requests, replays, emit, connect, setPending, statusRequests, holdStatuses } from ${JSON.stringify(stub)}
     import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
     export function mount(root) {
       let api, ready
       const started = new Promise(resolve=>ready=resolve)
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
-      return {started,dispose,emit,connect,setPending,api:()=>api,
+      return {started,dispose,emit,connect,setPending,holdStatuses,api:()=>api,
+        waitForStatusRequest(count = 1) {return new Promise(resolve=>{const check=()=>{if(statusRequests.length >= count)return resolve();setTimeout(check,5)};check()})},
+        completeStatuses(data,version) {const resolve=statusRequests.shift();if(!resolve)throw new Error("no pending status snapshot");resolve({data,response:{headers:new Headers({"x-synergy-seq":String(version.seq),"x-synergy-epoch":version.epoch})}})},
         waitForReplay(key) {return new Promise(resolve=>{const check=()=>{if(replays.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
         completeReplay(key, events = []) {const replay=replays.find(r=>!r.done&&r.key===key);if(!replay)throw new Error("no replay for "+key);replay.done=true;replay.resolve({data:{status:"ok",epoch:"test-epoch",seq:events.at(-1)?.seq??replay.since,events:events.map(event=>({...event,epoch:"test-epoch"}))}})},
       resolveEntry(sessionID) {
@@ -678,11 +686,47 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
         [{ id: "reconnect-question", sessionID: "waiting-session", questions: [] }],
         [{ id: "reconnect-permission", sessionID: "waiting-session", permission: "edit", patterns: [], metadata: {} }],
       )
+      h.holdStatuses()
       h.connect()
       await h.waitForReplay("summary-scope")
       h.completeReplay("summary-scope", [
         { type: "cortex.tasks.updated", seq: 3, properties: { tasks: [completedSummary] } },
       ])
+      await h.waitForStatusRequest()
+      h.emit(
+        "status-project",
+        1,
+        "session.status",
+        { sessionID: "finished-project-session", status: { type: "busy" } },
+        "project-epoch",
+      )
+      h.emit(
+        "status-project",
+        2,
+        "session.status",
+        { sessionID: "finished-project-session", status: { type: "idle" } },
+        "project-epoch",
+      )
+      h.emit(
+        "status-other",
+        1,
+        "session.status",
+        { sessionID: "new-project-session", status: { type: "busy" } },
+        "other-project-epoch",
+      )
+      h.completeStatuses(
+        {
+          "finished-project-session": { type: "busy" },
+          "snapshot-only-session": { type: "busy" },
+        },
+        { epoch: "home-epoch", seq: 1000 },
+      )
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.sessionStatus["finished-project-session"]).toBeUndefined()
+      expect(h.resolveEntry("finished-project-session")).toMatchObject({ tone: "default" })
+      expect(h.resolveEntry("finished-project-session").pulse).toBeUndefined()
+      expect(api.sessionStatus["new-project-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["snapshot-only-session"]).toEqual({ type: "busy" })
       await h.waitForReplay("shared")
       h.completeReplay("shared")
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -707,6 +751,25 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       })
       expect(api.cortex.find((task) => task.id === summary.id)).toEqual(interruptedSummary)
       summaryScope.release()
+      h.emit("global", 1, "global.disposed", {})
+      await h.waitForStatusRequest()
+      h.emit("global", 2, "global.disposed", {})
+      await h.waitForStatusRequest(2)
+      h.emit(
+        "status-project",
+        3,
+        "session.status",
+        { sessionID: "current-generation-session", status: { type: "busy" } },
+        "project-epoch",
+      )
+      h.completeStatuses({ "obsolete-generation-session": { type: "busy" } }, { epoch: "obsolete-home", seq: 1 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.sessionStatus["obsolete-generation-session"]).toBeUndefined()
+      expect(api.sessionStatus["current-generation-session"]).toEqual({ type: "busy" })
+      h.completeStatuses({ "current-snapshot-session": { type: "busy" } }, { epoch: "current-home", seq: 1 })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.sessionStatus["current-snapshot-session"]).toEqual({ type: "busy" })
+      expect(api.sessionStatus["current-generation-session"]).toEqual({ type: "busy" })
       shared.release()
     } finally {
       h.dispose()
