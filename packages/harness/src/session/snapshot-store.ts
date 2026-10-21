@@ -62,6 +62,16 @@ export namespace SnapshotStore {
     source?: SnapshotSchema.Workspace
   }
   const context = Context.create<Operation>("snapshot")
+  const batches = Context.create<{
+    scopeID: string
+    sessionID: string
+    active: boolean
+  }>("snapshot.batch")
+
+  function currentBatch(scopeID: string, sessionID: string) {
+    const batch = batches.tryUse()
+    if (batch?.active && batch.scopeID === scopeID && batch.sessionID === sessionID) return batch
+  }
 
   export class StorageError extends Error {
     constructor(message: string, options?: ErrorOptions) {
@@ -164,6 +174,31 @@ export namespace SnapshotStore {
     return context.use()
   }
 
+  export async function parallel(sessionID: string, actions: Array<() => Promise<unknown>>) {
+    if (!actions.length) return
+    await withSession(
+      sessionID,
+      async () => {
+        const batch = {
+          scopeID: ScopeContext.current.scope.id,
+          sessionID,
+          active: true,
+        }
+        try {
+          const results = await batches.provide(batch, () =>
+            Promise.allSettled(actions.map(async (action) => action())),
+          )
+          const errors = results.flatMap((result) => (result.status === "rejected" ? [result.reason] : []))
+          if (errors.length) throw new AggregateError(errors, "Snapshot batch failed")
+        } finally {
+          batch.active = false
+        }
+      },
+      undefined,
+      { historical: true },
+    )
+  }
+
   export async function withSession<T>(
     sessionID: string,
     fn: () => Promise<T>,
@@ -200,40 +235,50 @@ export namespace SnapshotStore {
       if (result.results.some((result) => result.status !== "migrated"))
         throw new StorageError("Protected historical snapshots are not ready")
     }
+    const batch = currentBatch(scopeID, sessionID)
     const lockStarted = performance.now()
+    const run = async () => {
+      const workspace = options?.historical ? undefined : ScopeContext.current.workspace
+      const source =
+        options?.source ??
+        (workspace?.id && workspace.generation
+          ? { id: workspace.id, generation: workspace.generation, root: workspace.path }
+          : undefined)
+      const operation = await resolve(
+        scopeID,
+        sessionID,
+        options?.historical
+          ? path.dirname(repository(scopeID))
+          : (options?.source?.root ?? ScopeContext.current.directory),
+        source,
+      )
+      const enter = async () => {
+        signal?.throwIfAborted()
+        ObservabilityMetrics.record({
+          name: "snapshot.lock.wait.duration",
+          value: performance.now() - lockStarted,
+          unit: "ms",
+          module: "storage",
+          scopeID,
+          sessionID,
+        })
+        await fs.mkdir(operation.temporary, { recursive: true })
+        return context.provide(operation, fn)
+      }
+      if (!batch) return enter()
+      return withFileLock(
+        { directory: SnapshotLease.directory(), key: `snapshot-index:${operation.index}`, signal },
+        enter,
+      )
+    }
+    if (batch) return run()
     return SnapshotLease.use(
       scopeID,
       false,
       () =>
         withFileLock(
           { directory: SnapshotLease.directory(), key: `snapshot-session:${scopeID}:${sessionID}`, signal },
-          async () => {
-            signal?.throwIfAborted()
-            ObservabilityMetrics.record({
-              name: "snapshot.lock.wait.duration",
-              value: performance.now() - lockStarted,
-              unit: "ms",
-              module: "storage",
-              scopeID,
-              sessionID,
-            })
-            const workspace = options?.historical ? undefined : ScopeContext.current.workspace
-            const source =
-              options?.source ??
-              (workspace?.id && workspace.generation
-                ? { id: workspace.id, generation: workspace.generation, root: workspace.path }
-                : undefined)
-            const operation = await resolve(
-              scopeID,
-              sessionID,
-              options?.historical
-                ? path.dirname(repository(scopeID))
-                : (options?.source?.root ?? ScopeContext.current.directory),
-              source,
-            )
-            await fs.mkdir(operation.temporary, { recursive: true })
-            return context.provide(operation, fn)
-          },
+          run,
         ),
       { signal },
     )
@@ -452,10 +497,16 @@ export namespace SnapshotStore {
   export async function retainCurrent(hash: string, signal?: AbortSignal) {
     const operation = current()
     if (operation.backend === "legacy") return true
-    const result = await SnapshotGit.run(
-      ["git", "--git-dir", operation.repository, "update-ref", reference(operation.sessionID, hash), hash],
-      path.dirname(operation.repository),
-      undefined,
+    const result = await withReferences(
+      operation.scopeID,
+      operation.sessionID,
+      () =>
+        SnapshotGit.run(
+          ["git", "--git-dir", operation.repository, "update-ref", reference(operation.sessionID, hash), hash],
+          path.dirname(operation.repository),
+          undefined,
+          signal,
+        ),
       signal,
     )
     if (result.exitCode !== 0)
@@ -474,8 +525,20 @@ export namespace SnapshotStore {
       updates.push(`update ${reference(sessionID, hash)} ${hash}`)
     }
     if (!updates.length) return
-    await command(repository(scopeID), ["update-ref", "--stdin"], signal, `${updates.join("\n")}\n`)
+    await withReferences(
+      scopeID,
+      sessionID,
+      () => command(repository(scopeID), ["update-ref", "--stdin"], signal, `${updates.join("\n")}\n`),
+      signal,
+    )
     for (const hash of new Set(hashes))
       if (OID.test(hash)) await state().backend?.retain(scopeID, sessionID, hash, repository(scopeID), signal)
+  }
+
+  export function withReferences<T>(scopeID: string, sessionID: string, fn: () => Promise<T>, signal?: AbortSignal) {
+    return withFileLock(
+      { directory: SnapshotLease.directory(), key: `snapshot-references:${scopeID}:${sessionID}`, signal },
+      fn,
+    )
   }
 }

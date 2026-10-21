@@ -6,6 +6,9 @@ import { SnapshotStore } from "../../src/session/snapshot-store"
 import { SnapshotGit } from "../../src/session/snapshot-git"
 import { storedSnapshots } from "../../src/session/stored-snapshots"
 import { SnapshotLifecycle } from "../../src/session/snapshot-lifecycle"
+import { SnapshotLease } from "../../src/session/snapshot-lease"
+import { fileLockPath } from "@ericsanchezok/synergy-util/fs-lock"
+import { withTimeout } from "../../src/util/timeout"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { TransactionalStore } from "../../src/storage/transactional-store"
@@ -105,6 +108,62 @@ test("a comparison verifies the shared object graph once without granting unrela
     expect(await SnapshotStore.ownsMany(f.scope, "unrelated-session", [before, after])).toEqual(new Set())
     expect(traverse).toHaveBeenCalledTimes(1)
   })
+})
+
+test("concurrent retention of one new tree prepares durable content once", async () => {
+  await using f = await fixture()
+  const entered = Promise.withResolvers<void>()
+  const competing = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  let preparations = 0
+  const initialize = SnapshotStore.initializeBareRepository
+  using prepare = spyOn(SnapshotStore, "initializeBareRepository").mockImplementation(async (repository) => {
+    if (path.basename(path.dirname(repository)).startsWith("durable-")) {
+      if (++preparations === 1) entered.resolve()
+      else competing.resolve()
+      await release.promise
+    }
+    return initialize(repository)
+  })
+  const first = f.capture("one durable tree")
+  let second: Promise<string> | undefined
+  let observe: ReturnType<typeof spyOn<typeof fs, "open">> | undefined
+  try {
+    await withTimeout(entered.promise, 10_000)
+    const filename = await f.run(async () => {
+      const hash = await SnapshotStore.command(SnapshotStore.repository(f.scope), [
+        "for-each-ref",
+        "--format=%(objectname)",
+      ])
+      return fileLockPath(SnapshotLease.directory(), `snapshot-content:${f.scope}:${f.session}:${hash}`)
+    })
+    const open = fs.open
+    observe = spyOn(fs, "open").mockImplementation(async (...args) => {
+      try {
+        return await open(...args)
+      } catch (error) {
+        if (args[0] === filename && (error as NodeJS.ErrnoException).code === "EEXIST") competing.resolve()
+        throw error
+      }
+    })
+    second = f.capture("one durable tree")
+    await withTimeout(competing.promise, 10_000)
+    release.resolve()
+    const [before, after] = await Promise.all([first, second])
+    expect(after).toBe(before)
+    expect(preparations).toBe(1)
+    await f.reopen()
+    await f.run(async () => {
+      expect(await SnapshotStore.owns(f.scope, f.session, before)).toBe(true)
+      expect(await SnapshotStore.command(SnapshotStore.repository(f.scope), ["show", `${before}:file.txt`])).toBe(
+        "one durable tree",
+      )
+    })
+  } finally {
+    release.resolve()
+    await Promise.allSettled([first, second])
+    observe?.mockRestore()
+  }
 })
 
 test("snapshot history and fork ownership survive deletion of every local Git cache", async () => {

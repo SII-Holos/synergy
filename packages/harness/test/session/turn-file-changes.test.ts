@@ -13,6 +13,9 @@ import { SessionHistory } from "../../src/session/history"
 import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
 import { SnapshotMaintenance } from "../../src/session/snapshot-maintenance"
+import { SnapshotCapture } from "../../src/session/snapshot-capture"
+import { SnapshotStore } from "../../src/session/snapshot-store"
+import { WorkspaceAccess } from "../../src/workspace/access"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
@@ -198,6 +201,153 @@ test("an oversized endpoint cannot become a deletion and valid files remain revi
         expect(message.info.role === "user" && message.info.summary?.diffs.map((file) => file.file)).toEqual([
           "valid.txt",
         ])
+      },
+    })
+  }))
+
+test.each([false, true])(
+  "independent workspace endpoints overlap and drain before settlement (publication failure=%s)",
+  async (failPublication) => {
+    await using isolated = await testRuntime({
+      register: () =>
+        WorkspaceAccess.register({
+          async acquire(input) {
+            return { id: input.id, async release() {}, async bindProcess() {} }
+          },
+        }),
+    })
+    await isolated.run(async () => {
+      await using first = await tmpdir()
+      await using second = await tmpdir()
+      await using third = await tmpdir()
+      const scope = await first.scope()
+      const directories = [first.path, second.path, third.path]
+      const workspaces = await Promise.all(
+        directories.map((directory) =>
+          ScopeContext.provide({
+            scope,
+            workspace: { type: "directory", scopeID: scope.id, path: directory },
+            fn: () => ScopeContext.current.workspace!,
+          }),
+        ),
+      )
+      await ScopeContext.provide({
+        scope,
+        workspace: workspaces[0],
+        async fn() {
+          const session = await Session.create({})
+          const input = await turn(session.id)
+          for (const [index, directory] of directories.entries())
+            await Bun.write(path.join(directory, "entry.txt"), `before ${index}\n`)
+          await SessionFileChanges.begin(input)
+          await SessionFileChanges.provide(
+            {
+              owner: { kind: "session", scopeID: scope.id, sessionID: session.id },
+              runID: input.rootID,
+              messageID: input.rootID,
+              toolCallID: "workspace-use",
+              tool: "fixture",
+              args: {},
+            },
+            () => WorkspaceAccess.task({ sessionID: session.id }, () => WorkspaceAccess.use(workspaces.slice(1))),
+          )
+          for (const [index, directory] of directories.entries())
+            await Bun.write(path.join(directory, "entry.txt"), `after ${index}\n`)
+
+          const entered = new Set<string>()
+          const ready = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          const refresh = SnapshotCapture.refresh
+          using capture = spyOn(SnapshotCapture, "refresh").mockImplementation(async (...args) => {
+            entered.add(args[0].workspace)
+            if (entered.size === directories.length) ready.resolve()
+            await release.promise
+            return refresh(...args)
+          })
+          const updatePart = Session.updatePart
+          using publish = spyOn(Session, "updatePart").mockImplementation(
+            Object.assign(async (value: Parameters<typeof updatePart>[0]) => {
+              const part = "part" in value ? value.part : value
+              if (
+                failPublication &&
+                part.type === "patch" &&
+                part.workspace?.id === workspaces[0]!.id &&
+                part.checkpoint?.ended
+              )
+                throw new Error("Endpoint publication unavailable")
+              return updatePart(value)
+            }, updatePart),
+          )
+          using summary = spyOn(SessionSummary, "summarize")
+          let settled = false
+          const finishing = SessionFileChanges.finish(input).then(() => {
+            settled = true
+          })
+          const timeout = setTimeout(() => ready.reject(new Error("Workspace captures did not overlap")), 5000)
+          try {
+            await ready.promise
+            expect(settled).toBe(false)
+          } finally {
+            clearTimeout(timeout)
+            release.resolve()
+            await finishing
+          }
+          expect(settled).toBe(true)
+          expect(summary).toHaveBeenCalledTimes(1)
+          const message = await MessageV2.get({ sessionID: session.id, messageID: input.rootID })
+          const patches = message.parts.filter((part): part is MessageV2.PatchPart => part.type === "patch")
+          expect(patches).toHaveLength(3)
+          const repo = SnapshotStore.repository(scope.id)
+          for (const [index, workspace] of workspaces.entries()) {
+            const part = patches.find((part) => part.workspace?.id === workspace.id)!
+            expect(await SnapshotStore.command(repo, ["show", `${part.hash}:entry.txt`])).toBe(`before ${index}`)
+            if (failPublication && index === 0) {
+              expect(part.checkpoint?.status).toBe("pending")
+              continue
+            }
+            expect(part.checkpoint?.status).toBe("complete")
+            expect(part.files).toEqual(["entry.txt"])
+            expect(await SnapshotStore.owns(scope.id, session.id, part.checkpoint!.afterHash!)).toBe(true)
+            expect(await SnapshotStore.command(repo, ["show", `${part.checkpoint!.afterHash}:entry.txt`])).toBe(
+              `after ${index}`,
+            )
+          }
+        },
+      })
+    })
+  },
+)
+
+test("settlement drains an admitted baseline before starting its endpoint", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const session = await Session.create({})
+        const input = await turn(session.id)
+        await Bun.write(path.join(directory.path, "baseline.txt"), "captured bytes\n")
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const track = Snapshot.track
+        let baselineComplete = false
+        let captures = 0
+        using capture = spyOn(Snapshot, "track").mockImplementation(async (...args) => {
+          if (captures++ > 0) expect(baselineComplete).toBe(true)
+          entered.resolve()
+          await release.promise
+          const hash = await track(...args)
+          baselineComplete = true
+          return hash
+        })
+        const beginning = SessionFileChanges.begin(input)
+        await entered.promise
+        const finishing = SessionFileChanges.finish(input)
+        release.resolve()
+        await Promise.all([beginning, finishing])
+        expect(capture).toHaveBeenCalledTimes(2)
+        const message = await MessageV2.get({ sessionID: session.id, messageID: input.rootID })
+        expect(message.parts.find((part) => part.type === "patch")?.checkpoint?.status).toBe("complete")
       },
     })
   }))
