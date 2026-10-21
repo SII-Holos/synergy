@@ -12089,6 +12089,46 @@ msgid "diff.preview-truncated"
 msgstr "⟦Preview truncated⟧"
 
 #. js-lingui-explicit-id
+msgid "digitalTwin.composer.abstained"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.predict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.predicting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automatic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automaticHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.follow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.cancel"
 msgstr "⟦Cancel⟧"
 
@@ -19618,6 +19658,10 @@ msgstr "⟦Control Profile⟧"
 #. js-lingui-explicit-id
 msgid "settings.catalog.controlProfile.searchTerms"
 msgstr "⟦control profile | guarded | autonomous | full access⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.digitalTwin.searchTerms"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.email.description"

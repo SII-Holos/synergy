@@ -14,7 +14,7 @@ Verify types, tests and packages.
 - Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.
 - Keep native PTYs, filesystem watchers and OS sandbox implementations in local-runtime. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
 
-- Expose operations through session, scope, tools, context, lifecycle, config, persistence, rollout and usage entries. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports; production cannot import them. Use relative owner imports within this package.
+- Expose domain operations through public entries; `session/prompt-budgeter` measures native model messages. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports; production cannot import them. Use relative owner imports within this package.
 - File browsing, indexing, Ripgrep, Hashline editing and conflict resolution belong to local-runtime; this package retains execution read evidence and locking.
 - Native file imports cross the Runtime-scoped `workspace/file-import` Host contract; register the implementation before opening the Runtime and reject unavailable hosts explicitly.
 - Workspace catalog references and binding generations own file identity. Native write admission uses `workspace/access`; execution-capacity scheduling remains private. File resources use `WorkspaceState`; Scope configuration and event sequencing use `ScopedState`. Startup contributions declare Workspace ownership when they depend on working files.
@@ -26,7 +26,7 @@ Verify types, tests and packages.
 
 Register PG contracts in `test/support/storage-backends.ts`; follow [backend selection](../../.synergy/skill/testing-guide/SKILL.md).
 
-Secret capture keeps Vault and execution-time resolution here; detector contracts and regex evaluation belong to `packages/secret-detection`. Register replacement detectors through `secrets/detector-source` before runtime startup. Run `bun test test/secrets/` and `bun run benchmark:secrets` for capture changes; the benchmark owns a disposable home.
+Secret capture keeps Vault and execution-time resolution here; detector contracts and regex evaluation belong to `packages/secret-detection`. Derived batches use `SecretMask.captureAndApplyMany`/`revision()`. Register replacement detectors through `secrets/detector-source` before runtime startup. Run `bun test test/secrets/` and `bun run benchmark:secrets` for capture changes; the benchmark owns a disposable home.
 
 Storage transfer callers use the public `storage/compat` convergence guard before copying deferred datasets. The central migration runner stages records for shared migrations and tracks owner-local cohorts; background import remains owned and drained by the Runtime Handle.
 

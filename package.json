@@ -67,6 +67,7 @@
       "packages/browser-runtime",
       "packages/computer-runtime",
       "packages/library",
+      "packages/digital-twin",
       "packages/note",
       "packages/workflows",
       "packages/connections",

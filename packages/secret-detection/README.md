@@ -1,6 +1,6 @@
 # Secret detection
 
-Runtime-independent detection and evaluation for Synergy. The package exports a typed asynchronous detector, the `standalone-regex` version 1 baseline, shared redaction patterns and evaluation functions. It does not read credentials, access the filesystem, register secrets, load models or make network requests. Executable evaluation scripts own their input/output separately.
+Runtime-independent detection and evaluation for Synergy. The package exports a typed asynchronous detector, the `standalone-regex` version 2 baseline, shared redaction patterns and evaluation functions. It does not read credentials, access the filesystem, register secrets, load models or make network requests. Executable evaluation scripts own their input/output separately.
 
 ## Detector contract
 
@@ -21,7 +21,7 @@ const result = await SecretDetection.detect(
 
 The runner validates results and exposes sanitized `SecretDetection.Error` codes for failure, invalid output, cancellation and timeout. Cancellation is cooperative: it forwards an `AbortSignal` and bounds the caller's wait, but cannot preempt synchronous JavaScript or forcibly stop a model process. A model adapter must honor cancellation and own loading/disposal outside individual detection calls; its version must identify weights, preprocessing, thresholds and other effective settings. No model adapter ships in this package.
 
-The regex baseline scans the whole input with the shared standalone prefix inventory and merges overlapping hits. It does not parse arbitrary credential fields, measure entropy, validate credentials or use the separate log/SmartAllow rules. Example keys can be false positives; unknown formats can be false negatives. These cases are retained in the evaluation corpus.
+The regex baseline scans the whole input with the shared standalone prefix inventory and OAuth authorization-code URL spans, then merges overlapping hits. Authorization codes require an `auth`, `oauth`, `oauth2`, `authorize` or `callback` path segment; ordinary document URL `code` parameters remain ordinary text. It does not parse arbitrary credential fields, measure entropy, validate credentials or use the separate log/SmartAllow rules. Example keys can be false positives; unknown formats can be false negatives. These cases are retained in the evaluation corpus.
 
 ## Harness integration
 

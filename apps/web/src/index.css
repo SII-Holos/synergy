@@ -1605,8 +1605,8 @@ a {
   height: 32px;
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button:hover,
-.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover {
+.synergy-workbench-canvas .prompt-input-toolbar-button:hover:not(:disabled),
+.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 

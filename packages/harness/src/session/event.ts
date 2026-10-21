@@ -16,6 +16,10 @@ export function isSessionResourceTerminalEvent(event: {
 }
 
 export const SessionEvent = {
+  RootCompleted: BusEvent.define(
+    "session.root.completed",
+    z.object({ sessionID: z.string(), rootID: z.string(), assistantID: z.string() }),
+  ),
   Updated: BusEvent.define(
     "session.updated",
     z.object({

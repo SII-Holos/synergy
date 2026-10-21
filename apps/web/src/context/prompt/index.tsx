@@ -1,3 +1,4 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
@@ -113,6 +114,13 @@ export function sanitizePrompt(value: unknown): Prompt {
   return sanitizePromptValue(value) as unknown as Prompt
 }
 
+export type DraftSnapshot = {
+  prompt: Prompt
+  context: PromptContextSnapshot
+  cursor?: number
+  assistance?: InputAssistance.Info
+}
+
 export type PromptContextSnapshot = {
   items: ContextItem[]
 }
@@ -162,6 +170,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     createStore<{
       prompt: Prompt
       cursor?: number
+      assistance?: InputAssistance.Info
       admission?: DraftAdmission
       context: {
         items: (ContextItem & { key: string })[]
@@ -179,13 +188,14 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
   const dirty = createMemo(() => !isPromptEqual(current(), DEFAULT_PROMPT))
   let revision = 0
   let generation = 0
-  let pendingDraft: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number } | undefined
+  let pendingDraft: DraftSnapshot | undefined
 
-  const restoreDraft = (snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number }) => {
+  const restoreDraft = (snapshot: DraftSnapshot) => {
     const next = sanitizePromptContext(snapshot.context)
     revision++
     batch(() => {
       setStore("prompt", sanitizePrompt(snapshot.prompt).map(clonePart))
+      setStore("assistance", snapshot.assistance)
       setStore("context", { items: next.items.map((item) => ({ key: keyForContextItem(item), ...item })) })
       setStore(
         "cursor",
@@ -199,6 +209,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     generation++
     batch(() => {
       setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+      setStore("assistance", undefined)
       setStore("cursor", 0)
       setStore("context", { items: [] })
       setStore("admission", undefined)
@@ -213,6 +224,8 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     current,
     cursor: createMemo(() => store.cursor),
     dirty,
+    assistance: () => store.assistance,
+    setAssistance: (value: InputAssistance.Info | undefined) => setStore("assistance", value),
     revision: () => revision,
     admissionIdentity(fingerprint: string, createID: () => string) {
       const value = draftAdmission(store.admission, fingerprint, createID)
@@ -221,19 +234,17 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
     },
 
     generation: () => generation,
-    restoreIfUnchanged(
-      expectedRevision: number,
-      snapshot: { prompt: Prompt; context: PromptContextSnapshot; cursor?: number },
-    ) {
+    restoreIfUnchanged(expectedRevision: number, snapshot: DraftSnapshot) {
       if (revision !== expectedRevision) return false
       restoreDraft(snapshot)
       return true
     },
-    recoverDraft(snapshot: { prompt: Prompt; context: PromptContextSnapshot }, submit: boolean) {
+    recoverDraft(snapshot: DraftSnapshot, submit: boolean) {
       const currentDraft = {
         prompt: clonePrompt(current()),
         context: sanitizePromptContext(store.context),
         cursor: store.cursor,
+        assistance: store.assistance,
       }
       if (!submit) {
         const restored = pendingDraft ? mergeProjectDrafts(currentDraft, pendingDraft) : currentDraft
@@ -291,6 +302,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
       const next = sanitizePrompt(prompt).map(clonePart)
       batch(() => {
         setStore("prompt", next)
+        if (next.every((part) => part.type === "text" && !part.content)) setStore("assistance", undefined)
         if (cursorPosition !== undefined) setStore("cursor", cursorPosition)
       })
     },
@@ -299,6 +311,7 @@ function createPromptSession(dir: string, id: string | undefined, drafts: Return
       generation++
       batch(() => {
         setStore("prompt", clonePrompt(DEFAULT_PROMPT))
+        setStore("assistance", undefined)
         setStore("cursor", 0)
       })
     },
@@ -367,13 +380,17 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
         const sourceRevision = source.revision()
         const targetRevision = target.revision()
         const sourceSnapshot = qualifyProjectDraft(
-          { prompt: source.current(), context: { items: source.context.items() } },
+          { prompt: source.current(), context: { items: source.context.items() }, assistance: source.assistance() },
           sourceScopeID,
           sourceDirectory,
         )
         const sourceCursor = source.cursor()
         const targetCursor = target.cursor()
-        const targetSnapshot = { prompt: target.current(), context: { items: target.context.items() } }
+        const targetSnapshot = {
+          prompt: target.current(),
+          context: { items: target.context.items() },
+          assistance: target.assistance(),
+        }
         const held = new Set([source, target])
         for (const draft of held) retained.set(draft, (retained.get(draft) ?? 0) + 1)
         let released = false
@@ -429,8 +446,8 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
             const sourceRevision = draft.revision()
             const targetRevision = target.revision()
             const merged = mergeProjectDrafts(
-              { prompt: target.current(), context: { items: target.context.items() } },
-              { prompt: draft.current(), context: { items: draft.context.items() } },
+              { prompt: target.current(), context: { items: target.context.items() }, assistance: target.assistance() },
+              { prompt: draft.current(), context: { items: draft.context.items() }, assistance: draft.assistance() },
             )
             return batch(() => {
               if (!target.restoreIfUnchanged(targetRevision, { ...merged, cursor: draft.cursor() })) return false
@@ -455,6 +472,8 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       current: () => session().current(),
       cursor: () => session().cursor(),
       dirty: () => session().dirty(),
+      assistance: () => session().assistance(),
+      setAssistance: (value: InputAssistance.Info | undefined) => session().setAssistance(value),
       context: {
         items: () => session().context.items(),
         add: (item: ContextItem) => session().context.add(item),
@@ -465,8 +484,7 @@ export const { use: usePrompt, provider: PromptProvider } = createSimpleContext(
       set: (prompt: Prompt, cursorPosition?: number) => session().set(prompt, cursorPosition),
       reset: () => session().reset(),
       resetDraft: () => session().resetDraft(),
-      recoverDraft: (snapshot: { prompt: Prompt; context: PromptContextSnapshot }, submit: boolean) =>
-        session().recoverDraft(snapshot, submit),
+      recoverDraft: (snapshot: DraftSnapshot, submit: boolean) => session().recoverDraft(snapshot, submit),
     }
   },
 })

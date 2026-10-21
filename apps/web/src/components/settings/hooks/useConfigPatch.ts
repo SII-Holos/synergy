@@ -29,6 +29,25 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   const { cfg, state, originalMcps } = params
   const patch: Record<string, unknown> = {}
 
+  if (params.hasFeature?.("digital-twin")) {
+    const current = {
+      automatic: cfg.digitalTwin?.automatic !== false,
+      model: cfg.digitalTwin?.model ? `${cfg.digitalTwin.model.providerID}/${cfg.digitalTwin.model.modelID}` : "",
+    }
+    if (!isDeepEqual(current, state.digitalTwin)) {
+      const slash = state.digitalTwin.model.indexOf("/")
+      patch.digitalTwin = {
+        automatic: state.digitalTwin.automatic,
+        model:
+          slash < 0
+            ? null
+            : {
+                providerID: state.digitalTwin.model.slice(0, slash),
+                modelID: state.digitalTwin.model.slice(slash + 1),
+              },
+      }
+    }
+  }
   buildGeneralPatch(cfg, state, patch)
   buildEmbeddingPatch(cfg, state, patch)
   buildModelPatch(cfg, state, patch)

@@ -5710,6 +5710,23 @@ export type GithubConfig = {
 }
 
 /**
+ * Next-input prediction: automatic defaults to true; model defaults to the current Session model
+ */
+export type DigitalTwinSettings = {
+  /**
+   * Automatically predict the next input after a completed task (default: true)
+   */
+  automatic?: boolean
+  /**
+   * Prediction model; null or absent follows the current Session
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  } | null
+}
+
+/**
  * Sender identity for outgoing emails
  */
 export type EmailFromConfig = {
@@ -7101,6 +7118,7 @@ export type Config = {
     url?: string
   }
   github?: GithubConfig
+  digitalTwin?: DigitalTwinSettings
   email?: EmailConfig
   /**
    * External agent configurations (e.g. codex, claude-code)
@@ -7472,6 +7490,7 @@ export type ConfigDomainSummary = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7532,6 +7551,7 @@ export type ConfigExportResult = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7594,6 +7614,7 @@ export type ConfigDomainImportDomainPlan = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7651,6 +7672,7 @@ export type ConfigDomainImportPlanInput = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7738,6 +7760,7 @@ export type ConfigImportRevisionConflictError = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -7773,6 +7796,7 @@ export type ConfigDomainImportApplyInput = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -10226,6 +10250,17 @@ export type ExperimentFile = {
   runtime?: ExperimentRuntime
 }
 
+export type InputAssistance = {
+  version: 1
+  proposals: Array<{
+    producer: string
+    proposalID: string
+    generatedFingerprint: string
+    acceptedFingerprint: string
+  }>
+  submittedFingerprint?: string
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -10346,7 +10381,8 @@ export type UserMessage = {
   thinking?: SessionThinkingSelection
   origin?: OriginUser
   metadata?: {
-    [key: string]: unknown
+    assistance?: InputAssistance
+    [key: string]: unknown | InputAssistance | undefined
   }
 }
 
@@ -12837,6 +12873,41 @@ export type LatticeEvent = {
   }
 }
 
+export type DigitalTwinSourceStamp = {
+  rootID: string
+  assistantID: string
+  scopeID: string
+  sessionID: string
+  model: {
+    providerID: string
+    modelID: string
+  }
+  revision: string
+}
+
+export type DigitalTwinPrediction = {
+  proposalID: string
+  candidate: string | null
+  abstention: "insufficient-grounding" | "no-clear-continuation" | null
+  stamp: DigitalTwinSourceStamp
+}
+
+export type DigitalTwinFailure = {
+  code: "source_unavailable" | "source_changed" | "model_unavailable" | "cancelled" | "invalid_prediction"
+  message: string
+}
+
+export type SessionCompletionAnchor = {
+  rootID: string
+  assistantID: string
+}
+
+export type DigitalTwinInput = {
+  sessionID: string
+  expected?: SessionCompletionAnchor
+  requestID: string
+}
+
 export type AssetInfo = {
   id: string
   url: string
@@ -14231,6 +14302,15 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
+export type EventSessionRootCompleted = {
+  type: "session.root.completed"
+  properties: {
+    sessionID: string
+    rootID: string
+    assistantID: string
+  }
+}
+
 export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
@@ -15260,6 +15340,7 @@ export type Event =
   | EventWorkspaceUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventSessionRootCompleted
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
@@ -18527,6 +18608,7 @@ export type ConfigDomainGetData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18581,6 +18663,7 @@ export type ConfigDomainUpdateData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18635,6 +18718,7 @@ export type ConfigDomainOpenData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18697,6 +18781,7 @@ export type ConfigExportData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18718,6 +18803,7 @@ export type ConfigExportData = {
           | "channels"
           | "holos"
           | "github"
+          | "digital-twin"
           | "email"
           | "plugins"
           | "mcp"
@@ -21576,7 +21662,8 @@ export type SessionInputData = {
     agent?: string
     noReply?: boolean
     metadata?: {
-      [key: string]: unknown
+      assistance?: InputAssistance
+      [key: string]: unknown | InputAssistance | undefined
     }
     summary?: {
       title?: string
@@ -21884,7 +21971,8 @@ export type SessionPromptData = {
     agent?: string
     noReply?: boolean
     metadata?: {
-      [key: string]: unknown
+      assistance?: InputAssistance
+      [key: string]: unknown | InputAssistance | undefined
     }
     summary?: {
       title?: string
@@ -22556,7 +22644,8 @@ export type SessionPromptAsyncData = {
     agent?: string
     noReply?: boolean
     metadata?: {
-      [key: string]: unknown
+      assistance?: InputAssistance
+      [key: string]: unknown | InputAssistance | undefined
     }
     summary?: {
       title?: string
@@ -29352,6 +29441,48 @@ export type LatticeRunApproveResponses = {
 }
 
 export type LatticeRunApproveResponse = LatticeRunApproveResponses[keyof LatticeRunApproveResponses]
+
+export type DigitalTwinPredictNextInputData = {
+  body?: DigitalTwinInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/digital-twin/predict-next-input"
+}
+
+export type DigitalTwinPredictNextInputErrors = {
+  /**
+   * Prediction unavailable
+   */
+  408: DigitalTwinFailure
+  /**
+   * Prediction unavailable
+   */
+  409: DigitalTwinFailure
+  /**
+   * Prediction unavailable
+   */
+  502: DigitalTwinFailure
+  /**
+   * Prediction unavailable
+   */
+  503: DigitalTwinFailure
+}
+
+export type DigitalTwinPredictNextInputError =
+  DigitalTwinPredictNextInputErrors[keyof DigitalTwinPredictNextInputErrors]
+
+export type DigitalTwinPredictNextInputResponses = {
+  /**
+   * One editable prediction or abstention
+   */
+  200: DigitalTwinPrediction
+}
+
+export type DigitalTwinPredictNextInputResponse =
+  DigitalTwinPredictNextInputResponses[keyof DigitalTwinPredictNextInputResponses]
 
 export type AssetUploadData = {
   body?: {

@@ -1,7 +1,7 @@
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { UpgradeWork } from "../storage/upgrade-work"
-import { TEXT_FRAGMENT_CHARS, TEXT_QUERY_CHARS, type TextCategory } from "../storage/text-projection"
+import { LEXICAL_VERSION, TEXT_FRAGMENT_CHARS, TEXT_QUERY_CHARS, type TextCategory } from "../storage/text-projection"
 import { MessageV2 } from "./message-v2"
 import { PartContent } from "./part-content"
 import { Log } from "../util/log"
@@ -9,7 +9,7 @@ import { Identifier } from "../id/id"
 
 export namespace SessionHistorySearch {
   interface State {
-    version: 1
+    version: 2
     encoding?: "hex" | "bytes"
     phase: "scan" | "dirty"
     cursor?: string[]
@@ -17,7 +17,7 @@ export namespace SessionHistorySearch {
     ready: boolean
     prepared: number
   }
-  const initial: State = { version: 1, phase: "scan", ready: false, prepared: 0 }
+  const initial: State = { version: 2, phase: "scan", ready: false, prepared: 0 }
   const batches = Storage.state(() => new Map<string, Promise<{ ready: boolean; prepared: number }>>())
   const background = Storage.state(() => ({
     pending: new Map<string, { scopeID: string; sessionID: string }>(),
@@ -84,7 +84,8 @@ export namespace SessionHistorySearch {
   export async function initialize(scopeID: string, sessionID: string) {
     const key = StoragePath.sessionTextState(scopeID, sessionID)
     const [state] = await Storage.readMany<State>([key])
-    if (!state) await Storage.write(key, { ...initial, encoding: Storage.current().store.keyEncodedAs })
+    if (!state || state.version !== initial.version)
+      await Storage.write(key, { ...initial, encoding: Storage.current().store.keyEncodedAs })
   }
 
   export async function partWritten(scopeID: string, part: Pick<MessageV2.Part, "sessionID" | "messageID" | "id">) {
@@ -110,6 +111,57 @@ export namespace SessionHistorySearch {
     return { category: "tool", text: [JSON.stringify(part.state.input), output].filter(Boolean).join("\n\n") }
   }
 
+  export async function preparePart(key: string[], signal?: AbortSignal) {
+    signal?.throwIfAborted()
+    const source = await Storage.snapshot(async (tx) => {
+      const [revision] = await tx.revisions([key])
+      if (revision === undefined) return undefined
+      const projection = await tx.textProjectionState(key)
+      if (
+        projection?.revision === revision &&
+        projection.ready &&
+        projection.lexical?.version === LEXICAL_VERSION &&
+        projection.lexical.ready
+      )
+        return { ready: true as const }
+      const record = await tx.versioned<PartContent.Stored>(key)
+      return {
+        ready: false as const,
+        record,
+        projection,
+        version: PartContent.summary(record.value).content.version,
+        part: await PartContent.hydrate(key, record.value),
+      }
+    })
+    if (!source || source.ready) return true
+    const version = source.version
+    const prepared =
+      source.projection?.revision === source.record.revision &&
+      source.projection.version === version &&
+      source.projection.lexical?.version === LEXICAL_VERSION
+    const offset = prepared ? source.projection!.lexical!.progress : 0
+    const body = content(source.part)
+    const count = Math.ceil(body.text.length / TEXT_FRAGMENT_CHARS)
+    const fragments = Array.from({ length: Math.min(4, Math.max(0, count - offset)) }, (_, index) => {
+      const start = (offset + index) * TEXT_FRAGMENT_CHARS
+      return { offset: start, text: body.text.slice(start, start + TEXT_FRAGMENT_CHARS + TEXT_QUERY_CHARS * 2) }
+    })
+    const complete = offset + fragments.length >= count
+    signal?.throwIfAborted()
+    return Storage.transaction(async (tx) => {
+      const accepted = await tx.appendTextProjection({
+        key,
+        revision: source.record.revision,
+        version,
+        category: body.category,
+        offset,
+        fragments,
+        complete,
+      })
+      return accepted && complete
+    })
+  }
+
   export function prepareBatch(scopeID: string, sessionID: string, signal?: AbortSignal) {
     const identity = `${scopeID}/${sessionID}`
     const pending = batches().get(identity)
@@ -120,7 +172,8 @@ export namespace SessionHistorySearch {
       const source = await Storage.snapshot(async (tx) => {
         const [stored] = await tx.readMany<State>([stateKey])
         const encoding = Storage.current().store.keyEncodedAs
-        const state: State = stored?.encoding === encoding ? stored : { ...initial, encoding }
+        const state: State =
+          stored?.version === initial.version && stored.encoding === encoding ? stored : { ...initial, encoding }
         if (state.ready) return { state }
         const marker =
           state.phase === "dirty"
@@ -132,19 +185,7 @@ export namespace SessionHistorySearch {
             ? (await tx.queryKeys({ kind: "part", scopeID, sessionID, after: state.cursor, limit: 1 }))[0]
             : marker?.value.key)
         if (!key) return { state }
-        const record = await tx.versioned<PartContent.Stored>(key).catch((error) => {
-          if (error instanceof Storage.NotFoundError) return undefined
-          throw error
-        })
-        return {
-          state,
-          key,
-          marker,
-          record,
-          part: record ? await PartContent.hydrate(key, record.value) : undefined,
-          version: record ? PartContent.summary(record.value).content.version : undefined,
-          projection: record ? await tx.textProjectionState(key) : undefined,
-        }
+        return { state, key, marker }
       })
       if (source.state.ready) return { ready: true, prepared: source.state.prepared }
       if (!source.key) {
@@ -161,35 +202,9 @@ export namespace SessionHistorySearch {
         })
         return { ready: state.ready, prepared: state.prepared }
       }
-      const version = source.version
-      const prepared =
-        source.record && source.projection?.revision === source.record.revision && source.projection.version === version
-      const offset = prepared ? source.projection!.progress : 0
-      const body = source.part ? content(source.part) : undefined
-      const count = body ? Math.ceil(body.text.length / TEXT_FRAGMENT_CHARS) : 0
-      const fragments =
-        body && !(prepared && source.projection?.ready)
-          ? Array.from({ length: Math.min(4, Math.max(0, count - offset)) }, (_, index) => {
-              const start = (offset + index) * TEXT_FRAGMENT_CHARS
-              return { offset: start, text: body.text.slice(start, start + TEXT_FRAGMENT_CHARS + TEXT_QUERY_CHARS * 2) }
-            })
-          : []
-      const complete =
-        !source.record || Boolean(prepared && source.projection?.ready) || offset + fragments.length >= count
+      const complete = await preparePart(source.key, signal)
       await UpgradeWork.checkpoint()
       const updated = await Storage.transaction(async (tx) => {
-        if (source.record && !(prepared && source.projection?.ready)) {
-          const accepted = await tx.appendTextProjection({
-            key: source.key!,
-            revision: source.record.revision,
-            version: version!,
-            category: body!.category,
-            offset,
-            fragments,
-            complete,
-          })
-          if (!accepted) return false
-        }
         if (complete && source.marker) {
           const current = await tx.versioned(source.marker.key).catch((error) => {
             if (error instanceof Storage.NotFoundError) return undefined

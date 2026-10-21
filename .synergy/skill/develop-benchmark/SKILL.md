@@ -7,6 +7,10 @@ description: Change or validate the repository benchmark evaluator, native harne
 
 ## Freeze the experiment
 
+For temporal retrieval evaluations, use the production candidate budgets, ranking, deduplication and representative-selection rules after enforcing historical availability. Report unavailable immutable sources as evidence gaps. Keep per-recipe predictable coverage, ambiguous abstention, content and voice denominators separate; failures cannot become abstentions or inflate successful latency. Aggregate provider timing and nullable token/cache fields with their known and unknown counts.
+
+For author-conditioned evaluations, inspect the supplied positive examples against their source content and provenance. A user role and absent paste metadata do not prove authorship. Report copied-material contamination even when a candidate-only judge misses it; retain the frozen sample instead of adding exclusions after observing scores.
+
 1. Read [benchmark ownership](../../../benchmark/AGENTS.md), [commands and formats](../../../benchmark/README.md), and the [matrix decision](../../../docs/decisions/implemented/architecture/2026-09-14-benchmark-native-harness-matrix.md).
 2. Separate evaluator code, measured harness source or package version, runtime composition, model profile, native task inputs and repeat identity. Declare configuration differences as named variants before observing scores.
    A model profile that enables thinking must also declare its reasoning tier. Providers expose depth through a separate control from the enable switch, so an omitted tier silently inherits the provider default and the retained evidence cannot state the condition that produced a score. Name the tier in the model key and set it explicitly; treat a different tier as a new named condition rather than a reinterpretation of a completed run. See the [tier decision](../../../docs/decisions/implemented/architecture/2026-09-20-benchmark-explicit-reasoning-tier.md).

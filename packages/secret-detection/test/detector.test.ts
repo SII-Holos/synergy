@@ -33,6 +33,26 @@ describe("detector contract", () => {
     }
   })
 
+  test("captures OAuth callback codes without treating ordinary URL codes as credentials", async () => {
+    const credential = "fixture-authorization-code-12345"
+    for (const url of [
+      `http://localhost:1455/auth/callback?code=${credential}&state=ordinary-state`,
+      `https://example.test/oauth2/redirect?state=ordinary-state&code=${credential}`,
+      `https://example.test/callback?code=${credential}`,
+    ]) {
+      const text = `🔐 Return URL: ${url}`
+      const result = await SecretDetection.detect(RegexDetector, { ...input, text })
+      expect(result.findings.map((value) => text.slice(value.start, value.end))).toEqual([credential])
+    }
+    for (const text of [
+      `https://example.test/docs?code=${credential}`,
+      `https://example.test/authors?code=${credential}`,
+      "https://example.test/callback?code=⟦sec:already-masked⟧",
+    ]) {
+      expect((await SecretDetection.detect(RegexDetector, { ...input, text })).findings).toEqual([])
+    }
+  })
+
   test("accepts an asynchronous alternate detector", async () => {
     const detector: SecretDetection.Detector = {
       id: "fixture",

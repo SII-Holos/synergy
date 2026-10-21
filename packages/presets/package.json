@@ -52,6 +52,7 @@
     "@ericsanchezok/synergy-code-tools": "workspace:*",
     "@ericsanchezok/synergy-computer-runtime": "workspace:*",
     "@ericsanchezok/synergy-connections": "workspace:*",
+    "@ericsanchezok/synergy-digital-twin": "workspace:*",
     "@ericsanchezok/synergy-email": "workspace:*",
     "@ericsanchezok/synergy-external-agents": "workspace:*",
     "@ericsanchezok/synergy-formatter": "workspace:*",

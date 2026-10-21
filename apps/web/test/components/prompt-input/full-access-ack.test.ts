@@ -104,6 +104,7 @@ mock.module("@solidjs/router", () => ({
 
 mock.module("../../../src/context/sdk", () => ({
   useSDK: () => ({
+    capabilities: { current: () => undefined, has: () => false },
     client: {
       session: {
         get: async () => ({ data: {} }),
@@ -180,6 +181,8 @@ mock.module("../../../src/context/prompt", () => ({
   PromptProvider: (props: { children?: unknown }) => props.children,
   usePrompt: () => ({
     ready: () => true,
+    assistance: () => undefined,
+    setAssistance: () => {},
     current: () => [],
     dirty: () => false,
     cursor: () => 0,

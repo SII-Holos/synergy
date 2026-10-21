@@ -8,9 +8,11 @@ import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionHistory } from "../../src/session/history"
 import { SessionHistoryDisplay } from "../../src/session/history-display"
+import { SessionCorpus } from "../../src/session/corpus"
 import { SessionHistorySearch } from "../../src/session/history-search"
 import { PartContent } from "../../src/session/part-content"
 import { PartWriteBuffer } from "../../src/session/part-write-buffer"
+import { UpgradeWork } from "../../src/storage/upgrade-work"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { StorageCommitUnknownError } from "../../src/storage/errors"
@@ -615,3 +617,30 @@ test.each(["committed", "before-head-commit"])(
   },
   30_000,
 )
+
+test("corpus preparation and hydration preserve streamed text after a derived summary is lost", () =>
+  inHome(async () => {
+    await UpgradeWork.control("resume")
+    const { session, part } = await streamFixture("streamed corpus evidence ".repeat(400))
+    await Session.updatePartDelta(part, part.text)
+    await Session.flushPartWrites(session.id)
+    const summaryKey = StoragePath.sessionDisplayPart(session.scope.id, session.id, part.messageID, part.id)
+    await Storage.remove(summaryKey)
+    let cursor: SessionCorpus.PreparationCursor | undefined
+    let ready = false
+    for (let index = 0; index < 32 && !ready; index++) {
+      const page = await SessionCorpus.prepare({ scopeID: session.scope.id, sessionID: session.id, cursor })
+      ready = page.ready
+      cursor = page.cursor
+    }
+    expect(ready).toBe(true)
+    const page = await SessionCorpus.messages({ scopeID: session.scope.id, sessionID: session.id })
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]!.text).toBe(part.text)
+    const ref = page.items[0]!.reference
+    expect((await SessionCorpus.hydrate([ref]))[0]!.parts).toEqual([part])
+    part.text += " changed tail"
+    await Session.updatePartDelta(part, " changed tail")
+    await Session.flushPartWrites(session.id)
+    expect(await SessionCorpus.hydrate([ref])).toEqual([undefined])
+  }))

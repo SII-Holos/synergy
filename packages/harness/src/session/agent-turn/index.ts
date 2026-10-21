@@ -103,6 +103,9 @@ export namespace AgentTurn {
       ? request
       : { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
     if (input.promptSuffix) input.promptSuffix = await SecretMask.apply(input.promptSuffix)
+    const userMetadata = input.user.metadata
+      ? JSON.parse(await SecretMask.apply(JSON.stringify(input.user.metadata)))
+      : undefined
     const { contextUsageProvenance, recording, usageRole, retryIndex, onPhase, recovery, ...turnInput } = input
     const attribution = recording ?? {
       owner: {
@@ -154,6 +157,7 @@ export namespace AgentTurn {
               },
               request: JSON.parse(
                 JSON.stringify({
+                  userMetadata,
                   messages: input.messages,
                   system: prepared?.system ?? input.system,
                   lateSystem: input.lateSystem,

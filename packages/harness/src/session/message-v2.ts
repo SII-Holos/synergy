@@ -1,3 +1,4 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import { upgradeAccessRecord } from "../migration/import"
 import { prepareSessionMigrations } from "../migration"
 import {
@@ -564,7 +565,7 @@ export namespace MessageV2 {
     variant: z.string().optional(),
     thinking: ModelSelection.Thinking.optional(),
     origin: OriginUser.optional(),
-    metadata: z.record(z.string(), z.any()).optional(),
+    metadata: InputAssistance.Metadata.optional(),
   }).meta({
     ref: "UserMessage",
   })

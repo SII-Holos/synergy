@@ -2467,6 +2467,30 @@
       },
       "additionalProperties": false
     },
+    "digitalTwin": {
+      "description": "Next-input prediction: automatic defaults to true; model defaults to the current Session model",
+      "type": "object",
+      "properties": {
+        "automatic": {
+          "description": "Automatically predict the next input after a completed task (default: true)",
+          "type": "boolean"
+        },
+        "model": {
+          "description": "Prediction model; null or absent follows the current Session",
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": { "providerID": { "type": "string" }, "modelID": { "type": "string" } },
+              "required": ["providerID", "modelID"],
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "ref": "DigitalTwinSettings"
+    },
     "plugin": { "type": "array", "items": { "type": "string" } },
     "pluginRuntimePolicy": {
       "description": "Plugin runtime isolation policy configuration",

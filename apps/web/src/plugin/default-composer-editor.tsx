@@ -34,7 +34,7 @@ export function DefaultComposerEditor(
           </div>
         )}
       </Show>
-      <Show when={input.editor.placeholder()}>
+      <Show when={!input.editor.completion() && input.editor.placeholder()}>
         {(placeholder) => (
           <div class="absolute top-0 inset-x-0 ps-[var(--session-text-inset,1rem)] py-3 pr-12 text-14-regular text-text-weak pointer-events-none whitespace-nowrap truncate">
             {placeholder()}

@@ -35,6 +35,25 @@ export namespace SecretPatterns {
 
   export const queryParam = /([?&](?:token|secret|password|authorization|api[_-]?key|cookie|key)=)[^&#\s"']+/gi
 
+  export function oauthCodes(text: string): Array<{ start: number; end: number }> {
+    const spans: Array<{ start: number; end: number }> = []
+    for (const url of text.matchAll(/\bhttps?:\/\/[^\s"'<>\\()[\]{}]+/gi)) {
+      let pathname: string
+      try {
+        pathname = new URL(url[0]).pathname
+      } catch {
+        continue
+      }
+      if (!/\/(?:auth|oauth2?|authorize|callback)(?:\/|$)/i.test(pathname)) continue
+      for (const match of url[0].matchAll(/([?&]code=)([^&#]+)/gi)) {
+        if (match[2]!.startsWith("⟦sec:")) continue
+        const start = url.index + match.index + match[1]!.length
+        spans.push({ start, end: start + match[2]!.length })
+      }
+    }
+    return spans
+  }
+
   /** Replace every standalone token match; returns the text and match count. */
   export function replaceStandalone(text: string, replacement: string): { text: string; matches: number } {
     let matches = 0

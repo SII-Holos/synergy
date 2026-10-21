@@ -19,6 +19,77 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 }
 
 describe("ComposerDocumentController", () => {
+  test("explicit dismissal removes a completion without moving the caret or editing the draft", () => {
+    const { controller, text } = fixture()
+    let dismissed = 0
+    const service = controller.service({
+      id: "completion",
+      capabilities: new Set(["composer.write"]),
+      onCompletionDismissed: () => dismissed++,
+    })
+    service.setCompletion({ revision: 0, position: 5, text: " world" })
+    controller.dismissCompletion()
+    controller.dismissCompletion()
+    expect(dismissed).toBe(1)
+    expect(controller.completion()).toBeUndefined()
+    expect(controller.current().selection).toEqual({ start: 5, end: 5 })
+    expect(text()).toBe("hello")
+    service.setCompletion({ revision: 0, position: 5, text: " world" })
+    controller.dispose()
+    expect(dismissed).toBe(1)
+  })
+
+  test("refocusing the same caret preserves a completion, while moving the caret dismisses it", () => {
+    const { controller, selection } = fixture()
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.write"]) })
+    service.setCompletion({ revision: 0, position: 5, text: " world" })
+    controller.selectionChanged()
+    expect(controller.completion()?.text).toBe(" world")
+    selection({ start: 4, end: 4 })
+    controller.selectionChanged()
+    expect(controller.completion()).toBeUndefined()
+    selection({ start: 5, end: 5 })
+    expect(controller.completion()).toBeUndefined()
+    controller.dispose()
+  })
+
+  test("an asynchronous acceptance cannot mark a different session draft as assisted", async () => {
+    let sessionId = "first"
+    let text = ""
+    const gate = Promise.withResolvers<void>()
+    const controller = new ComposerDocumentController({
+      read: () => ({ sessionId, text, mode: "normal", selection: { start: 0, end: 0 } }),
+      async applyEdits(edits) {
+        text = edits[0]!.text
+        await gate.promise
+      },
+    })
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.write"]) })
+    service.setCompletion({ revision: 0, position: 0, text: "再检查一下", proposalID: "proposal" })
+    const accepting = controller.acceptCompletion()
+    sessionId = "second"
+    text = "独立输入"
+    controller.changed()
+    gate.resolve()
+    expect(await accepting).toBe(false)
+    expect(controller.assistance()).toBeUndefined()
+    controller.dispose()
+  })
+  test("accepting a completion records assistance through edits and producer removal", async () => {
+    const { controller, text } = fixture()
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.read", "composer.write"]) })
+    service.setCompletion({ revision: 0, position: 5, text: " world", proposalID: "proposal" })
+    expect(controller.assistance()).toBeUndefined()
+    await controller.acceptCompletion()
+    service.dispose()
+    await controller.applyEdits({
+      revision: controller.current().revision,
+      edits: [{ range: { start: 5, end: 11 }, text: " everyone" }],
+    })
+    expect(text()).toBe("hello everyone")
+    expect(controller.assistance()?.proposals[0]).toMatchObject({ producer: "completion", proposalID: "proposal" })
+    controller.dispose()
+  })
   test("does not read the document when no completion exists", () => {
     let reads = 0
     const controller = new ComposerDocumentController({
@@ -73,6 +144,14 @@ describe("ComposerDocumentController", () => {
     const snapshot = service.current()
     service.setCompletion({ revision: snapshot.revision, position: 5, text: " world" })
     expect(controller.completion()?.text).toBe(" world")
+    const other = controller.service({ id: "other", order: 0, capabilities: new Set(["composer.write"]) })
+    other.setCompletion({ revision: snapshot.revision, position: 5, text: " there" })
+    expect(controller.completion()?.text).toBe(" there")
+    expect(controller.completion("writer")?.text).toBe(" world")
+    service.setCompletion(undefined)
+    expect(controller.completion()?.text).toBe(" there")
+    expect(controller.completion("writer")).toBeUndefined()
+    service.setCompletion({ revision: snapshot.revision, position: 5, text: " world" })
     service.setDecorations({
       revision: snapshot.revision,
       items: [{ id: "typo", range: { start: 0, end: 5 }, severity: "warning", replacement: "Hello" }],

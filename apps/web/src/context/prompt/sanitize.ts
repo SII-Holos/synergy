@@ -1,3 +1,4 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 
 export const SANITIZED_DEFAULT_PROMPT = [{ type: "text", content: "", start: 0, end: 0 }]
@@ -171,8 +172,11 @@ export function sanitizePromptValue(value: unknown): Record<string, unknown>[] {
 
 export function sanitizePromptStateValue(value: unknown) {
   const state = isRecord(value) ? value : {}
+  const { assistance: ignoredAssistance, ...rest } = state
+  const assistance = InputAssistance.read(state)
   return {
-    ...state,
+    ...rest,
+    ...(assistance ? { assistance } : {}),
     prompt: sanitizePromptValue(state.prompt),
     context: sanitizePromptContextValue(state.context),
   }

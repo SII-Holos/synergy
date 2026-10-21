@@ -12089,6 +12089,46 @@ msgid "diff.preview-truncated"
 msgstr "Preview truncated"
 
 #. js-lingui-explicit-id
+msgid "digitalTwin.composer.abstained"
+msgstr "No clear continuation yet."
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.predict"
+msgstr "Predict next input"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.predicting"
+msgstr "Predicting next input…"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.unavailable"
+msgstr "Prediction unavailable. Try again."
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automatic"
+msgstr "Automatic next-input prediction"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automaticHint"
+msgstr "Show a suggestion after a task finishes. Tab inserts it; you choose when to send."
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.description"
+msgstr "Suggest your next message using the conversation and your earlier writing."
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.follow"
+msgstr "Follow current Session model"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.model"
+msgstr "Prediction model"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.title"
+msgstr "Digital Twin"
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.cancel"
 msgstr "Cancel"
 
@@ -19618,6 +19658,10 @@ msgstr "Control Profile"
 #. js-lingui-explicit-id
 msgid "settings.catalog.controlProfile.searchTerms"
 msgstr "control profile | guarded | autonomous | full access"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.digitalTwin.searchTerms"
+msgstr "prediction | next input | writing | digital twin"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.email.description"

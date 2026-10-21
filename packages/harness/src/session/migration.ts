@@ -1711,6 +1711,26 @@ export const migrations: Migration[] = [
     },
   },
   {
+    id: "20261021-session-lexical-projection",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["storage/20261021-text-lexical-structure", "20261001-session-text-projection"],
+    description: "Reset the small preparation cursor for deferred lexical indexing while retaining literal search",
+    async upSession(owner, progress) {
+      const { SessionHistorySearch } = await import("./history-search")
+      await SessionHistorySearch.initialize(owner.scopeID, owner.sessionID)
+      progress(1, 1)
+    },
+    async up(progress) {
+      const { SessionHistorySearch } = await import("./history-search")
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await SessionHistorySearch.initialize(scopeID, sessionID)
+      progress(1, 1)
+    },
+  },
+  {
     id: "20261001-session-display-index",
     scope: "session",
     execution: "session",
