@@ -1928,6 +1928,9 @@ export type TelemetryResourceSample = {
   cpu?: {
     userMicros?: number
     systemMicros?: number
+    /**
+     * Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1
+     */
     utilizationRatio?: number
   }
   memory?: {
@@ -2155,6 +2158,9 @@ export type PerfDashboardSummary = {
     heapTotalBytes?: number
     externalBytes?: number
     arrayBuffersBytes?: number
+    /**
+     * Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1
+     */
     cpuUtilizationRatio?: number
     eventLoopLagP95Ms?: number
     appReadBytes?: number

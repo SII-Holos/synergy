@@ -25,6 +25,8 @@ Rationale: `docs/decisions/`.
 
 ## Index
 
+- [0082](0082-performance-evidence-and-failure-retention.md)
+
 - [0081](0081-browser-navigation-timeouts.md)
 
 - [0080](0080-virtual-process-disclosure-demand.md)
@@ -147,6 +149,6 @@ Rationale: `docs/decisions/`.
 
 - [0037: Mount identity](0037-mount-number-invalidated-directory.md)
 
-## History rules
+## History
 
-Preserve history; append corrections.
+Only append corrections.

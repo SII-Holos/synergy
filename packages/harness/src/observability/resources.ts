@@ -100,7 +100,7 @@ export namespace ObservabilityResources {
     const elapsedMs = Math.max(1, performance.now() - instanceState.lastTime)
     const userDelta = cpu.user - instanceState.lastCpu.user
     const systemDelta = cpu.system - instanceState.lastCpu.system
-    const utilizationRatio = Math.min(1, Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000)))
+    const utilizationRatio = Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000))
     instanceState.lastCpu = cpu
     instanceState.lastTime = performance.now()
     const sample = ObservabilitySchema.ResourceSample.parse({

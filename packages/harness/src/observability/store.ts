@@ -835,26 +835,68 @@ export namespace ObservabilityStore {
     return getRow<StoredResource>(conn, "SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1")
   }
 
-  export function resourceSince(since: number, opts: { scopeID?: string; limit?: number; newestFirst?: boolean } = {}) {
+  export function resourceSince(
+    since: number,
+    opts: {
+      scopeID?: string
+      role?: ObservabilitySchema.ResourceSample["process"]["role"]
+      until?: number
+      limit?: number
+      newestFirst?: boolean
+    } = {},
+  ) {
     flush()
     const limit = opts.limit ?? 10_000
     const conn = queryConnection()
     if (!conn) return []
+    const filters = ["time >= ?"]
+    const params: SqlBinding[] = [since]
+    if (opts.until !== undefined) {
+      filters.push("time < ?")
+      params.push(opts.until)
+    }
     if (opts.scopeID) {
-      return allRows<StoredResource>(
-        conn,
-        `SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
-        since,
-        opts.scopeID,
-        limit,
-      )
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.role) {
+      filters.push("process_role = ?")
+      params.push(opts.role)
     }
     return allRows<StoredResource>(
       conn,
-      `SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
-      since,
+      `SELECT * FROM obs_resource_samples WHERE ${filters.join(" AND ")} ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
+      ...params,
       limit,
     )
+  }
+
+  export async function resourceSummary(opts: {
+    since: number
+    until: number
+    role: ObservabilitySchema.ResourceSample["process"]["role"]
+  }) {
+    const [summary] = await metricRows<{
+      count: number
+      measuredCount: number
+      rssBytes: number | null
+      peakRssBytes: number | null
+      eventLoopLagP95Ms: number | null
+    }>(
+      `WITH ranked AS (
+        SELECT memory_rss_bytes, COALESCE(event_loop_lag_ms, 0) AS lag,
+          ROW_NUMBER() OVER (ORDER BY COALESCE(event_loop_lag_ms, 0)) AS rank,
+          COUNT(*) OVER () AS count
+        FROM obs_resource_samples WHERE process_role = ? AND time >= ? AND time < ?
+      ) SELECT COUNT(*) AS count, COUNT(memory_rss_bytes) AS measuredCount,
+        SUM(memory_rss_bytes) AS rssBytes, MAX(memory_rss_bytes) AS peakRssBytes,
+        MAX(CASE WHEN rank = CAST((count * 95 + 99) / 100 AS INTEGER) THEN lag END) AS eventLoopLagP95Ms
+        FROM ranked`,
+      opts.role,
+      opts.since,
+      opts.until,
+    )
+    return summary
   }
 
   export function retain(now = Date.now()) {

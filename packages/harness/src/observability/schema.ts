@@ -203,7 +203,10 @@ export namespace ObservabilitySchema {
         .object({
           userMicros: z.number().optional(),
           systemMicros: z.number().optional(),
-          utilizationRatio: z.number().optional(),
+          utilizationRatio: z
+            .number()
+            .describe("Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1")
+            .optional(),
         })
         .default({}),
       memory: z

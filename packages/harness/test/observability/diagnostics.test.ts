@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { ObservabilityEvents } from "../../src/observability/events"
 import { ObservabilityIssues } from "../../src/observability/issues"
-import { ObservabilityResources } from "../../src/observability/resources"
+import { ObservabilitySchema } from "../../src/observability/schema"
 import { ObservabilitySpans } from "../../src/observability/spans"
 import { ObservabilityStore } from "../../src/observability/store"
 import { Diagnostics } from "../../src/observability/diagnostics"
@@ -47,7 +47,27 @@ describe("Diagnostics", () => {
         sessionID: "ses_diag",
       })
       const span = ObservabilitySpans.start({ name: "tool.execute", module: "tool", sessionID: "ses_diag" })!
-      await ObservabilityResources.snapshot({ role: "server" })
+      const now = Date.now()
+      for (const [sampleId, time, role, rssBytes] of [
+        ["earlier-child", now - 120_000, "tool", 500_000],
+        ["server-first", now - 60_000, "server", 1000],
+        ["server-latest", now - 1000, "server", 4000],
+        ["latest-child", now, "tool", undefined],
+      ] as const) {
+        ObservabilityStore.insertResource(
+          ObservabilitySchema.ResourceSample.parse({
+            sampleId,
+            time,
+            iso: new Date(time).toISOString(),
+            source: "process",
+            process: { role },
+            cpu: role === "server" ? { utilizationRatio: 2.5 } : {},
+            memory: { rssBytes },
+            eventLoop: { sampleWindowMs: 1000, ...(role === "server" ? { lagMs: 7 } : {}) },
+            labels: {},
+          }),
+        )
+      }
       ObservabilityStore.flush()
 
       const summary = await Diagnostics.summary()
@@ -57,6 +77,10 @@ describe("Diagnostics", () => {
       expect(summary.issues.some((issue) => issue.code === "PERF_DIAGNOSTICS_TEST")).toBe(true)
       expect(summary.inflight.some((item) => item.spanId === span.spanId)).toBe(true)
       expect(summary.resources.latest?.process.role).toBe("server")
+      expect(summary.resources.latest?.sampleId).toBe("server-latest")
+      expect(summary.resources.samples.some((sample) => sample.process.role === "tool")).toBe(true)
+      expect(summary.resources.pressure).toMatchObject({ rssBytes: 4000, cpuUtilizationRatio: 2.5, eventLoopLagMs: 7 })
+      expect(summary.resources.pressure.rssGrowthBytesPerMin).toBeCloseTo((3000 / 59_000) * 60_000)
       expect(summary.resources.pressure.observabilityStoreAvailable).toBe(true)
       expect(summary.resources.pressure.observabilityDroppedWrites).toBeGreaterThanOrEqual(0)
     }))

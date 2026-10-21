@@ -47383,7 +47383,8 @@
                 "type": "number"
               },
               "utilizationRatio": {
-                "type": "number"
+                "type": "number",
+                "description": "Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1"
               }
             }
           },
@@ -48071,7 +48072,8 @@
                 "type": "number"
               },
               "cpuUtilizationRatio": {
-                "type": "number"
+                "type": "number",
+                "description": "Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1"
               },
               "eventLoopLagP95Ms": {
                 "type": "number"

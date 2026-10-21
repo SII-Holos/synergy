@@ -5974,7 +5974,7 @@ msgstr "本地浏览器样本"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.cpu.desc"
-msgstr "来自运行时时间线桶的 CPU 平均百分比和事件循环 p95 延迟"
+msgstr "进程 CPU 平均使用率（100% 表示占满一个 CPU 核心，可超过 100%）和事件循环 p95 延迟"
 
 #. chart descriptions
 msgid "app.performance.chart.cpu.title"
@@ -6203,7 +6203,7 @@ msgstr "测量值：{value}"
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.occurrences"
-msgstr "发生 {count} 次 · 最近出现于 {time}"
+msgstr "累计发生 {count} 次 · 最近出现于 {time}"
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.requestFailed"
@@ -6236,6 +6236,10 @@ msgstr "工具执行较慢"
 #. js-lingui-explicit-id
 msgid "app.performance.issue.slowTurn"
 msgstr "会话轮次较慢"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.stalledTool"
+msgstr "工具执行停滞"
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.storageFailed"

@@ -305,6 +305,63 @@ describe.serial("performance observability store", () => {
       expect(controlPlane?.measuredProcessCount).toBe(1)
     }))
 
+  test("resource summaries cover the full server window and keep children in the latest server frame", () =>
+    runtime.run(async () => {
+      const now = Date.now()
+      using clock = spyOn(Date, "now").mockReturnValue(now)
+      const start = now - 50_012
+      const db = ObservabilityStore.initializeForMigration()
+      db.transaction(() => {
+        db.query(
+          `WITH RECURSIVE frames(frame) AS (SELECT 0 UNION ALL SELECT frame + 1 FROM frames WHERE frame < 50002)
+          INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,memory_rss_bytes,cpu_utilization_ratio,event_loop_lag_ms)
+          SELECT 'server-' || frame, ? + frame, '', 'process', 'server',
+            CASE WHEN frame = 50001 THEN 900 WHEN frame = 50002 THEN 300 ELSE 100 END,
+            2.5, CASE WHEN frame > 25000 THEN 100 ELSE 0 END FROM frames`,
+        ).run(start)
+        db.query(
+          `WITH RECURSIVE frames(frame) AS (SELECT 0 UNION ALL SELECT frame + 1 FROM frames WHERE frame < 50001)
+          INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,process_id,memory_rss_bytes)
+          SELECT 'tool-' || frame, ? + frame, '', 'process', 'tool', 'previous-child', 5000 FROM frames`,
+        ).run(start - 50_002)
+        db.query(
+          `WITH RECURSIVE children(child) AS (SELECT 1 UNION ALL SELECT child + 1 FROM children WHERE child < 7)
+          INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,process_id,memory_rss_bytes)
+          SELECT 'child-' || child, ?, '', 'process', 'tool', 'child-' || child,
+            CASE WHEN child = 7 THEN NULL ELSE child END FROM children`,
+        ).run(start + 50_002)
+        db.query(
+          `INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,process_id,memory_rss_bytes)
+          VALUES ('old', ?, '', 'process', 'server', NULL, 10000),
+            ('future', ?, '', 'process', 'server', NULL, 20000),
+            ('unmatched-child', ?, '', 'process', 'tool', 'unmatched-child', 30000)`,
+        ).run(now - 120_000, now + 1, now - 5)
+      })()
+
+      const summary = await PerformanceDashboard.summary({ windowMs: 120_000, scopeID: "resource-window" })
+      expect(summary.resources).toMatchObject({
+        rssBytes: 300,
+        cpuUtilizationRatio: 2.5,
+        eventLoopLagP95Ms: 100,
+        childProcessCount: 7,
+        measuredChildProcessCount: 6,
+        childProcessRssBytes: 21,
+      })
+      expect(summary.resources.owners.find((owner) => owner.owner === "control_plane")).toMatchObject({
+        currentBytes: 300,
+        peakBytes: 900,
+        baselineBytes: 100,
+        retainedBytes: 200,
+      })
+      expect(summary.top.childProcesses.map((row) => row.processId)).toEqual([
+        "child-6",
+        "child-5",
+        "child-4",
+        "child-3",
+        "child-2",
+      ])
+    }))
+
   test("trace detail projects observability events without raw event data", () =>
     runtime.run(async () => {
       const traceId = "perf_trace_safe_projection"

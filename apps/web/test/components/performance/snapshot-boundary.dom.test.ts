@@ -289,7 +289,7 @@ test("time range is a keyboard radio group and browser vitals preserve zero and 
   expect(await page.getByText("No samples in this snapshot", { exact: true }).count()).toBeGreaterThan(0)
 })
 
-test("issues expose a translated category and severity before the original error", async () => {
+test("issues expose category, severity and lifetime counts before the original error", async () => {
   errors.length = 0
   await page.goto(`${baseUrl}?issues`)
   await page
@@ -307,6 +307,7 @@ test("issues expose a translated category and severity before the original error
   expect(errors).toEqual([])
   await page.getByRole("heading", { name: "Slow HTTP request", exact: true }).waitFor()
   expect(await page.getByText("Warning", { exact: true }).isVisible()).toBe(true)
+  expect(await page.locator(".performance-issue-row").innerText()).toContain("2 total occurrences · last seen")
   expect(await page.getByText("Technical exception details", { exact: true }).isVisible()).toBe(false)
   await page.locator("summary").press("Enter")
   expect(await page.getByText("Technical exception details", { exact: true }).isVisible()).toBe(true)

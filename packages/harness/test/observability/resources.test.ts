@@ -26,8 +26,16 @@ describe("ObservabilityResources", () => {
       expect(ObservabilityResources.stats().running).toBe(false)
     }))
 
-  test("records finite process resource samples and metrics", () =>
+  test("records finite process resources without capping CPU core equivalents", () =>
     runtime.run(async () => {
+      const startTime = Date.now()
+      using wallClock = spyOn(Date, "now").mockReturnValue(startTime)
+      using clock = spyOn(performance, "now").mockReturnValue(10_000)
+      using cpu = spyOn(process, "cpuUsage").mockReturnValue({ user: 100_000, system: 50_000 })
+      await ObservabilityResources.snapshot()
+      wallClock.mockReturnValue(startTime + 1000)
+      clock.mockReturnValue(11_000)
+      cpu.mockReturnValue({ user: 2_100_000, system: 550_000 })
       ObservabilityResources.addRead(128)
       ObservabilityResources.addWrite(256)
       await ObservabilityResources.snapshot({ role: "tool", processId: "proc_test", pid: 12345 })
@@ -38,7 +46,7 @@ describe("ObservabilityResources", () => {
       expect(sample!.process_role).toBe("tool")
       expect(sample!.process_id).toBe("proc_test")
       expect(sample!.pid).toBe(12345)
-      expect(Number.isFinite(sample!.cpu_utilization_ratio ?? 0)).toBe(true)
+      expect(sample!.cpu_utilization_ratio).toBe(2.5)
       expect(Number.isFinite(sample!.memory_rss_bytes ?? 0)).toBe(true)
       expect(Number.isFinite(sample!.event_loop_lag_ms ?? 0)).toBe(true)
       expect(sample!.app_read_bytes).toBeGreaterThanOrEqual(128)
@@ -48,6 +56,11 @@ describe("ObservabilityResources", () => {
       expect(metricNames).toContain("process.memory.rss")
       expect(metricNames).toContain("process.cpu.utilization")
       expect(metricNames).toContain("process.event_loop.lag")
+      expect(
+        ObservabilityStore.queryMetrics({ since: 0, names: ["process.cpu.utilization"] }).some(
+          (row) => row.value === 2.5,
+        ),
+      ).toBe(true)
     }))
 
   test("raises supported memory pressure issues without Bun heap false positives", () =>
