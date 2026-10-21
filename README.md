@@ -77,6 +77,7 @@ Build applications, investigate a repository, write documents, or explore an int
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
+- **Editable next-input suggestions** — Optional [Digital Twin](packages/digital-twin/README.md) uses completed conversations and earlier original writing to suggest your next message. You decide what to insert and send.
 - **Visual results stay interactive** — Stream native controls and metrics, explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
 - **Compose what you need** — Embed Agent Runtime with explicit capability components, or use the full Desktop and CLI product. Unselected capabilities add no tools, UI, or model guidance. See [Embedding](docs/reference/embedding.md).
 

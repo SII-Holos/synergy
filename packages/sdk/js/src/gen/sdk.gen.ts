@@ -202,6 +202,9 @@ import type {
   CortexListResponses,
   CortexOutputErrors,
   CortexOutputResponses,
+  DigitalTwinInput,
+  DigitalTwinPredictNextInputErrors,
+  DigitalTwinPredictNextInputResponses,
   EnvironmentActivityErrors,
   EnvironmentActivityResponses,
   EnvironmentCancelExecutionErrors,
@@ -340,6 +343,7 @@ import type {
   HolosVerifyResponses,
   HostConnectionPeersErrors,
   HostConnectionPeersResponses,
+  InputAssistance,
   LatticeRunApproveErrors,
   LatticeRunApproveResponses,
   LatticeRunCancelErrors,
@@ -4401,7 +4405,8 @@ export class Session extends HeyApiClient {
       agent?: string
       noReply?: boolean
       metadata?: {
-        [key: string]: unknown
+        assistance?: InputAssistance
+        [key: string]: unknown | InputAssistance | undefined
       }
       summary?: {
         title?: string
@@ -4654,7 +4659,8 @@ export class Session extends HeyApiClient {
       agent?: string
       noReply?: boolean
       metadata?: {
-        [key: string]: unknown
+        assistance?: InputAssistance
+        [key: string]: unknown | InputAssistance | undefined
       }
       summary?: {
         title?: string
@@ -5146,7 +5152,8 @@ export class Session extends HeyApiClient {
       agent?: string
       noReply?: boolean
       metadata?: {
-        [key: string]: unknown
+        assistance?: InputAssistance
+        [key: string]: unknown | InputAssistance | undefined
       }
       summary?: {
         title?: string
@@ -8803,6 +8810,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -8855,6 +8863,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -8914,6 +8923,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -9174,6 +9184,7 @@ export class Config extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -9195,6 +9206,7 @@ export class Config extends HeyApiClient {
             | "channels"
             | "holos"
             | "github"
+            | "digital-twin"
             | "email"
             | "plugins"
             | "mcp"
@@ -14507,6 +14519,47 @@ export class Lattice extends HeyApiClient {
   run = new Run({ client: this.client })
 }
 
+export class DigitalTwin extends HeyApiClient {
+  /**
+   * Predict the next user input
+   */
+  public predictNextInput<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      digitalTwinInput?: DigitalTwinInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "digitalTwinInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DigitalTwinPredictNextInputResponses,
+      DigitalTwinPredictNextInputErrors,
+      ThrowOnError
+    >({
+      url: "/digital-twin/predict-next-input",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -17252,6 +17305,8 @@ export class SynergyClient extends HeyApiClient {
   boss = new Boss({ client: this.client })
 
   lattice = new Lattice({ client: this.client })
+
+  digitalTwin = new DigitalTwin({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

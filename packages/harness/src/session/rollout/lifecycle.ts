@@ -18,6 +18,8 @@ import { SessionCortexRuntime } from "../cortex-runtime"
 import { RolloutAdmissionError, RolloutRecordingError } from "./error"
 import { StorageBusyError, StorageClosedError } from "../../storage/errors"
 import { RolloutExecution } from "./execution"
+import { Bus } from "../../bus"
+import { SessionEvent } from "../event"
 
 export namespace RolloutLifecycle {
   export function owner(session: Session.Info): RolloutSchema.Owner {
@@ -272,7 +274,10 @@ export namespace RolloutLifecycle {
       !SessionProgress.needsModelCall(messages, latestRoot.info.id)
     if (!outcome && (!terminal || (SessionProgress.needsModelCall(messages, runID) && !answeredLater))) return run
     const status = outcome ?? (terminal?.info.role === "assistant" && terminal.info.error ? "failed" : "completed")
-    return RolloutLedger.finishRun(identity, runID, status)
+    const completed = await RolloutLedger.finishRun(identity, runID, status)
+    if (completed.status === "completed" && terminal?.info.role === "assistant")
+      await Bus.publish(SessionEvent.RootCompleted, { sessionID, rootID: runID, assistantID: terminal.info.id })
+    return completed
   }
 
   export async function reconcileDelegatedRuns(sessionID: string, excluded: ReadonlySet<string>) {

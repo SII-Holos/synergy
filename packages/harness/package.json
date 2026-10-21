@@ -5,6 +5,7 @@
   "private": false,
   "license": "MIT",
   "exports": {
+    "./session/model-selection-schema": "./src/session/model-selection-schema.ts",
     "./session/context-snapshot": "./src/session/context-snapshot.ts",
     "./session/corpus": "./src/session/corpus.ts",
     "./attachment/delivery": "./src/attachment/delivery.ts",
@@ -69,6 +70,7 @@
     "./provider/github": "./src/provider/github.ts",
     "./storage/blobs": "./src/storage/blobs.ts",
     "./storage/object-artifacts": "./src/storage/object-artifacts.ts",
+    "./storage/upgrade-work": "./src/storage/upgrade-work.ts",
     "./storage/storage": "./src/storage/storage.ts",
     "./storage/event-sinks": "./src/storage/event-sinks.ts",
     "./id/id": "./src/id/id.ts",

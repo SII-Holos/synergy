@@ -53,6 +53,11 @@ export const RELEASE_CATALOG = {
   },
   library: { directory: "packages/library", registry: "@ericsanchezok/synergy-library", versioned: true },
   note: { directory: "packages/note", registry: "@ericsanchezok/synergy-note", versioned: true },
+  digital_twin: {
+    directory: "packages/digital-twin",
+    registry: "@ericsanchezok/synergy-digital-twin",
+    versioned: true,
+  },
   connections: { directory: "packages/connections", registry: "@ericsanchezok/synergy-connections", versioned: true },
   pluginHost: { directory: "packages/plugin-host", registry: "@ericsanchezok/synergy-plugin-host", versioned: true },
   mcp: { directory: "packages/mcp", registry: "@ericsanchezok/synergy-mcp", versioned: true },

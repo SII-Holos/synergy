@@ -222,6 +222,7 @@ export const SemanticIconToken = {
   "action.grip": "grip",
   "action.clear": "circle-x",
   "action.close": "x",
+  "action.predict": "wand-sparkles",
   "action.copy": "copy",
   "action.fork": "split",
   "action.open": "arrow-up-right",

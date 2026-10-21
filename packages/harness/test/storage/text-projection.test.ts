@@ -122,7 +122,7 @@ test("short text queries scan bounded pages and recover all matches across curso
       storageTestOptions({ namespace: `text-${randomUUID()}`, filename: path.join(tmp.path, "agent.sqlite") }),
     )
     try {
-      for (let index = 0; index < 70; index++) {
+      for (let index = 0; index < 1100; index++) {
         const item = [...key.slice(0, -1), String(index)]
         await store.write(item, { text: "body" })
         const source = await store.versioned(item)
@@ -133,7 +133,7 @@ test("short text queries scan bounded pages and recover all matches across curso
             version: "v1",
             category: index % 2 ? "reasoning" : "text",
             offset: 0,
-            fragments: [{ offset: 0, text: index === 68 ? "末尾中文" : "其他文本" }],
+            fragments: [{ offset: 0, text: index === 1098 ? "末尾中文" : "其他文本" }],
             complete: true,
           }),
         )
@@ -146,7 +146,10 @@ test("short text queries scan bounded pages and recover all matches across curso
         items.push(...page.items.map((item) => item.key))
         cursor = page.nextCursor ?? undefined
       } while (cursor)
-      expect(items).toEqual([[...key.slice(0, -1), "68"]])
+      expect(items).toEqual([[...key.slice(0, -1), "1098"]])
+      const mixed = await store.snapshot((tx) => tx.searchTextProjection({ query: "", terms: ["中文", "unmatched"] }))
+      expect(mixed.items.map((item) => item.key)).toEqual(items)
+      expect(mixed.scanned).toBe(1)
       expect(
         (
           await store.snapshot((tx) => tx.searchTextProjection({ query: "其他文本", categories: ["reasoning"] }))

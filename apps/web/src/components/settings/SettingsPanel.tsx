@@ -149,6 +149,10 @@ function settingsValues(value: unknown, fallback: Record<string, unknown> = {}):
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : fallback
 }
 
+const DigitalTwinSettings = lazy(() =>
+  import("../digital-twin/settings").then((module) => ({ default: module.DigitalTwinSettings })),
+)
+
 const BrowserPanel = lazy(() => import("./panels/BrowserPanel").then((module) => ({ default: module.BrowserPanel })))
 
 const legacyInitialTabs: Record<string, string> = {
@@ -1276,6 +1280,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
           setProviderFocusID(providerID)
           setActiveTab("providers")
         }}
+      />
+    ),
+    "digital-twin": () => (
+      <DigitalTwinSettings
+        value={settings.digitalTwin}
+        models={providerModels()}
+        change={(value) => setSettings("digitalTwin", value)}
       />
     ),
     voice: () => <VoicePanel controller={voiceController} searchField={searchTarget()?.label} />,

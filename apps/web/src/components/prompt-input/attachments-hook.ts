@@ -24,6 +24,8 @@ import { insertUploadedPromptAttachment, runPendingAttachmentUpload } from "./at
 import { PI } from "./prompt-input-i18n"
 import type { BlueprintSlot, DroppedBlueprintData, PromptInputStore } from "./types"
 import { decideDroppedSession } from "./session-drop"
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type PromptAttachmentsInput = {
   editor: () => HTMLDivElement | undefined
@@ -185,7 +187,16 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     }
 
     const plainText = clipboardData.getData("text/plain") ?? ""
+    if (!plainText) return
     input.addPart({ type: "text", content: plainText, start: 0, end: 0 })
+    prompt.setAssistance(
+      InputAssistance.accept(prompt.assistance(), {
+        producer: "clipboard",
+        proposalID: generateUUID(),
+        generated: plainText,
+        accepted: plainText,
+      }),
+    )
   }
 
   const handleDragOver = (event: DragEvent) => {

@@ -128,14 +128,7 @@ import { VoiceDictationButton } from "./use-voice-dictation"
 import { collectDictationContext } from "./voice-dictation-core"
 import { classifySessionActivity, isWorkingStatus } from "@/utils/session-status"
 
-function sanitizePromptHistory(value: unknown) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return value
-  const entries = (value as { entries?: unknown }).entries
-  return {
-    ...value,
-    entries: Array.isArray(entries) ? entries.map(sanitizePrompt) : [],
-  }
-}
+import { sanitizePromptHistory, type PromptHistoryEntry } from "./history"
 
 function WorkflowChip(props: {
   label: string
@@ -202,6 +195,10 @@ const DraftAttachmentPreview = lazy(() =>
   import("@/components/attachment-workbench/draft-preview").then((module) => ({
     default: module.DraftAttachmentPreview,
   })),
+)
+
+const DigitalTwinComposer = lazy(() =>
+  import("../digital-twin/composer").then((module) => ({ default: module.DigitalTwinComposer })),
 )
 
 export function createPromptInputController(props: PromptInputProps) {
@@ -1500,7 +1497,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const [history, setHistory] = persisted(
     { ...Persist.global("prompt-history", ["prompt-history.v1"]), migrate: sanitizePromptHistory },
     createStore<{
-      entries: Prompt[]
+      entries: PromptHistoryEntry[]
     }>({
       entries: [],
     }),
@@ -1508,7 +1505,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const [shellHistory, setShellHistory] = persisted(
     { ...Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]), migrate: sanitizePromptHistory },
     createStore<{
-      entries: Prompt[]
+      entries: PromptHistoryEntry[]
     }>({
       entries: [],
     }),
@@ -1528,10 +1525,11 @@ export function createPromptInputController(props: PromptInputProps) {
 
   const promptLength = (prompt: Prompt) => inlineLength(prompt)
 
-  const applyHistoryPrompt = (p: Prompt, position: "start" | "end") => {
-    const length = position === "start" ? 0 : promptLength(p)
+  const applyHistoryPrompt = (entry: PromptHistoryEntry, position: "start" | "end") => {
+    const length = position === "start" ? 0 : promptLength(entry.prompt)
     setStore("applyingHistory", true)
-    prompt.set(p, length)
+    prompt.set(entry.prompt, length)
+    prompt.setAssistance(entry.assistance)
     requestAnimationFrame(() => {
       editorRef?.focus()
       setCursorPosition(editorRef, length)
@@ -1718,6 +1716,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }),
     applyEdits: editor.applyDocumentEdits,
     isEditableRange: editor.isEditableRange,
+    assistance: { read: prompt.assistance, write: prompt.setAssistance },
   })
   const [composerVersion, setComposerVersion] = createSignal(0)
   const unsubscribeComposer = composerDocument.subscribe(() => setComposerVersion((value) => value + 1))
@@ -1851,18 +1850,23 @@ export function createPromptInputController(props: PromptInputProps) {
     pendingUploads,
   })
 
-  const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
-    const text = inlineText(prompt).trim()
-    const hasAttachment = prompt.some(
+  const addToHistory = (parts: Prompt, mode: "normal" | "shell") => {
+    const text = inlineText(parts).trim()
+    const hasAttachment = parts.some(
       (part) => part.type === "attachment" || part.type === "note" || part.type === "session",
     )
     if (!text && !hasAttachment) return
 
-    const entry = clonePromptParts(prompt)
+    const entry = { prompt: clonePromptParts(parts), assistance: prompt.assistance() }
     const currentHistory = mode === "shell" ? shellHistory : history
     const setCurrentHistory = mode === "shell" ? setShellHistory : setHistory
     const lastEntry = currentHistory.entries[0]
-    if (lastEntry && isPromptEqual(lastEntry, entry)) return
+    if (
+      lastEntry &&
+      isPromptEqual(lastEntry.prompt, entry.prompt) &&
+      JSON.stringify(lastEntry.assistance) === JSON.stringify(entry.assistance)
+    )
+      return
 
     setCurrentHistory("entries", (entries) => [entry, ...entries].slice(0, MAX_HISTORY))
   }
@@ -1874,7 +1878,7 @@ export function createPromptInputController(props: PromptInputProps) {
     if (direction === "up") {
       if (entries.length === 0) return false
       if (current === -1) {
-        setStore("savedPrompt", clonePromptParts(prompt.current()))
+        setStore("savedPrompt", { prompt: clonePromptParts(prompt.current()), assistance: prompt.assistance() })
         setStore("historyIndex", 0)
         applyHistoryPrompt(entries[0], "start")
         return true
@@ -1902,7 +1906,7 @@ export function createPromptInputController(props: PromptInputProps) {
         setStore("savedPrompt", null)
         return true
       }
-      applyHistoryPrompt(DEFAULT_PROMPT, "end")
+      applyHistoryPrompt({ prompt: DEFAULT_PROMPT }, "end")
       return true
     }
 
@@ -1919,10 +1923,7 @@ export function createPromptInputController(props: PromptInputProps) {
     const completion = activeCompletion()
     if (event.key === "Tab" && completion && !store.popover) {
       event.preventDefault()
-      void composerDocument.applyEdits({
-        revision: completion.revision,
-        edits: [{ range: { start: completion.position, end: completion.position }, text: completion.text }],
-      })
+      void composerDocument.acceptCompletion()
       return
     }
     if (event.key === "Escape" && completion) {
@@ -2506,6 +2507,24 @@ export function createPromptInputController(props: PromptInputProps) {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
+            <Show when={capabilities.has("digital-twin")}>
+              <Suspense>
+                <DigitalTwinComposer
+                  controller={composerDocument}
+                  sessionID={params.id}
+                  parentID={info()?.parentID}
+                  messages={view().messagesFor(params.id ?? "")}
+                  status={status()}
+                  blocked={
+                    isReadOnly() ||
+                    hasAttachments() ||
+                    attachmentsUploading() ||
+                    view().inboxFor(params.id ?? "").length > 0
+                  }
+                  modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
+                />
+              </Suspense>
+            </Show>
             <Show when={capabilities.has("media")}>
               <VoiceDictationButton
                 getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}

@@ -1,3 +1,4 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { RuntimeContext } from "../lifecycle/context"
@@ -58,7 +59,7 @@ export const InvokeInput = z.object({
     .optional(),
   agent: z.string().optional(),
   noReply: z.boolean().optional(),
-  metadata: z.record(z.string(), z.any()).optional(),
+  metadata: InputAssistance.Metadata.optional(),
   summary: z
     .object({
       title: z.string().optional(),

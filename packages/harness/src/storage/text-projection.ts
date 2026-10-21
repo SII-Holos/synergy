@@ -203,6 +203,18 @@ export class TextProjection {
     if (indexed) {
       conditions.push("storage_text_fts MATCH ?")
       values.push(terms.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR "))
+    } else if (input.terms) {
+      const predicates: string[] = []
+      const long = this.backend === "sqlite" ? terms.filter((term) => [...term].length >= 3) : []
+      if (long.length) {
+        predicates.push("c.id IN (SELECT rowid FROM storage_text_fts WHERE storage_text_fts MATCH ?)")
+        values.push(long.map((term) => `"${term.replaceAll('"', '""')}"`).join(" OR "))
+      }
+      for (const term of terms.filter((term) => !long.includes(term))) {
+        predicates.push(`${this.backend === "sqlite" ? "instr" : "strpos"}(c.normalized, ?) > 0`)
+        values.push(term)
+      }
+      conditions.push(`(${predicates.join(" OR ")})`)
     }
     values.push(limit + 1)
     const rows = await this.connection.query<SqlRow>(

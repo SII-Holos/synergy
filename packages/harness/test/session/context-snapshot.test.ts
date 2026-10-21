@@ -5,6 +5,9 @@ import { Session } from "../../src/session"
 import { SessionContextSnapshot } from "../../src/session/context-snapshot"
 import { MessageV2 } from "../../src/session/message-v2"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
+import { RolloutLifecycle } from "../../src/session/rollout/lifecycle"
+import { SessionEvent } from "../../src/session/event"
+import { Bus } from "../../src/bus"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
@@ -55,7 +58,12 @@ test("completed context is immutable and revision checks detect edits, append, d
         const owner = { kind: "session" as const, scopeID: session.scope.id, sessionID: session.id }
         await RolloutLedger.beginRun(owner, root.id)
         await expect(SessionContextSnapshot.capture({ sessionID: session.id })).rejects.toThrow("completed")
-        await RolloutLedger.finishRun(owner, root.id, "completed")
+        const completions: unknown[] = []
+        const unsubscribe = Bus.subscribe(SessionEvent.RootCompleted, (event) => completions.push(event.properties))
+        await RolloutLifecycle.reconcile(session.id, root.id)
+        await RolloutLifecycle.reconcile(session.id, root.id)
+        unsubscribe()
+        expect(completions).toEqual([{ sessionID: session.id, rootID: root.id, assistantID: assistant.id }])
         const captured = await SessionContextSnapshot.capture({
           sessionID: session.id,
           expected: { rootID: root.id, assistantID: assistant.id },

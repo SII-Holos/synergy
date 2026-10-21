@@ -78,7 +78,8 @@
     "hono": "catalog:",
     "open": "11.0.4",
     "yargs": "18.2.0",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@ericsanchezok/synergy-digital-twin": "workspace:*"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-blueprint": "workspace:*",

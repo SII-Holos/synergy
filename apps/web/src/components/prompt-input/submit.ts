@@ -1,3 +1,4 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import { resolveSessionReference } from "@/utils/session-reference"
 import { type Accessor, Setter, batch, onCleanup, startTransition } from "solid-js"
 import { produce, reconcile, type SetStoreFunction } from "solid-js/store"
@@ -188,10 +189,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           sessions: input.sessionAttachments().slice(),
           mode: input.store.mode,
           currentContext,
-          draftSnapshot: createPromptDraftSnapshot({ prompt: currentPrompt, context: currentContext }),
+          draftSnapshot: createPromptDraftSnapshot({
+            prompt: currentPrompt,
+            context: currentContext,
+            assistance: prompt.assistance(),
+          }),
           failureRestoreSnapshot: createSubmitFailureRestoreSnapshot({
             prompt: currentPrompt,
             context: currentContext,
+            assistance: prompt.assistance(),
           }),
         }
       }
@@ -325,7 +331,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           agent: agent.name,
           model: { modelID: model.id, providerID: model.provider.id },
           variant: local.model.variant.displayed(),
-          metadata: { promptDraft: draftSnapshot },
+          metadata: { promptDraft: draftSnapshot, assistance: InputAssistance.submit(draftSnapshot.assistance, text) },
         })
         const parts = createSubmissionParts({
           id: partID,
@@ -1067,6 +1073,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       const userMessageMetadata = {
         promptDraft: draftSnapshot,
+        assistance: InputAssistance.submit(draftSnapshot.assistance, text),
       }
 
       const optimisticMessage: Message | undefined = messageID
@@ -1276,6 +1283,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
               parts: requestParts,
               metadata: {
                 promptDraft: draftSnapshot,
+                assistance: InputAssistance.submit(draftSnapshot.assistance, text),
                 ...(createdSessionForSubmit ? { sessionTransition: { workspaceSelection } } : {}),
               },
             },

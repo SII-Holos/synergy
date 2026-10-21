@@ -3,6 +3,7 @@ const requirements: Record<
   Readonly<Record<string, string>>
 > = {
   settings: {
+    "digital-twin": "digital-twin",
     browser: "browser",
     account: "holos",
     github: "github",

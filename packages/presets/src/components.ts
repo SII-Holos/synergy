@@ -14,6 +14,7 @@ import { computer } from "@ericsanchezok/synergy-computer-runtime/component"
 import { connectionComponents } from "@ericsanchezok/synergy-connections/component"
 import { externalAgents } from "@ericsanchezok/synergy-external-agents/component"
 import { formatter } from "@ericsanchezok/synergy-formatter/component"
+import { digitalTwin } from "@ericsanchezok/synergy-digital-twin/component"
 import { library } from "@ericsanchezok/synergy-library/component"
 import { lsp } from "@ericsanchezok/synergy-lsp/component"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
@@ -34,6 +35,7 @@ export function fullComponents() {
     externalAgents(),
     formatter(),
     library(),
+    digitalTwin(),
     lsp(),
     mcp(),
     media(),

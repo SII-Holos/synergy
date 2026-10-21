@@ -19,6 +19,21 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 }
 
 describe("ComposerDocumentController", () => {
+  test("accepting a completion records assistance through edits and producer removal", async () => {
+    const { controller, text } = fixture()
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.read", "composer.write"]) })
+    service.setCompletion({ revision: 0, position: 5, text: " world", proposalID: "proposal" })
+    expect(controller.assistance()).toBeUndefined()
+    await controller.acceptCompletion()
+    service.dispose()
+    await controller.applyEdits({
+      revision: controller.current().revision,
+      edits: [{ range: { start: 5, end: 11 }, text: " everyone" }],
+    })
+    expect(text()).toBe("hello everyone")
+    expect(controller.assistance()?.proposals[0]).toMatchObject({ producer: "completion", proposalID: "proposal" })
+    controller.dispose()
+  })
   test("does not read the document when no completion exists", () => {
     let reads = 0
     const controller = new ComposerDocumentController({

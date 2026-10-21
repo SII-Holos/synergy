@@ -502,6 +502,14 @@ export namespace StoragePath {
   export const statsWatermark = () => ["stats", "watermark"]
   export const statsSnapshot = () => ["stats", "snapshot"]
   export const librarySnapshot = () => ["library", "stats", "snapshot"]
+  export const digitalTwinSession = (scopeID: string, sessionID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "digital_twin",
+    "projection",
+  ]
+  export const digitalTwinCursor = () => ["digital_twin", "cursor"]
   /** Per-session digest: stats/digests/{sessionID} */
   export const statsDigestsRoot = () => ["stats", "digests"]
   export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]

@@ -120,11 +120,30 @@ export namespace SessionCorpus {
   async function read(session: Info, info: MessageV2.Info): Promise<Message> {
     const parts = await textParts(session.scope.id, session.id, info.id)
     const [canonical] = MessageV2.deriveSemantics([{ info, parts }])
+    const ancestry: string[][] = []
+    const seen = new Set<string>([session.id])
+    let ancestor = session
+    let family = session.id
+    while (ancestor.forkedFrom && !seen.has(ancestor.forkedFrom.sessionID)) {
+      family = ancestor.forkedFrom.sessionID
+      seen.add(family)
+      const indexKey = StoragePath.sessionIndex(Identifier.asSessionID(family))
+      ancestry.push(indexKey)
+      const [index] = await Storage.readMany<{ scopeID: string }>([indexKey])
+      if (!index) break
+      const key = sessionKey(index.scopeID, family)
+      ancestry.push(key)
+      const [parent] = await Storage.readMany<Info>([key])
+      if (!parent) break
+      ancestor = parent
+    }
     const keys = [
       sessionKey(session.scope.id, session.id),
+      StoragePath.sessionMessageOrderState(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id)),
       messageKey(session.scope.id, session.id, info.id),
       StoragePath.sessionDisplayPartsState(session.scope.id, session.id, info.id),
       ...parts.map((part) => partKey(session.scope.id, session.id, info.id, part.id)),
+      ...ancestry,
     ]
     const versions = await Storage.revisions(keys)
     return {
@@ -132,7 +151,7 @@ export namespace SessionCorpus {
         scopeID: session.scope.id,
         sessionID: session.id,
         messageID: info.id,
-        family: session.forkedFrom?.sessionID ?? session.id,
+        family,
         sources: keys.map((key, index) => ({ key, revision: versions[index]?.toString() ?? null })),
       },
       info: canonical!.info,
@@ -274,17 +293,17 @@ export namespace SessionCorpus {
       )
       const at = infos.findIndex((info) => info.id === reference.messageID)
       if (at < 0) return undefined
-      const previous = infos
-        .slice(0, at)
-        .findLast(
-          (info) =>
-            info.role === "assistant" &&
-            !info.summary &&
-            !info.error &&
-            Boolean(info.finish) &&
-            !["tool-calls", "unknown"].includes(info.finish!),
-        )
-      const next = infos.slice(at + 1).find((info) => info.role === "user" && MessageV2.isHumanInput(info))
+      const adjacent = infos[at - 1]
+      const previous =
+        adjacent?.role === "assistant" &&
+        !adjacent.summary &&
+        !adjacent.error &&
+        adjacent.finish &&
+        !["tool-calls", "unknown"].includes(adjacent.finish)
+          ? adjacent
+          : undefined
+      const following = infos[at + 1]
+      const next = following?.role === "user" && MessageV2.isHumanInput(following) ? following : undefined
       return {
         message: await read(session, infos[at]!),
         previous: previous && (await read(session, previous)),
