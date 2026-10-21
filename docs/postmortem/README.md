@@ -6,8 +6,6 @@
 - **Systemic** — missed safeguards.
 - **Costly**.
 
-Otherwise, test.
-
 ## Format
 
 `NNNN-kebab-case-title.md` sections:

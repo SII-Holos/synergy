@@ -584,7 +584,7 @@ export class StoreTransaction {
       ])
       return { key, id, text, body, meta, bytes }
     })
-    for (let offset = 0; offset < prepared.length; ) {
+    for (let offset = 0; offset < prepared.length;) {
       let end = offset,
         bytes = 0
       while (end < prepared.length && end - offset < 64) {

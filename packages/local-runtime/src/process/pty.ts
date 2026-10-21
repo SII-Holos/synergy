@@ -473,7 +473,7 @@ export namespace Pty {
       const buffer = tail(session.buffer)
       session.buffer = ""
       try {
-        for (let offset = 0; offset < buffer.length; ) {
+        for (let offset = 0; offset < buffer.length;) {
           let end = Math.min(buffer.length, offset + BUFFER_CHUNK)
           if (end < buffer.length && buffer.charCodeAt(end - 1) >= 0xd800 && buffer.charCodeAt(end - 1) <= 0xdbff) end--
           send(ws, buffer.slice(offset, end))

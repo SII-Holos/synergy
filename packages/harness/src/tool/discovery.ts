@@ -158,34 +158,30 @@ export namespace ToolDiscovery {
   export function nonResidentEntries(catalog: Catalog): ToolExposure.SearchEntry[] {
     const activeGroups = new Set(catalog.state.expandedGroups)
     const activeTools = new Set(visibleTools(catalog))
-    const groups = availableGroups(catalog).map(
-      (group): ToolExposure.SearchEntry => ({
-        type: "group",
-        id: group.id,
-        title: group.title,
-        description: group.description,
-        group: group.id,
-        active: activeGroups.has(group.id),
-        tools: group.tools,
-        keywords: group.keywords,
-      }),
-    )
+    const groups = availableGroups(catalog).map((group): ToolExposure.SearchEntry => ({
+      type: "group",
+      id: group.id,
+      title: group.title,
+      description: group.description,
+      group: group.id,
+      active: activeGroups.has(group.id),
+      tools: group.tools,
+      keywords: group.keywords,
+    }))
 
     const tools = catalog.tools
       .filter((tool) => !catalog.disabled.has(tool.id))
       .filter((tool) => tool.exposure.mode !== "resident" && tool.exposure.mode !== "internal")
-      .map(
-        (tool): ToolExposure.SearchEntry => ({
-          type: "tool",
-          id: tool.id,
-          title: tool.title,
-          description: tool.description,
-          group: tool.group,
-          groupTitle: tool.groupTitle,
-          keywords: tool.keywords,
-          active: activeTools.has(tool.id),
-        }),
-      )
+      .map((tool): ToolExposure.SearchEntry => ({
+        type: "tool",
+        id: tool.id,
+        title: tool.title,
+        description: tool.description,
+        group: tool.group,
+        groupTitle: tool.groupTitle,
+        keywords: tool.keywords,
+        active: activeTools.has(tool.id),
+      }))
 
     return [...groups, ...tools]
   }

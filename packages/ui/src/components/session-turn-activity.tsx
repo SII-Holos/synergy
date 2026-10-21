@@ -66,8 +66,7 @@ export type ActivityBatchItem = {
 }
 
 export type ActivityBatchEntry =
-  | { kind: "tool"; step: ActivityStepProjection }
-  | { kind: "reasoning"; item: ActivityReasoningSummaryItem }
+  { kind: "tool"; step: ActivityStepProjection } | { kind: "reasoning"; item: ActivityReasoningSummaryItem }
 
 export type ActivityTextSummary = {
   state: ActivitySummaryState | "pending"

@@ -38,13 +38,7 @@ export type SessionTurnTimelineItem =
     }
 
 export type SessionTurnTimelineVisualKind =
-  | "text"
-  | "reasoning"
-  | "tool"
-  | "attachment"
-  | "media"
-  | "tool-attachments"
-  | "compaction"
+  "text" | "reasoning" | "tool" | "attachment" | "media" | "tool-attachments" | "compaction"
 
 export function timelineVisualKind(item: SessionTurnTimelineItem): SessionTurnTimelineVisualKind {
   if (item.kind === "compaction") return "compaction"

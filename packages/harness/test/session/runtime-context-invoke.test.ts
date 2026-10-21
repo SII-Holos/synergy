@@ -45,14 +45,12 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
         prompts.push(structuredClone(input.prompt))
         const chunks: LanguageModelV2StreamPart[] = [0, 4].includes(calls++)
           ? [
-              ...[1, 2, 3, 4].map(
-                (index): LanguageModelV2StreamPart => ({
-                  type: "tool-call",
-                  toolCallId: `step-${index}`,
-                  toolName: "fixture_step",
-                  input: "{}",
-                }),
-              ),
+              ...[1, 2, 3, 4].map((index): LanguageModelV2StreamPart => ({
+                type: "tool-call",
+                toolCallId: `step-${index}`,
+                toolName: "fixture_step",
+                input: "{}",
+              })),
               {
                 type: "finish",
                 finishReason: "tool-calls",

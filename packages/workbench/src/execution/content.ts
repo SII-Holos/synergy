@@ -133,7 +133,7 @@ export namespace ExecutionContent {
     } while (!section && next)
     if (!section || section.bytes > 8 * 1024 * 1024) return undefined
     const parts: string[] = []
-    for (let offset = section.offset; offset < section.offset + section.bytes; ) {
+    for (let offset = section.offset; offset < section.offset + section.bytes;) {
       signal?.throwIfAborted()
       const page = await source.read(offset, Math.min(65_536, section.offset + section.bytes - offset))
       parts.push(page.text)

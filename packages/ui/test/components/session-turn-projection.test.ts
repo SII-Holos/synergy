@@ -68,9 +68,8 @@ mock.module("../../src/components/turn-change-summary-panel", () => ({ TurnChang
 mock.module("../../src/components/special-user-message", () => ({ getSpecialUserMessageRenderer: () => undefined }))
 mock.module("../../src/components/tool-renders", () => ({}))
 
-const { collectCompactionParentIDs, collectMessagesForTurnLifecycle } = await import(
-  "../../src/components/session-turn"
-)
+const { collectCompactionParentIDs, collectMessagesForTurnLifecycle } =
+  await import("../../src/components/session-turn")
 const { buildSessionTurnProjection } = await import("../../src/components/session-turn-projection")
 
 function user(

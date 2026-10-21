@@ -529,7 +529,11 @@ export async function executeUnit(
         Number(
           !!plan.tasks.find((task) => task.id === b)!.profile ||
             plan.tasks.find((task) => task.id === b)!.needs.includes("benchmark-prepare"),
-        ) || taskOrder(plan.tasks.find((task) => task.id === a)!, plan.tasks.find((task) => task.id === b)!),
+        ) ||
+      taskOrder(
+        plan.tasks.find((task) => task.id === a)!,
+        plan.tasks.find((task) => task.id === b)!,
+      ),
   )
   async function execute(taskID: string) {
     const task = plan.tasks.find((entry) => entry.id === taskID)!

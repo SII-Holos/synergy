@@ -81,9 +81,10 @@ function hash(...parts: string[]): string {
   return hasher.digest("hex")
 }
 
-export class ClarusProvider
-  implements ChannelTypes.Provider<ConnectionsConfigSchema.ChannelClarusAccount, ConnectionsConfigSchema.ChannelClarus>
-{
+export class ClarusProvider implements ChannelTypes.Provider<
+  ConnectionsConfigSchema.ChannelClarusAccount,
+  ConnectionsConfigSchema.ChannelClarus
+> {
   readonly type = "clarus"
   readonly lifecycle = "borrowed_transport" as const
   private readonly log = Log.create({ service: "channel.clarus" })

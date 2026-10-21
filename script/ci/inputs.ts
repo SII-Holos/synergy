@@ -17,8 +17,7 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
     }
     const parsed = ts.parseConfigFileTextToJson(file, read(file))
     const config = parsed.config as
-      | { extends?: string; compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } }
-      | undefined
+      { extends?: string; compilerOptions?: { baseUrl?: string; paths?: Record<string, string[]> } } | undefined
     const paths = config?.compilerOptions?.paths ?? {}
     const source = paths["@/*"]?.length === 1 && ["./src/*", "src/*"].includes(paths["@/*"][0]!)
     aliases.set(workspace.directory, {

@@ -500,13 +500,11 @@ export namespace SessionSummary {
       return async () => {
         input.abort.throwIfAborted()
         const assistantMsg = messages.find((message) => message.info.role === "assistant")?.info as
-          | MessageV2.Assistant
-          | undefined
+          MessageV2.Assistant | undefined
         if (!assistantMsg) return
 
         const textPart = msgWithParts.parts.find((part) => part.type === "text" && !MessageV2.isSystemPart(part)) as
-          | MessageV2.TextPart
-          | undefined
+          MessageV2.TextPart | undefined
         const hasStepFinish = messages.some(
           (message) =>
             message.info.role === "assistant" &&

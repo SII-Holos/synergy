@@ -1,11 +1,6 @@
 export namespace SearchGuard {
   export type FailureType =
-    | "no_results"
-    | "http_403"
-    | "http_404"
-    | "timeout"
-    | "blocked_or_unavailable"
-    | "low_quality_results"
+    "no_results" | "http_403" | "http_404" | "timeout" | "blocked_or_unavailable" | "low_quality_results"
 
   export function classifyHttpStatus(status: number): FailureType | undefined {
     if (status === 403) return "http_403"

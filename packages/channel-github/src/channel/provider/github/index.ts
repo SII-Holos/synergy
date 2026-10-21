@@ -149,9 +149,10 @@ class NonStreamingSession implements ChannelTypes.StreamingSession {
   }
 }
 
-export class GithubProvider
-  implements ChannelTypes.Provider<ConnectionsConfigSchema.ChannelGithubAccount, ConnectionsConfigSchema.ChannelGithub>
-{
+export class GithubProvider implements ChannelTypes.Provider<
+  ConnectionsConfigSchema.ChannelGithubAccount,
+  ConnectionsConfigSchema.ChannelGithub
+> {
   readonly type = "github"
   readonly lifecycle = "self_connected" as const
   readonly defaultAgent = "github-channel-agent"

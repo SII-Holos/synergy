@@ -7,8 +7,7 @@ export type AuthOuathResult = { url: string; instructions: string } & (
       method: "auto"
       callback(): Promise<
         | ({ type: "success"; provider?: string } & (
-            | { refresh: string; access: string; expires: number }
-            | { key: string }
+            { refresh: string; access: string; expires: number } | { key: string }
           ))
         | { type: "failed" }
       >
@@ -19,8 +18,7 @@ export type AuthOuathResult = { url: string; instructions: string } & (
         code: string,
       ): Promise<
         | ({ type: "success"; provider?: string } & (
-            | { refresh: string; access: string; expires: number }
-            | { key: string }
+            { refresh: string; access: string; expires: number } | { key: string }
           ))
         | { type: "failed" }
       >

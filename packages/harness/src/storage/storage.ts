@@ -147,7 +147,7 @@ export namespace Storage {
               },
               async () => {
                 const result = await body(tx)
-                for (let offset = 0; offset < pending.length; ) {
+                for (let offset = 0; offset < pending.length;) {
                   const batch = pending.slice(offset)
                   offset += batch.length
                   await Promise.all(batch)

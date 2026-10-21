@@ -109,7 +109,7 @@ export namespace RolloutArtifact {
 
   export function writeText(owner: Owner, text: string, mediaType = "text/plain;charset=utf-8") {
     async function* source() {
-      for (let offset = 0; offset < text.length; ) {
+      for (let offset = 0; offset < text.length;) {
         let end = Math.min(offset + 65_536, text.length)
         const last = text.charCodeAt(end - 1)
         if (end < text.length && last >= 0xd800 && last <= 0xdbff) end--
@@ -216,7 +216,7 @@ export namespace RolloutArtifact {
       append(bytes) {
         return exclusive(async () => {
           if (finished) throw new Error("Rollout artifact is already closed")
-          for (let offset = 0; offset < bytes.byteLength; ) {
+          for (let offset = 0; offset < bytes.byteLength;) {
             const count = Math.min(CHUNK_BYTES - filled, bytes.byteLength - offset)
             buffer.set(bytes.subarray(offset, offset + count), filled)
             filled += count

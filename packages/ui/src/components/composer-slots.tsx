@@ -26,8 +26,7 @@ export interface ExternalComposerSlotEntry {
 }
 
 export let externalComposerSlotLookup:
-  | ((slot: ComposerSlotName) => readonly ExternalComposerSlotEntry[] | undefined)
-  | undefined
+  ((slot: ComposerSlotName) => readonly ExternalComposerSlotEntry[] | undefined) | undefined
 
 export function setExternalComposerSlotLookup(
   fn: (slot: ComposerSlotName) => readonly ExternalComposerSlotEntry[] | undefined,

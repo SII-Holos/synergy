@@ -1922,9 +1922,7 @@ export namespace Session {
   }
 
   type UpdatePartInternalInput =
-    | MessageV2.Part
-    | { part: MessageV2.TextPart; delta: string }
-    | { part: MessageV2.ReasoningPart; delta: string }
+    MessageV2.Part | { part: MessageV2.TextPart; delta: string } | { part: MessageV2.ReasoningPart; delta: string }
 
   export async function preparePart(input: MessageV2.Part, ownerScopeID?: string): Promise<MessageV2.Part> {
     let part = input

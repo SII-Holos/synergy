@@ -9,8 +9,7 @@
 // prefix), which makes replay coverage a simple range check.
 
 export type ReplayResult =
-  | { status: "ok"; epoch: string; seq: number; events: unknown[] }
-  | { status: "reset"; epoch: string; seq: number }
+  { status: "ok"; epoch: string; seq: number; events: unknown[] } | { status: "reset"; epoch: string; seq: number }
 
 type JournalEntry = { seq: number; at: number; payload: unknown }
 

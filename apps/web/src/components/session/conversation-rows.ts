@@ -221,7 +221,7 @@ export function buildConversationRows(input: {
         reasoningAnchor ??= part.id
         reasoningAnchors[part.id] = reasoningAnchor
       }
-      for (let offset = 0; offset < parts.length; ) {
+      for (let offset = 0; offset < parts.length;) {
         const first = offset++
         const processBody = isProcessPart(message, parts, first)
         let bytes = bodyBytes(parts[first])

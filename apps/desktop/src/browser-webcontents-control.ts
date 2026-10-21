@@ -419,13 +419,11 @@ export class BrowserWebContentsControl {
     if (command.type === "filechooser.select") {
       await diagnostics?.respondToFileChooser(
         command.requestId,
-        command.files.map(
-          (file): BrowserHostUploadFile => ({
-            name: file.name,
-            mimeType: file.mimeType,
-            data: file.dataBase64,
-          }),
-        ),
+        command.files.map((file): BrowserHostUploadFile => ({
+          name: file.name,
+          mimeType: file.mimeType,
+          data: file.dataBase64,
+        })),
       )
       return { type: "void" }
     }

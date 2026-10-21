@@ -364,8 +364,7 @@ export namespace LocalBashBackend {
               mime: item.mime,
               size: (
                 (item.metadata as Record<string, unknown> | undefined)?.attachment as
-                  | Record<string, unknown>
-                  | undefined
+                  Record<string, unknown> | undefined
               )?.size,
               url: item.url,
             })),

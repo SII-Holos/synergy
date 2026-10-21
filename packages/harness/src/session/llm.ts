@@ -233,24 +233,20 @@ export namespace LLM {
 
   export function promptMessages(input: PromptLayoutInput): ModelMessage[] {
     const suffix: ModelMessage[] = input.promptSuffix ? [{ role: "user", content: input.promptSuffix }] : []
-    const systemMessages = input.system.map(
-      (content): ModelMessage => ({
-        role: "system",
-        content,
-      }),
-    )
+    const systemMessages = input.system.map((content): ModelMessage => ({
+      role: "system",
+      content,
+    }))
     const lateSystem = (input.lateSystem ?? []).filter((content) => content.length > 0)
     if (lateSystem.length === 0) return [...systemMessages, ...input.messages, ...suffix]
 
     if (PromptCachePolicy.layout(input.model, input.profileID) === "system") {
       return [
         ...systemMessages,
-        ...lateSystem.map(
-          (content): ModelMessage => ({
-            role: "system",
-            content,
-          }),
-        ),
+        ...lateSystem.map((content): ModelMessage => ({
+          role: "system",
+          content,
+        })),
         ...input.messages,
         ...suffix,
       ]

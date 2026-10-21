@@ -8,14 +8,7 @@ export type LoopTerminal = {
   createdAt: number
 }
 export type LoopStage =
-  | "bound"
-  | "running"
-  | "auditing"
-  | "paused"
-  | "rework"
-  | "resolving"
-  | "unavailable"
-  | LoopTerminal["status"]
+  "bound" | "running" | "auditing" | "paused" | "rework" | "resolving" | "unavailable" | LoopTerminal["status"]
 export type LoopDisplay = {
   kind: "lightloop" | "blueprint"
   stage: LoopStage
