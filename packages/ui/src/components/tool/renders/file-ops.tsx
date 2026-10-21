@@ -1,3 +1,4 @@
+import { getToolIcon } from "../icons"
 import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
 import { createMemo, For, Show } from "solid-js"
@@ -27,7 +28,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "diff",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["apply_patch"],
           tags: outcome()
             ? [
@@ -92,7 +93,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "scan-document",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["file_search"],
           subtitle: props.input.query as string | undefined,
           tags:
@@ -122,7 +123,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "pen-line",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["edit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
@@ -153,7 +154,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "text-select",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["write"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
@@ -176,7 +177,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "pen-line",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["multiedit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}

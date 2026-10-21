@@ -1,3 +1,4 @@
+import { getToolIcon } from "../icons"
 import { useLingui } from "@lingui/solid"
 import { BasicTool } from "../../basic-tool"
 import { ToolRegistry } from "../../tool-registry-lazy"
@@ -12,7 +13,7 @@ ToolRegistry.register({
       <BasicTool
         {...props}
         trigger={{
-          icon: "bot",
+          icon: getToolIcon(props.tool, props.input, props.metadata),
           title: TOOL_TITLE_DESC["agent_config"],
           subtitle: props.input?.input?.name ?? "",
           tags:

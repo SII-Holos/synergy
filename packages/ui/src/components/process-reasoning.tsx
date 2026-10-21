@@ -126,7 +126,7 @@ export function ProcessReasoning(props: {
               if (next) props.onInspect?.()
             }}
           >
-            <Icon name={getSemanticIcon("performance.trace")} size="small" />
+            <Icon name={getSemanticIcon("session.reasoning")} size="small" />
             <span>
               {props.running
                 ? _({ id: "session.process.thinking", message: "Thinking" })

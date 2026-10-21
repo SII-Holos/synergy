@@ -1,4 +1,5 @@
-const ANYSEARCH_ICON = "orbit"
+import type { IconSource } from "../icon"
+import { getToolIcon } from "./icons"
 
 export const ANYSEARCH_TOOL_NAMES = [
   "mcp__anysearch__search",
@@ -10,7 +11,7 @@ export const ANYSEARCH_TOOL_NAMES = [
 export type AnysearchToolName = (typeof ANYSEARCH_TOOL_NAMES)[number]
 
 export interface AnysearchToolInfo {
-  icon: typeof ANYSEARCH_ICON
+  icon: IconSource
   title: string
   subtitle?: string
   args?: string[]
@@ -86,12 +87,16 @@ function compactArgs(values: Array<string | undefined>) {
   return result.length ? result : undefined
 }
 
-export function getAnysearchToolInfo(name: AnysearchToolName, input: Record<string, unknown> = {}): AnysearchToolInfo {
+export function getAnysearchToolInfo(
+  name: AnysearchToolName,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
+): AnysearchToolInfo {
   const routeTags = routeLabels(input)
   switch (name) {
     case "mcp__anysearch__search":
       return {
-        icon: ANYSEARCH_ICON,
+        icon: getToolIcon(name, input, metadata),
         title: "Anysearch",
         subtitle: firstString(input.query),
         args: compactArgs([
@@ -102,7 +107,7 @@ export function getAnysearchToolInfo(name: AnysearchToolName, input: Record<stri
     case "mcp__anysearch__batch_search": {
       const count = queryCount(input)
       return {
-        icon: ANYSEARCH_ICON,
+        icon: getToolIcon(name, input, metadata),
         title: "Anysearch Batch",
         subtitle: count ? `${count} parallel searches` : firstQuery(input),
         args: compactArgs([count ? `${count} queries` : undefined, ...routeTags.slice(0, 3)]),
@@ -110,14 +115,14 @@ export function getAnysearchToolInfo(name: AnysearchToolName, input: Record<stri
     }
     case "mcp__anysearch__extract":
       return {
-        icon: ANYSEARCH_ICON,
+        icon: getToolIcon(name, input, metadata),
         title: "Anysearch Extract",
         subtitle: firstString(input.url),
         args: compactArgs([hostname(input.url), firstString(input.format)]),
       }
     case "mcp__anysearch__get_sub_domains":
       return {
-        icon: ANYSEARCH_ICON,
+        icon: getToolIcon(name, input, metadata),
         title: "Search Domains",
         subtitle: routeTags.join(", "),
         args: compactArgs([

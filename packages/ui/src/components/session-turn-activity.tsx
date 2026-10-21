@@ -14,7 +14,7 @@ import {
   type ActivitySummaryState,
 } from "@ericsanchezok/synergy-util/activity"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import type { IconName } from "./icon"
+import type { IconSource } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { timelineItemStableKey, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 export { resolveActivityDisplay }
@@ -25,7 +25,7 @@ export type ActivityStepProjection = {
   part: ToolPart
   family: ActivityFamily
   scopeKey: string
-  icon: IconName
+  icon: IconSource
   title: string | MessageDescriptor
   subtitle?: string
   objectKind?: "path" | "command" | "query"

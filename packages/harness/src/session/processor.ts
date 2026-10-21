@@ -291,9 +291,13 @@ export namespace SessionProcessor {
       return metadata as Record<string, any>
     }
 
-    function runningToolMetadata(toolName: string, providerMetadata: unknown): Record<string, any> | undefined {
+    function runningToolMetadata(
+      toolName: string,
+      providerMetadata: unknown,
+      resolvedDisplay?: ToolDisplay,
+    ): Record<string, any> | undefined {
       const metadata = providerMetadataObject(providerMetadata)
-      const display = input.toolDisplay?.(toolName)
+      const display = resolvedDisplay ?? input.toolDisplay?.(toolName)
       if (!display) return metadata
       const existingDisplay = metadata?.display as { media?: Record<string, any> } | undefined
       const media =
@@ -1538,7 +1542,7 @@ export namespace SessionProcessor {
                         streamedBytes: streamedRaw === undefined ? undefined : SessionBounds.byteLength(streamedRaw),
                       })
                       const runningMetadata = ToolTimeout.mergeMetadata(
-                        runningToolMetadata(value.toolName, value.providerMetadata),
+                        runningToolMetadata(value.toolName, value.providerMetadata, expanded?.display),
                         pendingState?.metadata,
                       )
                       log.info("tool.stream.tool_call.metadata_ready", {

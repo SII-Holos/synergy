@@ -35,14 +35,14 @@ beforeAll(async () => {
   }))
   mock.module("../../../src/components/message-part", () => ({
     browserToolLabels: {
-      browser_navigation: { icon: "route", title: { id: "browser.title.navigation", message: "Navigate web" } },
+      browser_navigation: { icon: "globe", title: { id: "browser.title.navigation", message: "Navigate web" } },
       browser_snapshot: {
         icon: "binoculars",
         title: { id: "browser.title.snapshot", message: "Capture page snapshot" },
       },
       browser_action: { icon: "mouse-pointer-click", title: { id: "browser.title.action", message: "Operate page" } },
       browser_wait: { icon: "hourglass", title: { id: "browser.title.wait", message: "Wait for page" } },
-      browser_read: { icon: "glasses", title: { id: "browser.title.read", message: "Read page" } },
+      browser_read: { icon: "text-select", title: { id: "browser.title.read", message: "Read page" } },
       browser_inspect: { icon: "scan-eye", title: "Inspect page" },
       browser_screenshot: { icon: "image", title: "Capture screenshot" },
       browser_eval: { icon: "braces", title: "Evaluate page script" },
@@ -180,7 +180,7 @@ describe("Browser tool renderers", () => {
     })
 
     expect(capturedTrigger).toEqual({
-      icon: "route",
+      icon: "globe",
       title: { id: "browser.title.navigation", message: "Navigate web" },
       subtitle: "goto · https://mail.163.com/js6/main.jsp?sid=ver…",
       tags: [
@@ -263,7 +263,7 @@ describe("Browser tool renderers", () => {
     })
 
     expect(capturedTrigger).toEqual({
-      icon: "glasses",
+      icon: "text-select",
       title: { id: "browser.title.read", message: "Read page" },
       subtitle: "https://example.com/inbox",
       tags: [{ label: "3 console" }],

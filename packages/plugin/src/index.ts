@@ -1,4 +1,4 @@
-export type { ToolDisplay, ToolMediaDisplay } from "./display.js"
+export type { ToolDisplay, ToolMediaDisplay, ToolIconSource } from "./display.js"
 export type { PluginToolAttachment, PluginToolResult, ToolResult } from "./tool.js"
 export * from "./plugin-types.js"
 export * from "./version.js"

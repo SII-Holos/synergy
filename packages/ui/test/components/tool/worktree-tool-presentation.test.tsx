@@ -42,7 +42,7 @@ function resetCapture() {
 describe("worktree archive presentation", () => {
   test("shows the requested target before completion without inventing a current tree", () => {
     expect(getToolInfo("worktree_archive", { target: "feature" })).toMatchObject({
-      icon: "worktree-archive",
+      icon: "git-fork",
       title: { id: "tool.title.archive-worktree", message: "Archive isolated workspace" },
       subtitle: "feature",
     })
@@ -99,7 +99,7 @@ describe("worktree archive presentation", () => {
       })
 
       expect(capturedTool?.trigger).toEqual({
-        icon: "worktree-archive",
+        icon: "git-fork",
         title: { id: "tool.title.archive-worktree", message: "Archive isolated workspace" },
         subtitle: "Feature",
         tags: [{ label: "feature" }, { label: "retained" }],

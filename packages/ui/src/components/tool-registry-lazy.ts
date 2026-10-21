@@ -57,23 +57,6 @@ export function setExternalToolLookup(fn: (name: string) => ToolComponent | unde
   externalLookup = fn
 }
 
-// External fallback metadata lookup — injected by plugin ToolRegistry bridge.
-// Returns declarative icon/title/subtitleTemplate for Tier 1 tool renderers.
-export let externalFallbackLookup:
-  | ((name: string) =>
-      | {
-          icon?: string
-          title?: string
-          subtitleTemplate?: string
-        }
-      | undefined)
-  | undefined
-export function setExternalFallbackLookup(
-  fn: (name: string) => { icon?: string; title?: string; subtitleTemplate?: string } | undefined,
-) {
-  externalFallbackLookup = fn
-}
-
 // Bumped by the app layer when a lazy-loaded plugin tool renderer becomes
 // available, so createMemo re-evaluates and picks up the new renderer.
 const [_externalLoadNotify, _setExternalLoadNotify] = createSignal(0)

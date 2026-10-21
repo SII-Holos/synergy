@@ -56,7 +56,7 @@ When adopting another tool's capabilities, pin and replay its behavioral fixture
 
 Complete all five first-party registrations:
 
-1. `packages/ui/src/components/icon.tsx` — tool icon registry
+1. `packages/ui/src/components/tool/icons.ts` — shared tool identity; register any new base glyph in `icon.tsx` and `plugin/builtin-icons.ts`
 2. `packages/ui/src/components/message-part.tsx` — title, subtitle, arguments, and tool-card metadata
 3. `packages/ui/src/components/tool-renders.tsx` — renderer group registration
 4. `packages/harness/src/tool/taxonomy.ts` — runtime semantic classification

@@ -2230,6 +2230,7 @@ export namespace ToolResolver {
         const schema = entry.inputSchema
         result.push({
           id: key,
+          display: entry.display,
           exposure,
           description:
             entry.presentation?.description ??
@@ -2614,6 +2615,7 @@ export namespace ToolResolver {
   }
 
   export interface AutoExpandedTool {
+    display?: ToolDisplay
     tool: AITool
     executor: ToolExecutorKind
     inputSchema?: JSONSchema7
@@ -2655,7 +2657,9 @@ export namespace ToolResolver {
   export async function runtimeToolFor(
     input: Input,
     toolName: string,
-  ): Promise<{ tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7 } | undefined> {
+  ): Promise<
+    { tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7; display?: ToolDisplay } | undefined
+  > {
     using _ = log.time("runtimeToolFor")
     const stored = input.session ?? (await Session.get(input.sessionID).catch(() => undefined))
     const session = stored ? await SessionExecutionOwners.currentSession(stored) : undefined
@@ -2672,6 +2676,7 @@ export namespace ToolResolver {
       tool: withExecutionDeduplication(runtimeInput, runtimeTool, item.id),
       executor: item.executor ?? ToolExecutor.classify(item.id, item.source),
       inputSchema: item.inputSchema,
+      display: item.display,
     }
   }
 

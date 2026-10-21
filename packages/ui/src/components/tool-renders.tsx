@@ -1,8 +1,8 @@
+import { getToolIcon } from "./tool/icons"
 import { useLingui } from "@lingui/solid"
 import { BasicTool } from "./basic-tool"
 import { ToolRegistry } from "./message-part"
 import { getLatticeToolPresentation } from "./tool/classifier"
-import { getSemanticIcon } from "./semantic-icon"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 
 const PATHWAY_STEPS_DESCRIPTOR = { id: "tool.label.pathwaySteps", message: "{count} steps" }
@@ -77,7 +77,7 @@ for (const name of [
         <BasicTool
           {...props}
           trigger={{
-            icon: getSemanticIcon("prompt.boss"),
+            icon: getToolIcon(props.tool, props.input, props.metadata),
             title: TOOL_TITLE_DESC[name],
             subtitle:
               props.input.role ||

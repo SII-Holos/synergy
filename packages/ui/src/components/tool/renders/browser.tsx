@@ -1,3 +1,4 @@
+import { getToolIcon } from "../icons"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import { browserToolLabels, ToolRegistry } from "../../message-part"
@@ -78,7 +79,7 @@ function BrowserActionTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary(type(), browserTargetName(browserTarget(input(), metadata()))),
         tags: [tag(type()), ...stateTags(_, metadata())].filter(Boolean) as BrowserTag[],
@@ -109,7 +110,7 @@ function BrowserNavigationTool(props: ToolProps & { config: BrowserToolConfig })
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary(actionName(), browserUrl(input(), metadata())),
         tags: [tag(actionName()), ...stateTags(_, metadata())].filter(Boolean) as BrowserTag[],
@@ -148,7 +149,7 @@ function BrowserWaitTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary("wait", formatBrowserCondition(waitCondition())),
         tags: waitTags().filter(Boolean) as BrowserTag[],
@@ -179,7 +180,7 @@ function BrowserSnapshotTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: joinBrowserSummary("snapshot", elementLabel()),
         tags: [tag(elementLabel())].filter(Boolean) as BrowserTag[],
@@ -220,7 +221,7 @@ function GenericBrowserTool(props: ToolProps & { config: BrowserToolConfig }) {
     <BasicTool
       {...props}
       trigger={{
-        icon: props.config.icon,
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: props.config.title,
         subtitle: genericSubtitle(),
         tags: genericTags().filter(Boolean) as BrowserTag[],

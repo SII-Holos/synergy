@@ -16,7 +16,7 @@ import { SEARCH_TOOL_DESC } from "../../tool-title-descriptors"
 const TOP_PAPER_ROWS = 3
 
 function triggerFromInfo(name: ScholightToolName, props: ToolProps) {
-  const info = getScholightToolInfo(name, props.input ?? {})
+  const info = getScholightToolInfo(name, props.input ?? {}, props.metadata ?? {})
   return {
     icon: info.icon,
     title: info.title,

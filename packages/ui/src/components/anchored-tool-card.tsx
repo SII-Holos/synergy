@@ -1,3 +1,4 @@
+import { getToolIcon } from "./tool/icons"
 import { ANCHORED_CHIP_DESC } from "./tool-title-descriptors"
 
 import { createMemo, For, Show } from "solid-js"
@@ -245,7 +246,7 @@ export function AnchoredViewTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "scan-eye",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(viewFileTitleDescriptor),
         subtitlePath: pathFromProps(props),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -315,7 +316,7 @@ export function AnchoredSearchTool(props: ToolProps & { mode: "text" | "ast" }) 
     <BasicTool
       {...props}
       trigger={{
-        icon: props.mode === "ast" ? "braces" : "scan-search",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: title(),
         subtitle: subtitle(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -391,7 +392,7 @@ export function AnchoredReviseTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "file-pen",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(reviseFileTitleDescriptor),
         subtitlePath: filePath(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -451,7 +452,7 @@ export function AnchoredResolveConflictsTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "file-pen",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(resolveConflictsTitleDescriptor),
         subtitlePath: filePath(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,
@@ -496,7 +497,7 @@ export function AnchoredSaveTool(props: ToolProps) {
     <BasicTool
       {...props}
       trigger={{
-        icon: "text-select",
+        icon: getToolIcon(props.tool, props.input, props.metadata),
         title: _(isOverwrite() ? saveFileTitleDescriptor : createFileTitleDescriptor),
         subtitlePath: filePath(),
         tags: chips().filter(Boolean) as Array<{ label: string; tone?: "default" | "success" | "warning" | "danger" }>,

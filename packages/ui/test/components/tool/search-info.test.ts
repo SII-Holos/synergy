@@ -220,7 +220,7 @@ describe("scholight info builders", () => {
         start_date: "2026-03-01",
       }),
     ).toEqual({
-      icon: "graduation-cap",
+      icon: "telescope",
       title: "Scholight",
       subtitle: "retrieval augmented generation",
       args: ["thorough", "cs.CL, cs.AI", "Karpathy", "20 papers", "2026-03-01"],
@@ -234,7 +234,7 @@ describe("scholight info builders", () => {
         format: "text",
       }),
     ).toEqual({
-      icon: "file-text",
+      icon: "telescope",
       title: "Scholight Extract",
       subtitle: "https://arxiv.org/abs/2303.08774",
       args: ["arxiv.org", "text"],
