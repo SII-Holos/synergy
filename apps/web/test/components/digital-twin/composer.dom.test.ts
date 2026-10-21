@@ -67,6 +67,8 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
     import {MarkedProvider} from "@ericsanchezok/synergy-ui/context/marked"
+    import {Icon} from "@ericsanchezok/synergy-ui/icon"
+    import {getSemanticIcon} from "@ericsanchezok/synergy-ui/semantic-icon"
     import {DigitalTwinComposer} from "@/components/digital-twin/composer"
     import {DigitalTwinSettings} from "@/components/digital-twin/settings"
     import {ComposerDocumentController} from "@/components/prompt-input/composer-document"
@@ -87,7 +89,10 @@ beforeAll(async () => {
       label:()=>"Completion preview",mount:element=>{editor=element;return ()=>{editor=undefined}},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{},
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
-    },render:part=>part==="toolbar"?<div class="prompt-input-toolbar"><Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show></div>:null}
+    },render:part=>part==="toolbar"?<div class="prompt-input-toolbar flex justify-end"><div class="prompt-input-toolbar-actions flex items-center gap-1.5">
+      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show>
+      <button type="button" aria-label="Microphone" class="prompt-input-toolbar-icon-button flex items-center justify-center"><Icon name={getSemanticIcon("prompt.voice")} size="small"/></button>
+    </div></div>:null}
     bindComposerPresentation(input,{state:new ComposerPresentation(),preview:()=>({text:text(),references:[]})})
     function Contents(){return <>
       <DigitalTwinSettings value={settings()} models={[{providerId:"fixture",providerName:"Fixture",modelId:"large",modelName:"Large"}]} change={value=>{setSettings(value);setConfig("digitalTwin","automatic",value.automatic)}}/>
@@ -229,7 +234,7 @@ test.each([
   { width: 375, colorScheme: "light" as const, hasTouch: false },
   { width: 375, colorScheme: "dark" as const, hasTouch: true },
 ])(
-  "prediction controls stay reachable without covering editor content: %o",
+  "prediction stays beside the microphone without covering editor content: %o",
   async ({ width, colorScheme, hasTouch }) => {
     const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, hasTouch })
     page.setDefaultTimeout(4000)
@@ -240,12 +245,18 @@ test.each([
       await button.waitFor()
       const editor = page.getByRole("textbox", { name: "Completion preview" })
       const expand = page.getByRole("button", { name: "Expand editor", exact: true })
+      const microphone = page.getByRole("button", { name: "Microphone", exact: true })
       const actionBounds = (await button.boundingBox())!
       const editorBounds = (await editor.boundingBox())!
       const expandBounds = (await expand.boundingBox())!
-      expect(actionBounds.y).toBeLessThan(editorBounds.y + 16)
+      const microphoneBounds = (await microphone.boundingBox())!
+      expect(actionBounds.y).toBeGreaterThanOrEqual(editorBounds.y + editorBounds.height)
       expect(actionBounds.x).toBeGreaterThan(editorBounds.x + editorBounds.width / 2)
-      expect(expandBounds.x + expandBounds.width).toBeLessThanOrEqual(actionBounds.x)
+      expect(actionBounds.x + actionBounds.width).toBeLessThanOrEqual(microphoneBounds.x)
+      expect(
+        Math.abs(actionBounds.y + actionBounds.height / 2 - microphoneBounds.y - microphoneBounds.height / 2),
+      ).toBeLessThan(1)
+      expect(expandBounds.y).toBeLessThan(editorBounds.y + 16)
       const textEnd = await editor.evaluate((element) => {
         const box = element.getBoundingClientRect()
         return box.right - Number.parseFloat(getComputedStyle(element).paddingInlineEnd)
@@ -270,6 +281,9 @@ test.each([
       expect(errors).toEqual([])
       await page.getByRole("button", { name: "Collapse editor", exact: true }).waitFor({ state: "visible" })
       expect(await button.isVisible()).toBe(true)
+      const expandedAction = (await button.boundingBox())!
+      const expandedMicrophone = (await microphone.boundingBox())!
+      expect(expandedAction.x + expandedAction.width).toBeLessThanOrEqual(expandedMicrophone.x)
       expect(errors).toEqual([])
     } finally {
       await page.close()

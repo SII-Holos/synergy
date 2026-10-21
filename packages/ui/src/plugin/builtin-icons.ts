@@ -229,6 +229,7 @@ const builtinIconNames = [
   "wand-sparkles",
   "text-cursor-input",
   "user-round",
+  "scan-face",
   "split",
   "spline",
   "square",

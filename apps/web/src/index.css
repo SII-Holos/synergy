@@ -370,33 +370,6 @@ a {
 .composer-expand-control:hover {
   background: var(--surface-raised-base-hover);
 }
-.composer-prediction-control {
-  position: absolute;
-  top: 4px;
-  inset-inline-end: 8px;
-  z-index: 3;
-}
-.composer-prediction-control [data-component="icon-button"] {
-  width: 32px;
-  height: 32px;
-  border: 0;
-}
-.composer-prediction-control [data-component="icon-button"]:disabled {
-  background: transparent;
-}
-.prompt-input-shell:has(.composer-prediction-control) {
-  --composer-editor-inset-end: 88px;
-}
-.prompt-input-shell:has(.composer-prediction-control) .composer-expand-region {
-  inset-inline-end: 40px;
-  width: 40px;
-}
-.prompt-input-shell:has(.composer-prediction-control) .composer-expand-control {
-  inset-inline-end: 4px;
-}
-.session-composer-text {
-  padding-inline-end: var(--composer-editor-inset-end, 48px);
-}
 @media (hover: hover) and (pointer: fine) {
   .composer-expand-control {
     opacity: 0;
@@ -412,24 +385,6 @@ a {
     inset-inline-end: 4px;
     width: 44px;
     height: 44px;
-  }
-  .composer-prediction-control {
-    top: 0;
-    inset-inline-end: 4px;
-  }
-  .composer-prediction-control [data-component="icon-button"] {
-    width: 44px;
-    height: 44px;
-  }
-  .prompt-input-shell:has(.composer-prediction-control) {
-    --composer-editor-inset-end: 100px;
-  }
-  .prompt-input-shell:has(.composer-prediction-control) .composer-expand-region {
-    inset-inline-end: 48px;
-    width: 44px;
-  }
-  .prompt-input-shell:has(.composer-prediction-control) .composer-expand-control {
-    inset-inline-end: 0;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -485,8 +440,7 @@ a {
   align-items: center;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 8px 12px;
-  padding-inline-end: var(--composer-editor-inset-end, 48px);
+  padding: 8px 48px 8px 12px;
   border-bottom: 1px solid var(--border-weak-base);
 }
 .composer-long-tools button {
@@ -704,7 +658,7 @@ a {
 .prompt-attachments {
   min-width: 0;
   padding: 8px 16px 0;
-  padding-inline-end: var(--composer-editor-inset-end, 48px);
+  padding-inline-end: 48px;
 }
 .prompt-attachments [data-slot="attachment-row-layout"] {
   flex-wrap: nowrap;

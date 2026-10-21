@@ -9,7 +9,7 @@ export const SemanticIconToken = {
   "mcp.main": "cable",
   "lsp.main": "braces",
   "cortex.main": "workflow",
-  "digital-twin.main": "user-round",
+  "digital-twin.main": "scan-face",
   "browser.main": "globe",
   "browser.screenshot": "image",
   "browser.inspect": "mouse-pointer-click",

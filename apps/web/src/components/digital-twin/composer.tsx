@@ -186,22 +186,20 @@ export function DigitalTwinComposer(props: {
   })
   return (
     <>
-      <div class="composer-prediction-control">
-        <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top-end">
-          <IconButton
-            type="button"
-            variant="ghost"
-            size="large"
-            icon={getSemanticIcon("action.predict")}
-            aria-label={_(twinCopy.predict)}
-            disabled={!eligible() || !state().ready || busy()}
-            onClick={() => {
-              props.focusEditor()
-              requests.manual()
-            }}
-          />
-        </Tooltip>
-      </div>
+      <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
+        <IconButton
+          type="button"
+          variant="ghost"
+          class="prompt-input-toolbar-icon-button"
+          icon={getSemanticIcon("action.predict")}
+          aria-label={_(twinCopy.predict)}
+          disabled={!eligible() || !state().ready || busy()}
+          onClick={() => {
+            props.focusEditor()
+            requests.manual()
+          }}
+        />
+      </Tooltip>
       <Show when={failure()}>
         {(reason) => (
           <span role="status" class="text-12-regular text-text-weak">
