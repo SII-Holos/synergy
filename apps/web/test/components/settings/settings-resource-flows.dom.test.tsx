@@ -225,7 +225,7 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-test("custom API setup keeps routine copy inside aligned fields and leaves errors contextual", async () => {
+test("custom API fields and actions match the protocol surface and keep routine copy aligned", async () => {
   await page.setViewportSize({ width: 1600, height: 1100 })
   await page.getByRole("button", { name: "Add custom model API", exact: true }).click()
   const form = page.locator(".custom-provider-form")
@@ -233,6 +233,14 @@ test("custom API setup keeps routine copy inside aligned fields and leaves error
   const id = form.getByLabel("Provider ID", { exact: true })
   const endpoint = form.getByLabel("API base URL", { exact: true })
   const protocol = form.getByRole("button", { name: "API protocol: OpenAI Chat Completions", exact: true })
+  const background = await protocol.evaluate((element) => getComputedStyle(element).backgroundColor)
+  for (const control of await form.locator('[data-slot="input-wrapper"], [data-component="button"]').all()) {
+    const style = await control.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow }
+    })
+    expect(style).toEqual({ background, border: "0px", shadow: "none" })
+  }
   const first = page.getByRole("group", { name: "Model 1", exact: true })
   expect(await form.locator("p:visible").count()).toBe(0)
   expect(await form.locator('[data-slot="input-description"]:visible').count()).toBe(0)
@@ -267,6 +275,17 @@ test("custom API setup keeps routine copy inside aligned fields and leaves error
   await form.getByRole("button", { name: "Create provider", exact: true }).click()
   await form.getByRole("alert").waitFor()
   expect(await calls("customCreations")).toHaveLength(0)
+  await name.fill("Unsaved gateway")
+  await page.getByRole("button", { name: "Back to accounts", exact: true }).click()
+  const confirmation = page.getByRole("dialog")
+  await confirmation.waitFor()
+  for (const button of await confirmation.locator('[data-component="button"]').all()) {
+    expect(await button.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await button.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await button.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(background)
+  }
+  await page.keyboard.press("Escape")
+  expect(await name.inputValue()).toBe("Unsaved gateway")
   expect(errors).toEqual([])
 })
 

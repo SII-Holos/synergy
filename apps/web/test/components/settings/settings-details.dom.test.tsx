@@ -59,6 +59,8 @@ beforeAll(async () => {
     import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
     import { OverlayLayerProvider } from "@ericsanchezok/synergy-ui/context/overlay-layer"
     import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+    import { Button } from "@ericsanchezok/synergy-ui/button"
+    import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
     import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
     import { EmailPanel } from "/@fs/${source}/components/settings/panels/EmailPanel.tsx"
     import { LearningPanel } from "/@fs/${source}/components/settings/panels/LibraryPanels.tsx"
@@ -70,6 +72,7 @@ beforeAll(async () => {
     import { SettingsPathRow, SettingsPage } from "/@fs/${source}/components/settings/components/SettingsPrimitives.tsx"
     import { SettingRow } from "/@fs/${source}/components/settings/components/SettingsSettingRow.tsx"
     import { SettingsChoices } from "/@fs/${source}/components/settings/components/SettingsChoices.tsx"
+    import { SegmentPill } from "/@fs/${source}/components/settings/components/SegmentPill.tsx"
     import { ModelRoleRow } from "/@fs/${source}/components/settings/components/ModelRoleRow.tsx"
     import { DeclarativeSettingsForm } from "/@fs/${source}/plugin/components/declarative-settings-form.tsx"
     import { SettingsStepScale } from "/@fs/${source}/components/settings/components/SettingsStepScale.tsx"
@@ -91,6 +94,8 @@ beforeAll(async () => {
       const [runtime, setRuntime] = createStore(defaultSettingsState().runtime)
       const [anima, setAnima] = createSignal(false)
       const [choice, setChoice] = createSignal("ask")
+      const [segment, setSegment] = createSignal("balanced")
+      const [displayName, setDisplayName] = createSignal("Fixture gateway")
       const [font, setFont] = createSignal("")
       const [layer, setLayer] = createSignal()
       const [plugin, setPlugin] = createSignal({ mode: "first" })
@@ -99,7 +104,7 @@ beforeAll(async () => {
       const [mcp, setMcp] = createStore({ entries: [{ ...emptyMcp(), key: "Fixture server", type: "remote", url: "https://mcp.example.com/mcp" }], builtins: [{ name: "builtin-fixture", url: "https://mcp.example.com/builtin", status: { status: "uninitialized" }, toggle: true, keyConfigured: false, apiKeyDraft: "", clearApiKey: false }] })
       const views = new Map()
       const expanded = new Map()
-      return <OverlayLayerProvider layer={layer}><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button><button onClick={() => setView("mcp")}>MCP page</button></nav><main class="settings-panel-content">
+      return <OverlayLayerProvider layer={layer}><Button variant="secondary" data-testid="outside-settings">Outside Settings</Button><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button><button onClick={() => setView("mcp")}>MCP page</button></nav><main class="settings-panel-content">
         <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
         <div><button onClick={() => setView("learning")}>Learning page</button><button onClick={() => setAnima(value => !value)}>Toggle Anima</button><button onClick={() => setView("boss")}>Boss page</button></div>
         <Show when={view() === "learning"}><LearningPanel library={library} showAutonomy={anima()} onLibraryChange={(key, value) => setLibrary(key, value)} /></Show>
@@ -109,9 +114,12 @@ beforeAll(async () => {
         <Show when={view() === "paths"}><SettingsPage title="Config Files"><SettingsPathRow compact label="90-channels.jsonc" path={"/fixture/config/" + "long-directory/".repeat(12) + "90-channels.jsonc"} status="Empty" ownedKeys={["channel"]} mergePolicy="merge" /></SettingsPage></Show>
         <Show when={view() === "profiles"}><ControlProfilePanel safety={safety} controlProfiles={[]} onSafetyChange={(key, value) => setSafety(key, value)} /></Show>
         <Show when={view() === "models"}><SettingsPage title="Models"><ModelRoleRow summary={{ id: "primary", field: "model", label: "Primary model", summary: "", fallbackChain: ["model"], usedBy: [], resolvedModel: { providerID: "fixture", modelID: "first", via: "model" } }} value={models.model} draftModels={models} savedModels={models} providers={[{ providerId: "fixture", providerName: "Fixture", models: [{ id: "first", name: "First model", variantKeys: ["low", "high"] }, { id: "second", name: "Second model", variantKeys: [] }] }]} availableVariants={["low", "high"]} popoverLayer={layer()} onChange={(key, value) => setModels(key, value)} onVariantChange={() => {}} /></SettingsPage></Show>
-        <Show when={view() === "plugin"}><SettingsPage title="Plugin settings"><DeclarativeSettingsForm schema={{ properties: { mode: { type: "string", title: "Plugin mode", description: "Choose a plugin mode", enum: ["first", "second"] } } }} values={plugin()} onChange={setPlugin} /><output data-testid="plugin-values">{JSON.stringify(plugin())}</output></SettingsPage></Show>
+        <Show when={view() === "plugin"}><SettingsPage title="Plugin settings"><DeclarativeSettingsForm schema={{ properties: { mode: { type: "string", title: "Plugin mode", description: "Choose a plugin mode", enum: ["first", "second"] }, name: { type: "string", title: "Plugin name" }, count: { type: "number", title: "Plugin count" }, secret: { type: "string", format: "password", title: "Plugin secret" } } }} values={plugin()} onChange={setPlugin} /><output data-testid="plugin-values">{JSON.stringify(plugin())}</output></SettingsPage></Show>
         <Show when={view() === "mcp"}><SettingsViewStateContext.Provider value={{ view: key => views.get(key), setView: (key, value) => views.set(key, value), expanded: key => expanded.get(key), setExpanded: (key, value) => expanded.set(key, value), searchField: () => undefined }}><McpPanel entries={mcp.entries} builtins={mcp.builtins} onAdd={() => setMcp("entries", entries => [...entries, emptyMcp()])} onChange={(index, key, value) => setMcp("entries", index, key, value)} onRemove={index => setMcp("entries", entries => entries.filter((_, i) => i !== index))} /></SettingsViewStateContext.Provider><output hidden data-testid="mcp-patch">{JSON.stringify(buildPatch({ cfg: {}, state: { ...defaultSettingsState("enter"), mcps: mcp }, originalMcps: {} }).mcp)}</output></Show>
         <Show when={view() === "controls"}><div class="ds-page-inner">
+          <div data-testid="neutral-actions"><Button variant="secondary">Check now</Button><Button variant="primary">Save Changes</Button><Button variant="ghost">Cancel</Button><Button disabled>Unavailable action</Button><IconButton icon="check" aria-label="Confirm setting" /><button class="border border-border-base bg-surface-raised-base" onClick={() => setDisplayName("Native action")}>New native action</button></div>
+          <SettingRow title="Display name" description="A name for the connection" trailing={<TextField value={displayName()} onChange={setDisplayName} />} />
+          <SettingRow title="Activity display" trailing={<SegmentPill value={segment()} ariaLabel="Activity display" options={[{ value: "full", label: "Full" }, { value: "balanced", label: "Balanced" }, { value: "minimal", label: "Minimal" }]} onChange={setSegment} />} />
           <SettingRow title="Sending port" description="Use a valid port" stateLabel="Unsaved" trailing={<TextField type="number" validationState="invalid" error="Enter a whole number" value="0" copyable />} />
           <SettingRow title="Policy" description="Requests wait for approval" trailing={<SettingsChoices ariaLabel="Policy" value={choice()} options={[{ value: "ask", label: "Ask" }, { value: "allow", label: "Allow" }, { value: "deny", label: "Deny" }]} onChange={setChoice} />} />
           <SettingRow title="Duration" description="Ordered durations" trailing={<SettingsStepScale ariaLabel="Duration" value="37" options={[{ value: "10", label: "Short" }, { value: "60", label: "Long" }]} onChange={() => {}} />} />
@@ -387,6 +395,54 @@ test("settings controls expose field descriptions, errors, object names and radi
   expect(errors).toEqual([])
 })
 
+test("settings actions, inputs and choices share the borderless menu surface without changing other pages", async () => {
+  for (const theme of ["light", "dark"]) {
+    await page.goto(url + "?theme=" + theme)
+    await page.getByRole("button", { name: "Controls page", exact: true }).click()
+    await page.mouse.move(0, 0)
+    const reference = page.getByRole("button", { name: "Font: System default", exact: true })
+    const background = await reference.evaluate((element) => getComputedStyle(element).backgroundColor)
+    expect(background).not.toBe("rgba(0, 0, 0, 0)")
+    const controls = page.locator(
+      '[data-testid="neutral-actions"] button, .ds-segment-item:not([aria-pressed="true"]), .settings-choice:not([data-checked]) label, [data-component="input"]:not([data-invalid]) [data-slot="input-wrapper"]',
+    )
+    expect(await controls.count()).toBeGreaterThanOrEqual(10)
+    for (const control of await controls.all()) {
+      const style = await control.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow }
+      })
+      expect(style).toEqual({ background, border: "0px", shadow: "none" })
+    }
+    const outside = page.getByTestId("outside-settings")
+    expect(await outside.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("1px")
+    const input = page.getByRole("textbox", { name: "Display name", exact: true })
+    await input.focus()
+    await input.fill("Edited gateway")
+    expect(await input.inputValue()).toBe("Edited gateway")
+    expect(await input.evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor)).toBe(background)
+    const check = page.getByRole("button", { name: "Check now", exact: true })
+    await check.focus()
+    await page.keyboard.press("Tab")
+    await page.keyboard.press("Shift+Tab")
+    expect(await check.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe("none")
+    expect(await check.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    expect(await page.getByRole("button", { name: "Unavailable action", exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "New native action", exact: true }).click()
+    expect(await input.inputValue()).toBe("Native action")
+    const selected = page.getByRole("button", { name: "Balanced", exact: true })
+    expect(await selected.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe(background)
+    expect(await selected.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    await page.getByRole("button", { name: "Full", exact: true }).click()
+    expect(await page.getByRole("button", { name: "Full", exact: true }).getAttribute("aria-pressed")).toBe("true")
+    expect(await page.getByRole("spinbutton", { name: "Sending port", exact: true }).getAttribute("aria-invalid")).toBe(
+      "true",
+    )
+    expect(await page.getByText("Enter a whole number", { exact: true }).isVisible()).toBe(true)
+    expect(errors).toEqual([])
+  }
+})
+
 test("wide and narrow settings selectors keep the value leading and the chevron trailing", async () => {
   for (const width of [1280, 375, 320]) {
     await page.setViewportSize({ width, height: 800 })
@@ -578,6 +634,22 @@ test("declarative plugin choices share the menu presentation while retaining lab
   expect(await page.getByTestId("plugin-values").textContent()).toBe('{"mode":"second"}')
   expect(await updated.getAttribute("id")).toBe("plugin-setting-mode")
   expect(await updated.getAttribute("aria-describedby")).toContain("plugin-setting-mode-description")
+  await page.mouse.move(0, 0)
+  await updated.evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+  })
+  const background = await updated.evaluate((element) => getComputedStyle(element).backgroundColor)
+  for (const field of await page.locator(".declarative-settings-form input").all()) {
+    expect(await field.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(background)
+    expect(await field.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await field.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+  }
+  await page.getByLabel("Plugin name", { exact: true }).fill("New integration")
+  await page.getByLabel("Plugin name", { exact: true }).press("Tab")
+  expect(JSON.parse((await page.getByTestId("plugin-values").textContent())!)).toEqual({
+    mode: "second",
+    name: "New integration",
+  })
   expect(errors).toEqual([])
 })
 

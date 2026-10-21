@@ -202,8 +202,34 @@ test("import has aligned content insets and reachable actions on short, narrow a
     expect(layout.footerBottom).toBeLessThanOrEqual(1)
     expect(layout.fits).toBe(true)
     expect(layout.overflow).toBe(false)
+    const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
+    const picker = dialog.getByRole("button", { name: /^Save to:/ })
+    const background = await picker.evaluate((element) => getComputedStyle(element).backgroundColor)
+    for (const control of await dialog.locator('[data-component="button"], [data-component="menu-field"]').all()) {
+      expect(await control.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+      expect(await control.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+      expect(await control.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(background)
+    }
     await page.getByRole("button", { name: "Choose file and import", exact: true }).click({ trial: true })
   }
+  await page.locator(".browser-import-options > summary").click()
+  await page.getByText("Replace matching existing entries", { exact: true }).click()
+  expect(await page.getByRole("checkbox", { name: "Replace matching existing entries", exact: true }).isChecked()).toBe(
+    true,
+  )
+  await page.getByRole("button", { name: "Choose file and import", exact: true }).click()
+  const confirmation = page.getByRole("dialog", { name: "Replace matching browser data?", exact: true })
+  await confirmation.waitFor()
+  for (const button of await confirmation.locator('[data-component="button"]').all()) {
+    expect(await button.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+    expect(await button.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+  }
+  expect((await counts()).native).not.toContain("import")
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click()
+  await page.getByText("Replace matching existing entries", { exact: true }).click()
+  expect(await page.getByRole("checkbox", { name: "Replace matching existing entries", exact: true }).isChecked()).toBe(
+    false,
+  )
   await page.getByRole("button", { name: "Choose file and import", exact: true }).click()
   await page.getByText("1 imported · 0 skipped · 0 failed", { exact: true }).waitFor()
   await page.getByRole("button", { name: "Done", exact: true }).click()
@@ -300,7 +326,12 @@ for (const invalidation of ["absent", "same-URL reconnect", "server change"] as 
     await page.getByRole("button", { name: "Manage saved passwords", exact: true }).click()
     await page.getByText("fixture-account", { exact: true }).waitFor()
     await page.getByRole("button", { name: "Delete saved password", exact: true }).click()
-    await page.getByRole("dialog", { name: "Delete saved password", exact: true }).waitFor()
+    const confirmation = page.getByRole("dialog", { name: "Delete saved password", exact: true })
+    await confirmation.waitFor()
+    for (const button of await confirmation.locator('[data-component="button"]').all()) {
+      expect(await button.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
+      expect(await button.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
+    }
     await page.evaluate(() => (window as unknown as FixtureWindow).fixture.openUnrelated())
     const before = (await counts()).requests.length
     await page.evaluate((reason) => {

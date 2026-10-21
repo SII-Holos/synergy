@@ -286,7 +286,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
 export function SettingsPanel(props: SettingsPanelProps) {
   const { _, i18n } = useLingui()
   const dialog = useDialog()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const locale = useLocale()

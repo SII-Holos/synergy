@@ -136,7 +136,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
   const globalSDK = useGlobalSDK()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const [search, setSearch] = createSignal("")
   const [sortBy, setSortBy] = createSignal<SortBy>("archived")
   const [sortDir, setSortDir] = createSignal<SortDir>("desc")
@@ -318,7 +318,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
       <SettingsSection title={_(sectionTitle)} description={_(sectionDescription)}>
         <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div class="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-weaker-base bg-surface-raised-base px-3 py-2">
+            <div class="settings-archive-search flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2">
               <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base" />
               <input
                 type="search"

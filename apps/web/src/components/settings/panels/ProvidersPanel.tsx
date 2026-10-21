@@ -100,7 +100,7 @@ export function ProvidersPanel(props: {
   if (!props.drafts) onCleanup(() => drafts.clear())
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const overlayLayer = useOverlayLayer()
   const catalogOpen = () => drafts.view.catalogOpen
   const customOpen = () => drafts.view.customOpen

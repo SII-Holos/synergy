@@ -108,9 +108,10 @@ export function BrowserImportForm(props: {
   resolveTarget: BrowserImportTargetResolver
   signal: AbortSignal
   destination?: JSX.Element
+  confirmationClass?: string
 }) {
   const dialog = useDialog(),
-    confirm = useConfirm(),
+    confirm = useConfirm({ class: props.confirmationClass }),
     { _ } = useLingui()
   const [sources, setSources] = createSignal<BrowserImportSource[]>([])
   const [sourceId, setSourceId] = createSignal("")

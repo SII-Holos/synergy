@@ -1,0 +1,70 @@
+:is(.settings-panel-frame, .settings-control-scope) {
+  :is(button, [data-component="button"], [data-component="icon-button"], .provider-auth-link):not(
+    :where(nav *, .settings-panel-navigation *, [role="option"], [role^="menuitem"], [data-slot="list-item"])
+  ) {
+    border: 0;
+    box-shadow: none;
+    background-color: var(--settings-control-bg);
+    color: var(--text-base);
+
+    &:not(:disabled):hover {
+      background-color: var(--settings-control-bg-hover);
+    }
+
+    &:not(:disabled):is(
+        :active,
+        [data-selected="true"],
+        [aria-pressed="true"],
+        [aria-checked="true"],
+        [aria-selected="true"]
+      ) {
+      background-color: var(--settings-selected-bg);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+
+  :is([data-component="button"], [data-component="icon-button"])[data-variant="primary"] [data-slot="icon-svg"] {
+    color: inherit;
+  }
+
+  :is(
+    [data-slot="input-wrapper"],
+    select,
+    input:not(:where([type="checkbox"], [type="radio"], [type="range"], [type="file"], [data-slot])),
+    textarea:not([data-slot]),
+    .ds-settings-search,
+    .providers-search,
+    .settings-archive-search
+  ) {
+    border: 0;
+    box-shadow: none;
+    border-radius: 10px;
+    background-color: var(--settings-input-bg);
+    color: var(--text-base);
+  }
+
+  :is(
+    [data-component="input"][data-invalid] [data-slot="input-wrapper"],
+    input[aria-invalid="true"],
+    textarea[aria-invalid="true"]
+  ) {
+    background-color: var(--surface-critical-weak);
+  }
+
+  [data-component="menu-field"][data-slot="popover-trigger"] {
+    border: 0;
+    box-shadow: none;
+    background-color: var(--settings-control-bg);
+    color: var(--text-base);
+    text-align: start;
+    justify-content: space-between;
+
+    &:not(:disabled):is(:hover, [aria-expanded="true"]) {
+      background-color: var(--settings-control-bg-hover);
+    }
+  }
+}

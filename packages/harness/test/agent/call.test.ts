@@ -383,11 +383,14 @@ describe("AgentCall", () => {
 })
 
 describe("AgentCall recovery budget", () => {
-  test("subscription capacity failures share the caller's startup and body retry budget", () =>
+  test.each(["capacity", "ENOTFOUND"])("%s failures share the caller's startup and body retry budget", (kind) =>
     runtime.run(async () => {
       installAgent()
       using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
-      const failure = new Error("Selected model is at capacity. Please try a different model.")
+      const failure =
+        kind === "ENOTFOUND"
+          ? Object.assign(new Error("getaddrinfo ENOTFOUND provider.invalid"), { code: "ENOTFOUND" })
+          : new Error("Selected model is at capacity. Please try a different model.")
       let attempts = 0
       let disposed = 0
       using stream = spyOn(AgentTurn, "stream").mockImplementation(async (input) => {
@@ -407,36 +410,40 @@ describe("AgentCall recovery budget", () => {
       await expect(call({ retries: 2 })).rejects.toBe(failure)
       expect(attempts).toBe(3)
       expect(disposed).toBe(2)
-    }))
+    }),
+  )
 
-  test("retries a failed stream with a fresh output buffer and no SDK budget", () =>
-    runtime.run(async () => {
-      installAgent()
-      using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
-      let attempts = 0
-      let disposed = 0
-      using stream = spyOn(AgentTurn, "stream").mockImplementation(async (input) => {
-        expect(input.retries).toBe(0)
-        const attempt = ++attempts
-        return {
-          fullStream: (async function* () {
-            yield { type: "text-delta" as const, id: "text", text: attempt === 1 ? "partial" : "complete" }
-            if (attempt === 1)
-              yield {
-                type: "error" as const,
-                error: Object.assign(new TypeError("fetch failed"), { cause: { code: "ETIMEOUT" } }),
-              }
-          })(),
-          usage: Promise.resolve(undefined),
-          async dispose() {
-            disposed++
-          },
-        }
-      })
-      await expect(call()).resolves.toMatchObject({ text: "complete" })
-      expect(attempts).toBe(2)
-      expect(disposed).toBe(2)
-    }))
+  test.each(["ETIMEOUT", "ENOTFOUND"])(
+    "retries a failed %s stream with a fresh output buffer and no SDK budget",
+    (code) =>
+      runtime.run(async () => {
+        installAgent()
+        using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
+        let attempts = 0
+        let disposed = 0
+        using stream = spyOn(AgentTurn, "stream").mockImplementation(async (input) => {
+          expect(input.retries).toBe(0)
+          const attempt = ++attempts
+          return {
+            fullStream: (async function* () {
+              yield { type: "text-delta" as const, id: "text", text: attempt === 1 ? "partial" : "complete" }
+              if (attempt === 1)
+                yield {
+                  type: "error" as const,
+                  error: Object.assign(new TypeError("fetch failed"), { cause: { code } }),
+                }
+            })(),
+            usage: Promise.resolve(undefined),
+            async dispose() {
+              disposed++
+            },
+          }
+        })
+        await expect(call()).resolves.toMatchObject({ text: "complete" })
+        expect(attempts).toBe(2)
+        expect(disposed).toBe(2)
+      }),
+  )
 
   test("stream errors consume one shared budget for starts and bodies", () =>
     runtime.run(async () => {

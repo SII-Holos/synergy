@@ -107,7 +107,7 @@ export function ImportPanel(props: {
 }) {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const [sourceLabel, setSourceLabel] = createSignal("")
   const [url, setUrl] = createSignal("")
   const [pasted, setPasted] = createSignal("")
