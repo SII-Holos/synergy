@@ -115,6 +115,7 @@ const runtime = {
 }
 const openedTools = []
 const openedActivities = []
+const forkedMessages: string[] = []
 const [toolDetailFallback, setToolDetailFallback] = createSignal(false)
 const resourceController = {
   openActivityDetail: (target) => {
@@ -207,6 +208,7 @@ render(
                         compactReasoning={preview()}
                         executionState={executionState()}
                         executionSummary={executionSummary()}
+                        onForkMessage={(messageID) => forkedMessages.push(messageID)}
                         following={following()}
                         takeUserArrival={() => {
                           const arrival = userArrival
@@ -306,6 +308,7 @@ globalThis.__chronologyHarness = {
     ])
   },
   selection: () => openedActivities.at(-1),
+  forkedMessages: () => [...forkedMessages],
   move,
   setMode,
   setToolDetailFallback,
@@ -432,6 +435,7 @@ globalThis.__chronologyHarness = {
   },
   setProgress: (value) => setData("part", assistantID, 1, "text", value),
   reset: () => {
+    forkedMessages.length = 0
     setExecutionSummary(undefined)
     for (const key of Object.keys(expanded)) setExpanded(key, undefined)
     setSegmented(false)

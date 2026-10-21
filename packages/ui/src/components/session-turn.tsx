@@ -1393,6 +1393,13 @@ export function SessionTurn(
     return texts.join("\n\n")
   })
 
+  const showCopyActions = createMemo(
+    () =>
+      !working() &&
+      lastAssistantMessage()?.time.completed != null &&
+      !!(markdownText() || (props.copyMessageText && lastAssistantMessage())),
+  )
+
   const assistantTimestamp = createMemo(() => {
     const last = lastAssistantMessage()
     if (!last?.time.completed) return undefined
@@ -1689,7 +1696,8 @@ export function SessionTurn(
                       when={
                         hasTimelineItems() ||
                         (showProcessHeader() && (hasProcess() || showCurrentActivity())) ||
-                        (showFooter() && (showExecutionCompletion() || (!working() && !!visibleDiffPanelState())))
+                        (showFooter() &&
+                          (showExecutionCompletion() || showCopyActions() || (!working() && !!visibleDiffPanelState())))
                       }
                     >
                       <div data-slot="session-turn-timeline">
@@ -1868,14 +1876,7 @@ export function SessionTurn(
                             <ExecutionCompletion summary={executionSummary()} onDetails={props.onExecutionDetails} />
                           </div>
                         </Show>
-                        <Show
-                          when={
-                            showFooter() &&
-                            !working() &&
-                            lastAssistantMessage()?.time.completed != null &&
-                            (markdownText() || (props.copyMessageText && lastAssistantMessage()))
-                          }
-                        >
+                        <Show when={showFooter() && showCopyActions()}>
                           <div data-slot="session-turn-timeline-item" data-kind="copy-markdown">
                             <div data-slot="assistant-message-meta">
                               <Show keyed when={assistantTimestamp()}>
