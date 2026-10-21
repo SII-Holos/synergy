@@ -1,4 +1,4 @@
-import type { BrowserWindow, WebContentsView } from "electron"
+import type { BrowserWindow, WebContents, WebContentsView } from "electron"
 import {
   BROWSER_PROTOCOL_VERSION,
   type BrowserNativeAttachRequest,
@@ -9,6 +9,7 @@ import type { BrowserNativePagePool } from "./browser-native-page-pool.js"
 import { browserShortcut } from "./browser-page-actions.js"
 
 export class BrowserNativeViewManager {
+  private readonly contents: WebContents
   private visible = false
   private ownerKey: string | null = null
   private pageId: string | null = null
@@ -22,9 +23,10 @@ export class BrowserNativeViewManager {
     private pool: BrowserNativePagePool,
     private readonly sendEvent: (event: BrowserNativeViewEvent) => void,
   ) {
-    window.webContents.on("did-start-navigation", this.onNavigation)
-    window.webContents.on("render-process-gone", this.releaseDocument)
-    window.webContents.on("dom-ready", this.onDocumentReady)
+    this.contents = window.webContents
+    this.contents.on("did-start-navigation", this.onNavigation)
+    this.contents.on("render-process-gone", this.releaseDocument)
+    this.contents.on("dom-ready", this.onDocumentReady)
   }
 
   private readonly onNavigation = (event: Electron.Event<Electron.WebContentsDidStartNavigationEventParams>) => {
@@ -126,9 +128,9 @@ export class BrowserNativeViewManager {
 
   destroy(): void {
     this.releaseDocument()
-    this.window.webContents.off("did-start-navigation", this.onNavigation)
-    this.window.webContents.off("render-process-gone", this.releaseDocument)
-    this.window.webContents.off("dom-ready", this.onDocumentReady)
+    this.contents.off("did-start-navigation", this.onNavigation)
+    this.contents.off("render-process-gone", this.releaseDocument)
+    this.contents.off("dom-ready", this.onDocumentReady)
   }
 
   private bindEvents(pageId: string, view: WebContentsView): () => void {

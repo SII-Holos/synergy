@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { EventEmitter } from "node:events"
 import { BROWSER_PROTOCOL_VERSION, type BrowserNativeAttachRequest } from "@ericsanchezok/synergy-browser-core"
 
 const { BrowserNativeViewManager } = await import("../src/browser-native-view.js")
@@ -178,4 +179,35 @@ describe("Browser native view manager", () => {
     expect(operations).toContain("visible:second")
     expect(operations).toContain("focus:second")
   })
+})
+
+test("destroy releases listeners after the parent window has been destroyed", async () => {
+  const contents = new EventEmitter()
+  const pageContents = Object.assign(new EventEmitter(), { getURL: () => "about:blank" })
+  let destroyed = false
+  let detached = 0
+  let generationReleased = 0
+  const window = {
+    get webContents() {
+      if (destroyed) throw new Error("Object has been destroyed")
+      return contents
+    },
+  }
+  const manager = new BrowserNativeViewManager(
+    window as never,
+    {
+      attach: () => ({ webContents: pageContents, setVisible() {} }),
+      detach: () => detached++,
+      onGeneration: () => () => generationReleased++,
+    } as never,
+    () => {},
+  )
+  await manager.attach({ protocolVersion: BROWSER_PROTOCOL_VERSION, ownerKey: "owner", pageId: "page" })
+  destroyed = true
+  expect(() => manager.destroy()).not.toThrow()
+  expect(() => manager.destroy()).not.toThrow()
+  expect(detached).toBe(1)
+  expect(generationReleased).toBe(1)
+  expect(contents.eventNames()).toEqual([])
+  expect(pageContents.eventNames()).toEqual([])
 })

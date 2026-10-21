@@ -14,6 +14,8 @@ The renderer maps global Host readiness to detached presentation for suspended p
 
 Regression tests close real process output pipes and repeat logging and warnings, retain unrelated output failures, deliver the broker disconnect/reconnect event sequence through the renderer transport, and click Retry in the rendered Browser panel. Native acceptance uses a separate Home, Electron profile and ports.
 
+Native presentation cleanup retains the original WebContents event emitter and avoids accessing a destroyed BrowserWindow. Closing the parent still releases page subscriptions and marks the pooled view detached. Regression fixtures destroy the parent before teardown and repeat teardown to verify cleanup remains idempotent.
+
 ## Alternatives considered
 
 **Catch errors only around Browser broker logging.** Process warnings and other Electron logging use the same disconnected streams and would still interrupt the main process.
