@@ -1673,7 +1673,7 @@ describe("conversation execution request owner", () => {
     expect(pageErrors).toEqual([])
   })
 
-  test("readiness close and reopen aborts, fences and rebaselines the loaded window", async () => {
+  test("readiness suspension fences pending reads without discarding accepted execution state", async () => {
     await startExecutionOwner({ deliverAfterAbort: true })
     await page.evaluate(() => window.__executionOwner.admission(false))
     await executionFrames()
@@ -1699,12 +1699,113 @@ describe("conversation execution request owner", () => {
     await waitExecutionStatus("r69", "running")
     await page.evaluate(() => window.__executionOwner.admission(true, false))
     await executionFrames()
-    expect(await executionStatus("r69")).toBeNull()
+    expect(await executionStatus("r69")).toBe("running")
     await page.evaluate(() => window.__executionOwner.admission(true))
     await waitExecutionCalls(3)
     expect((await executionCalls())[2].rootIDs.length).toBe(64)
+    expect(await executionStatus("r69")).toBe("running")
     await page.evaluate(() => window.__executionOwner.settle(2, "completed"))
     await waitExecutionStatus("r69", "completed")
+  })
+
+  test.each(["preparation", "metadata"] as const)(
+    "retains settled state through a %s gap, cancelled transport and failed resumed refresh",
+    async (condition) => {
+      await startExecutionOwner({ deliverAfterAbort: true })
+      await page.evaluate(() => window.__executionOwner.settle(0, "completed"))
+      await waitExecutionStatus("r69", "completed")
+      await page.evaluate(() => window.__executionOwner.event("r8"))
+      await waitExecutionCalls(2)
+      await page.evaluate((condition) => {
+        window.__executionOwner.admission(condition !== "preparation", condition !== "metadata")
+      }, condition)
+      await executionFrames()
+      expect((await executionCalls())[1].aborted).toBe(true)
+      expect(await executionStatus("r69")).toBe("completed")
+      await page.evaluate(() => {
+        window.__executionOwner.event("r9")
+        window.__executionOwner.reconnect()
+        window.__executionOwner.settle(1, "stopped")
+      })
+      await executionFrames()
+      expect((await executionCalls()).length).toBe(2)
+      expect(await executionStatus("r8")).toBe("completed")
+      await page.evaluate(() => window.__executionOwner.admission(true))
+      await waitExecutionCalls(3)
+      expect((await executionCalls())[2].rootIDs).toHaveLength(64)
+      expect(await executionStatus("r69")).toBe("completed")
+      await page.evaluate(() => window.__executionOwner.settle(2, "failed", true))
+      await executionFrames()
+      expect(await executionStatus("r8")).toBe("completed")
+      expect(await executionStatus("r69")).toBe("completed")
+      expect((await executionCalls()).length).toBe(3)
+      expect(pageErrors).toEqual([])
+    },
+  )
+
+  test("identity changes during a readiness gap clear accepted state and reject late transport", async () => {
+    await startExecutionOwner({ deliverAfterAbort: true })
+    await page.evaluate(() => window.__executionOwner.settle(0, "completed"))
+    await waitExecutionStatus("r69", "completed")
+    await page.evaluate(() => window.__executionOwner.event("r8"))
+    await waitExecutionCalls(2)
+    await page.evaluate(() => {
+      window.__executionOwner.admission(false)
+      window.__executionOwner.identity("http://second", "scope-b", "ses_b")
+    })
+    await executionFrames()
+    expect(await executionStatus("r69")).toBeNull()
+    await page.evaluate(() => {
+      window.__executionOwner.identity("http://fixture", "scope", "ses_1")
+      window.__executionOwner.settle(1, "stopped")
+    })
+    await executionFrames()
+    expect(await executionStatus("r69")).toBeNull()
+    expect((await executionCalls()).length).toBe(2)
+    await page.evaluate(() => window.__executionOwner.admission(true))
+    await waitExecutionCalls(3)
+    expect(await executionStatus("r8")).toBeNull()
+    await page.evaluate(() => window.__executionOwner.settle(2, "completed"))
+    await waitExecutionStatus("r69", "completed")
+    expect(pageErrors).toEqual([])
+  })
+
+  test("an accepted empty root window retires execution state without requesting an empty batch", async () => {
+    await startExecutionOwner()
+    await page.evaluate(() => window.__executionOwner.settle(0, "completed"))
+    await waitExecutionStatus("r69", "completed")
+    await page.evaluate(() => window.__setTimeline([]))
+    await executionFrames()
+    expect((await executionCalls()).length).toBe(1)
+    await page.evaluate(() =>
+      window.__setTimeline([{ id: "r69", sessionID: "ses_1", role: "user", time: { created: 69 } }]),
+    )
+    await waitExecutionCalls(2)
+    expect((await executionCalls())[1].rootIDs).toEqual(["r69"])
+    expect(await executionStatus("r69")).toBeNull()
+    await page.evaluate(() => window.__executionOwner.settle(1, "completed"))
+    await waitExecutionStatus("r69", "completed")
+    expect(pageErrors).toEqual([])
+  })
+
+  test("an empty root window cancels pending transport before a root is re-admitted", async () => {
+    await startExecutionOwner({ deliverAfterAbort: true })
+    await page.evaluate(() => window.__setTimeline([]))
+    await executionFrames()
+    expect((await executionCalls())[0].aborted).toBe(true)
+    expect((await executionCalls()).length).toBe(1)
+    await page.evaluate(() =>
+      window.__setTimeline([{ id: "r69", sessionID: "ses_1", role: "user", time: { created: 69 } }]),
+    )
+    await waitExecutionCalls(2)
+    expect((await executionCalls())[1].rootIDs).toEqual(["r69"])
+    await page.evaluate(() => window.__executionOwner.settle(0, "stopped"))
+    await executionFrames()
+    expect(await executionStatus("r69")).toBeNull()
+    expect((await executionCalls())[0].delivered).toBe(true)
+    await page.evaluate(() => window.__executionOwner.settle(1, "completed"))
+    await waitExecutionStatus("r69", "completed")
+    expect(pageErrors).toEqual([])
   })
 
   test("first-send alias retains its row while canonical execution and bodies complete handoff", async () => {

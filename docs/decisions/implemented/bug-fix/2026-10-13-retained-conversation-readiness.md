@@ -8,11 +8,11 @@ Retaining a transcript's DOM does not preserve its visible state when deactivati
 
 ## Decision
 
-Separate request identity from retained-view activity. Inactivity pauses execution reads without discarding accepted state; reactivation drains roots from cancelled reads or independent invalidations. A failed refresh is not authoritative evidence of absence and does not clear accepted results or retry itself. Identity replacement and canonical root removal retain their existing invalidation semantics.
+Separate execution ownership from request readiness and retained-view activity. Inactivity, pending preparation and temporarily missing Session metadata pause execution reads without discarding accepted state for the same server, Scope, client and Session. The read accessor preserves that accepted state independently of request eligibility. Reactivation drains roots from cancelled reads or independent invalidations; restored readiness validates the retained root window once. A failed refresh is not authoritative evidence of absence and does not clear accepted results or retry itself. Identity replacement, canonical root removal and accepted response omissions retain their existing invalidation semantics; an accepted empty root window retires states without requesting an empty batch.
 
 Admit cold history only when its initial mounted reading window is settled, then reveal it statically. Keep the target shell, topbar, Composer and local loading status available during that wait. An admitted warm view and captured first-send content retain their continuity. Scope and cache eviction continue through the existing cold path rather than acquiring another restoration mechanism.
 
-Canonical root execution states determine transcript completion. Task details accounting summaries are independent optional data: their pending, failed and cancelled reads cannot gate transcript admission or resumed layout hydration. A matching accounting summary can supply duration later without replacing the completion footer.
+Canonical root execution states determine transcript completion. Task details accounting summaries are independent optional data: their pending, failed and cancelled reads cannot gate transcript admission or resumed layout hydration. A matching accounting summary can supply duration later without replacing the completion footer. Settled-message timestamps, copying and forking use their existing message eligibility independently of execution metadata. The outer footer and its action row share that eligibility; missing execution evidence never fabricates a completion label or hides otherwise available actions.
 
 Keep visibility admission latched, but scope layout hydration to each active interval. Returning after background work reconciles mounted bodies without whole-transcript motion; motion becomes eligible only after frame measurement and ResizeObserver correction have delivered. Equivalent user-message reference arrays retain their rendered DOM through a value-stable key, preserving concrete paragraph anchors. A cached lease is not a current server checkpoint: the existing subscription generation must settle through the event queue before resumed motion becomes eligible. Acknowledgment changes only local readiness; it publishes no extra interest or request. Small terminal Markdown enriches changed blocks while preserving equal paragraph nodes and block whitespace, rather than replacing the entire body. These changes add no polling or eager content read.
 
@@ -25,6 +25,8 @@ Recovery revocation is refined by [Recovery motion ownership](2026-10-20-convers
 ## Alternatives considered
 
 **Clear state on inactivity or refresh failure.** Neither condition proves that accepted execution evidence disappeared. Clearing creates a loading gap on a retained view and repeats reads even when no root changed.
+
+**Treat missing request prerequisites as a new owner.** Preparation and metadata availability can change without changing the Session. Clearing accepted state or returning an empty value through the accessor exposes a refresh gap; retaining it within the existing bounded owner avoids another cache or fixed delay. Actual identity replacement still clears it immediately, including while reads are suspended.
 
 **Keep cold history visible while correcting its layout.** Instantaneous following removes one animation source but still exposes incomplete bodies and execution-derived footer changes. Restricting the wait to the transcript preserves usable controls without painting intermediate history.
 
