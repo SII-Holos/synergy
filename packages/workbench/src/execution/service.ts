@@ -1161,7 +1161,9 @@ export namespace ExecutionService {
     return cache.dispose
   }
   function contextSnapshots(
-    value: Pick<Data, "root" | "snapshots" | "usage" | "contexts">,
+    value: Pick<Data, "root" | "usage" | "contexts"> & {
+      snapshots: Pick<RolloutSnapshot.Info, "owner" | "runs" | "calls">[]
+    },
     runID?: string,
   ): ExecutionSchema.ContextSnapshot[] {
     const snapshot = value.snapshots.find(
@@ -1257,7 +1259,7 @@ export namespace ExecutionService {
   async function contextData(sessionID: string, signal?: AbortSignal) {
     checkpoint(signal)
     const root = await requireRoot(sessionID)
-    const snapshot = await RolloutSnapshot.current({ kind: "session", scopeID: root.scope.id, sessionID })
+    const snapshot = await RolloutSnapshot.modelCalls({ kind: "session", scopeID: root.scope.id, sessionID })
     checkpoint(signal)
     const [records, infos] = await Promise.all([
       Usage.collect({ scopeID: root.scope.id, sessionID, includeDescendants: false }),
