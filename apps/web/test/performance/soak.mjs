@@ -82,12 +82,16 @@ try {
         location.pathname === route &&
         [...document.querySelectorAll('[data-component="text-part"]')].some(
           (node) =>
-            node.getBoundingClientRect().height > 0 &&
+            node.checkVisibility({ visibilityProperty: true }) &&
+            !node.closest('[inert], [aria-hidden="true"]') &&
             (node.textContent.includes(`Fixture ${index} message`) ||
               node.textContent.includes(`Fixture ${index} chunk`)),
         ) &&
         [...document.querySelectorAll('[data-component="prompt-input"]')].some(
-          (node) => node.getBoundingClientRect().height > 0 && node.getAttribute("contenteditable") === "true",
+          (node) =>
+            node.checkVisibility({ visibilityProperty: true }) &&
+            !node.closest('[inert], [aria-hidden="true"]') &&
+            node.getAttribute("contenteditable") === "true",
         ),
       { route: target.route, index },
       { timeout: 30000 },

@@ -1226,7 +1226,7 @@ export namespace Server {
                     GlobalEventClients.connectionKey(ws),
                     createViewProjection(
                       (frame) => {
-                        globalEventClients.reply(ws, JSON.stringify(frame))
+                        globalEventClients.stream(ws, JSON.stringify(frame))
                       },
                       instanceState.contributions?.projections,
                       projectionContent(),

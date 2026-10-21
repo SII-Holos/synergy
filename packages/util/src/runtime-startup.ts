@@ -39,6 +39,7 @@ export const RuntimeStartupEvent = z.discriminatedUnion("state", [
 ])
 export type RuntimeStartupEvent = z.infer<typeof RuntimeStartupEvent>
 export const StorageMaintenanceOperation = z.enum([
+  "checkpoint",
   "vacuum",
   "reclaim",
   "prune",

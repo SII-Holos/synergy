@@ -9,6 +9,13 @@ describe("MigrationRegistry", () => {
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
       expect(domainCount).toBe(36)
+      expect(MigrationRegistry.list().get("session")).toContainEqual(
+        expect.objectContaining({
+          domain: "rollout-journal",
+          execution: "maintenance",
+          scope: "derived",
+        }),
+      )
     }))
 
   test("has expected domain names", () =>

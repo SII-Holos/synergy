@@ -264,7 +264,8 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       // applied watermark and it must not reconcile the event writes away.
       const shared = api.retainScopeState("shared")
       h.emit("shared", 1, "session.status", { sessionID: "fixture-session", status: { type: "busy" } })
-      h.emit("shared", 2, "session.updated", { info: { id: "live-added", time: {} } })
+      h.emit("shared", 1001, "server.cursor", { epoch: "test-epoch", fromSeq: 2, toSeq: 1001 })
+      h.emit("shared", 1002, "session.updated", { info: { id: "live-added", time: {} } })
       expect(api.sessionStatus["fixture-session"]).toEqual({ type: "busy" })
       expect(shared.state[0].session.some((session) => session.id === "live-added")).toBe(true)
 

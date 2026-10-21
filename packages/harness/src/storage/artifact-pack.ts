@@ -1,4 +1,5 @@
 import fs from "node:fs/promises"
+import { ObservabilityMetrics } from "../observability/metrics"
 import path from "node:path"
 import { pipeline } from "node:stream/promises"
 import { createReadStream, createWriteStream } from "node:fs"
@@ -88,6 +89,20 @@ export class ArtifactPack {
         written += result.bytesWritten
       }
       await file.sync()
+      ObservabilityMetrics.record({
+        name: "storage.artifact.sync",
+        value: 1,
+        unit: "count",
+        module: "storage",
+        sampleRate: 1,
+      })
+      ObservabilityMetrics.record({
+        name: "storage.artifact.bytes",
+        value: bytes.length,
+        unit: "bytes",
+        module: "storage",
+        sampleRate: 1,
+      })
       if (fresh && process.platform !== "win32") {
         const directory = await fs.open(this.root, "r")
         try {

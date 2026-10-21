@@ -4,6 +4,7 @@ import { RolloutTransportSchema } from "./transport-schema"
 import { record, RolloutRecordingError } from "./error"
 import { RolloutTiming } from "./timing"
 import { RolloutUsageCapture } from "./usage-capture"
+import { ObservabilityMetrics } from "../../observability/metrics"
 
 export namespace RolloutTransport {
   export type Event = RolloutTransportSchema.Event
@@ -14,7 +15,14 @@ export namespace RolloutTransport {
       fetch(globalThis.fetch, input, init),
     { preconnect: globalThis.fetch.preconnect },
   )
-  const context = Context.create<{ sink: Sink; inputImages?: InputImages.Entry[] }>("rollout.transport")
+  type Schedule = (callback: () => void, delay: number) => () => void
+  const schedule: Schedule = (callback, delay) => {
+    const timer = setTimeout(callback, delay)
+    return () => clearTimeout(timer)
+  }
+  const context = Context.create<{ sink: Sink; inputImages?: InputImages.Entry[]; schedule: Schedule }>(
+    "rollout.transport",
+  )
   const responseHeaders = new Set(["x-request-id", "request-id", "x-amzn-requestid", "openai-processing-ms"])
   const requestOptions = new Set([
     "body",
@@ -33,8 +41,8 @@ export namespace RolloutTransport {
     "window",
   ])
 
-  export function provide<T>(sink: Sink, action: () => T): T {
-    return context.provide({ sink }, action)
+  export function provide<T>(sink: Sink, action: () => T, options: { schedule?: Schedule } = {}): T {
+    return context.provide({ sink, schedule: options.schedule ?? schedule }, action)
   }
 
   export function inputImages(before: unknown) {
@@ -61,12 +69,40 @@ export namespace RolloutTransport {
     let cancelRequest: ((reason?: unknown) => Promise<void>) | undefined
     async function emit(event: Event) {
       if (recordingFailure) throw recordingFailure
+      const start = performance.now()
       try {
         await record(() => sink!(event))
+        if (event.type === "chunk") {
+          ObservabilityMetrics.record({
+            name: "rollout.transport.blocks",
+            value: 1,
+            unit: "count",
+            module: "llm",
+            labels: { channel: event.channel },
+            sampleRate: 1,
+          })
+          ObservabilityMetrics.record({
+            name: "rollout.transport.bytes",
+            value: event.data.byteLength,
+            unit: "bytes",
+            module: "llm",
+            labels: { channel: event.channel },
+            sampleRate: 1,
+          })
+        }
       } catch (error) {
         recordingFailure = error
         controller.abort(error)
         throw error
+      } finally {
+        ObservabilityMetrics.record({
+          name: "rollout.transport.archive_wait",
+          value: performance.now() - start,
+          unit: "ms",
+          module: "llm",
+          labels: { phase: event.type },
+          sampleRate: 0.02,
+        })
       }
     }
     function finish(status: "completed" | "failed" | "cancelled", error?: unknown) {
@@ -97,35 +133,38 @@ export namespace RolloutTransport {
       let sourceFailure: unknown
       let ahead: Promise<Uint8Array> | undefined
       let delivering = true
+      let firstResponse = channel === "response"
+      const readNext = () =>
+        reader.read().then(
+          (next) => {
+            if (channel === "response") {
+              if (next.done) {
+                content?.finish()
+                timing.streaming(content?.streaming ?? false)
+                timing.end()
+              } else if (next.value.byteLength) {
+                timing.bytes()
+                content?.append(next.value)
+                timing.streaming(content?.streaming ?? false)
+              }
+            }
+            return next
+          },
+          (error) => {
+            if (channel === "response") timing.end()
+            throw error
+          },
+        )
       async function readChunk() {
         if (sourceFailure) throw sourceFailure
         const buffer = new Uint8Array(RolloutTransportSchema.CHUNK_BYTES)
         let filled = 0
-        let timer: ReturnType<typeof setTimeout> | undefined
+        let cancelTimer: (() => void) | undefined
         let deadline: Promise<undefined> | undefined
         try {
           while (filled < buffer.byteLength && !sourceEnded) {
             if (!pending) {
-              nextRead ??= reader.read().then(
-                (next) => {
-                  if (channel === "response") {
-                    if (next.done) {
-                      content?.finish()
-                      timing.streaming(content?.streaming ?? false)
-                      timing.end()
-                    } else if (next.value.byteLength) {
-                      timing.bytes()
-                      content?.append(next.value)
-                      timing.streaming(content?.streaming ?? false)
-                    }
-                  }
-                  return next
-                },
-                (error) => {
-                  if (channel === "response") timing.end()
-                  throw error
-                },
-              )
+              nextRead ??= readNext()
               const next = deadline ? await Promise.race([nextRead, deadline]) : await nextRead
               if (!next) break
               nextRead = undefined
@@ -139,9 +178,15 @@ export namespace RolloutTransport {
             buffer.set(pending.subarray(0, length), filled)
             filled += length
             pending = pending.byteLength > length ? pending.subarray(length) : undefined
+            if (filled && firstResponse) {
+              firstResponse = false
+              nextRead ??= readNext()
+              void nextRead.catch(() => {})
+              break
+            }
             if (filled && !deadline)
               deadline = new Promise((resolve) => {
-                timer = setTimeout(() => resolve(undefined), 25)
+                cancelTimer = current!.schedule(() => resolve(undefined), channel === "response" ? 100 : 25)
               })
           }
           return buffer.subarray(0, filled)
@@ -150,7 +195,7 @@ export namespace RolloutTransport {
           if (filled) return buffer.subarray(0, filled)
           throw error
         } finally {
-          if (timer) clearTimeout(timer)
+          cancelTimer?.()
         }
       }
       async function cancelUpstream(reason?: unknown) {

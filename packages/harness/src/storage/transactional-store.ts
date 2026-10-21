@@ -1,5 +1,6 @@
 import type { StorageEntry } from "./portable"
 import { createHash, randomUUID } from "node:crypto"
+import { isDeepStrictEqual } from "node:util"
 import {
   NotFoundError,
   SessionPreparingError,
@@ -11,7 +12,7 @@ import {
 } from "./errors"
 import { ArtifactLocation } from "./artifact-location"
 import { RecordCodec, type BodyContainer, type RecordBody } from "./record-codec"
-import { measureStorageOperation } from "./measure"
+import { measureStorageOperation, recordStorageWrite } from "./measure"
 import { StorageQueue, withStorageQueueOptions, type StorageQueueOptions } from "./queue"
 import { Log } from "../util/log"
 import { observeStorageProgress } from "./progress"
@@ -644,10 +645,85 @@ export class StoreTransaction {
         `INSERT INTO storage_records(namespace, key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated) VALUES ${batch.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",")} ON CONFLICT(namespace, key_id) DO UPDATE SET body = excluded.body, revision = excluded.revision, kind = excluded.kind, scope_id = excluded.scope_id, session_id = excluded.session_id, message_id = excluded.message_id, order_key = excluded.order_key, updated = excluded.updated`,
         values,
       )
+      for (const entry of batch)
+        recordStorageWrite(
+          entry.key,
+          typeof entry.body === "string" ? Buffer.byteLength(entry.body) : entry.body.byteLength,
+        )
     }
   }
 
-  private async put<T>(key: string[], value: T, options: { expectedRevision?: bigint } = {}): Promise<void> {
+  async rewriteEncodings(entries: Array<{ key: string[]; value: unknown; expected: unknown }>): Promise<void> {
+    this.check(true)
+    if (!entries.length) return
+    if (entries.length > 128 || new Set(entries.map(({ key }) => keyID(key))).size !== entries.length)
+      throw new StorageIntegrityError("Encoding maintenance requires at most 128 distinct records")
+    const prepared = entries.map((entry) => ({
+      ...entry,
+      id: keyParameter(this.keys, entry.key),
+      body: RecordCodec.encode(entry.value, this.bodies),
+    }))
+    if (
+      prepared.reduce(
+        (sum, entry) => sum + sqlParameterBytes([entry.body, entry.id, entry.id, entry.id]) + 32,
+        Buffer.byteLength(this.namespace),
+      ) >
+      1024 * 1024
+    )
+      throw new StorageIntegrityError("Encoding maintenance exceeds its parameter byte limit")
+    const keys = entries.map((entry) => entry.key)
+    await this.assertAdmitted(keys)
+    await this.mutationGuard?.(keys, false)
+    const owners = new Map(
+      keys
+        .filter((key) => key[0] === "sessions" && key.length >= 4)
+        .map((key) => [JSON.stringify(key.slice(0, 3)), [...key.slice(0, 3), "info"]]),
+    )
+    for (const owner of owners.values()) await this.assertNotDeleted(owner)
+    const rows = await this.connection.query<RecordRow>(
+      `SELECT key_text, body, revision FROM storage_records WHERE namespace = ? AND key_id IN (${prepared.map(() => "?").join(",")})`,
+      [this.namespace, ...prepared.map((entry) => entry.id)],
+    )
+    const previous = new Map(rows.map((row) => [row.key_text, row]))
+    const revisions = prepared.map((entry) => {
+      const row = previous.get(JSON.stringify(entry.key))
+      if (!row?.body || !isDeepStrictEqual(RecordCodec.decode(row.body), entry.expected))
+        throw new StorageConflictError("Storage evidence changed during encoding maintenance")
+      return BigInt(row.revision)
+    })
+    const changed = await this.connection.query(
+      `UPDATE storage_records SET body = CASE key_id ${prepared.map(() => "WHEN ? THEN ?").join(" ")} END WHERE namespace = ? AND key_id IN (${prepared.map(() => "?").join(",")}) AND revision = CASE key_id ${prepared.map(() => "WHEN ? THEN ?").join(" ")} END RETURNING key_id`,
+      [
+        ...prepared.flatMap((entry) => [entry.id, entry.body]),
+        this.namespace,
+        ...prepared.map((entry) => entry.id),
+        ...prepared.flatMap((entry, i) => [entry.id, revisions[i]]),
+      ],
+    )
+    if (changed.length !== entries.length)
+      throw new StorageConflictError("Storage revision changed during encoding maintenance")
+    for (const entry of prepared)
+      recordStorageWrite(
+        entry.key,
+        typeof entry.body === "string" ? Buffer.byteLength(entry.body) : entry.body.byteLength,
+        true,
+      )
+  }
+
+  async insertHistorical(key: string[], value: unknown, updated: number): Promise<void> {
+    this.check(true)
+    await this.assertAdmitted([key])
+    await this.mutationGuard?.([key], false)
+    if (key[0] === "sessions" && key.length >= 4) await this.assertNotDeleted([...key.slice(0, 3), "info"])
+    if (!Number.isFinite(updated)) throw new StorageIntegrityError("Invalid historical record time")
+    await this.put(key, value, { expectedRevision: 0n, updated })
+  }
+
+  private async put<T>(
+    key: string[],
+    value: T,
+    options: { expectedRevision?: bigint; updated?: number } = {},
+  ): Promise<void> {
     this.check(true)
     if (!key.length) throw new StorageIntegrityError("Cannot write the storage root")
     const previous = await this.row(key)
@@ -673,21 +749,27 @@ export class StoreTransaction {
       nodes,
     )
     const meta = metadata(key)
+    const body = RecordCodec.encode(value, this.bodies)
     await this.connection.query(
       "INSERT INTO storage_records(namespace, key_id, key_text, body, revision, kind, scope_id, session_id, message_id, order_key, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(namespace, key_id) DO UPDATE SET body = excluded.body, revision = excluded.revision, kind = excluded.kind, scope_id = excluded.scope_id, session_id = excluded.session_id, message_id = excluded.message_id, order_key = excluded.order_key, updated = excluded.updated",
       [
         this.namespace,
         keyParameter(this.keys, key),
         JSON.stringify(key),
-        RecordCodec.encode(value, this.bodies),
+        body,
         revision + 1n,
         meta.kind,
         meta.scope,
         meta.session,
         meta.message,
         meta.order,
-        Date.now(),
+        options.updated ?? Date.now(),
       ],
+    )
+    recordStorageWrite(
+      key,
+      typeof body === "string" ? Buffer.byteLength(body) : body.byteLength,
+      options.updated !== undefined,
     )
   }
 
@@ -1663,6 +1745,14 @@ export class TransactionalStore {
 
   get sqliteFilename() {
     return this.options.backend === "sqlite" ? this.options.filename : undefined
+  }
+
+  async backupSqlite(filename: string): Promise<void> {
+    this.check()
+    if (this.options.readonly || !(this.driver instanceof SqliteDriver))
+      throw new StorageConflictError("SQLite backup requires a writable SQLite store")
+    const driver = this.driver
+    await this.writes.run(() => driver.backup(filename))
   }
 
   /**

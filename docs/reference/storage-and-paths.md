@@ -41,6 +41,8 @@ Removed user Inbox inputs and restoration receipts live at the logical keys `ses
 
 Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.
 
+Attempt journal context-v2 records use `<owner>/rollout/journal/contexts/<sha256>` and retain events at `<owner>/rollout/journal/events/<sequence>`. The maintenance receipt is `storage_maintenance/20261021-rollout-journal-contexts`, outside owner retention. Consistent compaction backups live under `data/storage/backups/rollout-<id>.sqlite` or `.ndjson`; these are database backups and retain references to the existing artifact packs. See [Agent storage](../architecture/agent-storage.md#files-and-evidence) for replay and recovery rules.
+
 ## Session migration data
 
 `data/session-transfers/<migration UUID>/` owns frozen `payload.zip`, transient capture chunks and receive files. On a destination, `workspace/` becomes the published private native Workspace after activation and remains there when temporary payloads are cleaned. Migration states, proof hashes/secrets, gates, receiving reservations, cancellation proofs and native Workspace validation receipts live in the agent database under `session_transfer_*` namespaces. See [Session transfer](../architecture/session-transfer.md) for retention, cancellation and recovery semantics.

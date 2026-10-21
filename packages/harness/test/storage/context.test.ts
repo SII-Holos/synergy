@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from "bun:test"
+import { afterAll, expect, test, spyOn } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { Storage } from "../../src/storage/storage"
@@ -80,6 +80,30 @@ test("notification failure does not turn a confirmed commit into a retryable wri
       expect(lastObserver).toBe(true)
     })
   }))
+
+test("outbox acknowledgments batch successful deliveries and retain failures without retrying business writes", () =>
+  runtime.run(() =>
+    Storage.provide({ store, artifactDirectory: root }, async () => {
+      using acknowledge = spyOn(store, "acknowledgeEvents")
+      await Storage.transaction(async () => {
+        await Storage.write(["batched-notifications"], 1)
+        for (const id of ["first", "failed", "last"])
+          await Storage.enqueue({ id, scopeID: "scope", type: "fixture", payload: {} }, async () => {
+            if (id === "failed") throw new Error("delivery unavailable")
+          })
+        await Storage.capture({ id: "capture-only", scopeID: "scope", type: "fixture", payload: {} })
+      })
+      expect(acknowledge.mock.calls).toEqual([[["first", "last"]]])
+      expect((await store.pendingEvents()).map((event) => event.id)).toEqual(["failed"])
+      acknowledge.mockRejectedValueOnce(new Error("ack unavailable"))
+      await Storage.transaction(async () => {
+        await Storage.write(["batched-notifications"], 2)
+        await Storage.enqueue({ id: "ack-lost", scopeID: "scope", type: "fixture", payload: {} }, async () => {})
+      })
+      expect(await Storage.read(["batched-notifications"])).toBe(2)
+      expect((await store.pendingEvents()).map((event) => event.id)).toEqual(["failed", "ack-lost"])
+    }),
+  ))
 
 test("deleted sessions reject delayed rollout and inbox writes in the same transaction", () =>
   runtime.run(async () => {

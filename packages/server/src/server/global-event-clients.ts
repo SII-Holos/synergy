@@ -1,5 +1,6 @@
 import type { WSContext } from "hono/ws"
 import { Log } from "@ericsanchezok/synergy-harness/util/log"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 
 export namespace GlobalEventClients {
   const log = Log.create({ service: "server.global-event-clients" })
@@ -33,6 +34,7 @@ export namespace GlobalEventClients {
     add(ws: WSContext, mode: Mode): void
     remove(ws: WSContext): boolean
     reply(ws: WSContext, data: string): SendResult
+    stream(ws: WSContext, data: string): SendResult
     broadcast(
       encode: (mode: Mode) => string,
       project?: (client: ClientState) => string | null | undefined,
@@ -119,6 +121,23 @@ export namespace GlobalEventClients {
     }
 
     function send(client: ClientState, data: string): SendResult {
+      const record = () => {
+        if (client.mode !== "projection-v2") return
+        ObservabilityMetrics.record({
+          name: "server.projection.frames",
+          value: 1,
+          unit: "count",
+          module: "server",
+          sampleRate: 1,
+        })
+        ObservabilityMetrics.record({
+          name: "server.projection.bytes",
+          value: Buffer.byteLength(data),
+          unit: "bytes",
+          module: "server",
+          sampleRate: 1,
+        })
+      }
       const readyState = rawReadyState(client)
       // 1 = OPEN in both browser and Bun ServerWebSocket conventions.
       if (readyState !== undefined && readyState !== 1) return "closed"
@@ -150,6 +169,7 @@ export namespace GlobalEventClients {
             client.consecutiveBackpressure = 0
             client.sentFrames++
             client.lastSendAt = now()
+            record()
             return "sent"
           }
         }
@@ -158,6 +178,7 @@ export namespace GlobalEventClients {
         client.consecutiveBackpressure = 0
         client.sentFrames++
         client.lastSendAt = now()
+        record()
         return "sent"
       } catch {
         return "error"
@@ -209,6 +230,10 @@ export namespace GlobalEventClients {
 
       for (const [key, client] of clients) {
         const projected = project?.(client)
+        if (clients.get(key) !== client) {
+          removed++
+          continue
+        }
         if (projected === null) continue
         const result = send(client, projected ?? payloadFor(client.mode))
         if (result === "sent") sent++
@@ -235,6 +260,15 @@ export namespace GlobalEventClients {
       return result
     }
 
+    function stream(ws: WSContext, data: string): SendResult {
+      const key = connectionKey(ws)
+      const client = clients.get(key)
+      if (!client) return "closed"
+      const result = send(client, data)
+      maybeEvict(key, client, result)
+      return result
+    }
+
     function heartbeat(data: string) {
       let sent = 0
       let removed = 0
@@ -251,6 +285,7 @@ export namespace GlobalEventClients {
       add,
       remove,
       reply,
+      stream,
       broadcast,
       heartbeat,
       clear: () => {

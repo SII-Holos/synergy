@@ -44,6 +44,7 @@ test("maintenance records carry bounded lifecycle facts without arbitrary payloa
   const begin = { phase: "maintenance", id: 1, operation: "vacuum", state: "started", timeoutMs: 690_000 } as const
   for (const value of [
     begin,
+    { ...begin, operation: "checkpoint" },
     { phase: "maintenance", id: 1, state: "stage", stage: "rewrite" },
     { phase: "maintenance", id: 1, state: "completed", elapsedMs: 400_000 },
     { phase: "maintenance", id: 1, state: "failed", elapsedMs: 400_000 },

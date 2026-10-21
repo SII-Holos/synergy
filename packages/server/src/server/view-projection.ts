@@ -4,6 +4,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { createProjectionContent } from "./projection-content"
 import { ContentInterests } from "./event-projection"
+import { createProjectionCursors } from "./projection-cursors"
 
 export const VIEW_FRAME_LIMIT = 64 * 1024
 export const ViewInterest = z.object({
@@ -34,7 +35,10 @@ export type ViewProjectionContribution = {
   ): Promise<{ project(event: ViewEvent): void; dispose(): void }>
 }
 const omitted = (type: string) =>
-  type === "execution.updated" || type === "rollout.updated" || type.startsWith("usage.")
+  type === "execution.updated" ||
+  type === "rollout.updated" ||
+  type === "lsp.client.diagnostics" ||
+  type.startsWith("usage.")
 export function viewCursor(event: ViewEvent): ViewEvent | null {
   const { epoch, seq } = event.payload
   return epoch !== undefined && seq !== undefined
@@ -57,9 +61,17 @@ function bounded(event: ViewEvent): ViewEvent {
   }
 }
 export function projectViewReplay(events: ViewEvent["payload"][], contributions: ViewProjectionContribution[] = []) {
-  return events.flatMap((payload) => {
-    if (omitted(payload.type) || contributions.some((item) => item.eventType === payload.type))
-      return viewCursor({ scopeID: null, payload })?.payload ?? []
+  const result: ViewEvent["payload"][] = []
+  const cursors = createProjectionCursors(
+    (event) => result.push(event.payload),
+    () => () => {},
+  )
+  for (const payload of events) {
+    if (omitted(payload.type) || contributions.some((item) => item.eventType === payload.type)) {
+      const cursor = viewCursor({ scopeID: null, payload })
+      if (cursor) cursors.project(cursor)
+      continue
+    }
     const projected =
       payload.type === "message.part.updated"
         ? {
@@ -70,8 +82,11 @@ export function projectViewReplay(events: ViewEvent["payload"][], contributions:
         : payload.type === "message.updated"
           ? { ...payload, properties: SessionHistory.summarizeMessage(payload.properties.info as MessageV2.Info) }
           : payload
-    return bounded({ scopeID: null, payload: projected }).payload
-  })
+    const frame = cursors.project(bounded({ scopeID: null, payload: projected }))
+    if (frame) result.push(frame.payload)
+  }
+  cursors.flush()
+  return result
 }
 type PartInterest = z.infer<typeof ContentInterests>["parts"][number]
 type Stream = {
@@ -94,10 +109,15 @@ const identity = (part: Omit<PartInterest, "generation">) =>
   JSON.stringify([part.scopeID, part.sessionID, part.messageID, part.partID])
 
 export function createViewProjection(
-  send: (event: ViewEvent) => void,
+  output: (event: ViewEvent) => void,
   contributions: ViewProjectionContribution[] = [],
   contentCheckpoints = createProjectionContent(),
 ) {
+  const cursors = createProjectionCursors(output)
+  const send = (event: ViewEvent) => {
+    const frame = cursors.project(event)
+    if (frame) output(frame)
+  }
   const parts = new Map<string, Subscription>()
   const details = new Map<
     string,
@@ -269,7 +289,11 @@ export function createViewProjection(
     return bounded(event)
   }
   return {
-    project,
+    project(event: ViewEvent) {
+      if (disposed) return null
+      const frame = project(event)
+      return frame ? cursors.project(frame) : null
+    },
     async interests(
       input: z.infer<typeof ViewInterests>,
       read: (interest: PartInterest) => Promise<{ part: MessageV2.Part; epoch: string; seq: number }>,
@@ -373,6 +397,7 @@ export function createViewProjection(
     },
     dispose() {
       disposed = true
+      cursors.dispose()
       for (const detail of details.values()) {
         detail.controller.abort()
         detail.value?.dispose()

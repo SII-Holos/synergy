@@ -1,4 +1,5 @@
 import { SQL } from "bun"
+import { recordStorageTransaction } from "./measure"
 import { createHash } from "node:crypto"
 import {
   databaseErrorCode,
@@ -142,10 +143,12 @@ export class PostgresDriver implements SqlDriver {
         options.commitGuard?.()
         committing = true
         await query("COMMIT")
+        if (!options.readOnly) recordStorageTransaction("postgres", "committed")
       }
       return result
     } catch (error) {
       const code = databaseErrorCode(error)
+      if (!options.readOnly) recordStorageTransaction("postgres", "failed")
       if (transactional) {
         try {
           await query("ROLLBACK")

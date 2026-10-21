@@ -1,4 +1,5 @@
 import { RuntimeContext } from "../../lifecycle/context"
+import { isDeepStrictEqual } from "node:util"
 import { RolloutProvenance } from "./provenance"
 import { RolloutJournal } from "./journal"
 import { RolloutAccounting } from "./accounting"
@@ -338,6 +339,7 @@ export namespace RolloutLedger {
           JSON.stringify(current.owner) !== JSON.stringify(value.owner))
       )
         throw new Error("Rollout execution identity changed")
+      if (!publish && current && isDeepStrictEqual(current, JSON.parse(JSON.stringify(value)))) return current
       await RolloutJournal.write(value.owner, key, value, publish)
       return value
     })
