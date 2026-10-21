@@ -521,6 +521,27 @@ export class StoreTransaction {
     return result
   }
 
+  async revisions(keys: string[][]): Promise<(bigint | undefined)[]> {
+    this.check()
+    await this.assertAdmitted(keys)
+    const result: (bigint | undefined)[] = []
+    for (let offset = 0; offset < keys.length; offset += 128) {
+      const batch = keys.slice(offset, offset + 128)
+      const rows = await this.connection.query<SqlRow>(
+        `SELECT key_id, key_text, revision FROM storage_records WHERE namespace = ? AND body IS NOT NULL AND key_id IN (${batch.map(() => "?").join(",")})`,
+        [this.namespace, ...batch.map((key) => keyParameter(this.keys, key))],
+      )
+      const index = new Map(rows.map((row) => [keyHex(row.key_id), row]))
+      for (const key of batch) {
+        const row = index.get(keyID(key))
+        if (row && row.key_text !== JSON.stringify(key))
+          throw new StorageIntegrityError("Logical key identity collision")
+        result.push(row ? BigInt(row.revision as bigint) : undefined)
+      }
+    }
+    return result
+  }
+
   async write<T>(key: string[], value: T, options: { expectedRevision?: bigint } = {}): Promise<void> {
     this.check(true)
     await this.assertAdmitted([key])

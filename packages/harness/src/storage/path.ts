@@ -51,6 +51,13 @@ export namespace StoragePath {
     "display_part",
     messageID,
   ]
+  export const sessionDisplayPartsState = (scopeID: string, sessionID: string, messageID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_parts_state",
+    messageID,
+  ]
   export const sessionDisplayPart = (scopeID: string, sessionID: string, messageID: string, partID: string) => [
     ...sessionDisplayParts(scopeID, sessionID, messageID),
     partID,

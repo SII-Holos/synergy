@@ -81,13 +81,7 @@ export namespace SessionHistoryDisplay {
   const preparing = Storage.state(() => new Map<string, Promise<void>>())
   const digest = (text: string) => new Bun.CryptoHasher("sha256").update(text).digest("hex")
   const key = StoragePath.sessionDisplayState
-  const partStateKey = (scopeID: string, sessionID: string, messageID: string) => [
-    "sessions",
-    scopeID,
-    sessionID,
-    "display_parts_state",
-    messageID,
-  ]
+  const partStateKey = StoragePath.sessionDisplayPartsState
   type PartsState = { version?: 1; ready: boolean; generation: number; cursor?: string; sourceGeneration?: number }
 
   export async function displayManifest(

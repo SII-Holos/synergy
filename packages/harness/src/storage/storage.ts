@@ -244,6 +244,10 @@ export namespace Storage {
     return snapshot((tx) => tx.versioned<T>(key), { singleStatement: true })
   }
 
+  export function revisions(keys: string[][]) {
+    return snapshot((tx) => tx.revisions(keys), { singleStatement: keys.length <= 128 })
+  }
+
   export function write<T>(key: string[], value: T) {
     return measureStorage("write", key, () => transaction((tx) => tx.write(key, value)))
   }

@@ -219,6 +219,8 @@ Part origin answers who authored the text. It does not remove the part from mode
 
 ## Read-Time Canonicalization
 
+`SessionContextSnapshot.capture()` supplies immutable, compaction-aware message material for read-only derived calls after a successful root. It requires a completed Rollout and a matching terminal assistant, captures model selection and canonical source revisions in one short read snapshot, and releases storage before inference. `isCurrent()` checks batched revisions, including message ordering and part membership, without hydrating message bodies. Failed, cancelled, unfinished, child and initial-idle Sessions are ineligible. Historical records without a completed Rollout cannot establish this completion anchor.
+
 Persisted histories may contain older metadata shapes. `MessageV2.deriveSemantics()` is the only read-time derivation for canonical message fields.
 
 Full transcript reads run it over the complete ordered raw message list before pagination or slicing so root ownership can be derived consistently. It:
