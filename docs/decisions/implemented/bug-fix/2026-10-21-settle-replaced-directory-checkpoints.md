@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-An execution can have a confirmed exited process tree and drained native streams while its directory Workspace has been replaced at the same path. Its checkpoint cannot validate the original view. Treating every checkpoint failure as retryable leaves the execution unsaved and retains its Environment use, which prevents the detachment required by explicit rebinding. [Issue #1658](https://github.com/SII-Holos/synergy/issues/1658) reports this recovery failure; the [postmortem](../../../postmortem/0082-replaced-directory-checkpoint-blocked-rebind.md) records the isolated reproduction and its limits.
+An execution can have a confirmed exited process tree and drained native streams while its directory Workspace has been replaced at the same path. Its checkpoint cannot validate the original view. Treating every checkpoint failure as retryable leaves the execution unsaved and retains its Environment use, which prevents the detachment required by explicit rebinding. [Issue #1658](https://github.com/SII-Holos/synergy/issues/1658) reports this recovery failure; the [postmortem](../../../postmortem/0084-replaced-directory-checkpoint-blocked-rebind.md) records the isolated reproduction and its limits.
 
 ## Decision
 

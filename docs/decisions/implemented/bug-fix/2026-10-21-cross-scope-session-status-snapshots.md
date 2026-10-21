@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The global status endpoint returns Sessions from every Scope but its HTTP watermark belongs to Home. Project events use independent epochs and sequences. Comparing those clocks lets a delayed busy snapshot overwrite an idle event the frontend already received. A tracker that clears every status write when any Scope epoch changes also loses one project's ordering evidence when unrelated work publishes. The [incident analysis](../../../postmortem/0082-cross-scope-status-snapshot-resurrected-busy.md) records the real server and browser reproduction.
+The global status endpoint returns Sessions from every Scope but its HTTP watermark belongs to Home. Project events use independent epochs and sequences. Comparing those clocks lets a delayed busy snapshot overwrite an idle event the frontend already received. A tracker that clears every status write when any Scope epoch changes also loses one project's ordering evidence when unrelated work publishes. The [incident analysis](../../../postmortem/0085-cross-scope-status-snapshot-resurrected-busy.md) records the real server and browser reproduction.
 
 ## Decision
 

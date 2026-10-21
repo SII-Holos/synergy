@@ -21,13 +21,17 @@ Otherwise, test.
 
 ## Index
 
+- [0087](0087-browser-view-completed-without-presentation.md)
+
+- [0086](0086-loop-failure-state-divergence.md)
+
+- [0085](0085-cross-scope-status-snapshot-resurrected-busy.md)
+
+- [0084](0084-replaced-directory-checkpoint-blocked-rebind.md)
+
 - [0083](0083-blueprint-blockers-could-not-pause.md)
 
 - [0082](0082-performance-evidence-and-failure-retention.md)
-
-- [0082](0082-replaced-directory-checkpoint-blocked-rebind.md)
-
-- [0082](0082-browser-view-completed-without-presentation.md)
 
 - [0081](0081-browser-navigation-timeouts.md)
 
