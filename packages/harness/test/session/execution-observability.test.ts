@@ -3,7 +3,9 @@ import { z } from "zod"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
 import { Agent } from "../../src/agent/agent"
+import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
 import { Cortex } from "../../src/cortex"
+import { TaskTool } from "../../src/cortex/tools/task"
 import { TaskOutputTool } from "../../src/cortex/tools/task-output"
 import { Identifier } from "../../src/id/id"
 import { ObservabilityClock } from "../../src/observability/clock"
@@ -43,7 +45,7 @@ const probe = Tool.define("execution_probe", {
 })
 const runtime = await testRuntime({
   register() {
-    ToolRegistry.registerToolProvider("execution-observability", () => [probe, TaskOutputTool])
+    ToolRegistry.registerToolProvider("execution-observability", () => [probe, TaskOutputTool, TaskTool])
   },
 })
 afterAll(() => runtime.close())
@@ -83,6 +85,7 @@ const model: Provider.Model = {
 const agent = Agent.Info.parse({
   name: "execution-fixture",
   mode: "primary",
+  delegationGroups: [PrimaryAgentIdentity.names.general],
   controlProfile: "full_access",
   permission: [],
   options: {},
@@ -149,6 +152,90 @@ function inflight(sessionID: string) {
   ToolResolver.sweepActiveTraces()
   return ObservabilityStore.queryInflight({ sessionID }).find((span) => span.name === "tool.execution")!
 }
+
+for (const count of [256, 1024])
+  test(`${count} growing metadata callbacks observe only their coalesced effective update`, () =>
+    runtime.run(() =>
+      fixture(async (clock) => {
+        const current = await turn()
+        const resolved = await tools(current)
+        const rawValues = new WeakSet<object>()
+        const stringify = JSON.stringify
+        const clone = structuredClone
+        const updatePart = Session.updatePart
+        let scannedBytes = 0
+        let rawClones = 0
+        let persistedUpdates = 0
+        let latestOutputLength = 0
+        let initialProgress: number | null | undefined
+        let callbackProgress: number | null | undefined
+        let effectiveProgress: number | null | undefined
+        using writes = spyOn(Session, "updatePart").mockImplementation((async (
+          input: Parameters<typeof Session.updatePart>[0],
+        ) => {
+          const part = "part" in input ? input.part : input
+          if (
+            part.type === "tool" &&
+            part.callID === "growing-metadata" &&
+            part.state.status === "running" &&
+            typeof part.state.metadata?.output === "string"
+          ) {
+            persistedUpdates++
+            latestOutputLength = part.state.metadata.output.length
+          }
+          return updatePart(input)
+        }) as unknown as typeof Session.updatePart)
+        using serialization = spyOn(JSON, "stringify").mockImplementation(((
+          value: unknown,
+          replacer?: ((this: unknown, key: string, value: unknown) => unknown) | (number | string)[] | null,
+          space?: string | number,
+        ) => {
+          const serialized =
+            typeof replacer === "function" ? stringify(value, replacer, space) : stringify(value, replacer, space)
+          if (value && typeof value === "object" && rawValues.has(value)) scannedBytes += serialized?.length ?? 0
+          return serialized
+        }) as typeof JSON.stringify)
+        using cloning = spyOn(globalThis, "structuredClone").mockImplementation((<Value>(
+          value: Value,
+          options?: Parameters<typeof structuredClone>[1],
+        ) => {
+          if (value && typeof value === "object" && rawValues.has(value)) rawClones++
+          return clone(value, options)
+        }) as unknown as typeof structuredClone)
+        execute = async (ctx) => {
+          initialProgress = inflight(current.session.id).last_activity_time
+          clock.now += 31_000
+          const pending: Promise<void>[] = []
+          let output = ""
+          for (let index = 0; index < count; index++) {
+            output += "x".repeat(1024)
+            const value = { metadata: { output } }
+            rawValues.add(value)
+            rawValues.add(value.metadata)
+            pending.push(Promise.resolve(ctx.metadata(value)))
+          }
+          callbackProgress = inflight(current.session.id).last_activity_time
+          await Promise.all(pending)
+          effectiveProgress = inflight(current.session.id).last_activity_time
+        }
+        try {
+          await current.processor.executeToolCall({
+            callID: "growing-metadata",
+            toolName: probe.id,
+            args: {},
+            tool: resolved.executionTools[probe.id],
+          })
+          expect(scannedBytes).toBe(0)
+          expect(rawClones).toBe(0)
+          expect(persistedUpdates).toBe(1)
+          expect(latestOutputLength).toBe(count * 1024)
+          expect(callbackProgress).toBe(initialProgress)
+          expect(effectiveProgress).toBe(clock.now)
+        } finally {
+          await SessionManager.release(current.lease, { requestNextWork: false })
+        }
+      }),
+    ))
 
 test("tool progress, known waiting and unknown silence are not inferred as stalls from duration", () =>
   runtime.run(() =>
@@ -389,6 +476,189 @@ test.each(["reasoning", "text", "tool", "unknown-dispatch"] as const)(
     ),
 )
 
+test.each(["missing-dispatch", "timed", "overlap"] as const)(
+  "%s retry timing never borrows a different attempt's dispatch",
+  (mode) =>
+    runtime.run(() =>
+      fixture(async (clock) => {
+        const current = await turn()
+        const initial = clock.now
+        const firstID = crypto.randomUUID()
+        const secondID = crypto.randomUUID()
+        spyOn(AgentTurn, "stream").mockImplementation(async () =>
+          RolloutCall.stream(
+            {
+              owner: { kind: "session", scopeID: ScopeContext.current.scope.id, sessionID: current.session.id },
+              runID: current.user.id,
+              purpose: "fixture",
+              request: {},
+              model: { providerID: model.providerID, modelID: model.id, sdk: "test", pricing: null },
+            },
+            async (archive) => {
+              clock.now = initial + 40_000
+              await archive({
+                type: "attempt-start",
+                attemptID: firstID,
+                url: "https://example.invalid",
+                method: "POST",
+                mediaType: "application/json",
+                timing: {
+                  source: "transport",
+                  sentAt: clock.now,
+                  contentEvents: 0,
+                  reasoningObserved: false,
+                  streaming: true,
+                },
+              })
+              if (mode !== "overlap") {
+                clock.now = initial + 42_000
+                await archive({ type: "attempt-end", attemptID: firstID, status: "failed", error: "request rejected" })
+              }
+              clock.now = initial + 45_000
+              await archive({
+                type: "attempt-start",
+                attemptID: secondID,
+                url: "https://example.invalid",
+                method: "POST",
+                mediaType: "application/json",
+                ...(mode !== "missing-dispatch"
+                  ? {
+                      timing: {
+                        source: "transport" as const,
+                        sentAt: clock.now,
+                        contentEvents: 0,
+                        reasoningObserved: false,
+                        streaming: true,
+                      },
+                    }
+                  : {}),
+              })
+              await archive({
+                type: "response",
+                attemptID: secondID,
+                status: 200,
+                mediaType: "text/event-stream",
+                headers: {},
+              })
+              clock.now = initial + 50_000
+              return {
+                fullStream: (async function* () {
+                  yield { type: "text-start" as const, id: "answer" }
+                  clock.now += 20
+                  yield { type: "text-delta" as const, id: "answer", text: "answer" }
+                  yield { type: "text-end" as const, id: "answer" }
+                  if (mode === "overlap") await archive({ type: "attempt-end", attemptID: firstID, status: "failed" })
+                  await archive({ type: "attempt-end", attemptID: secondID, status: "completed" })
+                })(),
+                usage: Promise.resolve(undefined),
+                async dispose() {},
+              }
+            },
+          ),
+        )
+        try {
+          await current.processor.process({
+            user: current.user,
+            sessionID: current.session.id,
+            model,
+            agent,
+            system: [],
+            messages: [],
+            abort: current.lease.signal,
+            toolDefinitions: [],
+            executionTools: {},
+            executorKinds: {},
+          })
+          expect(current.processor.message.error).toBeUndefined()
+          const rows = ObservabilityStore.queryMetrics({ since: initial, sessionID: current.session.id }).filter(
+            (row) =>
+              row.name.startsWith("llm.stream.first_content") || row.name.startsWith("llm.stream.first_visible_text"),
+          )
+          const names = ["llm.stream.first_content", "llm.stream.first_visible_text"]
+          expect(rows.map((row) => row.name).sort()).toEqual(
+            mode === "timed" ? names : names.map((name) => `${name}.unavailable`),
+          )
+          expect(rows.map((row) => row.value)).toEqual(mode === "timed" ? [5020, 5020] : [1, 1])
+          if (mode !== "timed")
+            expect(
+              rows.every(
+                (row) =>
+                  JSON.parse(row.labels_json).reason ===
+                  (mode === "overlap" ? "attempt_ambiguous" : "dispatch_unknown"),
+              ),
+            ).toBe(true)
+        } finally {
+          await SessionManager.release(current.lease, { requestNextWork: false })
+        }
+      }),
+    ),
+)
+
+test.each(["settled", "orphan"] as const)("ignored %s tool frames do not manufacture model progress", (mode) =>
+  runtime.run(() =>
+    fixture(async (clock) => {
+      const current = await turn()
+      const resolved = await tools(current)
+      let effects = 0
+      execute = async () => {
+        effects++
+      }
+      if (mode === "settled")
+        await current.processor.executeToolCall({
+          callID: "settled-probe",
+          toolName: probe.id,
+          args: {},
+          tool: resolved.executionTools[probe.id],
+        })
+      const openedAt = clock.now
+      spyOn(AgentTurn, "stream").mockResolvedValue({
+        fullStream: (async function* () {
+          yield { type: "start" as const }
+          clock.now += 31_000
+          if (mode === "settled") yield { type: "tool-input-start" as const, id: "settled-probe", toolName: probe.id }
+          else yield { type: "tool-input-delta" as const, id: "orphan", delta: "{}" }
+          clock.now += 31_000
+          yield { type: "tool-input-delta" as const, id: mode === "settled" ? "settled-probe" : "orphan", delta: "{}" }
+          clock.now += 31_000
+          if (mode === "settled")
+            yield { type: "tool-call" as const, toolCallId: "settled-probe", toolName: probe.id, input: {} }
+          else yield { type: "tool-input-delta" as const, id: "orphan", delta: "{}" }
+        })(),
+        usage: Promise.resolve(undefined),
+        async dispose() {},
+      })
+      try {
+        await current.processor.process({
+          user: current.user,
+          sessionID: current.session.id,
+          model,
+          agent,
+          system: [],
+          messages: [],
+          abort: current.lease.signal,
+          toolDefinitions: resolved.definitions,
+          executionTools: resolved.executionTools,
+          executorKinds: resolved.executorKinds,
+        })
+        expect(current.processor.message.error).toBeUndefined()
+        expect(effects).toBe(mode === "settled" ? 1 : 0)
+        const span = ObservabilityStore.querySpans({ sessionID: current.session.id }).find(
+          (row) => row.name === "llm.request",
+        )!
+        expect(span.last_activity_time).toBe(openedAt)
+        expect(span.heartbeat_count).toBe(3)
+        expect(
+          ObservabilityStore.queryMetrics({ since: openedAt, sessionID: current.session.id }).filter(
+            (row) => row.name.startsWith("llm.stream.first_content") || row.name === "llm.stream.first_token",
+          ),
+        ).toEqual([])
+      } finally {
+        await SessionManager.release(current.lease, { requestNextWork: false })
+      }
+    }),
+  ),
+)
+
 test("a silent physical owner is alive without output; its confirmed loss plus no progress is diagnosable", () =>
   runtime.run(() =>
     fixture(async (clock) => {
@@ -485,6 +755,67 @@ test("real child-output waiting remains waiting and cancelling that wait does no
         await execution.catch(() => {})
         await SessionManager.release(current.lease, { requestNextWork: false })
         await Cortex.cancel(child.id)
+      }
+    }),
+  ))
+
+test("foreground task uses child waiting through capacity handoff and retains cancellation ownership", () =>
+  runtime.run(() =>
+    fixture(async (clock) => {
+      const current = await turn()
+      const resolved = await tools(current)
+      let child: Awaited<ReturnType<typeof Cortex.prepare>> | undefined
+      const entered = Promise.withResolvers<void>()
+      const waitFor = Cortex.waitFor
+      const cancel = Cortex.cancel
+      const cancelling: Promise<unknown>[] = []
+      using cancellation = spyOn(Cortex, "cancel").mockImplementation((...args) => {
+        const result = cancel(...args)
+        cancelling.push(result)
+        return result
+      })
+      using launch = spyOn(Cortex, "launch").mockImplementation((async (input: Parameters<typeof Cortex.launch>[0]) => {
+        child = await Cortex.prepare({ ...input, visibility: "visible" })
+        return child
+      }) as unknown as typeof Cortex.launch)
+      using waiting = spyOn(Cortex, "waitFor").mockImplementation((...args) => {
+        const result = waitFor(...args)
+        entered.resolve()
+        return result
+      })
+      const execution = current.processor.executeToolCall({
+        callID: "foreground-child",
+        toolName: TaskTool.id,
+        args: {
+          taskTitle: "Queued child",
+          taskInstructions: "Wait",
+          subagent_type: "developer",
+          background: false,
+        },
+        tool: resolved.executionTools[TaskTool.id],
+      })
+      void execution.catch(entered.reject)
+      try {
+        await entered.promise
+        clock.now += 60_000
+        const span = inflight(current.session.id)
+        expect(JSON.parse(span.attributes_json)).toMatchObject({
+          executionPhase: "waiting_background",
+          waitReason: "child",
+          activityState: "waiting",
+        })
+        expect(span.stalled).toBe(0)
+        SessionManager.signalAbort(current.session.id)
+        await expect(execution).rejects.toThrow()
+        await Promise.all(cancelling)
+        expect(Cortex.get(child!.id)?.status).toBe("cancelled")
+        expect(ObservabilityStore.queryInflight({ sessionID: current.session.id })).toEqual([])
+      } finally {
+        SessionManager.signalAbort(current.session.id)
+        await execution.catch(() => {})
+        if (child) await Cortex.cancel(child.id)
+        await Promise.allSettled(cancelling)
+        await SessionManager.release(current.lease, { requestNextWork: false })
       }
     }),
   ))

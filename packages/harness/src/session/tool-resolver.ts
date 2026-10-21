@@ -751,6 +751,7 @@ export namespace ToolResolver {
     await input.processor.updateToolCallState(ctx.callID, {
       input: args,
       ...state,
+      onProgress: ctx.execution?.progress,
     })
   }
 
@@ -1216,7 +1217,6 @@ export namespace ToolResolver {
         })
       }
       let profilePromise: Promise<ResolvedProfile> | undefined
-      let lastMetadata: string | undefined
       const resolvedProfile = async (): Promise<ResolvedProfile> => {
         profilePromise ??= resolveCurrentProfile()
         return profilePromise
@@ -1287,11 +1287,6 @@ export namespace ToolResolver {
         },
         agent: input.agent.name,
         metadata: async (val: { title?: string; metadata?: any }) => {
-          const signature = JSON.stringify(val)
-          if (signature !== lastMetadata) {
-            lastMetadata = signature
-            ctx.execution?.progress()
-          }
           const approval = approvalFromContext(ctx)
           await updateRunningToolPart(input, ctx, args as Record<string, any>, {
             title: val.title,

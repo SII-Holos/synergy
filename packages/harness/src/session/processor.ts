@@ -90,6 +90,7 @@ export namespace SessionProcessor {
     title?: string
     metadata?: Record<string, any>
     start?: number
+    onProgress?: () => void
   }
 
   export function createSlot(callID: string): ToolExecutionSlot {
@@ -633,6 +634,7 @@ export namespace SessionProcessor {
         title: state.title ?? pending?.title,
         metadata: ToolTimeout.mergeMetadata(pending?.metadata, state.metadata),
         start: state.start ?? pending?.start,
+        onProgress: state.onProgress ?? pending?.onProgress,
       })
     }
 
@@ -650,6 +652,7 @@ export namespace SessionProcessor {
         ),
       }
       await SecretMask.transformResult(presentation)
+      const previousState = match.state
       const updated = await Session.updatePart({
         ...match,
         state: {
@@ -663,6 +666,12 @@ export namespace SessionProcessor {
         },
       })
       Object.assign(match, updated)
+      if (
+        updated.type === "tool" &&
+        updated.state.status === "running" &&
+        (updated.state.title !== previousState.title || !Bun.deepEquals(updated.state.metadata, previousState.metadata))
+      )
+        state.onProgress?.()
     }
 
     async function queueToolCallStateFlush(callID: string) {
@@ -1196,10 +1205,18 @@ export namespace SessionProcessor {
                   ["llm.stream.first_visible_text", firstVisibleText],
                 ] as const) {
                   if (!observation) continue
-                  const attempt = attempts.findLast(
-                    (attempt) => attempt.timing?.sentAt !== undefined && attempt.timing.sentAt <= observation.at,
-                  )
-                  const sentAt = attempt?.timing?.sentAt
+                  const started = attempts.filter((attempt) => attempt.started <= observation.at)
+                  const corresponding = started.at(-1)
+                  const ambiguous =
+                    corresponding !== undefined &&
+                    started.some(
+                      (attempt) =>
+                        attempt !== corresponding &&
+                        (attempt.ended === undefined || attempt.ended > corresponding.started),
+                    )
+                  const dispatch = corresponding?.timing?.sentAt
+                  const sentAt =
+                    !ambiguous && dispatch !== undefined && dispatch <= observation.at ? dispatch : undefined
                   ObservabilityMetrics.record({
                     name: sentAt === undefined ? `${name}.unavailable` : name,
                     value: sentAt === undefined ? 1 : observation.at - sentAt,
@@ -1214,7 +1231,7 @@ export namespace SessionProcessor {
                       kind: observation.kind,
                       clock: sentAt === undefined ? "unknown" : "transport.sentAt",
                       observedAt: "processor",
-                      ...(sentAt === undefined ? { reason: "dispatch_unknown" } : {}),
+                      ...(sentAt === undefined ? { reason: ambiguous ? "attempt_ambiguous" : "dispatch_unknown" } : {}),
                     },
                   })
                 }
@@ -1355,9 +1372,9 @@ export namespace SessionProcessor {
                       break
 
                     case "tool-input-start": {
+                      if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
                       activity("responding")
                       observeContent("tool", value.toolName)
-                      if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
                       const part = await Session.updatePart({
                         id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
@@ -1382,7 +1399,6 @@ export namespace SessionProcessor {
                     }
 
                     case "tool-input-delta": {
-                      observeContent("tool", value.delta)
                       const match = toolcalls[value.id]
                       if (!match || settledToolCalls.has(value.id) || settlingToolCalls.has(value.id)) break
                       const prevRaw = generatingAccum[value.id]
@@ -1406,6 +1422,7 @@ export namespace SessionProcessor {
                         delete generatingBytes[value.id]
                         throw new Error(error)
                       }
+                      observeContent("tool", value.delta)
                       generatingBytes[value.id] = receivedBytes
                       const raw = prevRaw + value.delta
                       generatingAccum[value.id] = raw
@@ -1449,8 +1466,6 @@ export namespace SessionProcessor {
                     }
 
                     case "tool-call": {
-                      observeContent("tool", value.toolName)
-                      if (rollout) modelCalls.set(value.toolCallId, rollout)
                       log.info("tool.stream.tool_call.received", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1461,6 +1476,7 @@ export namespace SessionProcessor {
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
                       if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
+                      if (rollout) modelCalls.set(value.toolCallId, rollout)
                       const match = toolcalls[value.toolCallId]
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
@@ -1529,6 +1545,7 @@ export namespace SessionProcessor {
                         delete generatingBytes[value.toolCallId]
                         throw new Error(error)
                       }
+                      observeContent("tool", value.toolName)
                       log.info("tool.stream.tool_call.persist_running", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
