@@ -6,6 +6,8 @@ Full installations select this component. Core does not. Digital Twin depends on
 
 The composer shows a suggestion only after a successful completed root and on an eligible empty draft. Tab inserts it, Escape dismisses it, and sending remains explicit. Manual prediction is available when automatic prediction is disabled. Accepted suggestions retain generic assistance metadata so subsequent predictions do not treat them as original voice.
 
+Historical eligibility is not proof of authorship. Copied tasks in legacy user messages can pass the voice filter when paste/source metadata and recognizable quotation formatting are absent. New assistance provenance prevents known feedback loops but cannot establish who wrote older text. Evaluate the selected evidence as well as the predictions before claiming personalization quality.
+
 Legacy history is scanned through the shared credential detector before use. Discovery completes across each selected context/evidence batch before masking, so a later recognized credential also protects earlier occurrences. Credential-bearing originals are excluded from voice examples and statistics. The registered-value revision withdraws old projections immediately and fences requests while background rebuilding runs. This does not claim complete recognition of unknown secret formats.
 
 See the [decision record](../../docs/decisions/implemented/feature/2026-10-21-digital-twin-next-input.md) for ownership, provenance and quality constraints. Run focused tests with `bun test test` and type checking with `bun run typecheck`.

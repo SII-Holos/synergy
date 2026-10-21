@@ -46,7 +46,7 @@ The prediction prompt distinguishes a completed assistant turn from completion o
 
 ## Consequences
 
-Suggestions remain optional and editable, and removal leaves ordinary messages readable. Historical preparation has a cold cost, including one-time discovery reads for legacy parts without summaries; warm inference hydrates selected examples only. Provenance exclusions are conservative and cannot recover authorship that older records never retained. Temporal evaluation must report insufficient evidence or failed quality targets explicitly, and user resemblance remains an empirical judgment.
+Suggestions remain optional and editable, and removal leaves ordinary messages readable. Historical preparation has a cold cost, including one-time discovery reads for legacy parts without summaries; warm inference hydrates selected examples only. The [historical authorship limitation](../../../../packages/digital-twin/README.md) remains explicit: canonical history is not rewritten to invent missing provenance, and outcome-driven keyword exclusions cannot repair a frozen evaluation. Temporal evaluation must report insufficient evidence or failed quality targets explicitly, and user resemblance remains an empirical judgment.
 
 Manual prediction returns focus to the existing editor when invoked, enabling Tab acceptance without another click. Arrival never steals focus after the user moves elsewhere. Native completion survives refocusing the unchanged caret; moving the caret still dismisses it, and Escape dismisses explicitly without changing the draft. Empty-editor ranges are anchored inside the editable element so completion insertion preserves native undo.
 
