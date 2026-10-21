@@ -3,7 +3,7 @@ import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import { sanitizePromptHistory } from "../../../src/components/prompt-input/history"
 
 test("history migration preserves assistance across serialization and accepts old plain prompts", () => {
-  const prompt = [{ type: "text", content: "再检查边界", start: 0, end: 5 }]
+  const prompt = [{ type: "text" as const, content: "再检查边界", start: 0, end: 5 }]
   const assistance = InputAssistance.accept(undefined, {
     producer: "digital-twin",
     proposalID: "p",

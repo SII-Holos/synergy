@@ -19,6 +19,28 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 }
 
 describe("ComposerDocumentController", () => {
+  test("an asynchronous acceptance cannot mark a different session draft as assisted", async () => {
+    let sessionId = "first"
+    let text = ""
+    const gate = Promise.withResolvers<void>()
+    const controller = new ComposerDocumentController({
+      read: () => ({ sessionId, text, mode: "normal", selection: { start: 0, end: 0 } }),
+      async applyEdits(edits) {
+        text = edits[0]!.text
+        await gate.promise
+      },
+    })
+    const service = controller.service({ id: "completion", capabilities: new Set(["composer.write"]) })
+    service.setCompletion({ revision: 0, position: 0, text: "再检查一下", proposalID: "proposal" })
+    const accepting = controller.acceptCompletion()
+    sessionId = "second"
+    text = "独立输入"
+    controller.changed()
+    gate.resolve()
+    expect(await accepting).toBe(false)
+    expect(controller.assistance()).toBeUndefined()
+    controller.dispose()
+  })
   test("accepting a completion records assistance through edits and producer removal", async () => {
     const { controller, text } = fixture()
     const service = controller.service({ id: "completion", capabilities: new Set(["composer.read", "composer.write"]) })

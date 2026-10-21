@@ -16,6 +16,8 @@ The composer consumes successful root-completion events, fences connection, task
 
 Offline evaluation compares context, voice and full evidence using identical generation settings. Immutable execution records establish temporal cutoffs and authentic held-out inputs; unavailable historical versions are exclusions. Independent blinded scoring measures content, voice, abstention, evidence coverage and uncertainty. Quality targets are acceptance criteria for measured reports, never claims derived from unit tests.
 
+Predictability labels are frozen without candidates. Terminal replies must remain identical in the following immutable request. Each dispatched recipe retains its original result or interruption; errors cannot count as correct abstentions. Corpus, implementation and model configuration identify a frozen experiment. Session-family resampling preserves within-conversation dependence; the interval is widened using [Hoeffding's bounded-variable inequality](https://doi.org/10.1080/01621459.1963.10500830) to prevent tiny all-win samples from implying certainty. This retains the assumption of independent families and does not prove generalization to future behavior.
+
 ## Alternatives considered
 
 **A generated personality profile.** A prose profile can invent identity facts and lag changing preferences; versioned examples and numeric observations retain inspectable evidence.

@@ -231,16 +231,24 @@ export class ComposerDocumentController {
   async acceptCompletion() {
     const completion = this.completion()
     if (!completion) return false
+    const before = this.current()
     const assistance = InputAssistance.accept(this.assistance(), {
       producer: completion.producer,
       proposalID: completion.proposalID,
       generated: completion.text,
       accepted: completion.text,
     })
-    await this.applyEdits({
+    const applied = await this.applyEdits({
       revision: completion.revision,
       edits: [{ range: { start: completion.position, end: completion.position }, text: completion.text }],
     })
+    if (
+      applied.sessionId !== before.sessionId ||
+      applied.mode !== before.mode ||
+      applied.text !==
+        before.text.slice(0, completion.position) + completion.text + before.text.slice(completion.position)
+    )
+      return false
     this.#setAssistance(assistance)
     return true
   }

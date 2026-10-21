@@ -27,6 +27,7 @@
     "ai": "catalog:"
   },
   "devDependencies": {
+    "@ericsanchezok/synergy-agent-runtime": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
     "@tsconfig/bun": "catalog:",
