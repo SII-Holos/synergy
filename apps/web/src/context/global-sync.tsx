@@ -18,7 +18,7 @@ import {
   type VcsInfo,
   type PermissionRequest,
   type QuestionRequest,
-  type CortexTask,
+  type CortexTaskSummary,
   type AgendaItem,
   type SessionInboxItem,
   type ScopeBootstrapResponse,
@@ -340,7 +340,7 @@ function createGlobalSync() {
     provider: ProviderSnapshot
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
-    cortex: CortexTask[]
+    cortex: CortexTaskSummary[]
     sessionStatus: SessionStatusIndex
     permission: Record<string, PermissionRequest[]>
     question: Record<string, QuestionRequest[]>
@@ -1092,7 +1092,7 @@ function createGlobalSync() {
   }
 
   const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
-  const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
+  const terminalCortexStatuses = new Set(["completed", "error", "cancelled", "interrupted"])
 
   function refreshInbox(scopeKey: string, sessionID: string) {
     let timers = inboxRefreshTimers.get(scopeKey)
@@ -1139,7 +1139,7 @@ function createGlobalSync() {
   function reconcileCortexFromSession(info: Session) {
     const cortex = info.cortex
     if (!cortex || !terminalCortexStatuses.has(cortex.status)) return undefined
-    const idx = globalStore.cortex.findIndex((task) => task.sessionID === info.id)
+    const idx = globalStore.cortex.findIndex((task) => task.sessionID === info.id && task.id === cortex.taskID)
     if (idx === -1) return undefined
     const taskID = globalStore.cortex[idx].id
     setGlobalStore(
@@ -1149,8 +1149,16 @@ function createGlobalSync() {
         ...globalStore.cortex[idx],
         status: cortex.status,
         completedAt: cortex.completedAt ?? globalStore.cortex[idx].completedAt,
-        output: cortex.output ?? globalStore.cortex[idx].output,
-        error: cortex.error ?? globalStore.cortex[idx].error,
+        usage: cortex.usage
+          ? {
+              inputTokens: cortex.usage.inputTokens,
+              outputTokens: cortex.usage.outputTokens,
+              reasoningTokens: cortex.usage.reasoningTokens,
+              cacheReadTokens: cortex.usage.cacheReadTokens,
+              cacheWriteTokens: cortex.usage.cacheWriteTokens,
+              cost: cortex.usage.cost,
+            }
+          : globalStore.cortex[idx].usage,
       }),
     )
     return taskID

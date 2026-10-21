@@ -1,5 +1,5 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
-import { describe, expect, test, beforeEach, mock } from "bun:test"
+import { describe, expect, test, beforeEach, mock, spyOn } from "bun:test"
 import { Cortex, CortexConcurrency } from "@ericsanchezok/synergy-harness/cortex"
 import { CortexTypes } from "@ericsanchezok/synergy-harness/cortex/types"
 import { Bus } from "@ericsanchezok/synergy-harness/bus"
@@ -26,12 +26,12 @@ const runtime = await testRuntime()
 
 async function launchAndCaptureCreatedTask(
   launch: () => Promise<CortexTypes.Task>,
-  predicate: (task: CortexTypes.Task) => boolean,
-): Promise<{ createdTask: CortexTypes.Task; launchPromise: Promise<CortexTypes.Task> }> {
+  predicate: (task: CortexTypes.TaskSummary) => boolean,
+): Promise<{ createdTask: CortexTypes.TaskSummary; launchPromise: Promise<CortexTypes.Task> }> {
   let unsubscribe = () => {}
   let launchPromise!: Promise<CortexTypes.Task>
 
-  const createdTask = await new Promise<CortexTypes.Task>((resolve, reject) => {
+  const createdTask = await new Promise<CortexTypes.TaskSummary>((resolve, reject) => {
     unsubscribe = Bus.subscribe(Cortex.Event.TaskCreated, (event) => {
       const task = event.properties.task
       if (!predicate(task)) return
@@ -207,6 +207,108 @@ describe.serial("Cortex", () => {
   })
 
   describe("prepare", () => {
+    test("events and list summaries exclude large task bodies while durable output remains readable", () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir()
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const prompt = "private task prompt ".repeat(32_768)
+            const result = "private task result ".repeat(32_768).trim()
+            const stack = "private task stack\n".repeat(32_768).trim()
+            const events: Array<{ type: string; properties: Record<string, unknown> }> = []
+            const unsubscribe = Bus.subscribeAll((event) => {
+              if (event.type.startsWith("cortex.")) events.push(event)
+            })
+            using invoke = spyOn(SessionInvoke, "invokeInternal").mockImplementation((input) =>
+              writeAssistantText(input.sessionID, result),
+            )
+            try {
+              const parent = await Session.create({})
+              const before = Bus.currentSeq()
+              const task = await Cortex.launch({
+                description: "Large delegated result",
+                prompt,
+                agent: "developer",
+                parentSessionID: parent.id,
+                parentMessageID: "msg_summary_projection",
+                notifyParentOnComplete: false,
+                model: { providerID: "test-provider", modelID: "test-model" },
+                output: { mode: "final_response" },
+              })
+              expect((await Cortex.waitFor(task.id, 5))?.status).toBe("completed")
+              await Cortex.drain()
+              invoke.mockImplementation(async () => {
+                throw new Error(stack)
+              })
+              const failed = await Cortex.launch({
+                description: "Large delegated failure",
+                prompt,
+                agent: "developer",
+                parentSessionID: parent.id,
+                parentMessageID: "msg_summary_failure",
+                notifyParentOnComplete: false,
+                model: { providerID: "test-provider", modelID: "test-model" },
+              })
+              expect((await Cortex.waitFor(failed.id, 5))?.status).toBe("error")
+              await Cortex.drain()
+              for (const event of events) {
+                expect(JSON.stringify(event.properties)).not.toContain('"prompt"')
+                expect(JSON.stringify(event.properties)).not.toContain('"output"')
+              }
+              const summaries = Cortex.listVisibleSummaries()
+              expect(summaries).toEqual(Cortex.listVisibleSummaries(parent.id))
+              expect(summaries[0]).toMatchObject({
+                id: task.id,
+                status: "completed",
+                usage: { cost: task.usage?.cost },
+              })
+              expect(summaries[0].usage).not.toHaveProperty("accounting")
+              expect(events.map((event) => event.type)).toContain("cortex.task.created")
+              expect(events.map((event) => event.type)).toContain("cortex.task.completed")
+              expect(events.map((event) => event.type)).toContain("cortex.tasks.updated")
+              const replay = Bus.replay(before)
+              expect(replay.status).toBe("ok")
+              const projections = [
+                ...events.map((event) => event.properties),
+                summaries,
+                ...(replay.status === "ok"
+                  ? replay.events.filter((event) => (event as { type: string }).type.startsWith("cortex."))
+                  : []),
+              ]
+              for (const projection of projections) {
+                const serialized = JSON.stringify(projection)
+                expect(serialized).not.toContain("private task prompt")
+                expect(serialized).not.toContain("private task result")
+                expect(serialized).not.toContain("private task stack")
+                expect(serialized).not.toContain('"prompt"')
+                expect(serialized).not.toContain('"output"')
+                expect(serialized).not.toContain('"outputConfig"')
+                expect(serialized).not.toContain('"error":')
+                expect(serialized).not.toContain('"lastMessage"')
+                expect(serialized.length).toBeLessThan(8_192)
+              }
+              expect(events.find((event) => event.type === "cortex.task.created")?.properties.task).toMatchObject({
+                id: task.id,
+                status: "queued",
+              })
+              Cortex.reset()
+              const durable = await Cortex.getVisibleTaskForOutput(parent.id, task.id)
+              expect(durable?.prompt).toBe(prompt)
+              expect(durable?.output).toEqual({ mode: "final_response", value: result })
+              expect(await Cortex.output(task.id, "full", parent.id)).toContain(result)
+              expect((await Cortex.getVisibleTaskForOutput(parent.id, failed.id))?.error).toContain(stack)
+              const foreignParent = await Session.create({})
+              expect(await Cortex.getVisibleTaskForOutput(foreignParent.id, task.id)).toBeUndefined()
+            } finally {
+              unsubscribe()
+              await Cortex.drain()
+              Cortex.reset()
+            }
+          },
+        })
+      }))
+
     test("persists revised task controls when reusing a terminal child session", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
@@ -453,7 +555,7 @@ describe.serial("Cortex", () => {
             const childMayFinish = Promise.withResolvers<void>()
             const usageReadStarted = Promise.withResolvers<void>()
             const releaseUsageRead = Promise.withResolvers<void>()
-            const terminalPublished = Promise.withResolvers<CortexTypes.Task>()
+            const terminalPublished = Promise.withResolvers<CortexTypes.TaskSummary>()
             let taskID = ""
             let childSessionID = ""
             const unsubscribe = Bus.subscribe(Cortex.Event.TaskCompleted, (event) => {
@@ -654,7 +756,7 @@ describe.serial("Cortex", () => {
           scope: await tmp.scope(),
           fn: async () => {
             const parentSession = await Session.create({})
-            let createdTask: CortexTypes.Task | undefined
+            let createdTask: CortexTypes.TaskSummary | undefined
 
             const unsub = Bus.subscribe(Cortex.Event.TaskCreated, (event) => {
               createdTask = event.properties.task
@@ -799,7 +901,7 @@ describe.serial("Cortex", () => {
           scope: await tmp.scope(),
           fn: async () => {
             const originalInvokeInternal = SessionInvoke.invokeInternal
-            const progressUpdates: CortexTypes.Task[] = []
+            const progressUpdates: CortexTypes.TaskSummary[] = []
             const unsubscribe = Bus.subscribe(Cortex.Event.TasksUpdated, (event) => {
               for (const task of event.properties.tasks) {
                 if (task.progress?.lastTool === "bash") progressUpdates.push(task)
@@ -833,10 +935,10 @@ describe.serial("Cortex", () => {
               })
               taskID = task.id
 
-              let progressTask: CortexTypes.Task | undefined
+              let progressTask: CortexTypes.TaskSummary | undefined
               for (let i = 0; i < 80; i++) {
                 progressTask = progressUpdates.find(
-                  (item) => item.id === task.id && item.progress?.lastMessage === "partial status",
+                  (item) => item.id === task.id && item.progress?.lastToolStatus === "running",
                 )
                 if (progressTask) break
                 await Bun.sleep(25)
@@ -846,7 +948,8 @@ describe.serial("Cortex", () => {
               expect(progressTask?.progress?.toolCalls).toBe(1)
               expect(progressTask?.progress?.lastTool).toBe("bash")
               expect(progressTask?.progress?.lastToolStatus).toBe("running")
-              expect(progressTask?.progress?.lastMessage).toBe("partial status")
+              expect(progressTask?.progress).not.toHaveProperty("lastMessage")
+              expect(progressTask?.progress).not.toHaveProperty("recentTools")
 
               const beforeBurst = progressUpdates.length
               for (let i = 0; i < 10; i++) {
@@ -1469,8 +1572,8 @@ describe.serial("Cortex", () => {
     type TaskOutputParams = Parameters<TaskOutputInstance["execute"]>[0]
     type TaskOutputContext = Parameters<TaskOutputInstance["execute"]>[1]
 
-    async function waitUntilCompleted(taskID: string) {
-      const completed = Promise.withResolvers<ReturnType<typeof Cortex.get>>()
+    async function waitUntilCompleted(taskID: string): Promise<CortexTypes.TaskSummary | undefined> {
+      const completed = Promise.withResolvers<CortexTypes.TaskSummary>()
       const unsubscribe = Bus.subscribe(Cortex.Event.TaskCompleted, (event) => {
         if (event.properties.task.id === taskID) completed.resolve(event.properties.task)
       })

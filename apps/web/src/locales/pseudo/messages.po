@@ -6238,6 +6238,10 @@ msgid "app.performance.issue.slowTurn"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.performance.issue.stalledTool"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.performance.issue.storageFailed"
 msgstr ""
 

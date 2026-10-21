@@ -49,7 +49,9 @@ export namespace Bus {
       }
     },
     async (entry) => {
+      entry.sequencer.dispose()
       const wildcard = entry.subscriptions.get("*")
+      entry.subscriptions.clear()
       if (!wildcard) return
       const event = {
         type: ScopeRuntimeDisposed.type,

@@ -2,9 +2,10 @@ import { Marked } from "marked"
 import { ResourceReference } from "./resource-reference"
 
 const markdown = new Marked()
+export const MARKDOWN_ASSET_REFERENCE_CHARS = 262144
 
 export function markdownAssetReferences(text: string): string[] {
-  const source = text.slice(0, 262144)
+  const source = text.slice(0, MARKDOWN_ASSET_REFERENCE_CHARS)
   if (!source.includes("asset://")) return []
   const references = new Set<string>()
   markdown.walkTokens(markdown.lexer(source), (token) => {

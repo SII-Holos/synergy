@@ -18,6 +18,7 @@ let dbPathValue: string | undefined
 
 const counters: {
   dropped: number
+  droppedObservations: number
   committed: number
   capExceededBytes: number
   maintenanceDeferred: boolean
@@ -25,6 +26,7 @@ const counters: {
   lastError?: string
 } = {
   dropped: 0,
+  droppedObservations: 0,
   committed: 0,
   capExceededBytes: 0,
   maintenanceDeferred: false,
@@ -55,6 +57,9 @@ function applyRow(row: TelemetryProtocol.BatchRow): void {
       break
     case "issue":
       ObservabilityDbWrites.insertIssue(db, row.row)
+      break
+    case "issue-status":
+      ObservabilityDbWrites.updateIssueStatus(db, row.row)
       break
     case "browser-batch":
       ObservabilityDbWrites.insertBrowserBatch(db, row.row)
@@ -156,6 +161,10 @@ function handle(message: TelemetryProtocol.HostToWorker): void {
         counters.committed += message.rows.length
       } catch (error) {
         counters.dropped += message.rows.length
+        counters.droppedObservations += message.rows.reduce(
+          (total, row) => total + TelemetryProtocol.observationCount(row),
+          0,
+        )
         counters.lastError = error instanceof Error ? error.message : String(error)
       }
       sendStatus()

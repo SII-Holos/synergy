@@ -24,6 +24,7 @@ export namespace ObservabilitySpans {
     heartbeatTime?: number
     heartbeatCount: number
     stalled: boolean
+    ended?: boolean
     scopeID?: string
     sessionID?: string
     messageID?: string
@@ -57,21 +58,23 @@ export namespace ObservabilitySpans {
     const parent = ObservabilityContext.current()
     const time = ObservabilityClock.now()
     const redacted = ObservabilityRedaction.redactRecord(input.attributes)
-    const context = ObservabilityContext.merge({
-      correlationId: input.correlationId,
-      traceId: input.traceId ?? parent.traceId ?? traceId(kindPrefix(input.kind ?? kindForName(input.name))),
-      parentSpanId: input.parentSpanId ?? parent.spanId,
-      scopeID: input.scopeID,
-      sessionID: input.sessionID,
-      messageID: input.messageID,
-      callID: input.callID,
-      rid: input.rid,
-      processId: input.processId,
-      pid: input.pid,
-      tool: input.tool,
-      module: input.module,
-      source: input.source ?? "backend",
-    })
+    const context = ObservabilityContext.merge(
+      ObservabilityContext.compact({
+        correlationId: input.correlationId,
+        traceId: input.traceId ?? parent.traceId ?? traceId(kindPrefix(input.kind ?? kindForName(input.name))),
+        parentSpanId: input.parentSpanId ?? parent.spanId,
+        scopeID: input.scopeID,
+        sessionID: input.sessionID,
+        messageID: input.messageID,
+        callID: input.callID,
+        rid: input.rid,
+        processId: input.processId,
+        pid: input.pid,
+        tool: input.tool,
+        module: input.module,
+        source: input.source ?? "backend",
+      }),
+    )
     const span: ObservabilitySchema.Span = ObservabilitySchema.Span.parse({
       traceId: context.traceId,
       correlationId: context.correlationId,
@@ -125,7 +128,7 @@ export namespace ObservabilitySpans {
   }
 
   export function activity(ctx: SpanContext | undefined, attributes?: Record<string, unknown>) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
     const now = ObservabilityClock.now()
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(attributes ?? {}) })
     ctx.lastActivityTime = now
@@ -134,11 +137,10 @@ export namespace ObservabilitySpans {
   }
 
   export function heartbeat(ctx: SpanContext | undefined, attributes?: Record<string, unknown>) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
     const now = ObservabilityClock.now()
     ctx.heartbeatTime = now
     ctx.heartbeatCount++
-    ctx.lastActivityTime = now
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(attributes ?? {}) })
     ctx.attributes = redacted.value
     ObservabilityStore.updateSpan(
@@ -147,9 +149,8 @@ export namespace ObservabilitySpans {
   }
 
   export function markStalled(ctx: SpanContext | undefined, attributes?: Record<string, unknown>) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
     ctx.stalled = true
-    ctx.lastActivityTime = ObservabilityClock.now()
     const redacted = ObservabilityRedaction.redactRecord({ ...ctx.attributes, ...(attributes ?? {}) })
     ctx.attributes = redacted.value
     ObservabilityStore.updateSpan(toSpan(ctx, { stalled: true, redaction: redacted.summary }))
@@ -163,7 +164,8 @@ export namespace ObservabilitySpans {
       attributes?: Record<string, unknown>
     } = {},
   ) {
-    if (!ctx) return
+    if (!ctx || ctx.ended) return
+    ctx.ended = true
     const durationMs = ObservabilityClock.durationMs(ctx.startMark)
     const time = ObservabilityClock.now()
     const status = opts.status ?? (opts.error ? "error" : "ok")
@@ -198,23 +200,34 @@ export namespace ObservabilitySpans {
     })
     ObservabilityLiveEvents.publish({ type: "trace.ended", trace: span })
     const config = ObservabilityConfig.current()
-    const threshold =
-      (config.thresholds as Record<string, number>)[`${ctx.module}.slowMs`] ?? config.slowTraceThresholdMs
+    const thresholds: Partial<Record<ObservabilitySchema.Module, number>> = {
+      server: config.thresholds.slowHttpRequestMs,
+      session: config.thresholds.slowSessionTurnMs,
+      llm: config.thresholds.slowLlmCallMs,
+      tool: config.thresholds.slowToolMs,
+      storage: config.thresholds.slowStorageOperationMs,
+    }
+    const threshold = thresholds[ctx.module] ?? config.slowTraceThresholdMs
     if (durationMs >= threshold) {
-      ObservabilityIssues.raise({
-        code: slowCode(ctx.module),
-        severity: "warning",
-        module: ctx.module,
-        title: `Slow ${ctx.name}`,
-        message: `${ctx.name} took ${Math.round(durationMs)}ms`,
-        recommendation: "Open the trace detail to inspect the slowest child span and owning module.",
-        correlationId: ctx.correlationId,
-        traceId: ctx.traceId,
-        spanId: ctx.spanId,
-        sessionID: ctx.sessionID,
-        rid: ctx.rid,
-        evidence: { observedValue: durationMs, unit: "ms" },
-      })
+      ObservabilityContext.withContext(ctx, () =>
+        ObservabilityIssues.raise({
+          code: slowCode(ctx.module),
+          severity: "warning",
+          module: ctx.module,
+          title: `Slow ${ctx.name}`,
+          message: `${ctx.name} took ${Math.round(durationMs)}ms`,
+          recommendation: "Open the trace detail to inspect the slowest child span and owning module.",
+          correlationId: ctx.correlationId,
+          traceId: ctx.traceId,
+          spanId: ctx.spanId,
+          scopeID: ctx.scopeID,
+          sessionID: ctx.sessionID,
+          messageID: ctx.messageID,
+          callID: ctx.callID,
+          rid: ctx.rid,
+          evidence: { observedValue: durationMs, unit: "ms" },
+        }),
+      )
     }
     return span
   }
@@ -299,7 +312,7 @@ export namespace ObservabilitySpans {
     if (module === "server") return "PERF_HTTP_SLOW_REQUEST"
     if (module === "session") return "PERF_SESSION_SLOW_TURN"
     if (module === "llm") return "PERF_LLM_SLOW_CALL"
-    if (module === "tool") return "PERF_TOOL_STALLED"
+    if (module === "tool") return "PERF_TOOL_SLOW_EXECUTION"
     if (module === "storage") return "PERF_STORAGE_SLOW_OPERATION"
     if (module === "library") return "PERF_LIBRARY_SLOW_QUERY"
     if (module === "frontend") return "PERF_FRONTEND_LONG_TASK"

@@ -10921,13 +10921,15 @@ export class Cortex extends HeyApiClient {
   /**
    * Get Cortex task
    *
-   * Get a specific background task by ID
+   * Get a background task, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
       taskID: string
       directory?: string
       scopeID?: string
+      parentSessionID?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -10939,6 +10941,8 @@ export class Cortex extends HeyApiClient {
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "parentSessionID" },
+            { in: "query", key: "sessionID" },
           ],
         },
       ],
@@ -10953,13 +10957,15 @@ export class Cortex extends HeyApiClient {
   /**
    * Get task output
    *
-   * Get the output of a completed background task
+   * Get task output, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.
    */
   public output<ThrowOnError extends boolean = false>(
     parameters: {
       taskID: string
       directory?: string
       scopeID?: string
+      parentSessionID?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -10971,6 +10977,8 @@ export class Cortex extends HeyApiClient {
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "parentSessionID" },
+            { in: "query", key: "sessionID" },
           ],
         },
       ],

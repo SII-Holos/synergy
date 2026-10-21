@@ -87,6 +87,41 @@ export namespace CortexTypes {
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>
 
+  export const TaskIdentity = Task.pick({ parentSessionID: true, sessionID: true }).partial()
+  export type TaskIdentity = z.infer<typeof TaskIdentity>
+
+  export const TaskSummary = Task.pick({
+    id: true,
+    sessionID: true,
+    parentSessionID: true,
+    parentMessageID: true,
+    description: true,
+    agent: true,
+    model: true,
+    executionRole: true,
+    category: true,
+    dagNodeId: true,
+    status: true,
+    startedAt: true,
+    completedAt: true,
+    launchFailure: true,
+  })
+    .extend({
+      progress: TaskProgress.pick({
+        toolCalls: true,
+        lastTool: true,
+        lastToolStatus: true,
+        lastUpdate: true,
+      }).optional(),
+      usage: TaskUsage.omit({ accounting: true }).optional(),
+    })
+    .meta({ ref: "CortexTaskSummary" })
+  export type TaskSummary = z.infer<typeof TaskSummary>
+
+  export function summarize(task: Task): TaskSummary {
+    return TaskSummary.parse(task)
+  }
+
   export const LaunchInput = z.object({
     description: z.string(),
     prompt: z.string(),

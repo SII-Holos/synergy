@@ -17,7 +17,7 @@ import { StorageClosedError } from "../storage/errors"
 export namespace ObservabilityStore {
   export const schemaVersion = ObservabilityDbSchema.schemaVersion
   const MAX_PENDING = 10_000
-  const FLUSH_MS = 1000
+  const FLUSH_MS = 250
   const runtimeState = RuntimeContext.state(() => ({
     stopped: false,
     db: undefined as Database | undefined,
@@ -36,8 +36,9 @@ export namespace ObservabilityStore {
     maintenanceDeferred: false,
     checkpointIntervalMs: undefined as number | undefined,
     retentionIntervalMs: undefined as number | undefined,
-    pending: [] as Array<() => void>,
-    beforeFlushHooks: new Set<() => void>(),
+    pending: [] as Array<{ run: () => void; observations: number }>,
+    beforeFlushHooks: new Set<(force: boolean) => void>(),
+    drainingBuffered: false,
     dataVersionCounter: 0,
     runtimeReady: false,
   }))
@@ -89,7 +90,7 @@ export namespace ObservabilityStore {
   // enqueue: telemetry produced while observability is disabled is dropped,
   // not buffered for a later re-enable.
   function workerEnqueue(row: TelemetryProtocol.BatchRow) {
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     ObservabilityTelemetryClient.enqueue(row)
   }
 
@@ -121,6 +122,7 @@ export namespace ObservabilityStore {
       return {
         pending: client.pending,
         dropped: instanceState.droppedJobs + client.dropped,
+        uncertain: client.uncertain,
         available: queryConnection() !== undefined,
         lastOpenError: instanceState.lastOpenError,
         capExceededBytes: client.capExceededBytes,
@@ -132,6 +134,7 @@ export namespace ObservabilityStore {
     return {
       pending: instanceState.pending.length,
       dropped: instanceState.droppedJobs,
+      uncertain: 0,
       available: !!instanceState.db,
       lastOpenError: instanceState.lastOpenError,
       capExceededBytes: instanceState.capExceededBytes,
@@ -141,11 +144,47 @@ export namespace ObservabilityStore {
     }
   }
 
-  export function beforeFlush(hook: () => void) {
+  export function beforeFlush(hook: (force: boolean) => void) {
     const instanceState = runtimeState()
 
-    instanceState.beforeFlushHooks.add(hook)
-    return () => instanceState.beforeFlushHooks.delete(hook)
+    const drain = (force = false) => {
+      const previous = instanceState.drainingBuffered
+      instanceState.drainingBuffered = true
+      try {
+        hook(force)
+      } finally {
+        instanceState.drainingBuffered = previous
+      }
+    }
+    instanceState.beforeFlushHooks.add(drain)
+    const removeWorkerHook = ObservabilityTelemetryClient.beforeFlush(drain)
+    return () => {
+      instanceState.beforeFlushHooks.delete(drain)
+      removeWorkerHook()
+    }
+  }
+
+  export function accepting() {
+    return !runtimeState().stopped && ObservabilityConfig.current().enabled
+  }
+
+  function canEnqueue() {
+    // Flush hooks materialize observations accepted before configuration was disabled.
+    return accepting() || (!runtimeState().stopped && runtimeState().drainingBuffered)
+  }
+
+  export function requestFlush() {
+    if (!accepting()) return
+    if (!inlineMode()) {
+      open()
+      ObservabilityTelemetryClient.requestFlush()
+      return
+    }
+    const instanceState = runtimeState()
+    if (!instanceState.flushTimer) {
+      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
+      instanceState.flushTimer.unref()
+    }
   }
 
   export function dir() {
@@ -176,7 +215,7 @@ export namespace ObservabilityStore {
     }
     if (instanceState.db) return instanceState.db
     const config = ObservabilityConfig.current()
-    if (!config.enabled || !config.storage.sqliteEnabled) return undefined
+    if ((!config.enabled || !config.storage.sqliteEnabled) && !instanceState.drainingBuffered) return undefined
     if (instanceState.openFailed) return undefined
     try {
       instanceState.db = createConnection()
@@ -196,8 +235,7 @@ export namespace ObservabilityStore {
 
     const config = ObservabilityConfig.current()
     if (!config.enabled || !config.storage.sqliteEnabled) {
-      close()
-      return
+      return close()
     }
     if (!inlineMode()) {
       if (!instanceState.runtimeReady) return
@@ -236,7 +274,7 @@ export namespace ObservabilityStore {
   }
 
   export function stop() {
-    flush()
+    flush(true)
     runtimeState().stopped = true
     return close()
   }
@@ -246,7 +284,7 @@ export namespace ObservabilityStore {
 
     if (!inlineMode()) {
       clearTimers()
-      flush()
+      flush(true)
       instanceState.readonlyDb?.close(false)
       instanceState.readonlyDb = undefined
       instanceState.clientActive = false
@@ -269,7 +307,7 @@ export namespace ObservabilityStore {
     // strict close report SQLITE_BUSY during shutdown.
     clearTimers()
     try {
-      flush()
+      flush(true)
     } finally {
       // A lazy flush can open the connection and schedule maintenance again.
       clearTimers()
@@ -316,7 +354,7 @@ export namespace ObservabilityStore {
     // Data version must stay frozen while disabled: the dashboard summary
     // cache keys on it, so an increment that never persists would still
     // defeat the cache.
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "metric", row: metric })
@@ -331,7 +369,7 @@ export namespace ObservabilityStore {
   export function insertSpan(span: ObservabilitySchema.Span) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "span", row: span })
@@ -350,7 +388,7 @@ export namespace ObservabilityStore {
   export function insertEvent(event: ObservabilitySchema.Event) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "event", row: event })
@@ -365,7 +403,7 @@ export namespace ObservabilityStore {
   export function insertResource(sample: ObservabilitySchema.ResourceSample) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "resource", row: sample })
@@ -380,7 +418,7 @@ export namespace ObservabilityStore {
   export function insertIssue(issue: ObservabilitySchema.Issue) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "issue", row: issue })
@@ -389,7 +427,27 @@ export namespace ObservabilityStore {
     enqueue(() => {
       const conn = open()
       if (conn) ObservabilityDbWrites.insertIssue(conn, issue)
+    }, issue.occurrenceCount)
+  }
+
+  export function updateIssueStatus(update: TelemetryProtocol.IssueStatusUpdate) {
+    if (!canEnqueue()) return
+    runtimeState().dataVersionCounter++
+    if (!inlineMode()) {
+      workerEnqueue({ kind: "issue-status", row: update })
+      return
+    }
+    enqueue(() => {
+      const conn = open()
+      if (conn) ObservabilityDbWrites.updateIssueStatus(conn, update)
     })
+  }
+
+  export function findPersistedOpenIssue(fingerprint: string) {
+    const conn = queryConnection()
+    return conn
+      ? getRow<StoredIssue>(conn, "SELECT * FROM obs_issues WHERE fingerprint = ? AND status = 'open'", fingerprint)
+      : undefined
   }
 
   export function insertBrowserBatch(input: {
@@ -402,7 +460,7 @@ export namespace ObservabilityStore {
   }) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     instanceState.dataVersionCounter++
     if (!inlineMode()) {
       workerEnqueue({ kind: "browser-batch", row: input })
@@ -835,26 +893,68 @@ export namespace ObservabilityStore {
     return getRow<StoredResource>(conn, "SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1")
   }
 
-  export function resourceSince(since: number, opts: { scopeID?: string; limit?: number; newestFirst?: boolean } = {}) {
+  export function resourceSince(
+    since: number,
+    opts: {
+      scopeID?: string
+      role?: ObservabilitySchema.ResourceSample["process"]["role"]
+      until?: number
+      limit?: number
+      newestFirst?: boolean
+    } = {},
+  ) {
     flush()
     const limit = opts.limit ?? 10_000
     const conn = queryConnection()
     if (!conn) return []
+    const filters = ["time >= ?"]
+    const params: SqlBinding[] = [since]
+    if (opts.until !== undefined) {
+      filters.push("time < ?")
+      params.push(opts.until)
+    }
     if (opts.scopeID) {
-      return allRows<StoredResource>(
-        conn,
-        `SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
-        since,
-        opts.scopeID,
-        limit,
-      )
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
+    }
+    if (opts.role) {
+      filters.push("process_role = ?")
+      params.push(opts.role)
     }
     return allRows<StoredResource>(
       conn,
-      `SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
-      since,
+      `SELECT * FROM obs_resource_samples WHERE ${filters.join(" AND ")} ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
+      ...params,
       limit,
     )
+  }
+
+  export async function resourceSummary(opts: {
+    since: number
+    until: number
+    role: ObservabilitySchema.ResourceSample["process"]["role"]
+  }) {
+    const [summary] = await metricRows<{
+      count: number
+      measuredCount: number
+      rssBytes: number | null
+      peakRssBytes: number | null
+      eventLoopLagP95Ms: number | null
+    }>(
+      `WITH ranked AS (
+        SELECT memory_rss_bytes, COALESCE(event_loop_lag_ms, 0) AS lag,
+          ROW_NUMBER() OVER (ORDER BY COALESCE(event_loop_lag_ms, 0)) AS rank,
+          COUNT(*) OVER () AS count
+        FROM obs_resource_samples WHERE process_role = ? AND time >= ? AND time < ?
+      ) SELECT COUNT(*) AS count, COUNT(memory_rss_bytes) AS measuredCount,
+        SUM(memory_rss_bytes) AS rssBytes, MAX(memory_rss_bytes) AS peakRssBytes,
+        MAX(CASE WHEN rank = CAST((count * 95 + 99) / 100 AS INTEGER) THEN lag END) AS eventLoopLagP95Ms
+        FROM ranked`,
+      opts.role,
+      opts.since,
+      opts.until,
+    )
+    return summary
   }
 
   export function retain(now = Date.now()) {
@@ -870,39 +970,44 @@ export namespace ObservabilityStore {
     enforceMaxSize(conn, config.storage.maxSqliteBytes)
   }
 
-  export function flush() {
+  export function flush(force = false) {
     const instanceState = runtimeState()
-
-    for (const hook of instanceState.beforeFlushHooks) hook()
-    if (!inlineMode()) {
+    const previous = instanceState.drainingBuffered
+    instanceState.drainingBuffered ||= force
+    try {
+      for (const hook of instanceState.beforeFlushHooks) hook(force)
+      if (!inlineMode()) {
+        if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
+        instanceState.flushTimer = undefined
+        ObservabilityTelemetryClient.flushPending()
+        return
+      }
       if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
       instanceState.flushTimer = undefined
-      ObservabilityTelemetryClient.flushPending()
-      return
-    }
-    if (instanceState.flushTimer) clearTimeout(instanceState.flushTimer)
-    instanceState.flushTimer = undefined
-    if (!instanceState.pending.length) return
-    const conn = open()
-    if (!conn) {
-      instanceState.droppedJobs += instanceState.pending.length
-      instanceState.pending.length = 0
-      return
-    }
-    const jobs = instanceState.pending.splice(0, instanceState.pending.length)
-    try {
-      conn.transaction(() => {
-        for (const job of jobs) job()
-      })()
-    } catch {
-      instanceState.droppedJobs += jobs.length
-      return
-    }
-    if (instanceState.retentionQueued) {
-      instanceState.retentionQueued = false
-      retain()
-    } else {
-      enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+      if (!instanceState.pending.length) return
+      const conn = open()
+      if (!conn) {
+        instanceState.droppedJobs += instanceState.pending.reduce((total, job) => total + job.observations, 0)
+        instanceState.pending.length = 0
+        return
+      }
+      const jobs = instanceState.pending.splice(0, instanceState.pending.length)
+      try {
+        conn.transaction(() => {
+          for (const job of jobs) job.run()
+        })()
+      } catch {
+        instanceState.droppedJobs += jobs.reduce((total, job) => total + job.observations, 0)
+        return
+      }
+      if (instanceState.retentionQueued) {
+        instanceState.retentionQueued = false
+        retain()
+      } else {
+        enforceMaxSize(conn, ObservabilityConfig.current().storage.maxSqliteBytes)
+      }
+    } finally {
+      instanceState.drainingBuffered = previous
     }
   }
 
@@ -960,20 +1065,17 @@ export namespace ObservabilityStore {
     ObservabilityDbWrites.checkpoint(conn)
   }
 
-  function enqueue(job: () => void) {
+  function enqueue(job: () => void, observations = 1) {
     const instanceState = runtimeState()
 
-    if (runtimeState().stopped || !ObservabilityConfig.current().enabled) return
+    if (!canEnqueue()) return
     if (instanceState.pending.length >= MAX_PENDING) {
       const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
-      instanceState.pending.splice(0, dropCount)
-      instanceState.droppedJobs += dropCount
+      const dropped = instanceState.pending.splice(0, dropCount)
+      instanceState.droppedJobs += dropped.reduce((total, item) => total + item.observations, 0)
     }
-    instanceState.pending.push(job)
-    if (!instanceState.flushTimer) {
-      instanceState.flushTimer = setTimeout(flush, FLUSH_MS)
-      instanceState.flushTimer.unref()
-    }
+    instanceState.pending.push({ run: job, observations })
+    requestFlush()
   }
 
   function queueRetention() {

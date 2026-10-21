@@ -3,6 +3,32 @@ import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+import type { CortexTask, SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
+
+type FooterFixture = {
+  active(value: boolean): void
+  mounted(value: boolean): void
+  status(value: SessionCortexDelegation["status"]): void
+  metadata(value: Partial<SessionCortexDelegation>): void
+  owner(value: {
+    server?: string
+    scopeID?: string
+    sessionID?: string
+    parentSessionID?: string
+    taskID?: string
+  }): void
+  retry(): void
+  resolve(index: number, value: Partial<CortexTask>): void
+  facts(): {
+    requests: Array<{
+      parameters: { taskID: string; parentSessionID: string; sessionID: string }
+      server: string
+      scopeID: string
+      aborted: boolean
+    }>
+    cortex: SessionCortexDelegation
+  }
+}
 
 let browser: Browser
 let page: Page
@@ -20,7 +46,7 @@ beforeAll(async () => {
   await Bun.write(
     path.join(fixture, "runtime.ts"),
     `
-    import { createSignal } from "solid-js"
+    import { batch, createSignal } from "solid-js"
     import { createStore } from "solid-js/store"
     import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
     const query = new URLSearchParams(location.search)
@@ -33,7 +59,36 @@ beforeAll(async () => {
     const [editing, setEditing] = createSignal(false)
     const [cancelFailure, setCancelFailure] = createSignal(false)
     const [currentSession, setCurrentSession] = createSignal("s1")
-    export { offer, editing, currentSession }
+    const [footerActive, setFooterActive] = createSignal(!query.has("inactive"))
+    const [footerMounted, setFooterMounted] = createSignal(true)
+    const [footerStatus, setFooterStatus] = createSignal()
+    const [footerOwner, setFooterOwner] = createStore({server:"server-a",scopeID:"scope-a"})
+    const [footerSession, setFooterSession] = createStore({id:"ses_footer_child",parentID:"ses_footer_parent",cortex:{
+      taskID:"ctx_footer",parentSessionID:"ses_footer_parent",parentMessageID:"msg_footer",agent:"developer",
+      description:"Inspect the footer result",status:query.has("running")?"running":"completed",startedAt:1000,
+      completedAt:query.has("running")?undefined:66123,model:{providerID:"fixture-provider",modelID:"fixture-model"},
+    }})
+    const footerRequests=[]
+    window.footerFixture={
+      active:setFooterActive,mounted:setFooterMounted,
+      status(status){setFooterSession("cortex",{status,completedAt:status==="running"||status==="queued"?undefined:66123})},
+      metadata(value){setFooterSession("cortex",value)},
+      owner(value){batch(()=>{
+        if(value.server!==undefined)setFooterOwner("server",value.server)
+        if(value.scopeID!==undefined)setFooterOwner("scopeID",value.scopeID)
+        if(value.sessionID!==undefined)setFooterSession("id",value.sessionID)
+        if(value.parentSessionID!==undefined){setFooterSession("parentID",value.parentSessionID);setFooterSession("cortex","parentSessionID",value.parentSessionID)}
+        if(value.taskID!==undefined)setFooterSession("cortex","taskID",value.taskID)
+      })},
+      retry(){setFooterStatus({type:"retry",attempt:2,message:"Retrying the child",next:0})},
+      resolve(index,value){const request=footerRequests[index];request.resolve({data:{
+        id:request.parameters.taskID,parentSessionID:request.parameters.parentSessionID,sessionID:request.parameters.sessionID,
+        parentMessageID:"msg_footer",agent:"developer",description:"Inspect the footer result",prompt:"Private full task instructions ".repeat(1000),
+        status:request.status,startedAt:1000,completedAt:66123,...value,
+      }})},
+      facts(){return {requests:footerRequests.map(request=>({parameters:request.parameters,server:request.server,scopeID:request.scopeID,aborted:request.signal.aborted})),cortex:JSON.parse(JSON.stringify(footerSession.cortex))}},
+    }
+    export { offer, editing, currentSession, footerActive, footerMounted, footerSession }
     const [data, setData] = createStore({
       session: [{ id: "s1" }, { id: "other-parent" }, { id: "attention-peer" }], todo: { s1: [
         { id: "one", content: "Inspect the request interaction and preserve every word of this naturally wrapping long task", status: "in_progress", priority: "high" },
@@ -53,9 +108,12 @@ beforeAll(async () => {
     ])
     window.navigation = []
     window.cancellations = []
-    const runtime = { statusFor: (id) => id === "s1" ? status() : undefined, cortexTasks: () => tasks, questionsFor: (id) => waiting() && id === "child" ? [{ id: "q", sessionID: "child", questions: [] }] : [], permissionsFor: (id) => permission() && id === "child" ? [{ id: "p", sessionID: "child" }] : [] }
+    const runtime = { statusFor: (id) => id === footerSession.id ? footerStatus() : id === "s1" ? status() : undefined, cortexTasks: () => tasks, questionsFor: (id) => waiting() && id === "child" ? [{ id: "q", sessionID: "child", questions: [] }] : [], permissionsFor: (id) => permission() && id === "child" ? [{ id: "p", sessionID: "child" }] : [] }
     export const useSessionDataView = () => () => createSessionDataView(data, runtime)
-    export const useSDK = () => ({ connected, client: { cortex: { cancel: async ({ taskID }) => { window.cancellations.push(taskID); if (cancelFailure()) throw new Error("Temporary cancellation failure"); return { data: true } } } } })
+    export const useSDK = () => ({ connected,get url(){return footerOwner.server},get scopeKey(){return footerOwner.scopeID}, client: { cortex: {
+      get:(parameters,options)=>new Promise((resolve,reject)=>footerRequests.push({parameters,signal:options.signal,resolve,reject,server:footerOwner.server,scopeID:footerOwner.scopeID,status:footerSession.cortex.status})),
+      cancel: async ({ taskID }) => { window.cancellations.push(taskID); if (cancelFailure()) throw new Error("Temporary cancellation failure"); return { data: true } }
+    } } })
     export const useSync = () => ({ get ready() { return ready() } })
     export const useLocale = () => ({ i18n: window.fixtureI18n })
     export const useNavigate = () => (url) => { window.navigation = url }
@@ -98,11 +156,15 @@ beforeAll(async () => {
     path.join(fixture, "main.tsx"),
     `
     import { render } from "solid-js/web"
+    import { Show } from "solid-js"
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
     import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
-    import { offer, editing, currentSession } from "./runtime"
+    import { offer, editing, currentSession, footerActive, footerMounted, footerSession } from "./runtime"
+    import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
+    import { useSessionMeta } from "@/composables/use-session-meta"
+    import { ViewActivityProvider } from "@/context/view-residency"
     import { SessionSurfaceFocusProvider } from "@/components/session/session-surface-focus"
     import { DagGraph } from "@ericsanchezok/synergy-ui/dag-graph"
     import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
@@ -111,6 +173,12 @@ beforeAll(async () => {
     import "@ericsanchezok/synergy-ui/styles"
     import "@/index.css"
     window.fixtureI18n = setupI18n({ locale: "en", messages: {} })
+    function Footer(){
+      const meta=useSessionMeta(()=>footerSession,()=>true)
+      return <Show when={footerMounted()}><ViewActivityProvider active={footerActive}><section data-footer hidden={!footerActive()}>
+        <SubagentSessionFooter cortex={meta().cortex} sessionID={footerSession.id} parentSessionID={meta().parentID??undefined}/>
+      </section></ViewActivityProvider></Show>
+    }
     render(() => <I18nProvider i18n={window.fixtureI18n}><ThemeProvider><MarkedProvider>
       <SessionSurfaceFocusProvider value={() => document.querySelector("#composer").focus()}>
         {new URLSearchParams(location.search).has("existingModal") ? <Dialog open><Dialog.Content aria-label="Existing modal"><button>Existing modal action</button></Dialog.Content></Dialog> : null}
@@ -119,6 +187,7 @@ beforeAll(async () => {
           <textarea id="composer" class="session-composer" data-expanded={editing() ? "" : undefined} aria-label="Composer" style={{ position: "relative", "z-index": 1, width: "100%", height: "160px" }} />
         </div>
         <Toast.Region />
+        {new URLSearchParams(location.search).has("footer") ? <Footer/> : null}
       </SessionSurfaceFocusProvider>
     </MarkedProvider></ThemeProvider></I18nProvider>, document.getElementById("root"))
   `,
@@ -158,6 +227,193 @@ afterEach(async () => {
 })
 const change = (action: string) =>
   page.evaluate((value) => (window as unknown as { changeProgress(value: string): void }).changeProgress(value), action)
+
+const footerFacts = () =>
+  page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.facts())
+const waitForFooterReads = (count: number) =>
+  page.waitForFunction(
+    (count) => (window as unknown as { footerFixture: FooterFixture }).footerFixture.facts().requests.length === count,
+    count,
+  )
+const resolveFooter = (index: number, value: Partial<CortexTask>) =>
+  page.evaluate(
+    ({ index, value }) => (window as unknown as { footerFixture: FooterFixture }).footerFixture.resolve(index, value),
+    { index, value },
+  )
+
+test("terminal footer restores final, summary, structured and error previews from public Session summaries", async () => {
+  const longResult = "Long footer result remains bounded. ".repeat(40)
+  for (const scenario of [
+    {
+      status: "completed",
+      value: { output: { mode: "final_response", value: "The final footer result remains available." } },
+      preview: "The final footer result remains available.",
+    },
+    {
+      status: "interrupted",
+      value: {
+        output: {
+          mode: "summary",
+          value:
+            "## Execution Trajectory\n\n**Steps**: 2 | **Tool calls**: 1\n\n**Phases**: Read\n\nDetailed tool evidence must not become the footer preview.\n\n---\n\n## Result\n\nThe authored summary result remains available.",
+        },
+      },
+      preview: "The authored summary result remains available.",
+    },
+    {
+      status: "cancelled",
+      value: { output: { mode: "structured", value: { finding: "The structured footer result remains available." } } },
+      preview: '"finding": "The structured footer result remains available."',
+    },
+    {
+      status: "error",
+      value: {
+        error: "The task failed while checking the footer result.",
+        output: { mode: "final_response", value: "Do not replace the recorded failure with output." },
+      },
+      preview: "The task failed while checking the footer result.",
+    },
+    {
+      status: "completed",
+      value: { output: { mode: "final_response", value: longResult } },
+      preview: longResult.slice(0, 117) + "...",
+    },
+  ] satisfies Array<{ status: SessionCortexDelegation["status"]; value: Partial<CortexTask>; preview: string }>) {
+    await page.goto(baseURL + "?footer&running")
+    await page.evaluate(
+      (status) => (window as unknown as { footerFixture: FooterFixture }).footerFixture.status(status),
+      scenario.status,
+    )
+    await waitForFooterReads(1)
+    const before = await footerFacts()
+    expect(before.cortex).not.toHaveProperty("output")
+    expect(before.cortex).not.toHaveProperty("error")
+    expect(before.requests[0].parameters).toEqual({
+      taskID: "ctx_footer",
+      parentSessionID: "ses_footer_parent",
+      sessionID: "ses_footer_child",
+    })
+    await resolveFooter(0, scenario.value)
+    const preview = page.locator('[data-footer] [data-slot="subagent-result-preview"]')
+    await preview.waitFor()
+    expect(await preview.textContent()).toBe(scenario.preview)
+    expect((await preview.textContent())!.length).toBeLessThanOrEqual(120)
+    expect((await footerFacts()).cortex).toEqual(before.cortex)
+    expect(await page.locator("[data-footer]").getByTitle("fixture-provider/fixture-model").count()).toBe(1)
+    expect(await page.locator("[data-footer]").getByText("1m 5s", { exact: true }).count()).toBe(1)
+    await page.locator("[data-footer]").getByRole("button", { name: "Parent", exact: true }).click()
+    expect(await page.evaluate(() => (window as unknown as { navigation: string[] }).navigation)).toEqual([
+      "ses_footer_parent",
+    ])
+  }
+})
+
+test("footer rejects mismatched, hidden or nonterminal details and preserves its model and status metadata", async () => {
+  for (const mismatch of [
+    { id: "ctx_other" },
+    { parentSessionID: "ses_other_parent" },
+    { sessionID: "ses_other_child" },
+    { visibility: "hidden" },
+    { status: "queued" },
+    { status: "running" },
+  ] satisfies Partial<CortexTask>[]) {
+    await page.goto(baseURL + "?footer")
+    await waitForFooterReads(1)
+    await resolveFooter(0, {
+      ...mismatch,
+      output: { mode: "final_response", value: "Sensitive result from a different task owner." },
+    })
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    expect(await page.locator('[data-footer] [data-slot="subagent-result-preview"]').count()).toBe(0)
+    expect(await page.locator("[data-footer]").getByText("Completed", { exact: true }).count()).toBe(1)
+    await page.evaluate(() => {
+      const fixture = (window as unknown as { footerFixture: FooterFixture }).footerFixture
+      fixture.retry()
+      fixture.metadata({ agent: "codex" })
+    })
+    await page.locator("[data-footer]").getByText("Retry #2", { exact: true }).waitFor()
+    expect(await page.locator("[data-footer]").getByTitle("fixture-provider/fixture-model").count()).toBe(0)
+    expect((await footerFacts()).requests).toHaveLength(1)
+  }
+})
+
+test("footer reads only an active terminal child, cancels hidden reads and never polls", async () => {
+  await page.goto(baseURL + "?footer&running&inactive")
+  await page.waitForTimeout(1100)
+  expect((await footerFacts()).requests).toHaveLength(0)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.active(true))
+  await page.locator("[data-footer]").getByText("Running", { exact: true }).waitFor()
+  await page.waitForTimeout(1100)
+  expect((await footerFacts()).requests).toHaveLength(0)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.status("completed"))
+  await waitForFooterReads(1)
+  await resolveFooter(0, { output: { mode: "final_response", value: "The active child result is available." } })
+  await page.getByText("The active child result is available.", { exact: true }).waitFor()
+  await page.evaluate(() =>
+    (window as unknown as { footerFixture: FooterFixture }).footerFixture.metadata({
+      description: "Updated public description only",
+    }),
+  )
+  await page.waitForTimeout(1100)
+  expect((await footerFacts()).requests).toHaveLength(1)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { footerFixture: FooterFixture }).footerFixture
+    fixture.active(false)
+    fixture.status("error")
+  })
+  expect(await page.locator('[data-footer] [data-slot="subagent-result-preview"]').count()).toBe(0)
+  expect((await footerFacts()).requests).toHaveLength(1)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.active(true))
+  await waitForFooterReads(2)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.active(false))
+  expect((await footerFacts()).requests[1].aborted).toBe(true)
+  await resolveFooter(1, { error: "A hidden reply must never become visible." })
+  expect(await page.locator('[data-footer] [data-slot="subagent-result-preview"]').count()).toBe(0)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.active(true))
+  await waitForFooterReads(3)
+  await resolveFooter(2, { error: "The resumed child failure remains available." })
+  await page.getByText("The resumed child failure remains available.", { exact: true }).waitFor()
+  await page.evaluate(() =>
+    (window as unknown as { footerFixture: FooterFixture }).footerFixture.metadata({ visibility: "hidden" }),
+  )
+  expect(await page.locator('[data-footer] [data-slot="subagent-result-preview"]').count()).toBe(0)
+  await page.waitForTimeout(1100)
+  expect((await footerFacts()).requests).toHaveLength(3)
+})
+
+test("late footer replies cannot cross server, Scope, parent, child, task identity or unmount", async () => {
+  for (const owner of [
+    { server: "server-b" },
+    { scopeID: "scope-b" },
+    { parentSessionID: "ses_footer_other_parent" },
+    { sessionID: "ses_footer_other" },
+    { taskID: "ctx_footer_other" },
+  ]) {
+    await page.goto(baseURL + "?footer")
+    await waitForFooterReads(1)
+    await page.evaluate(
+      (owner) => (window as unknown as { footerFixture: FooterFixture }).footerFixture.owner(owner),
+      owner,
+    )
+    await waitForFooterReads(2)
+    expect((await footerFacts()).requests[0].aborted).toBe(true)
+    await resolveFooter(1, { output: { mode: "final_response", value: "The current owner result remains visible." } })
+    await page.getByText("The current owner result remains visible.", { exact: true }).waitFor()
+    await resolveFooter(0, { output: { mode: "final_response", value: "The stale owner result must never appear." } })
+    expect(await page.getByText("The stale owner result must never appear.", { exact: true }).count()).toBe(0)
+    expect(await page.getByText("The current owner result remains visible.", { exact: true }).count()).toBe(1)
+  }
+  await page.goto(baseURL + "?footer")
+  await waitForFooterReads(1)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.mounted(false))
+  expect((await footerFacts()).requests[0].aborted).toBe(true)
+  await resolveFooter(0, { error: "The disposed footer must not retain this response." })
+  expect(await page.locator("[data-footer]").count()).toBe(0)
+  await page.evaluate(() => (window as unknown as { footerFixture: FooterFixture }).footerFixture.mounted(true))
+  await waitForFooterReads(2)
+  await resolveFooter(1, { output: { mode: "final_response", value: "The reopened footer reads a fresh result." } })
+  await page.getByText("The reopened footer reads a fresh result.", { exact: true }).waitFor()
+})
 const expand = () => page.locator(".session-progress-island-header").click()
 
 test("the bottom dock mounts current agents and expandable Todo and DAG", async () => {
@@ -295,16 +551,15 @@ test("secondary pointer cancellation cannot interrupt the initiating hold", asyn
 test("failed cancellation explains the error and permits another attempt", async () => {
   await change("cancel-failure")
   await holdPointer()
-  await page.waitForTimeout(2100)
+  await page.waitForFunction(() => (window as unknown as { cancellations: string[] }).cancellations.length === 1)
   await page.mouse.up()
-  await page.waitForTimeout(300)
   await page.getByText("Could not cancel agent", { exact: true }).waitFor()
   expect(await avatar().getAttribute("aria-busy")).toBe("false")
   expect(await page.locator(".subagent-dock-avatar").count()).toBe(2)
   expect(await navigation()).toEqual([])
   await change("cancel-success")
   await holdPointer()
-  await page.waitForTimeout(2100)
+  await page.waitForFunction(() => (window as unknown as { cancellations: string[] }).cancellations.length === 2)
   await page.mouse.up()
   expect(await cancellations()).toEqual(["task-a", "task-a"])
 })

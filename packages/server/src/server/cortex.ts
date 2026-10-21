@@ -24,7 +24,7 @@ export const CortexRoute = () =>
             description: "List of tasks",
             content: {
               "application/json": {
-                schema: resolver(z.array(CortexTypes.Task)),
+                schema: resolver(z.array(CortexTypes.TaskSummary)),
               },
             },
           },
@@ -40,7 +40,7 @@ export const CortexRoute = () =>
       async (c) => {
         const { sessionID } = c.req.valid("query")
         const Cortex = await getCortex()
-        const tasks = sessionID ? Cortex.getVisibleTasks(sessionID) : Cortex.listVisible()
+        const tasks = Cortex.listVisibleSummaries(sessionID)
         return c.json(tasks)
       },
     )
@@ -67,7 +67,8 @@ export const CortexRoute = () =>
       "/:taskID",
       describeRoute({
         summary: "Get Cortex task",
-        description: "Get a specific background task by ID",
+        description:
+          "Get a background task, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.",
         operationId: "cortex.get",
         responses: {
           200: {
@@ -87,10 +88,11 @@ export const CortexRoute = () =>
           taskID: z.string(),
         }),
       ),
+      validator("query", CortexTypes.TaskIdentity),
       async (c) => {
         const { taskID } = c.req.valid("param")
         const Cortex = await getCortex()
-        const task = Cortex.get(taskID)
+        const task = await Cortex.readVisibleTask(taskID, c.req.valid("query"))
         if (!task) {
           return c.json({ error: "Task not found" }, 404)
         }
@@ -101,7 +103,8 @@ export const CortexRoute = () =>
       "/:taskID/output",
       describeRoute({
         summary: "Get task output",
-        description: "Get the output of a completed background task",
+        description:
+          "Get task output, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.",
         operationId: "cortex.output",
         responses: {
           200: {
@@ -129,10 +132,12 @@ export const CortexRoute = () =>
           taskID: z.string(),
         }),
       ),
+      validator("query", CortexTypes.TaskIdentity),
       async (c) => {
         const { taskID } = c.req.valid("param")
         const Cortex = await getCortex()
-        const view = Cortex.outputView(taskID)
+        const view = await Cortex.outputView(taskID, c.req.valid("query"))
+        if (!view) return c.json({ error: "Task not found" }, 404)
         return c.json(view)
       },
     )
@@ -163,7 +168,7 @@ export const CortexRoute = () =>
       async (c) => {
         const { taskID } = c.req.valid("param")
         const Cortex = await getCortex()
-        const task = Cortex.get(taskID)
+        const task = await Cortex.readVisibleTask(taskID)
         if (!task) {
           return c.json({ error: "Task not found" }, 404)
         }

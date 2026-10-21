@@ -17,6 +17,8 @@ type JournalEntry = { seq: number; at: number; payload: unknown }
 export class SyncSequencer {
   private counter = 0
   private entries: JournalEntry[] = []
+  private cleanupTimer: ReturnType<typeof setTimeout> | undefined
+  private disposed = false
 
   constructor(
     readonly epoch: string,
@@ -31,10 +33,12 @@ export class SyncSequencer {
 
   /** Allocate the next state seq and journal the (already stamped) payload. */
   stamp(payload: { seq: number }, now: number): number {
+    if (this.disposed) throw new Error("Sync sequencer is disposed")
     const seq = ++this.counter
     payload.seq = seq
     this.entries.push({ seq, at: now, payload })
     this.prune(now)
+    this.scheduleCleanup(now)
     return seq
   }
 
@@ -43,6 +47,29 @@ export class SyncSequencer {
     while (this.entries.length > 0 && (this.entries.length > this.maxEntries || this.entries[0].at < cutoff)) {
       this.entries.shift()
     }
+    if (this.entries.length === 0 && this.cleanupTimer !== undefined) {
+      clearTimeout(this.cleanupTimer)
+      this.cleanupTimer = undefined
+    }
+  }
+
+  private scheduleCleanup(now: number): void {
+    if (this.disposed || this.cleanupTimer !== undefined || this.entries.length === 0) return
+    const delay = Math.max(1, this.entries[0].at + this.maxAgeMs - now + 1)
+    this.cleanupTimer = setTimeout(() => {
+      this.cleanupTimer = undefined
+      const now = Date.now()
+      this.prune(now)
+      this.scheduleCleanup(now)
+    }, delay)
+    this.cleanupTimer.unref()
+  }
+
+  dispose(): void {
+    this.disposed = true
+    if (this.cleanupTimer !== undefined) clearTimeout(this.cleanupTimer)
+    this.cleanupTimer = undefined
+    this.entries = []
   }
 
   /**

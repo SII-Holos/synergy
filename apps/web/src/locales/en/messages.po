@@ -5974,7 +5974,7 @@ msgstr "Local browser samples"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.cpu.desc"
-msgstr "CPU average percent and event-loop p95 latency from runtime timeline buckets"
+msgstr "Process CPU average (100% = one CPU core; may exceed 100%) and event-loop p95 latency"
 
 #. chart descriptions
 msgid "app.performance.chart.cpu.title"
@@ -6203,7 +6203,7 @@ msgstr "Observed: {value}"
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.occurrences"
-msgstr "{count} occurrences · last seen {time}"
+msgstr "{count} total occurrences · last seen {time}"
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.requestFailed"
@@ -6236,6 +6236,10 @@ msgstr "Slow tool execution"
 #. js-lingui-explicit-id
 msgid "app.performance.issue.slowTurn"
 msgstr "Slow session turn"
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.stalledTool"
+msgstr "Tool execution stalled"
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.storageFailed"

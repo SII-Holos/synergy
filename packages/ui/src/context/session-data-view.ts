@@ -1,6 +1,6 @@
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import type {
-  CortexTask,
+  CortexTaskSummary,
   DagNode,
   Message,
   Part,
@@ -32,7 +32,7 @@ export const EMPTY_INBOX: SessionInboxItem[] = frozenEmptyArray<SessionInboxItem
 export const EMPTY_TODOS: Todo[] = frozenEmptyArray<Todo[]>()
 export const EMPTY_DAG: DagNode[] = frozenEmptyArray<DagNode[]>()
 export const EMPTY_QUESTIONS: QuestionRequest[] = frozenEmptyArray<QuestionRequest[]>()
-export const EMPTY_CORTEX: CortexTask[] = frozenEmptyArray<CortexTask[]>()
+export const EMPTY_CORTEX: CortexTaskSummary[] = frozenEmptyArray<CortexTaskSummary[]>()
 export const EMPTY_SESSIONS: Session[] = frozenEmptyArray<Session[]>()
 export const EMPTY_PART_TABLE: Record<string, Part[] | undefined> = Object.freeze({}) as unknown as Record<
   string,
@@ -54,7 +54,7 @@ export interface SessionDataRuntime {
   statusFor(sessionID: string): SessionStatus | undefined
   permissionsFor(sessionID: string): PermissionRequest[]
   questionsFor(sessionID: string): QuestionRequest[]
-  cortexTasks(): CortexTask[]
+  cortexTasks(): CortexTaskSummary[]
 }
 
 /**
@@ -82,7 +82,7 @@ export interface SessionDataView {
   todosFor(sessionID: string): Todo[]
   dagNodesFor(sessionID: string): DagNode[]
   questionsFor(sessionID: string): QuestionRequest[]
-  cortexTasks(): CortexTask[]
+  cortexTasks(): CortexTaskSummary[]
   sessions(): Session[]
   sessionFor(sessionID: string): Session | undefined
 }

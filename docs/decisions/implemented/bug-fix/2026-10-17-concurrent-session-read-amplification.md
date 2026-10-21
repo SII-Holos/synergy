@@ -16,7 +16,7 @@ Message-derived execution records map both pending and generating tool arguments
 
 Already mounted native panels retain their saved resource through the short gap between capability revalidation and built-in registration restoration. They stay inactive while registration is absent, and confirmed capability loss or tab closure still disposes them.
 
-Queue-depth telemetry records last and peak gauges per lane in one-second windows. Explicitly expected missing reads are normal missing outcomes. Resource timing phases share existing duration rows. Pure Cortex progress publishes once per second, lifecycle changes remain immediate, and task updates reconcile object identities.
+Queue-depth telemetry records last and peak gauges per lane in one-second windows. Explicitly expected missing reads are normal missing outcomes. Session message-order initialization and Agenda activity history mark absent derived indexes as expected; only `Storage.NotFoundError` permits initialization or an empty result, while storage availability and integrity failures propagate. Resource timing phases share existing duration rows. Pure Cortex progress publishes once per second, lifecycle changes remain immediate, and task updates reconcile object identities.
 
 ## Alternatives considered
 

@@ -583,13 +583,14 @@ export namespace SessionInvoke {
     await using _ = defer(async () => {
       SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
-      const finalized = await Promise.allSettled(
-        workflowInitialized
+      const finalized = await Promise.allSettled([
+        Session.flushPartWrites(sessionID, { release: true }),
+        ...(workflowInitialized
           ? WorkflowPromptRegistry.kinds().map((kind) =>
               WorkflowPromptRegistry.get(kind)?.finalize?.(sessionID, scopeID),
             )
-          : [],
-      )
+          : []),
+      ])
       const errors = finalized.flatMap((result) => (result.status === "rejected" ? [result.reason as unknown] : []))
       if (errors.length) throw errors.find(RolloutRecordingError.isInstance) ?? errors[0]
     })

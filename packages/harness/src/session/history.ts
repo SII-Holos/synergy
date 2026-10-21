@@ -10,6 +10,7 @@ import { fn } from "../util/fn"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { MessageV2 } from "./message-v2"
+import { PartContent as SessionPartContent } from "./part-content"
 import { SessionProgress } from "./progress"
 import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
@@ -376,13 +377,13 @@ export namespace SessionHistory {
         const chunks: string[] = []
         for (const header of selected) {
           const parts: MessageV2.Part[] = []
-          for await (const record of Storage.records<MessageV2.Part>({
+          for await (const record of Storage.records<SessionPartContent.Stored>({
             kind: "part",
             scopeID: session.scope.id,
             sessionID: input.sessionID,
             messageID: header.info.id,
           }))
-            parts.push(record.value)
+            parts.push(await SessionPartContent.hydrate(record.key, record.value))
           const texts = parts.filter(
             (part): part is MessageV2.TextPart => part.type === "text" && !MessageV2.isSystemPart(part),
           )
@@ -1222,15 +1223,7 @@ export namespace SessionHistory {
       readSessionEvents(session),
     ])
     const canonical = await deriveInfoSemantics(infos, async (messageID) => {
-      const parts: MessageV2.Part[] = []
-      for await (const record of Storage.records<MessageV2.Part>({
-        kind: "part",
-        scopeID: session.scope.id,
-        sessionID: session.id,
-        messageID,
-      }))
-        parts.push(upgradeAccessRecord(record.key, record.value))
-      return parts.sort((a, b) => a.id.localeCompare(b.id))
+      return MessageV2.parts({ scopeID: session.scope.id, sessionID: session.id, messageID })
     })
     return applyEventsToInfo(canonical, events)
   }

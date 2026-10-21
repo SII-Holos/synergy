@@ -65,7 +65,9 @@ export function projectViewReplay(events: ViewEvent["payload"][], contributions:
         ? {
             ...payload,
             type: "message.part.summary",
-            properties: { summary: MessageV2.summarizePart(payload.properties.part as MessageV2.Part) },
+            properties: {
+              summary: payload.properties.summary ?? MessageV2.summarizePart(payload.properties.part as MessageV2.Part),
+            },
           }
         : payload.type === "message.updated"
           ? { ...payload, properties: SessionHistory.summarizeMessage(payload.properties.info as MessageV2.Info) }
@@ -131,6 +133,7 @@ export function createViewProjection(
       parts.set(key, subscription)
     }
     const delta = event.payload.properties.delta
+    const observed = event.payload.properties.summary as MessageV2.PartSummary | undefined
     const stream = subscription?.stream
     const append =
       event.payload.streaming && typeof delta === "string" && (part.type === "text" || part.type === "reasoning")
@@ -153,10 +156,11 @@ export function createViewProjection(
       summary = {
         ...stream.summary,
         preview: part.text.slice(0, 256),
-        render: true,
+        render: observed?.render ?? true,
+        reasoningKey: observed?.reasoningKey ?? stream.summary.reasoningKey,
         content: {
           version: `stream:${stream.id}:${stream.revision}`,
-          bytes: stream.summary.content.bytes + Buffer.byteLength(delta),
+          bytes: observed?.content.bytes ?? stream.summary.content.bytes + Buffer.byteLength(delta),
         },
       }
       content = { kind: "append", streamID: stream.id, revision: stream.revision, offset: stream.offset, delta }
@@ -164,7 +168,7 @@ export function createViewProjection(
       stream.summary = summary
       stream.hash.update(delta, "utf16le")
     } else {
-      summary = MessageV2.summarizePart(part)
+      summary = observed ?? MessageV2.summarizePart(part)
       if (subscription?.ready) {
         if (part.type === "text" || part.type === "reasoning") {
           const hash = textHash(part.text)

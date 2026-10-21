@@ -1,243 +1,267 @@
 import { describe, expect, test } from "bun:test"
 import { PartWriteBuffer } from "../../src/session/part-write-buffer"
+import type { PartContent } from "../../src/session/part-content"
+import type { MessageV2 } from "../../src/session/message-v2"
 
-function recorder() {
-  const writes: Array<{ path: string; value: unknown }> = []
-  return {
-    writes,
-    write: (path: string, value: unknown) => {
-      writes.push({ path, value })
-    },
-  }
-}
+const part = (text: string, id = "part", sessionID = "session"): MessageV2.TextPart => ({
+  id,
+  messageID: "message",
+  sessionID,
+  type: "text",
+  text,
+})
+const path = ["sessions", "home", "session", "messages", "message", "parts", "part"]
 
 describe("PartWriteBuffer", () => {
-  test("transaction admission requires buffered, running and failed writes to drain first", async () => {
-    let fail = true
-    let release!: () => void
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const buffer = new PartWriteBuffer<string>(async () => {
-      await blocked
-      if (fail) throw new Error("transient")
+  test("coalesces immutable pending deltas, captures a nonempty initial prefix and forgets flushed text", async () => {
+    const writes: PartContent.Batch[] = []
+    const buffer = new PartWriteBuffer(async (_path, batch) => {
+      writes.push(batch)
     }, 10_000)
-    expect(() => buffer.assertDrained("part")).not.toThrow()
-    buffer.defer("part", "part", "stream")
-    expect(() => buffer.assertDrained("part")).toThrow("Drain")
-    const pending = buffer.flush("part")
-    expect(() => buffer.assertDrained("part")).toThrow("Drain")
-    release()
-    await expect(pending).rejects.toThrow("transient")
-    expect(() => buffer.assertDrained("part")).toThrow("Drain")
-    fail = false
+    const value = part("prefix one")
+    buffer.defer(value.id, path, value, "one")
+    value.text += " two"
+    buffer.defer(value.id, path, value, " two")
+    expect(() => buffer.assertDrained(value.id)).toThrow("Drain")
     await buffer.flushAll()
-    expect(() => buffer.assertDrained("part")).not.toThrow()
+    expect(writes.map((batch) => [batch.offset, batch.text])).toEqual([[0, "prefix one two"]])
+    value.text += " three"
+    buffer.defer(value.id, path, value, " three")
+    await buffer.flushAll()
+    expect(writes.map((batch) => [batch.offset, batch.text])).toEqual([
+      [0, "prefix one two"],
+      [14, " three"],
+    ])
+    value.text = "unreported caller mutation"
+    expect(writes[1]!.text).toBe(" three")
+    expect(() => buffer.assertDrained(value.id)).not.toThrow()
   })
 
-  test("terminal writes wait for an already executing streaming write", async () => {
+  test.each([false, true])("new output behind a held write preserves content with replacement=%s", async (replace) => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
     const writes: string[] = []
-    let release!: () => void
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
-      if (value === "stream") await blocked
-      writes.push(value)
-    }, 1)
-    buffer.defer("part", "part", "stream")
-    await Bun.sleep(10)
-    const terminal = buffer.writeNow("part", "part", "complete")
+    const buffer = new PartWriteBuffer(async (_path, batch) => {
+      entered.resolve()
+      if (!batch.offset) await release.promise
+      writes.push(batch.text)
+    }, 10_000)
+    const value = part("first")
+    buffer.defer(value.id, path, value, value.text)
+    const running = buffer.flush(value.id)
+    await entered.promise
+    value.text += " second"
+    buffer.defer(value.id, path, value, " second")
+    const terminal = replace
+      ? buffer.writeNow(value.id, path, { ...value, text: value.text + " completed" }, async (_path, next) => {
+          if (next.type === "text") writes.push(next.text)
+        })
+      : buffer.flushAll()
     expect(writes).toEqual([])
-    release()
-    await terminal
-    await buffer.flushAll()
-    expect(writes).toEqual(["stream", "complete"])
+    release.resolve()
+    await Promise.all([running, terminal])
+    expect(writes).toEqual(replace ? ["first", "first second completed"] : ["first", " second"])
+    expect(() => buffer.assertDrained(value.id)).not.toThrow()
   })
 
-  test("draining includes timer writes and reports background persistence failure", async () => {
-    const buffer = new PartWriteBuffer<string>(async () => {
-      throw new Error("disk full")
+  test("retains failed immutable batch identity and retries it before newer deltas", async () => {
+    let failing = true
+    const attempts: PartContent.Batch[] = []
+    const buffer = new PartWriteBuffer(async (_path, batch) => {
+      attempts.push(batch)
+      if (failing) throw new Error("unavailable")
+    }, 10_000)
+    const value = part("first")
+    buffer.defer(value.id, path, value, value.text)
+    await expect(buffer.flushAll()).rejects.toThrow("unavailable")
+    expect(() => buffer.assertDrained(value.id)).toThrow("Drain")
+    value.text += " later"
+    buffer.defer(value.id, path, value, " later")
+    failing = false
+    await buffer.flushAll()
+    expect(attempts.map((batch) => batch.text)).toEqual(["first", "first", " later"])
+    expect(attempts[0]).toBe(attempts[1]!)
+    expect(attempts[1]!.operationID).not.toBe(attempts[2]!.operationID)
+    expect(() => buffer.assertDrained(value.id)).not.toThrow()
+  })
+
+  test("cancellation fences a held write and discards pending output without retry resurrection", async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const writes: string[] = []
+    const buffer = new PartWriteBuffer(async (_path, batch, guard) => {
+      entered.resolve()
+      await release.promise
+      guard()
+      writes.push(batch.text)
+    }, 10_000)
+    const value = part("first")
+    buffer.defer(value.id, path, value, value.text)
+    const running = buffer.flush(value.id)
+    await entered.promise
+    value.text += " later"
+    buffer.defer(value.id, path, value, " later")
+    buffer.cancel(value.id)
+    release.resolve()
+    await expect(running).rejects.toThrow("cancelled")
+    await buffer.flushAll()
+    expect(writes).toEqual([])
+  })
+
+  test("timed writes retain failures for drain and matching Sessions drain independently", async () => {
+    const completed = Promise.withResolvers<void>()
+    const writes: string[] = []
+    let failing = true
+    const buffer = new PartWriteBuffer(async (_path, batch) => {
+      completed.resolve()
+      if (failing) throw new Error("disk full")
+      writes.push(batch.header.id)
     }, 1)
-    buffer.defer("part", "part", "stream")
-    await Bun.sleep(10)
+    buffer.defer("one", path, part("one", "one"), "one")
+    await completed.promise
     await expect(buffer.flushAll()).rejects.toThrow("disk full")
-  })
-
-  test("a later successful write clears the retained failure for the same key", async () => {
-    let fail = true
-    const writes: string[] = []
-    const buffer = new PartWriteBuffer<string>(async (_path, value) => {
-      if (fail) throw new Error("transient")
-      writes.push(value)
-    }, 10_000)
-    buffer.defer("part", "part", "stream")
-    await expect(buffer.flush("part")).rejects.toThrow("transient")
-    fail = false
-    await buffer.writeNow("part", "part", "complete")
-    expect(writes).toEqual(["complete"])
+    failing = false
+    buffer.defer("two", path, part("two", "two", "foreign"), "two")
+    await buffer.flushWhere((header) => header.sessionID === "session")
+    expect(writes).toEqual(["one"])
     await buffer.flushAll()
-    expect(writes).toEqual(["complete"])
+    expect(writes).toEqual(["one", "two"])
   })
 
-  test("a transient part failure does not block later drains of the same session", async () => {
-    let fail = true
-    const buffer = new PartWriteBuffer<{ sessionID: string; text: string }>(async (_path, value) => {
-      if (fail) throw new Error("transient")
+  test("a Session drain never waits for another Session's already running write", async () => {
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const buffer = new PartWriteBuffer(async (_path, batch) => {
+      if (batch.header.sessionID === "foreign") {
+        entered.resolve()
+        await release.promise
+      }
     }, 10_000)
-    buffer.defer("p1", "path/p1", { sessionID: "ses_1", text: "one" })
-    await expect(buffer.flushWhere((value) => value.sessionID === "ses_1")).rejects.toThrow("transient")
-    fail = false
-    buffer.defer("p2", "path/p2", { sessionID: "ses_1", text: "two" })
-    await buffer.flushWhere((value) => value.sessionID === "ses_1")
-  })
-  test("coalesces deferred writes: many defers, one flush writes the latest", () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<string>(r.write, 10_000)
-    buf.defer("p1", "path/p1", "a")
-    buf.defer("p1", "path/p1", "ab")
-    buf.defer("p1", "path/p1", "abc")
-    expect(r.writes).toEqual([]) // nothing written yet (timer not fired)
-    buf.flush("p1")
-    expect(r.writes).toEqual([{ path: "path/p1", value: "abc" }])
-  })
-
-  test("cancel drops a pending deferred write without persisting it", () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<string>(r.write, 10_000)
-    buf.defer("p1", "path/p1", "streaming...")
-    buf.cancel("p1")
-    // caller persists the superseding value itself; the buffer must stay quiet
-    buf.flush("p1")
-    expect(r.writes).toEqual([])
-  })
-
-  test("independent keys don't interfere", async () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<string>(r.write, 10_000)
-    buf.defer("p1", "path/p1", "one")
-    buf.defer("p2", "path/p2", "two")
-    await buf.flushAll()
-    expect(r.writes).toContainEqual({ path: "path/p1", value: "one" })
-    expect(r.writes).toContainEqual({ path: "path/p2", value: "two" })
-    expect(r.writes).toHaveLength(2)
-  })
-
-  test("flushAll awaits async writes (durability before finalize)", async () => {
-    const order: string[] = []
-    const buf = new PartWriteBuffer<string>(async (path, value) => {
-      await new Promise((resolve) => setTimeout(resolve, 5))
-      order.push(`${path}=${value}`)
-    }, 10_000)
-    buf.defer("p1", "path/p1", "final")
-    await buf.flushAll()
-    // the async write completed before flushAll resolved
-    expect(order).toEqual(["path/p1=final"])
-  })
-
-  test("flushWhere only persists matching deferred writes", async () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<{ sessionID: string; text: string }>(r.write, 10_000)
-    buf.defer("p1", "path/p1", { sessionID: "ses_1", text: "one" })
-    buf.defer("p2", "path/p2", { sessionID: "ses_2", text: "two" })
-
-    await buf.flushWhere((value) => value.sessionID === "ses_1")
-
-    expect(r.writes).toEqual([{ path: "path/p1", value: { sessionID: "ses_1", text: "one" } }])
-    await buf.flushAll()
-    expect(r.writes).toContainEqual({ path: "path/p2", value: { sessionID: "ses_2", text: "two" } })
-  })
-
-  test("the timer flushes without an explicit flush call", async () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<string>(r.write, 5)
-    buf.defer("p1", "path/p1", "v1")
-    buf.defer("p1", "path/p1", "v2")
-    await new Promise((resolve) => setTimeout(resolve, 25))
-    expect(r.writes).toEqual([{ path: "path/p1", value: "v2" }])
-  })
-
-  test("flush on an empty key is a no-op", () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<string>(r.write, 10_000)
-    buf.flush("missing")
-    expect(r.writes).toEqual([])
-  })
-  test("rejects a new key once the 1024-entry cap is reached", () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<string>(r.write, 10_000)
-    for (let index = 0; index < 1024; index++) buf.defer(`p${index}`, `path/p${index}`, "v")
-    expect(() => buf.defer("overflow", "path/overflow", "v")).toThrow(
-      "Streaming persistence buffer is full; drain before accepting more output",
-    )
-    // An already buffered key is replaced in place and consumes no new slot.
-    expect(() => buf.defer("p0", "path/p0", "v2", "")).not.toThrow()
-  })
-
-  test("rejects appended growth that would exceed the 64 MiB deferred-byte budget", () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<{ text: string }>(r.write, 10_000)
-    const part = { text: "" }
-    const chunk = "x".repeat(8 * 1024 * 1024)
-    buf.defer("p", "path/p", part)
-    for (let index = 0; index < 7; index++) {
-      part.text += chunk
-      buf.defer("p", "path/p", part, chunk)
+    buffer.defer("foreign", path, part("foreign", "foreign", "foreign"), "foreign")
+    const running = buffer.flush("foreign")
+    await entered.promise
+    buffer.defer("own", path, part("own", "own"), "own")
+    try {
+      expect(
+        await Promise.race([
+          buffer.flushWhere((header) => header.sessionID === "session").then(() => "own drained"),
+          Bun.sleep(500).then(() => "waited for foreign"),
+        ]),
+      ).toBe("own drained")
+    } finally {
+      release.resolve()
+      await running
+      await buffer.flushAll()
     }
-    // The eighth chunk prices at 64 MiB + the initial measurement.
-    part.text += chunk
-    expect(() => buf.defer("p", "path/p", part, chunk)).toThrow(
-      "Streaming persistence buffer is full; drain before accepting more output",
-    )
   })
 
-  test("incremental defers persist the final accumulated state, not the caller's later mutation", async () => {
-    const r = recorder()
-    const buf = new PartWriteBuffer<{ type: "text"; text: string }>(r.write, 10_000)
-    const part = { type: "text" as const, text: "" }
-    part.text += "hello"
-    buf.defer("p", "path/p", part, "hello")
-    part.text += " world"
-    buf.defer("p", "path/p", part, " world")
-    await buf.flush("p")
-    expect(r.writes).toEqual([{ path: "path/p", value: { type: "text", text: "hello world" } }])
-    part.text = "mutated after the flush"
-    expect(r.writes).toEqual([{ path: "path/p", value: { type: "text", text: "hello world" } }])
-    expect(() => buf.assertDrained("p")).not.toThrow()
+  test("failed terminal replacements retain an immutable retry until their owner drains", async () => {
+    let failing = true
+    const writes: MessageV2.Part[] = []
+    const buffer = new PartWriteBuffer(async () => {}, 10_000)
+    const value = part("terminal")
+    await expect(
+      buffer.writeNow(value.id, path, value, async (_path, snapshot) => {
+        if (failing) throw new Error("terminal disk failure")
+        writes.push(snapshot)
+      }),
+    ).rejects.toThrow("terminal disk failure")
+    expect(() => buffer.assertDrained(value.id)).toThrow("Drain")
+    value.text = "caller mutated after failure"
+    failing = false
+    await buffer.flushWhere((header) => header.sessionID === value.sessionID)
+    expect(writes).toEqual([part("terminal")])
+    expect(() => buffer.assertDrained(value.id)).not.toThrow()
   })
 
-  test("a mutation while the write is in flight cannot change what was persisted", async () => {
-    let release!: () => void
-    const blocked = new Promise<void>((resolve) => {
-      release = resolve
+  test("a complete replacement supersedes an append failure without requiring the failed append to succeed", async () => {
+    const writes: MessageV2.Part[] = []
+    const buffer = new PartWriteBuffer(async () => {
+      throw new Error("append unavailable")
+    }, 10_000)
+    const value = part("complete prefix")
+    buffer.defer(value.id, path, value, value.text)
+    await expect(buffer.flushAll()).rejects.toThrow("append unavailable")
+    await buffer.writeNow(value.id, path, value, async (_path, snapshot) => {
+      writes.push(snapshot)
     })
-    const persisted: Array<{ text: string }> = []
-    const buf = new PartWriteBuffer<{ text: string }>(async (_path, value) => {
-      await blocked
-      persisted.push(value)
-    }, 10_000)
-    const part = { text: "streamed" }
-    buf.defer("p", "path/p", part, "streamed")
-    const pending = buf.flush("p")
-    part.text = "mutated during the write"
-    release()
-    await pending
-    expect(persisted).toEqual([{ text: "streamed" }])
+    expect(writes).toEqual([value])
+    expect(() => buffer.assertDrained(value.id)).not.toThrow()
   })
 
-  test("flush rejects when the exact snapshot exceeds the buffer budget the caller under-reported", async () => {
-    const writes: unknown[] = []
-    const buf = new PartWriteBuffer<{ text: string; extra?: string }>((_path, value) => {
-      writes.push(value)
+  test("terminal failures keep their charged bytes and concurrent drains retry each immutable replacement once", async () => {
+    let failing = true
+    const snapshots: MessageV2.Part[] = []
+    const buffer = new PartWriteBuffer(async () => {}, 10_000)
+    const text = "x".repeat(8 * 1024 * 1024 - 1024)
+    for (let index = 0; index < 8; index++) {
+      await expect(
+        buffer.writeNow(String(index), path, part(text, String(index)), async (_path, snapshot) => {
+          if (failing) throw new Error("retained disk failure")
+          snapshots.push(snapshot)
+        }),
+      ).rejects.toThrow("retained disk failure")
+    }
+    expect(() => buffer.defer("overflow", path, part("y".repeat(8192), "overflow"), "")).toThrow("buffer is full")
+    await expect(buffer.flushAll()).rejects.toBeInstanceOf(AggregateError)
+    failing = false
+    await Promise.all([buffer.flushAll(), buffer.flushAll()])
+    expect(snapshots).toHaveLength(8)
+    expect(new Set(snapshots.map((snapshot) => snapshot.id)).size).toBe(8)
+    buffer.defer("released", path, part("released", "released"), "released")
+    await buffer.flushAll()
+  })
+
+  test("owner release discards drained stream metadata and keeps other owners' append state intact", async () => {
+    const writes: string[] = []
+    const buffer = new PartWriteBuffer(async (_path, batch) => {
+      writes.push(batch.text)
     }, 10_000)
-    const part: { text: string; extra?: string } = { text: "x".repeat(34 * 1024 * 1024) }
-    buf.defer("p", "path/p", part)
-    part.text += "z"
-    buf.defer("p", "path/p", part, "z")
-    // Growth the appended-text accounting cannot see: the buffered estimate
-    // stays inside the budget while the exact snapshot does not.
-    part.extra = "y".repeat(31 * 1024 * 1024)
-    await expect(buf.flush("p")).rejects.toThrow("Streaming persistence buffer is full")
-    expect(writes).toEqual([])
+    const own = part("old")
+    const foreign = part("foreign", "foreign", "foreign")
+    buffer.defer(own.id, path, own, own.text)
+    buffer.defer(foreign.id, path, foreign, foreign.text)
+    await buffer.flushAll()
+    buffer.cancelWhere((header) => header.sessionID === own.sessionID)
+    const restarted = part("replacement")
+    buffer.defer(restarted.id, path, restarted, "replacement")
+    foreign.text += " appended"
+    buffer.defer(foreign.id, path, foreign, " appended")
+    await buffer.flushAll()
+    expect(writes.sort()).toEqual(["old", "foreign", "replacement", " appended"].sort())
+  })
+
+  test("only pending deltas consume capacity, not the committed prefix", async () => {
+    const buffer = new PartWriteBuffer(async () => {}, 10_000)
+    const value = part("")
+    const chunk = "x".repeat(4 * 1024 * 1024)
+    for (let index = 0; index < 9; index++) {
+      value.text += chunk
+      buffer.defer(value.id, path, value, chunk)
+      await buffer.flushAll()
+    }
+    expect(value.text.length).toBeGreaterThan(32 * 1024 * 1024)
+    expect(() => buffer.defer("large", path, part("x".repeat(32 * 1024 * 1024), "large"), "")).toThrow("buffer is full")
+    const pending = part("x".repeat(31 * 1024 * 1024), "pending")
+    buffer.defer(pending.id, path, pending, "")
+    expect(() => buffer.defer("overflow", path, part("x".repeat(2 * 1024 * 1024), "overflow"), "")).toThrow(
+      "buffer is full",
+    )
+    await buffer.flushAll()
+  })
+
+  test("key admission rejects the 1025th resident stream and owner release admits a new stream", async () => {
+    const buffer = new PartWriteBuffer(async () => {}, 10_000)
+    for (let index = 0; index < 1024; index++) {
+      const value = part("x", `key-${index}`)
+      buffer.defer(value.id, path, value, "x")
+    }
+    expect(() => buffer.defer("overflow", path, part("x", "overflow"), "x")).toThrow("buffer is full")
+    await buffer.flushAll()
+    expect(() => buffer.defer("overflow", path, part("x", "overflow"), "x")).toThrow("buffer is full")
+    buffer.cancel("key-0")
+    buffer.defer("released", path, part("x", "released"), "x")
+    await buffer.flushAll()
+    buffer.cancelWhere(() => true)
   })
 })

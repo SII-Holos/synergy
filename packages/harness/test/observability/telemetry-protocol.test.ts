@@ -53,6 +53,7 @@ describe("TelemetryProtocol", () => {
         type: "status",
         counters: {
           dropped: 3,
+          droppedObservations: 21,
           committed: 17,
           capExceededBytes: 4096,
           maintenanceDeferred: true,
@@ -63,6 +64,7 @@ describe("TelemetryProtocol", () => {
         type: "status",
         counters: {
           dropped: 0,
+          droppedObservations: 0,
           committed: 0,
           capExceededBytes: 0,
           maintenanceDeferred: false,
@@ -133,6 +135,14 @@ describe("TelemetryProtocol", () => {
           occurrenceCount: 1,
           fingerprint: "TEST",
         }),
+      },
+      {
+        kind: "issue-status",
+        row: {
+          fingerprint: "condition-owner",
+          status: "resolved",
+          evidence: { resolvedTime: time, recoveryObservedValue: 20 },
+        },
       },
       {
         kind: "browser-batch",

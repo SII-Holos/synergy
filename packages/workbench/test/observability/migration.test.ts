@@ -76,12 +76,25 @@ describe("ObservabilityMigration", () => {
     runtime.run(async () => {
       seedLegacyPerformanceStore()
 
+      const before = (await getMigrationStatus("observability")).observability
       const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
       const status = await getMigrationStatus("observability")
 
-      expect(summary.completed).toBe(6)
+      expect(summary.completed).toBe(before.pending.length)
       expect(status.observability.pending).toHaveLength(0)
-      expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
+      expect(status.observability.completed.map((migration) => migration.id)).toEqual([
+        ...before.completed.map((migration) => migration.id),
+        ...before.pending.map((migration) => migration.id),
+      ])
+      expect(status.observability.completed.map((migration) => migration.id)).toEqual(
+        expect.arrayContaining([
+          ObservabilityMigration.id,
+          ObservabilityMigration.issueScopeAttributionId,
+          ObservabilityMigration.conditionEpisodesId,
+        ]),
+      )
+      expect(ObservabilityStore.queryMetrics({ since: 0, names: ["http.request.duration"] })).toHaveLength(1)
+      expect((await runMigrations({ output: "silent", targetDomain: "observability" })).completed).toBe(0)
     }))
 
   test("rolls back the canonical copy when a legacy table is malformed", () =>

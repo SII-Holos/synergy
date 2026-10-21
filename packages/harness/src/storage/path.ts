@@ -299,6 +299,13 @@ export namespace StoragePath {
     partID as string,
   ]
 
+  export const partContent = (part: string[]) => [...part, "content"]
+  export const partContentChunk = (part: string[], generation: string, sequence: number) => [
+    ...partContent(part),
+    generation,
+    String(sequence),
+  ]
+
   export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
   export const permissionRules = () => ["permission-rules"]
 

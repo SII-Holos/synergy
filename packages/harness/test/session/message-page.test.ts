@@ -5,6 +5,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
 import { MessageV2 } from "../../src/session/message-v2"
+import { UsageQuery } from "../../src/usage/query"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -150,7 +151,12 @@ describe("session message cursor pages", () => {
       })
     }))
 
-  test("flushes buffered streaming parts before returning a page snapshot", () =>
+  test.each([
+    ["text", "inline"],
+    ["text", "binary"],
+    ["reasoning", "inline"],
+    ["reasoning", "binary"],
+  ] as const)("flushes %s %s checkpoints before paging and preserves usage on deletion", (type, storage) =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -162,12 +168,29 @@ describe("session message cursor pages", () => {
           try {
             await writeUser(session.id, rootID, 1_000)
             await writeAssistant({ sessionID: session.id, id: assistantID, rootID, created: 2_000, cwd: tmp.path })
-            const part: MessageV2.TextPart = {
+            await Session.updatePart({
               id: Identifier.ascending("part"),
               sessionID: session.id,
               messageID: assistantID,
-              type: "text",
-              text: "buffered text",
+              type: "tool",
+              tool: "fixture",
+              callID: "retained-tool",
+              state: {
+                status: "completed",
+                input: {},
+                output: "retained",
+                title: "Fixture",
+                metadata: {},
+                time: { start: 2_000, end: 2_010 },
+              },
+            })
+            const part: MessageV2.TextPart | MessageV2.ReasoningPart = {
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: assistantID,
+              type,
+              text: storage === "inline" ? "buffered text" : "buffered text".repeat(1024),
+              time: { start: 2_000 },
             }
             await Session.updatePartDelta(part, part.text)
 
@@ -180,9 +203,13 @@ describe("session message cursor pages", () => {
             await Session.flushPartWrites(session.id)
             await Session.remove(session.id)
           }
+          expect((await UsageQuery.summary({ scopeID: ScopeContext.current.scope.id })).tools).toContainEqual(
+            expect.objectContaining({ tool: "fixture", calls: 1, completed: 1, durationMs: 10 }),
+          )
         },
       })
-    }))
+    }),
+  )
 
   test("does not hydrate parts outside the requested page", () =>
     runtime.run(async () => {

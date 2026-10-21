@@ -92,7 +92,10 @@ export namespace PerformanceSchema {
         .object({
           userMicros: z.number().optional(),
           systemMicros: z.number().optional(),
-          utilizationRatio: z.number().optional(),
+          utilizationRatio: z
+            .number()
+            .describe("Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1")
+            .optional(),
         })
         .default({}),
       memory: z
@@ -287,7 +290,10 @@ export namespace PerformanceSchema {
         heapTotalBytes: z.number().optional(),
         externalBytes: z.number().optional(),
         arrayBuffersBytes: z.number().optional(),
-        cpuUtilizationRatio: z.number().optional(),
+        cpuUtilizationRatio: z
+          .number()
+          .describe("Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1")
+          .optional(),
         eventLoopLagP95Ms: z.number().optional(),
         appReadBytes: z.number().optional(),
         appWrittenBytes: z.number().optional(),

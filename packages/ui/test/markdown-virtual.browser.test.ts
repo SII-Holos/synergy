@@ -162,7 +162,12 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root: directory,
+    cacheDir: path.join(directory, ".vite"),
     plugins: [solidPlugin()],
+    resolve: {
+      alias: { "lucide-solid": Bun.resolveSync("lucide-solid", path.resolve(import.meta.dir, "..")) },
+    },
+    optimizeDeps: { include: ["lucide-solid"] },
     server: {
       host: "127.0.0.1",
       // Vite maps port 0 to its default: https://github.com/vitejs/vite/blob/v7.1.4/packages/vite/src/node/server/index.ts
@@ -913,41 +918,56 @@ test.each([
         { adopt, target },
       )
       expect(before.focused).toBe(true)
-      await page.keyboard.press("Space")
-      await page.waitForFunction((prior) => document.getElementById("scroller")!.scrollTop > prior + 20, before.scroll)
-      const result = await page.evaluate(async (target) => {
-        const scroller = document.getElementById("scroller")!,
-          root = scroller.querySelector<HTMLElement>('[data-component="markdown"]')!
-        const atRelease = scroller.scrollTop
-        document.getSelection()!.removeAllRanges()
-        const frames: Array<number | null> = []
-        await new Promise<void>((resolve) => {
-          const sample = () => {
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-            let point: number | null = null
-            while (walker.nextNode()) {
-              const node = walker.currentNode as Text,
-                offset = node.data.indexOf(target)
-              if (offset < 0) continue
-              const range = document.createRange()
-              range.setStart(node, offset)
-              range.setEnd(node, offset + target.length)
-              point = range.getBoundingClientRect().top - scroller.getBoundingClientRect().top
-              break
-            }
-            frames.push(point)
-            if (frames.length === 45) resolve()
-            else requestAnimationFrame(sample)
-          }
-          requestAnimationFrame(sample)
-        })
-        const receipts = (
-          window as unknown as { scrollReceipts: Array<{ before: number; after: number; virtual: boolean }> }
-        ).scrollReceipts
-        delete (scroller as unknown as { scrollTop?: number }).scrollTop
-        return { atRelease, frames, receipts, virtual: !!root.querySelector("[data-markdown-block]") }
-      }, target)
-      return { before, ...result }
+      const observation = await page.evaluateHandle(
+        ({ target, prior }) => ({
+          result: (async () => {
+            const scroller = document.getElementById("scroller")!,
+              root = scroller.querySelector<HTMLElement>('[data-component="markdown"]')!
+            await new Promise<void>((resolve) => {
+              const moved = () => {
+                if (scroller.scrollTop > prior + 20) resolve()
+                else requestAnimationFrame(moved)
+              }
+              requestAnimationFrame(moved)
+            })
+            const atRelease = scroller.scrollTop
+            document.getSelection()!.removeAllRanges()
+            const frames: Array<number | null> = []
+            await new Promise<void>((resolve) => {
+              const sample = () => {
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+                let point: number | null = null
+                while (walker.nextNode()) {
+                  const node = walker.currentNode as Text,
+                    offset = node.data.indexOf(target)
+                  if (offset < 0) continue
+                  const range = document.createRange()
+                  range.setStart(node, offset)
+                  range.setEnd(node, offset + target.length)
+                  point = range.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+                  break
+                }
+                frames.push(point)
+                if (frames.length === 45) resolve()
+                else requestAnimationFrame(sample)
+              }
+              requestAnimationFrame(sample)
+            })
+            const receipts = (
+              window as unknown as { scrollReceipts: Array<{ before: number; after: number; virtual: boolean }> }
+            ).scrollReceipts
+            delete (scroller as unknown as { scrollTop?: number }).scrollTop
+            return { atRelease, frames, receipts, virtual: !!root.querySelector("[data-markdown-block]") }
+          })(),
+        }),
+        { target, prior: before.scroll },
+      )
+      try {
+        await page.keyboard.press("Space")
+        return { before, ...(await observation.evaluate(({ result }) => result)) }
+      } finally {
+        await observation.dispose()
+      }
     }
     const control = await run(false),
       adopted = await run(true)

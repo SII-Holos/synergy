@@ -15,6 +15,7 @@ import { Config } from "../config/config"
 import { Identifier } from "../id/id"
 import { Log } from "../util/log"
 import { Session } from "../session"
+import { Storage } from "../storage/storage"
 import { SessionInvoke, resolveInputParts } from "../session/invoke"
 import { lastModel } from "../session/input"
 import { SessionManager } from "../session/manager"
@@ -43,7 +44,7 @@ export namespace Cortex {
     stopped: false,
     background: new Map<Promise<void>, string>(),
     backgroundErrors: [] as unknown[],
-    retentionTimers: new Set<ReturnType<typeof setTimeout>>(),
+    retentionTimers: new Map<string, ReturnType<typeof setTimeout>[]>(),
     tasks: new Map() as Map<string, CortexTypes.Task>,
     taskWaiters: new Map() as Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>>,
     taskRuns: new Map() as Map<string, Promise<void>>,
@@ -193,9 +194,12 @@ export namespace Cortex {
           parentSessionID: input.parentSessionID,
           parentMessageID: input.parentMessageID,
           description: input.description,
+          prompt: input.prompt,
           agent: input.agent,
           model: input.model,
           executionRole,
+          category: input.category,
+          dagNodeId: input.dagNodeId,
           status: "queued",
           startedAt: Date.now(),
           notifyParentOnComplete,
@@ -264,28 +268,27 @@ export namespace Cortex {
     }
 
     await Session.update(session.id, (draft) => {
-      if (!draft.cortex) return
-      draft.cortex.taskID = taskID
-      draft.cortex.parentSessionID = input.parentSessionID
-      draft.cortex.parentMessageID = input.parentMessageID
-      draft.cortex.description = input.description
-      draft.cortex.agent = input.agent
-      draft.cortex.model = input.model
-      draft.cortex.executionRole = input.executionRole
-      draft.cortex.notifyParentOnComplete = notifyParentOnComplete
-      draft.cortex.status = "queued"
-      draft.cortex.startedAt = task.startedAt
-      draft.cortex.completedAt = undefined
-      draft.cortex.error = undefined
-      draft.cortex.launchFailure = undefined
-      draft.cortex.deliveryNotifiedAt = undefined
-      draft.cortex.output = undefined
-      draft.cortex.owner = input.owner
-      draft.cortex.timeoutMs = input.timeoutMs
-      draft.cortex.tools = input.tools
-      draft.cortex.outputConfig = input.output
-      draft.cortex.visibility = input.visibility
-      draft.completionNotice.silent = input.visibility === "hidden"
+      draft.cortex = {
+        taskID: task.id,
+        parentSessionID: task.parentSessionID,
+        parentMessageID: task.parentMessageID,
+        description: task.description,
+        prompt: task.prompt,
+        agent: task.agent,
+        model: task.model,
+        executionRole: task.executionRole,
+        category: task.category,
+        dagNodeId: task.dagNodeId,
+        notifyParentOnComplete: task.notifyParentOnComplete,
+        status: task.status,
+        startedAt: task.startedAt,
+        owner: task.owner,
+        timeoutMs: task.timeoutMs,
+        tools: task.tools,
+        outputConfig: task.outputConfig,
+        visibility: task.visibility,
+      }
+      draft.completionNotice.silent = task.visibility === "hidden"
     })
     instanceState.taskBudgets.set(taskID, {
       maxOutputTokens: input.maxOutputTokens,
@@ -298,7 +301,7 @@ export namespace Cortex {
     SessionManager.registerChildRuntime(session.id)
 
     if (task.visibility !== "hidden") {
-      Bus.publish(Event.TaskCreated, { task })
+      Bus.publish(Event.TaskCreated, { task: CortexTypes.summarize(task) })
     }
 
     return task
@@ -491,7 +494,7 @@ export namespace Cortex {
     const instanceState = runtimeState()
     if (instanceState.progressUpdateTimer) clearTimeout(instanceState.progressUpdateTimer)
     instanceState.progressUpdateTimer = undefined
-    track("", Bus.publish(Event.TasksUpdated, { tasks: listVisible() }))
+    track("", Bus.publish(Event.TasksUpdated, { tasks: listVisibleSummaries() }))
   }
 
   function scheduleProgressUpdate(task: CortexTypes.Task): void {
@@ -746,6 +749,7 @@ export namespace Cortex {
         task.error = undefined
         task.output = undefined
         instanceState.tasks.set(taskID, task)
+        retainTask(taskID, task.sessionID)
         await record(() =>
           Session.update(task.sessionID, (draft) => {
             if (!draft.cortex) return
@@ -764,6 +768,7 @@ export namespace Cortex {
         task.completedAt ??= Date.now()
         task.error = instanceState.timeoutErrors.get(taskID)
         instanceState.tasks.set(taskID, task)
+        retainTask(taskID, task.sessionID)
         await record(() =>
           Session.update(task.sessionID, (draft) => {
             if (!draft.cortex) return
@@ -861,12 +866,13 @@ export namespace Cortex {
       // the terminal transition at this single, ordered boundary.
       Object.assign(task, terminalTask)
       instanceState.tasks.set(taskID, task)
+      retainTask(taskID, task.sessionID)
       log.info("task status updated", { taskID, status: terminalTask.status })
       emitPluginTaskObservability(terminalTask, terminalTask.status)
       publishVisibleTasksUpdate()
 
       if (terminalTask.visibility !== "hidden") {
-        Bus.publish(Event.TaskCompleted, { task: terminalTask })
+        Bus.publish(Event.TaskCompleted, { task: CortexTypes.summarize(terminalTask) })
       }
       let deliverySettled = true
       if (shouldNotifyParent) {
@@ -945,23 +951,6 @@ export namespace Cortex {
         instanceState.taskWaiters.delete(taskID)
         log.info("task result delivered to waiters", { taskID, waiterCount: waiters.size })
       }
-
-      retain(() => {
-        const task = instanceState.tasks.get(taskID)
-        if (task) {
-          task.prompt = truncate(task.prompt, 4096)
-          task.progress = undefined
-          log.info("task compacted", { taskID })
-        }
-      }, PROMPT_COMPACT_DELAY_MS)
-
-      retain(() => {
-        instanceState.tasks.delete(taskID)
-        instanceState.taskBudgets.delete(taskID)
-        instanceState.acquiredTasks.delete(taskID)
-        SessionManager.unregisterRuntime(terminalTask.sessionID)
-        log.info("task cleaned up", { taskID })
-      }, TASK_CLEANUP_DELAY_MS)
     } finally {
       // Once the terminal state is published, isTerminal() is the durable race
       // guard. Keeping task IDs here would turn this lock into a lifetime leak.
@@ -1302,6 +1291,10 @@ export namespace Cortex {
     return Array.from(instanceState.tasks.values()).filter((task) => task.visibility !== "hidden")
   }
 
+  export function listVisibleSummaries(parentSessionID?: string): CortexTypes.TaskSummary[] {
+    return (parentSessionID ? getVisibleTasks(parentSessionID) : listVisible()).map(CortexTypes.summarize)
+  }
+
   export function getRunningTasks(): CortexTypes.Task[] {
     return listVisible().filter((t) => t.status === "running")
   }
@@ -1335,10 +1328,12 @@ export namespace Cortex {
       parentSessionID: delegation.parentSessionID,
       parentMessageID: delegation.parentMessageID,
       description: delegation.description,
-      prompt: "",
+      prompt: delegation.prompt ?? "",
       agent: delegation.agent,
       model: delegation.model,
       executionRole: delegation.executionRole,
+      category: delegation.category,
+      dagNodeId: delegation.dagNodeId,
       status: delegation.status,
       startedAt: delegation.startedAt,
       completedAt: delegation.completedAt,
@@ -1358,19 +1353,63 @@ export namespace Cortex {
   export async function getVisibleTaskForOutput(
     parentSessionID: string,
     taskID: string,
+    sessionID?: string,
   ): Promise<CortexTypes.Task | undefined> {
+    const scopeID = ScopeContext.current.scope.id
+    const parent = await SessionManager.getSession(parentSessionID)
+    if (!parent || parent.scope.id !== scopeID) return undefined
     const live = getVisibleTask(parentSessionID, taskID)
-    if (live) return live
-
-    const children = await Session.children(parentSessionID).catch(() => [])
-    const child = children.find(
-      (session) =>
-        session.cortex?.taskID === taskID &&
-        session.cortex.parentSessionID === parentSessionID &&
-        session.cortex.visibility !== "hidden" &&
-        isTerminal(session.cortex.status),
+    const children = sessionID
+      ? [await SessionManager.getSession(sessionID)]
+      : live
+        ? [await SessionManager.getSession(live.sessionID)]
+        : (await Session.children(parentSessionID)).filter((session) => session.cortex?.taskID === taskID)
+    if (children.length !== 1) return undefined
+    const child = children[0]
+    if (
+      !child ||
+      child.scope.id !== scopeID ||
+      child.parentID !== parentSessionID ||
+      child.cortex?.taskID !== taskID ||
+      child.cortex.parentSessionID !== parentSessionID ||
+      child.cortex.visibility === "hidden"
     )
-    return child ? taskFromDurableSession(child) : undefined
+      return undefined
+    const durable = await Session.get(child.id)
+    if (
+      durable.scope.id !== scopeID ||
+      durable.parentID !== parentSessionID ||
+      durable.cortex?.taskID !== taskID ||
+      durable.cortex.parentSessionID !== parentSessionID ||
+      durable.cortex.visibility === "hidden"
+    )
+      return undefined
+    if (live?.sessionID === durable.id) return { ...live, prompt: durable.cortex.prompt ?? live.prompt }
+    return isTerminal(durable.cortex.status) ? taskFromDurableSession(durable) : undefined
+  }
+
+  export async function readVisibleTask(
+    taskID: string,
+    identity: CortexTypes.TaskIdentity = {},
+  ): Promise<CortexTypes.Task | undefined> {
+    if (identity.parentSessionID) return getVisibleTaskForOutput(identity.parentSessionID, taskID, identity.sessionID)
+    if (identity.sessionID) {
+      const child = await SessionManager.getSession(identity.sessionID)
+      if (child?.scope.id !== ScopeContext.current.scope.id || child.cortex?.taskID !== taskID) return undefined
+      return getVisibleTaskForOutput(child.cortex.parentSessionID, taskID, child.id)
+    }
+    const live = get(taskID)
+    if (live) return getVisibleTaskForOutput(live.parentSessionID, taskID)
+    let match: Session.Info | undefined
+    for await (const { value: session } of Storage.records<Session.Info>({
+      kind: "session",
+      scopeID: ScopeContext.current.scope.id,
+    })) {
+      if (session.cortex?.taskID !== taskID) continue
+      if (match) return undefined
+      match = session
+    }
+    return match?.cortex ? getVisibleTaskForOutput(match.cortex.parentSessionID, taskID, match.id) : undefined
   }
 
   function getDescendantTasks(parentSessionID: string): CortexTypes.Task[] {
@@ -1434,15 +1473,43 @@ export namespace Cortex {
     state.background.set(tracked, taskID)
   }
 
-  function retain(action: () => void, delay: number) {
+  function retainTask(taskID: string, sessionID: string) {
     const state = runtimeState()
-    if (state.stopped) return
-    const timer = setTimeout(() => {
-      state.retentionTimers.delete(timer)
-      action()
-    }, delay)
-    timer.unref()
-    state.retentionTimers.add(timer)
+    if (state.stopped || state.retentionTimers.has(taskID)) return
+    const compact = setTimeout(() => {
+      const task = state.tasks.get(taskID)
+      if (task) {
+        task.prompt = truncate(task.prompt, 4096)
+        task.progress = undefined
+        log.info("task compacted", { taskID })
+      }
+    }, PROMPT_COMPACT_DELAY_MS)
+    const cleanup = () => {
+      const runtime = SessionManager.getRuntime(sessionID)
+      if (
+        state.finalizingTasks.has(taskID) ||
+        state.taskRuns.has(taskID) ||
+        state.acquiredTasks.has(taskID) ||
+        state.capacityOwners.has(taskID) ||
+        state.taskWaiters.get(taskID)?.size ||
+        runtime?.owner ||
+        runtime?.waiters.length
+      ) {
+        const retry = setTimeout(cleanup, PROMPT_COMPACT_DELAY_MS)
+        retry.unref()
+        state.retentionTimers.set(taskID, [compact, retry])
+        return
+      }
+      state.retentionTimers.delete(taskID)
+      state.tasks.delete(taskID)
+      state.taskBudgets.delete(taskID)
+      SessionManager.unregisterRuntime(sessionID)
+      log.info("task cleaned up", { taskID })
+    }
+    const cleanupTimer = setTimeout(cleanup, TASK_CLEANUP_DELAY_MS)
+    compact.unref()
+    cleanupTimer.unref()
+    state.retentionTimers.set(taskID, [compact, cleanupTimer])
   }
 
   export async function drain(taskID?: string): Promise<void> {
@@ -1505,9 +1572,9 @@ export namespace Cortex {
   ): Promise<string> {
     const instanceState = runtimeState()
 
-    const task =
-      instanceState.tasks.get(taskID) ??
-      (parentSessionID ? await getVisibleTaskForOutput(parentSessionID, taskID) : undefined)
+    const task = parentSessionID
+      ? await getVisibleTaskForOutput(parentSessionID, taskID)
+      : instanceState.tasks.get(taskID)
     if (!task) {
       return `Task ${taskID} not found. It may have expired or been cancelled.`
     }
@@ -1524,19 +1591,9 @@ export namespace Cortex {
     return [renderProgress(task), "", "--- Result ---", CortexOutput.renderTaskOutput(task.output)].join("\n")
   }
 
-  export function outputView(taskID: string) {
-    const instanceState = runtimeState()
-
-    const task = instanceState.tasks.get(taskID)
-    if (!task) {
-      return {
-        taskID,
-        status: "error" as const,
-        rendered: `Task ${taskID} not found. It may have expired or been cancelled.`,
-        error: "Task not found",
-      }
-    }
-    return CortexOutput.renderTaskOutputView(task)
+  export async function outputView(taskID: string, identity: CortexTypes.TaskIdentity = {}) {
+    const task = await readVisibleTask(taskID, identity)
+    return task ? CortexOutput.renderTaskOutputView(task) : undefined
   }
 
   function renderProgress(task: CortexTypes.Task): string {
@@ -1642,7 +1699,7 @@ export namespace Cortex {
   export function reset(): void {
     const instanceState = runtimeState()
 
-    for (const timer of instanceState.retentionTimers) clearTimeout(timer)
+    for (const timers of instanceState.retentionTimers.values()) for (const timer of timers) clearTimeout(timer)
     instanceState.retentionTimers.clear()
     instanceState.tasks.clear()
     instanceState.taskRuns.clear()

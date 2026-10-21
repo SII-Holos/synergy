@@ -20,6 +20,8 @@ Task status moves through `queued`, `running`, and one terminal state: `complete
 
 The child session is the durable record. The in-memory task entry coordinates live execution and is eventually evicted; the child session retains its Cortex metadata, messages, model, terminal status, output, `notifyParentOnComplete` decision, and optional `deliveryNotifiedAt` parent-handoff timestamp.
 
+Task list, bootstrap and task-event collections expose `TaskSummary`, containing identity, state, times, scalar usage and bounded tool progress rather than prompt, output, schemas, stack or textual progress. Public Session projections omit private task payloads as well. Complete results use the shared authorized `cortex.get` / `cortex.output` reader, including after live retention expires. It verifies Scope, parent/child/task identity and visibility against the durable child. Optional parent and child qualifiers disambiguate imported task IDs; an unqualified cold lookup with multiple valid matches returns 404 instead of choosing a copy. New launches retain their original prompt/category/DAG metadata; absent historical launch fields are not reconstructed. See the [task-summary decision](../decisions/implemented/feature/2026-10-21-project-cortex-task-summaries.md).
+
 Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, and a plugin-defined correlation ID. These fields let a plugin resume its own domain workflow without treating the in-memory Cortex map as durable state.
 
 The Plugin Task Host can resolve the task that owns the current invocation directly from this durable child-Session metadata. Ownership is committed before child execution begins, so an internal plugin tool can bind through the correlation ID even before the original `start()` call has returned to the plugin.
@@ -84,6 +86,8 @@ Cortex observes the child session while it runs. Progress includes:
 
 Recent tool history is bounded. Pure progress coalesces into at most one visible task-table publication per second; creation, status changes and terminal outcomes publish immediately and consume pending progress. The global frontend index reconciles tasks by ID so unaffected objects retain identity. Progress is observability, not a separate execution log; the child message history remains authoritative.
 
+Replay retains detached summary payloads rather than complete task results. Its existing TTL also releases payload references while the Scope is idle, and Scope disposal cancels cleanup and clears the journal. Sequence, epoch and reset semantics remain unchanged.
+
 ## Output Contracts
 
 The launcher selects one of three output modes:
@@ -137,7 +141,7 @@ Plugin Host delegation is always handle-based: `start()` returns immediately, wh
 
 Cancelling a task traverses its descendant task tree, aborts active work, releases concurrency slots, records terminal state, and cleans up owned worktree resources. Cancellation is fenced: follow-ups queued in the child inbox before the cancellation are discarded before the cancelled acknowledgement is returned, so a cancelled delegation cannot be restarted by mail the parent queued earlier; mail delivered after the acknowledgement is newer than the fence and queues as ordinary new work. If discarding the queued follow-ups fails, the cancellation does not acknowledge success. A task that exceeds its runtime limit claims the deadline before settling, so it surfaces as the runtime-limit error even when a concurrent turn is finishing. Cancellation does not erase the child session.
 
-Visible terminal tasks keep their live task record long enough for clients to observe completion, then the in-memory entry is removed. The durable child session remains available through normal session navigation and inspection.
+Terminal publication registers one pair of Runtime-owned retention timers per task before fallible parent notification or settlement. After 30 seconds, the live entry compacts its prompt and drops progress. Five-minute cleanup releases the task and child runtime registration only after finalization, execution, capacity ownership and waiters have drained; an occupied task or Session keeps one cleanup retry at the existing 30-second interval. Timer callbacks retain task and Session identifiers rather than a complete terminal snapshot. Repeated terminalization does not schedule another pair, and recording failures still propagate. The durable child session remains available through normal session navigation and inspection. See [failed execution payloads](../decisions/implemented/bug-fix/2026-10-21-retain-and-release-failed-execution-payloads.md).
 
 ## Invariants
 

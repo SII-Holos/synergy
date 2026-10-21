@@ -5,6 +5,7 @@ import type { ObservabilitySchema } from "./schema"
 export namespace ObservabilityLiveEvents {
   export type Event =
     | { type: "issue.raised"; issue: ObservabilitySchema.Issue }
+    | { type: "issue.resolved"; issue: ObservabilitySchema.Issue }
     | { type: "trace.ended"; trace: ObservabilitySchema.Span }
 
   const runtimeState = RuntimeContext.state(() => ({

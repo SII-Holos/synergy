@@ -52,7 +52,7 @@ describe("SessionMemoryPressure", () => {
       expect(collected).toBe(false)
     }))
 
-  test("runs asynchronous GC when the minimum interval has elapsed", () =>
+  test("runs asynchronous GC after the minimum interval and measures recovery in process RSS", () =>
     runtime.run(async () => {
       SessionMemoryPressure.resetForTest(1_000)
       const calls: boolean[] = []
@@ -62,7 +62,9 @@ describe("SessionMemoryPressure", () => {
         phase: "test",
         now: () => 12_000,
         snapshot: () =>
-          samples++ === 0 ? { ...healthySnapshot, heapUsedBytes: 100, externalBytes: 50 } : healthySnapshot,
+          samples++ === 0
+            ? { ...healthySnapshot, rssBytes: 164, heapUsedBytes: 114, externalBytes: 84, arrayBuffersBytes: 74 }
+            : healthySnapshot,
         collect: (synchronous) => {
           calls.push(synchronous)
         },
@@ -76,9 +78,9 @@ describe("SessionMemoryPressure", () => {
         lastRecovery: {
           action: "gc",
           reason: "interval_elapsed",
-          beforeBytes: 150,
-          afterBytes: 70,
-          reclaimedBytes: 80,
+          beforeBytes: 164,
+          afterBytes: 100,
+          reclaimedBytes: 64,
         },
       })
     }))

@@ -1166,7 +1166,7 @@ export function IssueList(props: {
                   <p class="app-panel-caption text-text-weak mt-1">
                     {props._({
                       id: "app.performance.issue.occurrences",
-                      message: "{count} occurrences · last seen {time}",
+                      message: "{count} total occurrences · last seen {time}",
                       values: { count: issue.occurrenceCount, time: formatTime(issue.lastSeenTime, props.fmt) },
                     })}
                   </p>
