@@ -27,7 +27,7 @@ export class PredictionRequest {
       read(): PredictionState
       call(input: { sessionID: string; expected: Anchor; requestID: string }, signal: AbortSignal): Promise<Result>
       apply(result: Result): void
-      clear(): void
+      clearFeedback(): void
       failed(reason: "unavailable" | "abstained"): void
       changed(busy: boolean): void
     },
@@ -45,7 +45,7 @@ export class PredictionRequest {
       this.#controller = undefined
       if ((state.binding ?? state.identity) !== this.#binding || !state.eligible || !state.automatic)
         this.#pending = undefined
-      this.adapter.clear()
+      this.adapter.clearFeedback()
       this.adapter.changed(false)
     }
     this.#identity = state.identity
@@ -81,7 +81,7 @@ export class PredictionRequest {
     this.#controller?.abort()
     const controller = new AbortController()
     this.#controller = controller
-    this.adapter.clear()
+    this.adapter.clearFeedback()
     this.adapter.changed(true)
     void this.adapter
       .call({ sessionID: state.sessionID, expected: state.anchor, requestID: generateUUID() }, controller.signal)

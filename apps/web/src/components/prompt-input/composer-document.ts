@@ -37,6 +37,7 @@ export interface ComposerDecoration {
 export interface ComposerExtensionRegistration {
   id: string
   order?: number
+  onCompletionDismissed?: () => void
   onDraftSettled?: (snapshot: ComposerDocumentSnapshot, context: { signal: AbortSignal }) => void | Promise<void>
   onBeforeSubmit?: (snapshot: ComposerDocumentSnapshot, context: { signal: AbortSignal }) => Promise<void>
 }
@@ -98,13 +99,14 @@ export class ComposerDocumentController {
     return { ...this.#adapter.read(), revision: this.#revision }
   }
 
-  completion() {
+  completion(producer?: string) {
     if (this.#completions.size === 0) return undefined
     const snapshot = this.current()
     return this.#ordered()
       .map((entry) => this.#completions.get(entry.id))
       .find(
         (value) =>
+          (!producer || value?.producer === producer) &&
           value?.revision === snapshot.revision &&
           value.position === snapshot.selection.start &&
           snapshot.selection.start === snapshot.selection.end,
@@ -139,9 +141,14 @@ export class ComposerDocumentController {
   service(input: {
     id: string
     order?: number
+    onCompletionDismissed?: () => void
     capabilities: ReadonlySet<"composer.read" | "composer.write" | "composer.intercept">
   }): ComposerExtensionService {
-    const registration: ComposerExtensionRegistration = { id: input.id, order: input.order }
+    const registration: ComposerExtensionRegistration = {
+      id: input.id,
+      order: input.order,
+      onCompletionDismissed: input.onCompletionDismissed,
+    }
     const dispose = this.register(registration)
     let active = true
     const requireCapability = (capability: "composer.read" | "composer.write" | "composer.intercept") => {
@@ -220,7 +227,9 @@ export class ComposerDocumentController {
 
   dismissCompletion() {
     if (this.#completions.size === 0) return
+    const owners = [...this.#completions.keys()]
     this.#completions.clear()
+    for (const owner of owners) this.#registrations.get(owner)?.onCompletionDismissed?.()
     this.#notify()
   }
 

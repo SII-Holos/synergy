@@ -8,10 +8,16 @@ type Control = {
   capability(value: "selected" | "absent" | "unknown"): void
   active(value: boolean): void
   session(value: string): void
+  scope(value: string): void
+  connection(value: string): void
   model(value: string): void
   composing(value: boolean): void
   complete(): void
   editSource(): void
+  metadata(): void
+  running(value: boolean): void
+  dismiss(): void
+  accept(): Promise<boolean>
   resolve(index: number, candidate?: string | null): void
   reject(index: number): void
   requests(): boolean[]
@@ -40,21 +46,25 @@ beforeAll(async () => {
     export const [selection,setSelection]=createSignal({features:["digital-twin"]})
     export const [active,setActive]=createSignal(true)
     export const [session,setSession]=createSignal("session")
+    export const [scope,setScope]=createSignal("scope")
+    export const [connection,setConnection]=createSignal("http://same-server.test")
     export const [model,setModel]=createSignal("model")
+    export const [running,setRunning]=createSignal(false)
     export const [config,setConfig]=createStore({digitalTwin:{automatic:true}})
     const listeners=new Map(), requests=[]
     export const events={on(type,handler){const entries=listeners.get(type)||new Set();entries.add(handler);listeners.set(type,entries);return ()=>entries.delete(handler)}}
     export const emit=(type,properties)=>listeners.get(type)?.forEach(handler=>handler({properties}))
-    export const sdk={url:"http://same-server.test",scopeKey:"scope",connected:()=>true,capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false},event:events,client:{
+    export const sdk={get url(){return connection()},get scopeKey(){return scope()},connected:()=>true,capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false},event:events,client:{
       session:{turnExecution:async ({rootIDs})=>({data:rootIDs.map(rootID=>({rootID,status:"completed"}))})},
       digitalTwin:{predictNextInput:({digitalTwinInput},options)=>new Promise((resolve,reject)=>requests.push({input:digitalTwinInput,signal:options.signal,resolve,reject}))}
     }}
     export const useSDK=()=>sdk
     export const useSync=()=>({data:{config}})
     export const useViewActivity=()=>active
-    export const controls={capability:value=>setSelection(value==="unknown"?undefined:{features:value==="selected"?["digital-twin"]:[]}),active:setActive,session:setSession,model:setModel,
+    export const controls={capability:value=>setSelection(value==="unknown"?undefined:{features:value==="selected"?["digital-twin"]:[]}),active:setActive,session:setSession,scope:setScope,connection:setConnection,model:setModel,running:setRunning,
       complete:()=>emit("session.root.completed",{sessionID:session(),rootID:"root",assistantID:"reply"}),
       editSource:()=>emit("message.part.summary",{summary:{sessionID:session()}}),
+      metadata:()=>{emit("session.updated",{info:{id:session()}});emit("message.updated",{info:{sessionID:session()}})},
       requests:()=>requests.map(value=>value.signal.aborted),
       reject:index=>requests[index].reject(new Error("Fixture prediction failed")),
       resolve:(index,candidate="再检查一下 API 的边界")=>requests[index].resolve({data:{proposalID:"proposal-"+index,candidate,stamp:requests[index].input.expected}})}
@@ -76,13 +86,13 @@ beforeAll(async () => {
     import {ComposerDocumentController} from "@/components/prompt-input/composer-document"
     import {DefaultComposer} from "@/plugin/default-composer"
     import {ComposerPresentation,bindComposerPresentation} from "@/components/prompt-input/composer-presentation"
-    import {sdk,session,model,controls,setConfig} from "./services"
+    import {sdk,session,model,running,controls,setConfig} from "./services"
     import "@ericsanchezok/synergy-ui/styles"
     import "@/index.css"
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     const [text,setText]=createSignal(""),[settings,setSettings]=createSignal({automatic:true,model:""})
     const controller=new ComposerDocumentController({read:()=>({sessionId:session(),text:text(),selection:{start:0,end:0},mode:"normal"}),applyEdits:edits=>{for(const edit of edits)setText(value=>value.slice(0,edit.range.start)+edit.text+value.slice(edit.range.end))}})
-    window.twinFixture={...controls,composing:value=>controller.setComposing(value),ghost:()=>controller.completion()?.text}
+    window.twinFixture={...controls,composing:value=>controller.setComposing(value),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion()}
     const messages=()=>[{id:"root",sessionID:session(),role:"user",isRoot:true,time:{created:1}},{id:"reply",sessionID:session(),role:"assistant",rootID:"root",time:{created:2,completed:3},finish:"stop"}]
     const [completionRevision,setCompletionRevision]=createSignal(0)
     controller.subscribe(()=>setCompletionRevision(value=>value+1))
@@ -92,7 +102,7 @@ beforeAll(async () => {
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
     },render:part=>part==="toolbar"?<div class="prompt-input-toolbar flex justify-end"><div class="prompt-input-toolbar-actions flex items-center gap-1.5">
-      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:"idle"}} blocked={false} modelKey={model()}/></Show>
+      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()}/></Show>
       <button type="button" aria-label="Microphone" class="prompt-input-toolbar-icon-button flex items-center justify-center"><Icon name={getSemanticIcon("prompt.voice")} size="small"/></button>
     </div></div>:null}
     bindComposerPresentation(input,{state:new ComposerPresentation(),preview:()=>({text:text(),references:[]})})
@@ -253,6 +263,82 @@ test.each([
     expect(await button.getAttribute("aria-busy")).toBe("false")
     expect(await button.isDisabled()).toBe(true)
     expect(await button.locator("svg").evaluate((element) => getComputedStyle(element).color)).toBe(disabledColor)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
+
+test("a generated suggestion survives background activity, navigation and reload without another request", async () => {
+  const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url)
+    const button = page.getByRole("button", { name: "Predict next input", exact: true })
+    await button.click()
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    await page.clock.install()
+    await page.clock.runFor(60_000)
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+    await page.evaluate(() => window.twinFixture.active(false))
+    await page.evaluate(() => window.twinFixture.active(true))
+    await page.evaluate(() => window.twinFixture.metadata())
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+    const automatic = page.getByRole("switch", { name: "Automatic next-input prediction" })
+    await automatic.focus()
+    await automatic.press("Space")
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+    await page.evaluate(() => window.twinFixture.session("other"))
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+    await page.evaluate(() => window.twinFixture.session("session"))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    await page.evaluate(() => window.twinFixture.scope("other-scope"))
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+    await page.evaluate(() => window.twinFixture.scope("scope"))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    await page.evaluate(() => window.twinFixture.connection("http://other-server.test"))
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+    await page.evaluate(() => window.twinFixture.connection("http://same-server.test"))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    await page.evaluate(() => window.twinFixture.capability("unknown"))
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+    await page.evaluate(() => window.twinFixture.capability("selected"))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(1)
+    await page.reload()
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await page.getByText("再检查一下 API 的边界", { exact: true }).isVisible()).toBe(true)
+    expect(await page.getByText("Describe a task", { exact: true }).count()).toBe(0)
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(0)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
+
+test("handled suggestions and suggestions superseded by new work do not return after reload", async () => {
+  const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    for (const action of ["dismiss", "edit", "accept", "new-work"] as const) {
+      await page.goto(fixture.url)
+      await page.getByRole("button", { name: "Predict next input", exact: true }).click()
+      await page.evaluate(() => window.twinFixture.resolve(0))
+      await page.waitForFunction(() => !!window.twinFixture.ghost())
+      if (action === "dismiss") await page.evaluate(() => window.twinFixture.dismiss())
+      if (action === "edit") await page.getByRole("textbox", { name: "Draft" }).fill("自己的草稿")
+      if (action === "accept") expect(await page.evaluate(() => window.twinFixture.accept())).toBe(true)
+      if (action === "new-work") await page.evaluate(() => window.twinFixture.running(true))
+      expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+      await page.reload()
+      await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+      expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+      expect(await page.getByText("Describe a task", { exact: true }).isVisible()).toBe(true)
+      expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(0)
+    }
     expect(errors).toEqual([])
   } finally {
     await page.close()

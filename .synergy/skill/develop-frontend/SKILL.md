@@ -16,6 +16,8 @@ Preserve domain state and generated API ownership, public theme tokens, localiza
 
 Composer assistance uses the shared document completion and generic input-assistance metadata. Preserve provenance through edits, draft transfer, failed-submit restoration and ordinary message submission. Test late completion events against synchronized history, source edits and same-URL reconnects; completion status and historical rendering alone must never initiate automatic inference.
 
+Keep cancellation of pending inference separate from the lifetime of a completed suggestion. When the product retains suggestions, use one feature-owned saved record scoped to server, Scope and Session, restore it through the existing completion service, and distinguish explicit dismissal from renderer disposal. Verify navigation and reload without new inference, owner isolation, and non-resurrection after acceptance, dismissal, editing or new work.
+
 Manual composer assistance returns focus at invocation, before disabling its trigger. Do not steal focus on asynchronous completion. Verify the real button-to-editor path, including moving to another control before the response arrives.
 
 ## Verify

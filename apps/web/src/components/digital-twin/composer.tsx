@@ -1,4 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js"
+import { createStore } from "solid-js/store"
+import { z } from "zod"
 import type { Message, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -8,11 +10,12 @@ import { useLingui } from "@lingui/solid"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { useViewActivity } from "@/context/view-residency"
+import { Persist, persisted } from "@/utils/persist"
 import type { ComposerDocumentController } from "../prompt-input/composer-document"
 import { PredictionRequest } from "./request"
 import { twinCopy } from "./copy"
 
-export function DigitalTwinComposer(props: {
+type Props = {
   controller: ComposerDocumentController
   focusEditor(): void
   sessionID?: string
@@ -21,14 +24,46 @@ export function DigitalTwinComposer(props: {
   parentID?: string
   blocked: boolean
   modelKey: string
-}) {
+}
+
+const SavedSuggestion = z.object({
+  version: z.literal(1),
+  suggestion: z
+    .object({
+      rootID: z.string(),
+      assistantID: z.string(),
+      proposalID: z.string(),
+      text: z.string().min(1),
+    })
+    .optional(),
+})
+
+export function DigitalTwinComposer(props: Props) {
+  const sdk = useSDK()
+  const owner = createMemo(() => ({ url: sdk.url, scope: sdk.scopeKey, sessionID: props.sessionID }))
+  return (
+    <Show when={owner()} keyed>
+      {(owner) => <SessionPrediction {...props} sessionID={owner.sessionID} />}
+    </Show>
+  )
+}
+
+function SessionPrediction(props: Props) {
   const sdk = useSDK()
   const sync = useSync()
   const active = useViewActivity()
   const { _ } = useLingui()
+  const [saved, setSaved] = persisted(
+    {
+      ...Persist.scoped(Persist.scopeKey(sdk.url, sdk.scopeKey), props.sessionID, "digital-twin"),
+      migrate: (value) => SavedSuggestion.safeParse(value).data ?? { version: 1 },
+    },
+    createStore<z.infer<typeof SavedSuggestion>>({ version: 1 }),
+  )
   const service = props.controller.service({
     id: "digital-twin",
     capabilities: new Set(["composer.read", "composer.write"]),
+    onCompletionDismissed: () => setSaved("suggestion", undefined),
   })
   const [revision, setRevision] = createSignal(0)
   const [visible, setVisible] = createSignal(document.visibilityState === "visible")
@@ -111,18 +146,47 @@ export function DigitalTwinComposer(props: {
       (await sdk.client.digitalTwin.predictNextInput({ digitalTwinInput: input }, { signal, throwOnError: true }))
         .data!,
     apply: (result) =>
-      service.setCompletion({
-        revision: props.controller.current().revision,
-        position: 0,
+      setSaved("suggestion", {
+        rootID: result.stamp.rootID,
+        assistantID: result.stamp.assistantID,
         text: result.candidate!,
         proposalID: result.proposalID,
       }),
-    clear: () => {
-      service.setCompletion(undefined)
-      setFailure(undefined)
-    },
+    clearFeedback: () => setFailure(undefined),
     changed: setBusy,
     failed: setFailure,
+  })
+  createEffect(() => {
+    revision()
+    const suggestion = saved.suggestion
+    const snapshot = props.controller.current()
+    const source = anchor()
+    if (
+      suggestion &&
+      (snapshot.text ||
+        snapshot.mode !== "normal" ||
+        props.controller.composing() ||
+        props.blocked ||
+        props.status.type !== "idle" ||
+        (source && (suggestion.rootID !== source.rootID || suggestion.assistantID !== source.assistantID)))
+    ) {
+      setSaved("suggestion", undefined)
+      return
+    }
+    untrack(() => {
+      const current = props.controller.completion("digital-twin")
+      if (!suggestion) {
+        if (current) service.setCompletion(undefined)
+        return
+      }
+      if (!source || (current?.proposalID === suggestion.proposalID && current.revision === snapshot.revision)) return
+      service.setCompletion({
+        revision: snapshot.revision,
+        position: 0,
+        text: suggestion.text,
+        proposalID: suggestion.proposalID,
+      })
+    })
   })
   createEffect(() => {
     if (!failure()) return
@@ -202,6 +266,7 @@ export function DigitalTwinComposer(props: {
           disabled={disabled()}
           onClick={() => {
             props.focusEditor()
+            setSaved("suggestion", undefined)
             requests.manual()
           }}
         >

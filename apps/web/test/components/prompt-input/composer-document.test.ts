@@ -21,13 +21,22 @@ function fixture(options?: { settleMs?: number; submitTimeoutMs?: number }) {
 describe("ComposerDocumentController", () => {
   test("explicit dismissal removes a completion without moving the caret or editing the draft", () => {
     const { controller, text } = fixture()
-    const service = controller.service({ id: "completion", capabilities: new Set(["composer.write"]) })
+    let dismissed = 0
+    const service = controller.service({
+      id: "completion",
+      capabilities: new Set(["composer.write"]),
+      onCompletionDismissed: () => dismissed++,
+    })
     service.setCompletion({ revision: 0, position: 5, text: " world" })
     controller.dismissCompletion()
+    controller.dismissCompletion()
+    expect(dismissed).toBe(1)
     expect(controller.completion()).toBeUndefined()
     expect(controller.current().selection).toEqual({ start: 5, end: 5 })
     expect(text()).toBe("hello")
+    service.setCompletion({ revision: 0, position: 5, text: " world" })
     controller.dispose()
+    expect(dismissed).toBe(1)
   })
 
   test("refocusing the same caret preserves a completion, while moving the caret dismisses it", () => {
@@ -135,6 +144,14 @@ describe("ComposerDocumentController", () => {
     const snapshot = service.current()
     service.setCompletion({ revision: snapshot.revision, position: 5, text: " world" })
     expect(controller.completion()?.text).toBe(" world")
+    const other = controller.service({ id: "other", order: 0, capabilities: new Set(["composer.write"]) })
+    other.setCompletion({ revision: snapshot.revision, position: 5, text: " there" })
+    expect(controller.completion()?.text).toBe(" there")
+    expect(controller.completion("writer")?.text).toBe(" world")
+    service.setCompletion(undefined)
+    expect(controller.completion()?.text).toBe(" there")
+    expect(controller.completion("writer")).toBeUndefined()
+    service.setCompletion({ revision: snapshot.revision, position: 5, text: " world" })
     service.setDecorations({
       revision: snapshot.revision,
       items: [{ id: "typo", range: { start: 0, end: 5 }, severity: "warning", replacement: "Hello" }],

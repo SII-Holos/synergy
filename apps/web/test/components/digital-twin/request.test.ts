@@ -22,7 +22,7 @@ test("only fresh successful events auto-predict; stale and dismissed sources do 
       return new Promise((resolve) => replies.push(resolve))
     },
     apply: (value) => applied.push(value.candidate!),
-    clear: () => {},
+    clearFeedback: () => {},
     failed: () => {},
     changed: () => {},
   })
@@ -67,7 +67,7 @@ test("completion waits for the matching synchronized anchor without replaying a 
       return { proposalID: "p", candidate: null, stamp: input.expected }
     },
     apply: () => {},
-    clear: () => {},
+    clearFeedback: () => {},
     changed: () => {},
     failed: () => {},
   })
