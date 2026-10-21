@@ -44,3 +44,18 @@ test("activity motion requires current runtime evidence and stops for human or t
     expect(sessionActivityAnimating({ type: "busy", activity: { phase, startedAt: 1 } })).toBe(false)
   }
 })
+
+test("an ID-only Blueprint activity does not guess whether the executor is reviewing or pausing", () => {
+  const status = {
+    type: "busy" as const,
+    activity: { phase: "running_tools" as const, startedAt: 1, tool: { id: "blueprint_loop_stop", count: 1 } },
+  }
+  expect(sessionActivityLabel(status)).toBe("Calling tool · Blueprint action")
+  const i18n = setupI18n({
+    locale: "zh-CN",
+    messages: {
+      "zh-CN": { "session.activity.tool": "正在调用工具 · {action}", "session.activity.blueprintAction": "蓝图操作" },
+    },
+  })
+  expect(sessionActivityLabel(status, i18n)).toBe("正在调用工具 · 蓝图操作")
+})

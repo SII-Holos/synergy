@@ -36,6 +36,8 @@ BlueprintLoop binds a specific Blueprint version to an execution session. It res
 
 The execution agent reads the full Blueprint and any run-specific start instruction, then continues until it can provide concrete completion evidence. A normal assistant response does not finish the loop. On idle, Synergy wakes a running loop to continue.
 
+If interactive execution needs authorization, credentials or a required user decision, the agent can explicitly pause with a saved explanation. The Blueprint and progress remain available without claiming completion or requesting review. Continue or new user input resumes the work; a waiting sentence or an expired question is not a pause or authorization. Unattended and delegated executions report blockers to their owner instead of using this interactive pause.
+
 When the executor believes the outcome is complete, it requests an audit. Synergy launches a reviewer Cortex task, normally using `supervisor`, which appears in the execution session's Task details on Workbench-enabled servers and inspects the Blueprint, start instruction, execution history, artifacts, workspace state, and verification evidence.
 
 The reviewer has two outcomes:
@@ -112,7 +114,7 @@ When the session becomes idle, persisted Inbox work goes first. If no runnable I
 
 Only wake-capable Agenda items with `autoDone === true` hold that final wait. Ordinary recurring or manually managed schedules can still wake the session at their trigger times, but they do not pause workflow continuation just because they remain active.
 
-While a one-shot Agenda watch owns the next wake, stop tools (`loop_stop`, `blueprint_loop_stop`) refuse to run and show the cancellation commands needed to clear it. The wait ignores `nextRunAt`, so an overdue or just-fired watch continues to hold until it is cancelled, paused, removed, made silent or non-waking, or automatically completed. After automatic completion, the Agenda result is persisted before ordinary continuation resumes.
+While a one-shot Agenda watch owns the next wake, completion and review actions (`loop_stop` and the review action of `blueprint_loop_stop`) refuse to run and show the cancellation commands needed to clear it. An interactive Blueprint executor can still pause; the watch cannot override that pause. The wait ignores `nextRunAt`, so an overdue or just-fired watch continues to hold until it is cancelled, paused, removed, made silent or non-waking, or automatically completed. After automatic completion, the Agenda result is persisted before ordinary continuation resumes.
 
 If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Boss Mode, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages. Explicit Lattice resume and startup repair also enter through durable Inbox work before the shared drive; they do not bypass Inbox ordering or invoke the model directly.
 

@@ -16615,6 +16615,10 @@ msgid "session-status.managing-tasks"
 msgstr "正在管理任务"
 
 #. js-lingui-explicit-id
+msgid "session-status.pausing-session"
+msgstr "正在暂停会话"
+
+#. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
 msgstr "正在规划下一步"
 
@@ -16749,6 +16753,10 @@ msgstr "等待你的确认"
 #. js-lingui-explicit-id
 msgid "session.activity.bindWorktree"
 msgstr "正在准备工作区 · 绑定 worktree"
+
+#. js-lingui-explicit-id
+msgid "session.activity.blueprintAction"
+msgstr "蓝图操作"
 
 #. js-lingui-explicit-id
 msgid "session.activity.checkingReceipt"
@@ -26306,6 +26314,10 @@ msgstr "读取 Pathway"
 #. js-lingui-explicit-id
 msgid "tool.title.pathwayWrite"
 msgstr "写入 Pathway"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.pause-session"
+msgstr "暂停会话"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"

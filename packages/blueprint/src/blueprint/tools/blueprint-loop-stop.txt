@@ -1,1 +1,7 @@
-Request independent final review after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. After success, end the turn without further tools or changes. Review results arrive in this session. Lattice execution stays within its current Step.
+Stop Blueprint execution by requesting independent review or pausing for user input. Only the bound execution session may use this tool.
+
+Use action "request_review" (the default) only after checking the complete Blueprint, user instructions and results. Summarize the outcome, key checks and limitations briefly; reference detailed reports. End the turn without further tools or changes; the independent verdict arrives in this session.
+
+Use action "pause" when an interactive execution cannot proceed without user authorization, credentials or a required decision. State the blocker and what the user must provide in summary. This preserves the Blueprint and progress without requesting review or claiming completion, and stops execution after the result is saved. Resume requires explicit user input or Continue. Merely saying that you are waiting, or a question timing out, does not pause execution or grant authorization. Unattended and delegated executions cannot pause for a user; report their blocker to their owning workflow instead.
+
+Lattice execution stays within its current Step.

@@ -14,6 +14,7 @@ import { SessionEvent } from "./event"
 import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
+import { SessionLifecycle } from "./lifecycle"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { providerEndpointHost } from "../provider/retry-coordinator"
 import { Provider } from "../provider/provider"
@@ -341,6 +342,15 @@ export namespace SessionProcessor {
             },
           })
           Object.assign(live, updated)
+          const paused =
+            !input.abort.aborted &&
+            (await SessionLifecycle.blocksDrive(await SessionManager.getSession(input.sessionID)))
+          if (paused && !input.abort.aborted) {
+            SessionManager.signalAbort(input.sessionID, {
+              pauseTurn: true,
+              rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+            })
+          }
         }
         settledToolCalls.add(live.callID)
         await Observability.emit("tool.settle.end", {

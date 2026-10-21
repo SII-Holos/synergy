@@ -16615,6 +16615,10 @@ msgid "session-status.managing-tasks"
 msgstr "⟦Managing tasks⟧"
 
 #. js-lingui-explicit-id
+msgid "session-status.pausing-session"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
 msgstr "⟦Planning next steps⟧"
 
@@ -16748,6 +16752,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.activity.bindWorktree"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.blueprintAction"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -26306,6 +26314,10 @@ msgstr "⟦Read Pathway⟧"
 #. js-lingui-explicit-id
 msgid "tool.title.pathwayWrite"
 msgstr "⟦Write Pathway⟧"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.pause-session"
+msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"
