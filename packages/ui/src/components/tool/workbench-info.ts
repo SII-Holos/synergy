@@ -1,5 +1,6 @@
 import { WorkbenchView } from "@ericsanchezok/synergy-util/workbench-view"
 import { TOOL_TITLE_DESC } from "../tool-title-descriptors"
+import { getToolIcon } from "./icons"
 
 export function getWorkbenchViewInfo(input: Record<string, unknown> = {}, metadata: Record<string, unknown> = {}) {
   const parsed = WorkbenchView.Command.safeParse(input.input)
@@ -20,5 +21,5 @@ export function getWorkbenchViewInfo(input: Record<string, unknown> = {}, metada
   const args: string[] = []
   if (command) args.push(command.action)
   if (typeof metadata.status === "string") args.push(metadata.status)
-  return { icon: "workbench-view" as const, title: TOOL_TITLE_DESC.workbench_view, subtitle, args }
+  return { icon: getToolIcon("workbench_view", input, metadata), title: TOOL_TITLE_DESC.workbench_view, subtitle, args }
 }

@@ -244,7 +244,7 @@ export function classifyTool(
     const info = getWorkbenchViewInfo(input, metadata)
     return {
       category,
-      spec: { ...spec, icon: info.icon },
+      spec,
       title: info.title.message ?? toolName,
       titleDescriptor: info.title,
       subtitle: info.subtitle,

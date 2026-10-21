@@ -10,6 +10,8 @@ Conversation activity, specialized tool cards and generic tool cards assigned gl
 
 The shared UI tool icon resolver owns tool identities, input-dependent variants and category defaults. Activity rows and tool-card triggers consume that resolver. Tool descriptions and specialized result renderers retain their existing responsibilities without their own glyph tables. Tools that represent settings or product entities reference the public semantic icon tokens. Reasoning has its own semantic identity instead of sharing performance tracing.
 
+Workbench presentation uses the same resolver in its activity summary and specialized card. Its category classifier supplies descriptive metadata without overriding the tool glyph, so integrating new presentation tools cannot silently fall back to the generic icon in only one surface.
+
 The selected icon vocabulary uses the existing Lucide dependency, one vendored Tabler outline and monochrome integration brand assets. Upstream provenance and the applicable license accompany the assets. The change preserves conversation ordering, grouping and detail expansion.
 
 `ToolDisplay.icon` carries owner-declared icons through the existing tool definition and Part metadata path, including automatically expanded tools. Both presentation surfaces use that declaration before their semantic default. Plugin glyphs resolve in the plugin namespace and react to registry changes. The unused fallback-metadata lookup and its template overrides are removed instead of preserving a second presentation path.

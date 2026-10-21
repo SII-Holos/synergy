@@ -122,6 +122,7 @@ const toolIcons: Record<string, string> = {
   browser_assets: "boxes",
   browser_annotate: "message-square-diff",
   browser_view: "panel-right-open",
+  workbench_view: "workbench-view",
   computer_apps: getSemanticIcon("computer.main"),
   computer_observe: "monitor-dot",
   computer_action: "mouse",
