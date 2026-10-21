@@ -20,6 +20,8 @@ import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
+import { SessionExecutionContributions } from "@ericsanchezok/synergy-harness/session/execution-contributions"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { isDefaultTitle } from "@ericsanchezok/synergy-harness/session/title"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -64,7 +66,7 @@ export namespace Worktree {
       diskBytes: z.number().optional(),
       owner: Owner.optional(),
       bindings: z.array(z.string()).optional(),
-      lifecycle: z.enum(["active", "detached", "gc_candidate", "deleted"]).optional(),
+      lifecycle: z.enum(["active", "detached", "gc_candidate", "released", "deleted"]).optional(),
       createdAt: z.number().optional(),
       updatedAt: z.number().optional(),
       lastUsedAt: z.number().optional(),
@@ -99,6 +101,16 @@ export namespace Worktree {
     managed: z.literal(true),
   }).meta({ ref: "WorktreeRegistryInfo" })
   export type RegistryInfo = z.infer<typeof RegistryInfo>
+
+  const Recovery = z.object({
+    version: z.literal(1),
+    head: z.string().regex(/^[a-f0-9]{40,64}$/),
+    ref: z.string().startsWith("refs/synergy/released/"),
+    branch: z.string(),
+    releasedAt: z.number(),
+    restorePhysicalID: z.string().optional(),
+  })
+  const recoveryProvider = "git-worktree"
 
   export const PublicCreateInput = z
     .object({
@@ -743,6 +755,11 @@ export namespace Worktree {
       result.push({ ...info, stale: true })
     }
 
+    const catalog = await WorkspaceCatalog.list(scope.id)
+    for (const item of result) {
+      if (catalog.some((record) => record.metadata.worktreeID === item.id && record.lifecycle === "released"))
+        item.lifecycle = "released"
+    }
     return { items: result, repoRoot }
   }
 
@@ -1209,6 +1226,10 @@ export namespace Worktree {
       async () => {
         await nativeSession(input.sessionID)
         const info = await resolve(input.target)
+        if (info.lifecycle === "released") {
+          const records = await retirementRecords(info, true)
+          await restore(records[0]!.id, ScopeContext.current.scope, WorkspaceAccess.signal())
+        }
         return withUse(info.path, input.sessionID, async () => {
           const current = await resolve(input.target)
           await bindSession(input.sessionID, current)
@@ -1219,7 +1240,7 @@ export namespace Worktree {
     )
   }
 
-  async function leaveSession(sessionID: string, options?: { preserveActivityAt?: boolean; signal?: AbortSignal }) {
+  async function leaveSession(sessionID: string, options?: { signal?: AbortSignal }) {
     const session = await Session.get(sessionID)
     const previous = session.workspace
     const scope = session.scope as Scope
@@ -1300,7 +1321,10 @@ export namespace Worktree {
           record.binding.hostID !== hostID ||
           record.binding.path !== location.path ||
           (!allowMissing && !location.physicalID) ||
-          (!!location.physicalID && record.binding.physicalID !== location.physicalID),
+          (!!location.physicalID &&
+            (record.lifecycle === "released" && record.recovery?.provider === recoveryProvider
+              ? (Recovery.parse(record.recovery.spec).restorePhysicalID ?? location.physicalID)
+              : record.binding.physicalID) !== location.physicalID),
       )
     )
       throw new ArchiveKeptError("referenced")
@@ -1354,7 +1378,7 @@ export namespace Worktree {
     for await (const session of Session.listAll()) {
       references.sessions.set(session.id, session)
       if (session.workspaceID) add(references.workspaces, session.workspaceID, session.id)
-      if (session.workspace) add(references.paths, canonicalDirectory(session.workspace.path), session.id)
+      if (session.workspace) add(references.paths, path.resolve(session.workspace.path), session.id)
     }
     return references
   }
@@ -1362,7 +1386,7 @@ export namespace Worktree {
   async function referencingSessions(info: Info, records?: WorkspaceCatalog.Info[], snapshot?: SessionReferences) {
     const references = snapshot ?? (await sessionReferences())
     const workspaceIDs = new Set((records ?? (await retirementRecords(info))).map((record) => record.id))
-    const directory = canonicalDirectory(info.path)
+    const directory = path.resolve(info.path)
     const ids = new Set(references.paths.get(directory))
     for (const id of workspaceIDs) {
       for (const sessionID of references.workspaces.get(id) ?? []) ids.add(sessionID)
@@ -1380,7 +1404,7 @@ export namespace Worktree {
       if (session.workspaceID && !session.workspace) throw new ArchiveKeptError("referenced")
       if (
         (session.workspaceID && workspaceIDs.has(session.workspaceID)) ||
-        (session.workspace && canonicalDirectory(session.workspace.path) === directory)
+        (session.workspace && path.resolve(session.workspace.path) === directory)
       )
         ids.add(sessionID)
     }
@@ -1423,17 +1447,42 @@ export namespace Worktree {
     await WorkspaceCatalog.assertRetirement(fence)
   }
 
+  async function sessionRetention(
+    info: Info,
+    allowUnarchived = false,
+    snapshot?: SessionReferences,
+    records?: WorkspaceCatalog.Info[],
+  ): Promise<SweepDecision> {
+    const authority = records ?? (await retirementRecords(info))
+    for (const sessionID of await referencingSessions(info, authority, snapshot)) {
+      const candidate = await getSession(sessionID)
+      if (candidate?.workspaceID && !authority.some((record) => record.id === candidate.workspaceID)) continue
+      if (await isSessionRunning(sessionID)) return { eligible: false, reason: "running" }
+      const session = candidate
+      if (!session) continue
+      if (!allowUnarchived && !session.time.archived) return { eligible: false, reason: "unarchived" }
+      if (
+        session.paused ||
+        session.workflow ||
+        (await SessionExecutionContributions.isActive(session)) ||
+        (await SessionInbox.hasRunnableItem(sessionID))
+      )
+        return { eligible: false, reason: "unfinished" }
+    }
+    return { eligible: true }
+  }
+
   async function archiveDecision(
     info: Info,
     signal?: AbortSignal,
     snapshot?: SessionReferences,
+    allowUnarchived = false,
   ): Promise<SweepDecision> {
     signal?.throwIfAborted()
     const lock = lockOwner(info.locked)
     if (lock !== "none") return decide(info, { lock, running: false })
-    for (const sessionID of await referencingSessions(info, undefined, snapshot)) {
-      if (await isSessionRunning(sessionID)) return { eligible: false, reason: "running" }
-    }
+    const retained = await sessionRetention(info, allowUnarchived, snapshot)
+    if (!retained.eligible) return retained
     const status = await WorktreeProcess.run({
       command: [
         "git",
@@ -1507,10 +1556,9 @@ export namespace Worktree {
         }
       }
       const cleanup = await reclaimManaged(initial, {
-        keepBranch: true,
         reason: "archive",
         signal,
-        migrateBeforeRemoval: true,
+        allowUnarchived: true,
       })
       return { worktree: initial, restored, cleanup }
     })
@@ -1518,111 +1566,243 @@ export namespace Worktree {
 
   async function reclaimManaged(
     initial: Info,
-    options: { keepBranch: boolean; reason: string; signal?: AbortSignal; migrateBeforeRemoval?: boolean },
+    options: { reason: string; signal?: AbortSignal; allowUnarchived?: boolean },
   ): Promise<ArchiveResult["cleanup"]> {
-    let finishRemoval: (() => void) | undefined
-    let fence: WorkspaceCatalog.Info[] | undefined
-    let removalStarted = false
-    let removed = false
-    let fenced = false
-    try {
-      options.signal?.throwIfAborted()
-      finishRemoval = beginRemoval(initial)
-      const current = await resolve(initial.id)
-      const records = await retirementRecords(current)
-      if (records.every((record) => record.lifecycle === "deleting")) {
-        await WorkspaceCatalog.assertRetirement(records)
-        fence = records
-        fenced = true
-      }
-      const decision = await archiveDecision(current, options.signal)
-      if (!decision.eligible) {
-        if (fenced) throw new ArchiveKeptError(decision.reason)
-        return { performed: false, reason: decision.reason }
-      }
-      if (!fence) fence = await WorkspaceCatalog.beginRetirement(records)
-      fenced = true
-      options.signal?.throwIfAborted()
-      if (options.migrateBeforeRemoval)
-        await leaveBoundSessions(current, undefined, {
-          preserveActivityAt: true,
-          canonical: true,
+    return withLifecycle(initial.path, options.signal, async () => {
+      let finishRemoval: (() => void) | undefined
+      let fence: WorkspaceCatalog.Info[] | undefined
+      let removed = false
+      try {
+        options.signal?.throwIfAborted()
+        finishRemoval = beginRemoval(initial)
+        const current = await resolve(initial.id)
+        await recoverRetirement(current)
+        const records = await retirementRecords(current, true)
+        if (records.every((record) => record.lifecycle === "released")) return { performed: true }
+        const decision = await archiveDecision(current, options.signal, undefined, options.allowUnarchived)
+        if (!decision.eligible) return { performed: false, reason: decision.reason }
+        await removeWorktree(current, {
+          force: false,
+          reason: options.reason,
+          keepBranch: true,
+          keepRegistry: true,
           signal: options.signal,
-          records: fence,
+          beforeRemove: async () => {
+            const fresh = await resolve(initial.id)
+            const decision = await archiveDecision(fresh, options.signal, undefined, options.allowUnarchived)
+            if (!decision.eligible) throw new ArchiveKeptError(decision.reason)
+            const { repoRoot } = ensureGitScope()
+            const head = outputText((await $`git rev-parse HEAD`.quiet().cwd(current.path)).stdout)
+            const spec = Recovery.parse({
+              version: 1,
+              head,
+              ref: `refs/synergy/released/${current.id}`,
+              branch: current.branch,
+              releasedAt: Date.now(),
+            })
+            const pinned = await gitMutation(repoRoot, ["update-ref", spec.ref, spec.head], undefined, options.signal)
+            if (pinned.exitCode !== 0) throw new CreateFailedError({ message: errorText(pinned) })
+            await Storage.transaction(async () => {
+              const decision = await sessionRetention(current, options.allowUnarchived, undefined, records)
+              if (!decision.eligible) throw new ArchiveKeptError(decision.reason)
+              fence = await WorkspaceCatalog.beginRetirement(records, { provider: recoveryProvider, spec })
+            })
+            await assertRetirementIdentity(current, fence!)
+            options.signal?.throwIfAborted()
+          },
+          onFailure: async () => {
+            if (fence && !removed) {
+              await recoverRetirement(current, true)
+              removed = (await retirementRecords(current, true)).every((record) => record.lifecycle === "released")
+            }
+          },
+          onRemoved: () => {
+            removed = true
+          },
+          afterPhysicalRemove: async () => {
+            await WorkspaceCatalog.completeRetirement(fence!, "released")
+          },
         })
-      await removeWorktree(current, {
-        force: false,
-        reason: options.reason,
-        keepBranch: options.keepBranch,
-        signal: options.signal,
-        beforeRemove: async () => {
-          await assertRetirementIdentity(current, fence!)
-          const fresh = await resolve(initial.id)
-          const decision = await archiveDecision(fresh, options.signal)
-          if (!decision.eligible) throw new ArchiveKeptError(decision.reason)
-          if (options.migrateBeforeRemoval) {
-            for (const sessionID of await referencingSessions(fresh, fence)) {
-              const session = await getSession(sessionID)
-              if (session && (await hasRetirementAuthority(session, fence!))) throw new ArchiveKeptError("referenced")
-            }
-          }
-          options.signal?.throwIfAborted()
-        },
-        onRemovalStarted: () => {
-          removalStarted = true
-        },
-        onRemoved: () => {
-          removed = true
-        },
-        afterPhysicalRemove: async () => {
-          if (!options.migrateBeforeRemoval) return
-          await WorkspaceCatalog.completeRetirement(fence!, "deleted")
-          fenced = false
-        },
-        afterRemove: !options.migrateBeforeRemoval
-          ? async () => {
-              await leaveBoundSessions(current, undefined, {
-                preserveActivityAt: true,
-                canonical: true,
-                records: fence,
-              })
-              await WorkspaceCatalog.completeRetirement(fence!, "deleted")
-              fenced = false
-            }
-          : undefined,
-      })
-      return { performed: true }
-    } catch (error) {
-      if (fence && !removed) {
-        try {
-          const { repoRoot } = ensureGitScope()
-          await WorkspaceAccess.maintenance(async () =>
-            WorkspaceAccess.retire(
-              [initial.path],
-              async () => {
-                await assertRetirementIdentity(initial, fence!)
-                await WorkspaceCatalog.completeRetirement(fence!, "active")
-                fenced = false
-                removalStarted = false
-              },
-              { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
-            ),
-          )
-        } catch (rollbackError) {
-          log.warn("worktree retirement fence retained", { id: initial.id, error: rollbackError })
+        return { performed: true }
+      } catch (error) {
+        const retained = !removed && (await verifiedRetained(initial))
+        if (!fence || retained) options.signal?.throwIfAborted()
+        const reason =
+          error instanceof ArchiveKeptError
+            ? error.reason
+            : error instanceof WorkspaceAccess.BusyError
+              ? "busy"
+              : "removal_failed"
+        return {
+          performed: removed,
+          ...(!removed && !retained ? { state: "unknown" as const } : {}),
+          reason: removed ? undefined : reason,
+          error: reason === "busy" ? undefined : error instanceof Error ? error.message : String(error),
         }
+      } finally {
+        finishRemoval?.()
       }
-      if (!removalStarted && !removed) options.signal?.throwIfAborted()
-      const retained = !fenced && !removed && (await verifiedRetained(initial))
-      return {
-        performed: removed,
-        ...(!removed && !retained ? { state: "unknown" as const } : {}),
-        reason: removed ? undefined : error instanceof ArchiveKeptError ? error.reason : "removal_failed",
-        error: error instanceof Error ? error.message : String(error),
+    })
+  }
+
+  async function withLifecycle<T>(directory: string, signal: AbortSignal | undefined, fn: () => Promise<T>) {
+    return withFileLock(
+      { directory: await FileMutation.lockDirectory(), key: `worktree-lifecycle:${directory}`, signal },
+      fn,
+    )
+  }
+
+  export function release(target: string, signal?: AbortSignal) {
+    return withTarget(target, async () =>
+      WorkspaceAccess.maintenance(
+        async () => reclaimManaged(await resolve(target), { reason: "managed release", signal }),
+        { signal },
+      ),
+    )
+  }
+
+  async function recoverRetirement(info: Info, exclusive = false) {
+    const records = await retirementRecords(info, true)
+    if (!records.every((record) => record.lifecycle === "deleting")) return
+    const recover = async () => {
+      await WorkspaceCatalog.assertRetirement(records)
+      const exists = await fs.lstat(info.path).then(
+        () => true,
+        (error: NodeJS.ErrnoException) => {
+          if (error.code === "ENOENT") return false
+          throw error
+        },
+      )
+      if (!exists) {
+        if (records.some((record) => record.recovery?.provider !== recoveryProvider))
+          throw new CreateFailedError({ message: "Workspace files are missing and no recovery receipt exists" })
+        await WorkspaceCatalog.completeRetirement(records, "released")
+        return
       }
-    } finally {
-      finishRemoval?.()
+      await assertRetirementIdentity(info, records)
+      const entry = (await gitList(ensureGitScope().repoRoot)).find(
+        (entry) => canonicalDirectory(entry.path) === info.path,
+      )
+      if (!entry || entry.prunable || (await isDirty(info.path)))
+        throw new CreateFailedError({
+          message: "Interrupted cleanup retained files requiring inspection; no files were overwritten",
+        })
+      for (const record of records) {
+        if (record.recovery?.provider === recoveryProvider && Recovery.parse(record.recovery.spec).head !== entry.head)
+          throw new ArchiveKeptError("referenced")
+      }
+      await WorkspaceCatalog.completeRetirement(records, "active")
     }
+    if (exclusive) return recover()
+    const { repoRoot } = ensureGitScope()
+    return WorkspaceAccess.maintenance(async () =>
+      WorkspaceAccess.retire([info.path], recover, {
+        writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)],
+      }),
+    )
+  }
+
+  export async function prepareSession(session: Session.Info, signal?: AbortSignal) {
+    if (!session.workspaceID || session.workspace?.type !== "git_worktree") return
+    return restore(session.workspaceID, session.scope, signal)
+  }
+
+  async function restore(workspaceID: string, scope: Scope, signal?: AbortSignal) {
+    const record = await WorkspaceCatalog.get(workspaceID, scope.id)
+    if (record.lifecycle === "active") return
+    const target = String(record.metadata.worktreeID)
+    await ScopeContext.provide({
+      scope,
+      workspace: null,
+      fn: () =>
+        withTarget(target, async () => {
+          const info = await resolve(target)
+          return withLifecycle(info.path, signal, async () => {
+            await recoverRetirement(info)
+            let records = await retirementRecords(info, true)
+            if (records.every((record) => record.lifecycle === "active")) return
+            if (
+              records.some(
+                (record) => record.lifecycle !== "released" || record.recovery?.provider !== recoveryProvider,
+              )
+            )
+              throw new CreateFailedError({ message: "Workspace has no supported recovery receipt" })
+            const { repoRoot } = ensureGitScope()
+            const metadata = await gitMetadataRoot(repoRoot)
+            await WorkspaceAccess.maintenance(
+              () =>
+                WorkspaceAccess.retire(
+                  [info.path],
+                  async () => {
+                    records = await retirementRecords(info, true)
+                    const spec = Recovery.parse(records[0]!.recovery!.spec)
+                    if (
+                      records.some((record) => JSON.stringify(record.recovery) !== JSON.stringify(records[0]!.recovery))
+                    )
+                      throw new ArchiveKeptError("referenced")
+                    const pinned = await $`git rev-parse ${spec.ref}`.quiet().nothrow().cwd(repoRoot)
+                    const branch = await $`git rev-parse ${`refs/heads/${spec.branch}`}`.quiet().nothrow().cwd(repoRoot)
+                    if (
+                      pinned.exitCode !== 0 ||
+                      outputText(pinned.stdout) !== spec.head ||
+                      (branch.exitCode === 0 && outputText(branch.stdout) !== spec.head)
+                    )
+                      throw new CreateFailedError({
+                        message: "The saved worktree branch changed; restore requires choosing a recovery branch",
+                      })
+                    const source = RuntimeContext.current().host.workspaceLocation!
+                    let location = await source.identify(info.path, true)
+                    if (!spec.restorePhysicalID) {
+                      if (location.physicalID && (await fs.readdir(info.path)).length)
+                        throw new CreateFailedError({
+                          message: "The released worktree path is occupied; its contents were preserved",
+                        })
+                      await WorkspaceAccess.write([info.path], () => fs.mkdir(info.path, { recursive: true }))
+                      location = await source.identify(info.path)
+                      spec.restorePhysicalID = location.physicalID!
+                      records = await WorkspaceCatalog.updateRecovery(records, { provider: recoveryProvider, spec })
+                    }
+                    if (location.physicalID !== spec.restorePhysicalID) throw new ArchiveKeptError("referenced")
+                    let entry = (await gitList(repoRoot)).find((entry) => canonicalDirectory(entry.path) === info.path)
+                    if (!entry) {
+                      const added = await gitMutation(
+                        repoRoot,
+                        [
+                          "worktree",
+                          "add",
+                          ...(branch.exitCode === 0 ? [] : ["-b", spec.branch]),
+                          info.path,
+                          branch.exitCode === 0 ? spec.branch : spec.ref,
+                        ],
+                        [metadata, info.path],
+                        signal,
+                      )
+                      if (added.exitCode !== 0) throw new CreateFailedError({ message: errorText(added) })
+                      entry = (await gitList(repoRoot)).find((entry) => canonicalDirectory(entry.path) === info.path)
+                    }
+                    if (
+                      !entry ||
+                      entry.head !== spec.head ||
+                      entry.branch !== spec.branch ||
+                      entry.prunable ||
+                      (await isDirty(info.path))
+                    )
+                      throw new CreateFailedError({
+                        message: "The recovery checkout is incomplete or changed; its contents were preserved",
+                      })
+                    signal?.throwIfAborted()
+                    await WorkspaceCatalog.restoreReleased(records, spec.restorePhysicalID)
+                    await markLifecycleBound(info.id, "detached")
+                    const deleted = await gitMutation(repoRoot, ["update-ref", "-d", spec.ref, spec.head], [metadata])
+                    if (deleted.exitCode !== 0) log.warn("restored worktree retained recovery ref", { id: info.id })
+                  },
+                  { writeRoots: [metadata, registryRoot(repoRoot)], signal },
+                ),
+              { signal },
+            )
+          })
+        }),
+    })
   }
 
   async function isSessionRunning(sessionID: string) {
@@ -1644,15 +1824,10 @@ export namespace Worktree {
     extraSessionID?: string,
     options?: {
       excludeRunning?: string
-      preserveActivityAt?: boolean
-      canonical?: boolean
       signal?: AbortSignal
-      records?: WorkspaceCatalog.Info[]
     },
   ) {
-    const bindings = options?.canonical
-      ? await referencingSessions(info, options.records)
-      : new Set(info.bindings ?? [])
+    const bindings = new Set(info.bindings ?? [])
     if (extraSessionID) bindings.add(extraSessionID)
     // The caller's own turn is running by definition. It is still unbound in
     // the loop below, but it must not count as a competing session here, or a
@@ -1672,22 +1847,8 @@ export namespace Worktree {
         async () => {
           const session = await getSession(sessionID)
           options?.signal?.throwIfAborted()
-          const selected =
-            session &&
-            (options?.canonical
-              ? await hasRetirementAuthority(session, options.records ?? (await retirementRecords(info)))
-              : session.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id)
-          if (session && selected) {
-            if (options?.canonical) {
-              const mainPath = info.sourceDirectory ?? ensureGitScope().repoRoot
-              await Session.updateWorkspace(
-                sessionID,
-                { type: "main", path: mainPath, scopeID: session.scope.id },
-                options,
-              )
-            } else {
-              await leaveSession(sessionID, options)
-            }
+          if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id) {
+            await leaveSession(sessionID, options)
           } else if (info.managed) {
             await updateBinding(info, sessionID, "remove")
           }
@@ -1709,6 +1870,10 @@ export namespace Worktree {
     const parsed = RemoveInput.parse(input)
     const initial = await resolve(parsed.target)
     if (initial.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
+    if (initial.lifecycle === "released")
+      throw new CreateFailedError({
+        message: "Restore the released worktree with worktree_enter before permanent removal",
+      })
     const finishRemoval = beginRemoval(initial, excludeSessionID)
     try {
       const info = await resolve(parsed.target)
@@ -1826,50 +1991,55 @@ export namespace Worktree {
       force: boolean
       reason: string
       keepBranch?: boolean
+      keepRegistry?: boolean
       beforeRemove?: () => Promise<void>
       signal?: AbortSignal
-      onRemovalStarted?: () => void
       afterPhysicalRemove?: () => Promise<void>
       onRemoved?: () => void
-      afterRemove?: () => Promise<void>
+      onFailure?: () => Promise<void>
     },
   ) {
     const { repoRoot } = ensureGitScope()
     await WorkspaceAccess.retire(
       [info.path],
       async () => {
-        const { repoRoot } = ensureGitScope()
-        await options.beforeRemove?.()
-        options.signal?.throwIfAborted()
-        // An explicit removal runs inside the turn that holds a git-level lock, and
-        // the janitor may meet a Synergy lock a dead holder left behind. Either one
-        // blocks `git worktree remove` at every force level below `-f -f`, so
-        // release it here; `-f -f` is not an option because the turn's own finally
-        // would then unlock a path that is no longer a working tree and throw.
-        // A lock this repository did not write is refused, never cleared: it is
-        // indistinguishable from one a user pinned by hand.
-        if (!(await releaseLockForRemoval(info.path))) {
-          throw new CreateFailedError({
-            message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
+        try {
+          const { repoRoot } = ensureGitScope()
+          await options.beforeRemove?.()
+          options.signal?.throwIfAborted()
+          // An explicit removal runs inside the turn that holds a git-level lock, and
+          // the janitor may meet a Synergy lock a dead holder left behind. Either one
+          // blocks `git worktree remove` at every force level below `-f -f`, so
+          // release it here; `-f -f` is not an option because the turn's own finally
+          // would then unlock a path that is no longer a working tree and throw.
+          // A lock this repository did not write is refused, never cleared: it is
+          // indistinguishable from one a user pinned by hand.
+          if (!(await releaseLockForRemoval(info.path))) {
+            throw new CreateFailedError({
+              message: `Worktree ${info.name} is locked outside Synergy. Unlock it before removing.`,
+            })
+          }
+          const removed = await gitMutation(
+            repoRoot,
+            ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
+            [await gitMetadataRoot(repoRoot), info.path],
+            options.signal,
+          )
+          if (removed.exitCode !== 0) {
+            throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
+          }
+          options.onRemoved?.()
+          await options.afterPhysicalRemove?.()
+        } catch (error) {
+          await options.onFailure?.().catch((recoveryError) => {
+            log.warn("worktree recovery requires reconciliation", { id: info.id, error: recoveryError })
           })
+          throw error
         }
-        options.onRemovalStarted?.()
-        const removed = await gitMutation(
-          repoRoot,
-          ["worktree", "remove", ...(options.force ? ["--force"] : []), info.path],
-          [await gitMetadataRoot(repoRoot), info.path],
-          options.signal,
-        )
-        if (removed.exitCode !== 0) {
-          throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
-        }
-        options.onRemoved?.()
-        await options.afterPhysicalRemove?.()
       },
       { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)], signal: options.signal },
     )
-    await options.afterRemove?.()
-    if (info.managed) await removeRegistry(info.id)
+    if (info.managed && !options.keepRegistry) await removeRegistry(info.id)
     if (!options.keepBranch) await deleteBranchIfLanded(repoRoot, info.branch ?? "")
     log.info("worktree removed", { id: info.id, name: info.name, reason: options.reason })
   }
@@ -2091,6 +2261,10 @@ export namespace Worktree {
     workspace: import("@ericsanchezok/synergy-harness/session/types").Workspace | null,
   ) {
     if (workspace?.type !== "git_worktree" || !workspace.worktreeID) return
+    if (!workspace.id) return
+    const record = await WorkspaceCatalog.get(workspace.id, workspace.scopeID)
+    const hostID = await RuntimeContext.current().host.workspaceLocation?.hostID()
+    if (record.binding.state !== "bound" || record.binding.hostID !== hostID) return
     const scope = await Scope.fromID(workspace.scopeID)
     const repoRoot =
       typeof workspace.originalCheckout === "string" ? workspace.originalCheckout : scope?.local?.worktree
@@ -2126,6 +2300,9 @@ export namespace Worktree {
     | "foreign_lock"
     | "synergy_lock"
     | "running"
+    | "unarchived"
+    | "unfinished"
+    | "busy"
     | "dirty"
     | "unknown_dirty"
     | "ignored_files"
@@ -2208,13 +2385,6 @@ export namespace Worktree {
       reconciled: [],
     }
 
-    async function running(info: Info) {
-      for (const sessionID of info.bindings ?? []) {
-        if (await isSessionRunning(sessionID)) return true
-      }
-      return false
-    }
-
     let reportingReferences: Promise<SessionReferences> | undefined
     async function probe(info: Info) {
       try {
@@ -2228,84 +2398,34 @@ export namespace Worktree {
 
     const reconciled = new Set<string>()
     for (const item of items) {
-      if (!item.managed || item.isMain || (!item.stale && item.prunable !== true)) continue
-      let finishRemoval: (() => void) | undefined
+      if (!item.managed || item.isMain || item.lifecycle === "released") continue
       try {
-        finishRemoval = beginRemoval(item)
-        const current = await resolve(item.id)
-        const lock = lockOwner(current.locked)
-        if (lock !== "none" || (await running(current))) {
-          report.skipped.push({
-            id: item.id,
-            name: item.name,
-            reason: lock === "foreign" ? "foreign_lock" : lock === "synergy" ? "synergy_lock" : "running",
-          })
-          continue
+        await withLifecycle(item.path, WorkspaceAccess.signal(), () => recoverRetirement(item))
+        if (item.stale || item.prunable) {
+          const records = await retirementRecords(item, true)
+          if (records.every((record) => record.lifecycle === "released")) {
+            reconciled.add(item.id)
+            report.reconciled.push(item.id)
+          } else report.skipped.push({ id: item.id, name: item.name, reason: "removal_failed" })
         }
-        const missing = await fs.lstat(current.path).then(
-          () => false,
-          (error: NodeJS.ErrnoException) => {
-            if (error.code === "ENOENT") return true
-            throw error
-          },
-        )
-        if (!missing) continue
-        const records = await retirementRecords(current, true)
-        const deleted = records.every((record) => record.lifecycle === "deleted")
-        if (!deleted && records.some((record) => record.lifecycle === "deleted"))
-          throw new ArchiveKeptError("referenced")
-        const fence =
-          deleted || records.every((record) => record.lifecycle === "deleting")
-            ? records
-            : await WorkspaceCatalog.beginRetirement(records)
-        await WorkspaceAccess.maintenance(async () => {
-          await WorkspaceAccess.retire(
-            [current.path],
-            async () => {
-              if (deleted) {
-                for (const expected of fence) {
-                  const record = await WorkspaceCatalog.get(expected.id, expected.scopeID)
-                  if (record.lifecycle !== "deleted" || record.revision !== expected.revision)
-                    throw new ArchiveKeptError("referenced")
-                }
-              } else await WorkspaceCatalog.assertRetirement(fence)
-              if (
-                await fs.lstat(current.path).then(
-                  () => true,
-                  (error: NodeJS.ErrnoException) => {
-                    if (error.code === "ENOENT") return false
-                    throw error
-                  },
-                )
-              )
-                throw new ArchiveKeptError("referenced")
-              if (!current.stale) {
-                const removed = await gitMutation(
-                  repoRoot,
-                  ["worktree", "remove", "--force", current.path],
-                  [await gitMetadataRoot(repoRoot), current.path],
-                )
-                if (removed.exitCode !== 0) throw new CreateFailedError({ message: errorText(removed) })
-              }
-            },
-            { writeRoots: [await gitMetadataRoot(repoRoot), registryRoot(repoRoot)] },
-          )
-          await leaveBoundSessions(current, undefined, { preserveActivityAt: true, canonical: true, records: fence })
-          if (!deleted) await WorkspaceCatalog.completeRetirement(fence, "deleted")
-          await removeRegistry(current.id, repoRoot)
-        })
-        reconciled.add(current.id)
-        report.reconciled.push(current.id)
       } catch (error) {
         log.warn("sweep reconciliation failed", { id: item.id, error })
+        reconciled.add(item.id)
         report.skipped.push({ id: item.id, name: item.name, reason: "removal_failed" })
-      } finally {
-        finishRemoval?.()
       }
     }
 
     const managed = items.filter((item) => !reconciled.has(item.id) && !item.stale && item.managed && !item.isMain)
-    const oldestFirst = [...managed].sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0))
+    const references = await (reportingReferences ??= sessionReferences())
+    const eligibleAt = new Map<string, number>()
+    for (const item of managed) {
+      const sessions = [...references.sessions.values()].filter((session) => session.workspace?.path === item.path)
+      eligibleAt.set(
+        item.id,
+        Math.max(item.lastUsedAt ?? item.createdAt ?? 0, ...sessions.map((session) => session.time.archived ?? 0)),
+      )
+    }
+    const oldestFirst = [...managed].sort((a, b) => eligibleAt.get(a.id)! - eligibleAt.get(b.id)!)
     const excess = Math.max(managed.length - maxManaged, 0)
     for (const item of oldestFirst) {
       try {
@@ -2319,7 +2439,6 @@ export namespace Worktree {
         const cleanup = await WorkspaceAccess.maintenance(
           () =>
             reclaimManaged(item, {
-              keepBranch: requested,
               reason: requested ? "archive candidate" : "managed cap",
               signal: WorkspaceAccess.signal(),
             }),

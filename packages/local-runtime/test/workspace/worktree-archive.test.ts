@@ -98,7 +98,7 @@ test.each(["dirty", "ignored_files", "local_only_commits", "foreign_lock"] as co
     }),
 )
 
-test("archive migrates idle, child and archived canonical references missing from registry", () =>
+test("archive releases files while preserving idle, child and archived Workspace identities", () =>
   fixture(async (root) => {
     const owner = await Session.create()
     const tree = await Worktree.create({ name: "references", baseRef: "current", sessionID: owner.id, bind: true })
@@ -111,7 +111,8 @@ test("archive migrates idle, child and archived canonical references missing fro
     expect((await Worktree.resolve(tree.id)).bindings).not.toContain(archived.id)
     const result = await Worktree.archive({ sessionID: owner.id, target: tree.id })
     expect(result.cleanup.performed).toBe(true)
-    for (const id of [owner.id, child.id, archived.id]) expect((await Session.get(id)).workspace?.path).toBe(root)
+    expect((await Session.get(owner.id)).workspace?.path).toBe(root)
+    for (const id of [child.id, archived.id]) expect((await Session.get(id)).workspace?.path).toBe(tree.path)
     expect((await Session.get(archived.id)).time.archived).toBeDefined()
   }))
 
@@ -210,7 +211,7 @@ test.each(["archive", "cap cleanup"] as const)(
       }
       expect(await present(tree.path)).toBe(false)
       expect((await Session.get(owner.id)).workspace?.path).toBe(root)
-      expect((await WorkspaceCatalog.get(authority.id, owner.scope.id)).lifecycle).toBe("deleted")
+      expect((await WorkspaceCatalog.get(authority.id, owner.scope.id)).lifecycle).toBe("released")
       expect(await WorkspaceCatalog.get(imported.id, owner.scope.id)).toEqual(imported)
       await expect(
         WorkspaceCatalog.resolve(imported.id, { scopeID: owner.scope.id, hostID: authority.binding.hostID }),
@@ -259,7 +260,8 @@ test.each([
         await Worktree.leave(owner.id)
         if (operation === "missing-directory recovery") await fs.rm(tree.path, { recursive: true })
         const result = await Worktree.sweep({ maxManaged: 0 })
-        expect(operation === "cap cleanup" ? result.removed : result.reconciled).toContain(tree.id)
+        if (operation === "cap cleanup") expect(result.removed).toContain(tree.id)
+        else expect(result.skipped.some((entry) => entry.id === tree.id)).toBe(true)
       }
       expect(await present(tree.path)).toBe(false)
       expect((await Session.get(owner.id)).workspace?.path).toBe(root)
@@ -293,40 +295,6 @@ test("historical caller cannot acquire source checkout authority by archiving it
     expect((await Session.get(owner.id)).workspaceID).toBe(authority.id)
   }))
 
-test(
-  "archive rechecks a Session selection changed after canonical census",
-  () =>
-    fixture(async (root) => {
-      const owner = await Session.create()
-      const tree = await Worktree.create({ name: "census-race", baseRef: "current", sessionID: owner.id, bind: true })
-      const selected = await Session.get(owner.id)
-      const idle = await Session.create({ workspace: selected.workspace })
-      const sibling = await Worktree.create({ name: "census-destination", baseRef: "current", bind: false })
-      const destination = await Session.create({
-        workspace: { type: "main", path: sibling.path, scopeID: owner.scope.id },
-      })
-      const list = Session.listAll
-      let changed = false
-      using census = spyOn(Session, "listAll").mockImplementation(async function* () {
-        const snapshot = []
-        for await (const session of list()) snapshot.push(session)
-        if (!changed && (await WorkspaceCatalog.get(selected.workspaceID!, owner.scope.id)).lifecycle === "deleting") {
-          changed = true
-          await Session.updateWorkspace(idle.id, destination.workspace!)
-        }
-        yield* snapshot
-      })
-      const result = await Worktree.archive({ sessionID: owner.id, target: tree.id })
-      expect(changed).toBe(true)
-      expect(result.cleanup).toEqual({ performed: true })
-      expect((await Session.get(idle.id)).workspaceID).toBe(destination.workspaceID)
-      expect((await Session.get(idle.id)).workspace?.path).toBe(sibling.path)
-      expect((await Session.get(owner.id)).workspace?.path).toBe(root)
-      expect(await present(sibling.path)).toBe(true)
-    }),
-  20_000,
-)
-
 test("anonymous native resource use prevents deletion without rolling back the caller", () =>
   fixture(async (root) => {
     const owner = await Session.create()
@@ -341,7 +309,7 @@ test("anonymous native resource use prevents deletion without rolling back the c
     try {
       const result = await Worktree.archive({ sessionID: owner.id, target: tree.id })
       expect(result.cleanup.performed).toBe(false)
-      expect(result.cleanup.reason).toBe("removal_failed")
+      expect(result.cleanup.reason).toBe("busy")
       expect((await Session.get(owner.id)).workspace?.path).toBe(root)
       expect(await present(tree.path)).toBe(true)
     } finally {
@@ -411,7 +379,7 @@ test("a failed Catalog completion remains fenced until a missing-directory sweep
     const workspaceID = (await Session.get(owner.id)).workspaceID!
     const complete = WorkspaceCatalog.completeRetirement
     using fault = spyOn(WorkspaceCatalog, "completeRetirement").mockImplementation(async (records, lifecycle) => {
-      if (lifecycle === "deleted") throw new Error("Catalog completion unavailable")
+      if (lifecycle === "released") throw new Error("Catalog completion unavailable")
       return complete(records, lifecycle)
     })
     const archived = await Worktree.archive({ sessionID: owner.id, target: tree.id })
@@ -421,11 +389,11 @@ test("a failed Catalog completion remains fenced until a missing-directory sweep
     expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("deleting")
     fault.mockRestore()
     expect((await Worktree.sweep()).reconciled).toContain(tree.id)
-    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("deleted")
-    expect((await Worktree.list()).some((entry) => entry.id === tree.id)).toBe(false)
+    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("released")
+    expect((await Worktree.list()).find((entry) => entry.id === tree.id)?.lifecycle).toBe("released")
   }))
 
-test("directory replacement after fencing never restores active authority or deletes new bytes", () =>
+test("directory replacement before fencing never grants authority or deletes new bytes", () =>
   fixture(async () => {
     const owner = await Session.create()
     const tree = await Worktree.create({ name: "replacement", baseRef: "current", sessionID: owner.id, bind: true })
@@ -444,7 +412,7 @@ test("directory replacement after fencing never restores active authority or del
     const archived = await Worktree.archive({ sessionID: owner.id, target: tree.id })
     expect(replaced).toBe(true)
     expect(archived.cleanup).toMatchObject({ performed: false, state: "unknown" })
-    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("deleting")
+    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("active")
     expect(await Bun.file(path.join(tree.path, "replacement.txt")).text()).toBe("foreign bytes")
     expect(await present(`${tree.path}-original`)).toBe(true)
     expect((await Worktree.sweep()).removed).not.toContain(tree.id)
@@ -462,8 +430,8 @@ test("cancel after fencing restores only verified authority and does not roll th
     const workspaceID = (await Session.get(owner.id)).workspaceID!
     const begin = WorkspaceCatalog.beginRetirement
     const controller = new AbortController()
-    using fault = spyOn(WorkspaceCatalog, "beginRetirement").mockImplementation(async (records) => {
-      const fence = await begin(records)
+    using fault = spyOn(WorkspaceCatalog, "beginRetirement").mockImplementation(async (records, recovery) => {
+      const fence = await begin(records, recovery)
       controller.abort(new Error("cancel after fence"))
       return fence
     })
@@ -491,8 +459,8 @@ test(
       await ready.promise
       try {
         const archived = await Worktree.archive({ sessionID: owner.id, target: tree.id })
-        expect(archived.cleanup).toMatchObject({ performed: false, state: "unknown" })
-        expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("deleting")
+        expect(archived.cleanup).toMatchObject({ performed: false, reason: "busy" })
+        expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("active")
       } finally {
         release.resolve()
         await use
@@ -519,16 +487,16 @@ test("a committed Catalog completion with a lost acknowledgement still reconcile
     const complete = WorkspaceCatalog.completeRetirement
     using fault = spyOn(WorkspaceCatalog, "completeRetirement").mockImplementation(async (records, lifecycle) => {
       const result = await complete(records, lifecycle)
-      if (lifecycle === "deleted") throw new Error("Completion acknowledgement lost")
+      if (lifecycle === "released") throw new Error("Completion acknowledgement lost")
       return result
     })
     const archived = await Worktree.archive({ sessionID: owner.id, target: tree.id })
     expect(archived.cleanup.performed).toBe(true)
     expect(archived.cleanup.error).toContain("Completion acknowledgement lost")
-    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("deleted")
+    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("released")
     fault.mockRestore()
-    expect((await Worktree.sweep()).reconciled).toContain(tree.id)
-    expect((await Worktree.list()).some((entry) => entry.id === tree.id)).toBe(false)
+    expect((await Worktree.sweep()).reconciled).not.toContain(tree.id)
+    expect((await Worktree.list()).find((entry) => entry.id === tree.id)?.lifecycle).toBe("released")
   }))
 
 test("deleted Sessions left in the registry are stale hints rather than reclamation blockers", () =>
@@ -556,12 +524,18 @@ test("below-cap reporting enumerates canonical Sessions once for multiple worktr
     expect(reads).toHaveBeenCalledTimes(1)
   }))
 
-test("post-delete Session read failures retain the fence and registry for reconciliation", () =>
+test("release does not read or rewrite Session bindings after removing files", () =>
   fixture(async (root) => {
     const owner = await Session.create()
     const tree = await Worktree.create({ name: "read-recovery", baseRef: "current", sessionID: owner.id, bind: true })
     const selected = await Session.get(owner.id)
     const idle = await Session.create({ workspace: selected.workspace })
+    await Session.update(owner.id, (draft) => {
+      draft.time.archived = Date.now()
+    })
+    await Session.update(idle.id, (draft) => {
+      draft.time.archived = Date.now()
+    })
     const get = Session.get
     let injected = false
     using fault = spyOn(Session, "get").mockImplementation(
@@ -577,16 +551,16 @@ test("post-delete Session read failures retain the fence and registry for reconc
       ),
     )
     const report = await Worktree.sweep({ maxManaged: 0 })
-    expect(injected).toBe(true)
+    expect(injected).toBe(false)
     expect(report.removed).toContain(tree.id)
-    expect(report.skipped).toContainEqual({ id: tree.id, name: tree.name, reason: "removal_failed" })
-    expect((await WorkspaceCatalog.get(selected.workspaceID!, owner.scope.id)).lifecycle).toBe("deleting")
+    expect(report.skipped).toEqual([])
+    expect((await WorkspaceCatalog.get(selected.workspaceID!, owner.scope.id)).lifecycle).toBe("released")
     expect(await Bun.file(path.join(root, ".synergy/worktrees/.registry", `${tree.id}.json`)).exists()).toBe(true)
     fault.mockRestore()
     expect((await Session.get(idle.id)).workspaceID).toBe(selected.workspaceID)
-    expect((await Worktree.sweep()).reconciled).toContain(tree.id)
-    expect((await Session.get(idle.id)).workspace?.path).toBe(root)
-    expect((await WorkspaceCatalog.get(selected.workspaceID!, owner.scope.id)).lifecycle).toBe("deleted")
+    expect((await Worktree.sweep()).reconciled).not.toContain(tree.id)
+    expect((await Session.get(idle.id)).workspace?.path).toBe(tree.path)
+    expect((await WorkspaceCatalog.get(selected.workspaceID!, owner.scope.id)).lifecycle).toBe("released")
   }))
 
 test("creating again after cap reclamation skips the retired catalog location", () =>
@@ -594,10 +568,15 @@ test("creating again after cap reclamation skips the retired catalog location", 
     const owner = await Session.create()
     const tree = await Worktree.create({ name: "reuse-name", baseRef: "current", sessionID: owner.id, bind: true })
     const workspaceID = (await Session.get(owner.id)).workspaceID!
+    await Session.update(owner.id, (draft) => {
+      draft.time.archived = Date.now()
+    })
     expect((await Worktree.sweep({ maxManaged: 0 })).removed).toContain(tree.id)
     expect(
       (await $`git show-ref --verify --quiet refs/heads/${tree.branch}`.cwd(root).quiet().nothrow()).exitCode,
-    ).not.toBe(0)
+    ).toBe(0)
+    await Worktree.prepareSession(await Session.get(owner.id))
+    await Worktree.leave(owner.id)
     const restored = await Session.get(owner.id)
     expect(restored.workspace?.path).toBe(root)
     const next = await ScopeContext.provide({
@@ -609,5 +588,5 @@ test("creating again after cap reclamation skips the retired catalog location", 
     expect(next.id).not.toBe(tree.id)
     expect(await present(next.path)).toBe(true)
     expect((await Session.get(owner.id)).workspaceID).not.toBe(workspaceID)
-    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("deleted")
+    expect((await WorkspaceCatalog.get(workspaceID, owner.scope.id)).lifecycle).toBe("active")
   }))

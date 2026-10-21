@@ -457,9 +457,11 @@ export namespace SessionManager {
         sessionID,
         async () => {
           const session = await requireSession(sessionID)
-          if (session.workspaceID != null && options?.workspace !== "history")
+          if (session.workspaceID != null && options?.workspace !== "history") {
+            await SessionWorkspaceRuntime.prepare(session, lease.signal)
             await WorkspaceCatalog.assertActive(session.workspaceID, session.scope.id)
-          return session
+          }
+          return requireSession(sessionID)
         },
         lease.signal,
       )

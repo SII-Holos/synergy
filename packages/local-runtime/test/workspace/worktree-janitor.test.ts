@@ -113,7 +113,7 @@ describe("worktree sweep", () => {
       })
     }))
 
-  test("reconciles a managed registration whose directory was deleted", () =>
+  test("retains recovery evidence when a directory disappears without a receipt", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -124,22 +124,18 @@ describe("worktree sweep", () => {
           const created = await Worktree.create({ name: "reconcile-missing", bind: false, baseRef: "current" })
           await fs.rm(created.path, { recursive: true, force: true })
 
-          // A deleted directory is still listed by git, but marked `prunable`
-          // because its gitdir is gone. That is enough to reconcile on this tick:
-          // the directory check confirms nothing is left to lose before the
-          // registration and its git metadata are dropped together.
           const report = await Worktree.sweep()
-          expect(report.reconciled).toContain(created.id)
+          expect(report.reconciled).not.toContain(created.id)
           expect(report.removed).toEqual([])
-          expect(report.skipped.some((item) => item.id === created.id)).toBe(false)
+          expect(report.skipped.some((item) => item.id === created.id)).toBe(true)
 
-          expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(false)
-          expect((await Worktree.list()).some((item) => item.id === created.id)).toBe(false)
+          expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
+          expect((await Worktree.list()).some((item) => item.id === created.id)).toBe(true)
         },
       })
     }))
 
-  test("reconciles a registration whose git metadata was already pruned", () =>
+  test("retains a registration when Git was pruned without a recovery receipt", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -153,9 +149,9 @@ describe("worktree sweep", () => {
 
           const report = await Worktree.sweep()
 
-          expect(report.reconciled).toContain(created.id)
+          expect(report.reconciled).not.toContain(created.id)
           expect(report.removed).toEqual([])
-          expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(false)
+          expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
           expect(await exists(created.path)).toBe(false)
         },
       })
@@ -204,6 +200,9 @@ describe("worktree sweep", () => {
           await $`git add -- staged.txt`.quiet().cwd(created.path)
           await fs.writeFile(binaryPath, binary)
           await setLastUsedAt(scope.local!.worktree, created.id, 1)
+          await Session.update(session.id, (draft) => {
+            draft.time.archived = Date.now()
+          })
           const before = await Session.get(session.id)
 
           const report = await Worktree.sweep({ maxManaged: 0 })
@@ -215,7 +214,7 @@ describe("worktree sweep", () => {
           expect(await fs.readFile(binaryPath)).toEqual(binary)
           expect((await $`git diff --cached --name-only`.quiet().cwd(created.path).text()).trim()).toBe("staged.txt")
           expect((await Session.get(session.id)).workspace).toEqual(before.workspace)
-          expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).toContain(session.id)
+          expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).not.toContain(session.id)
           await Session.remove(session.id)
         },
       })
@@ -282,6 +281,9 @@ describe("worktree sweep", () => {
             const later = await Worktree.create({ name: "after-late-failure", bind: false, baseRef: "current" })
             await setLastUsedAt(scope.local!.worktree, created.id, 1)
             await setLastUsedAt(scope.local!.worktree, later.id, 2)
+            await Session.update(session.id, (draft) => {
+              draft.time.archived = Date.now()
+            })
             const before = await Session.get(session.id)
             const navBefore = (await SessionNav.readNavIndex(scope.id)).entries.find((entry) => entry.id === session.id)
             const retire = WorkspaceAccess.retire
@@ -301,7 +303,7 @@ describe("worktree sweep", () => {
               expect(report.skipped).toContainEqual({
                 id: created.id,
                 name: created.name,
-                reason: failure === "git" ? "dirty" : "removal_failed",
+                reason: failure === "git" ? "dirty" : "busy",
               })
               expect(report.removed).toEqual([later.id])
               expect(await exists(created.path)).toBe(true)
@@ -313,59 +315,7 @@ describe("worktree sweep", () => {
                 (await SessionNav.readNavIndex(scope.id)).entries.find((entry) => entry.id === session.id)
                   ?.lastActivityAt,
               ).toBe(navBefore?.lastActivityAt)
-              expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).toContain(session.id)
-            } finally {
-              fault.mockRestore()
-              await Session.remove(session.id)
-            }
-          },
-        })
-      }),
-    30_000,
-  )
-
-  test(
-    "reconciles bindings on the next sweep when rebinding fails after Git removal",
-    () =>
-      runtime.run(async () => {
-        await using tmp = await tmpdir({ git: true })
-        const scope = await tmp.scope()
-        await ScopeContext.provide({
-          scope,
-          fn: async () => {
-            await $`git update-ref refs/remotes/origin/main HEAD`.quiet().cwd(scope.local!.worktree)
-            const session = await Session.create()
-            const created = await Worktree.create({
-              name: "deferred-binding",
-              sessionID: session.id,
-              bind: true,
-              baseRef: "current",
-            })
-            const before = await Session.get(session.id)
-            const update = Session.updateWorkspace
-            let injected = false
-            using fault = spyOn(Session, "updateWorkspace").mockImplementation(async (id, workspace, options) => {
-              if (!injected && id === session.id && workspace?.type === "main" && !(await exists(created.path))) {
-                injected = true
-                throw new Error("Binding storage unavailable")
-              }
-              return update(id, workspace, options)
-            })
-            try {
-              const failed = await Worktree.sweep({ maxManaged: 0 })
-              expect(injected).toBe(true)
-              expect(failed.skipped).toContainEqual({ id: created.id, name: created.name, reason: "removal_failed" })
-              expect(failed.removed).toEqual([created.id])
-              expect(await exists(created.path)).toBe(false)
-              expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(true)
-              expect((await Session.get(session.id)).workspaceID).toBe(before.workspaceID)
-              fault.mockRestore()
-              const recovered = await Worktree.sweep({ maxManaged: 0 })
-              expect(recovered.reconciled).toEqual([created.id])
-              const after = await Session.get(session.id)
-              expect(after.workspace?.type).toBe("main")
-              expect(after.time.updated).toBe(before.time.updated)
-              expect(await Bun.file(registryFile(scope.local!.worktree, created.id)).exists()).toBe(false)
+              expect((await Worktree.list()).find((item) => item.id === created.id)?.bindings).not.toContain(session.id)
             } finally {
               fault.mockRestore()
               await Session.remove(session.id)
@@ -561,13 +511,17 @@ describe("worktree sweep", () => {
             bind: true,
             baseRef: "current",
           })
+          await Session.update(older.id, (draft) => {
+            draft.time.archived = Date.now()
+          })
           const newer = await Session.create({ title: "Recent work" })
           const before = await SessionNav.readNavIndex(scope.id)
           const activity = before.entries.find((entry) => entry.id === older.id)!.lastActivityAt
           if (mode === "missing") await fs.rm(created.path, { recursive: true, force: true })
           const report = await Worktree.sweep({ maxManaged: 0 })
-          expect([...report.removed, ...report.reconciled]).toContain(created.id)
-          expect((await Session.get(older.id)).workspace?.type).toBe("main")
+          if (mode === "cap") expect(report.removed).toContain(created.id)
+          else expect(report.skipped.some((item) => item.id === created.id)).toBe(true)
+          expect((await Session.get(older.id)).workspace?.type).toBe("git_worktree")
           const after = await SessionNav.readNavIndex(scope.id)
           expect(after.entries.find((entry) => entry.id === older.id)?.lastActivityAt).toBe(activity)
           expect(after.entries.map((entry) => entry.id)).toEqual(before.entries.map((entry) => entry.id))

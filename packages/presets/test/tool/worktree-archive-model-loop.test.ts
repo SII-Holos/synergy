@@ -284,7 +284,7 @@ ${content
             cleanup: { performed: true },
             message: archive.state.output,
           })
-          expect(archive.state.output).toContain("Checkout removed")
+          expect(archive.state.output).toContain("Checkout released")
           expect(archive.state.output).toContain(tree.branch)
           const deliveredArchive = requests[1].messages.find((message) => message.tool_call_id === archiveCallID)
           expect(deliveredArchive && text(deliveredArchive)).toContain(archive.state.output)

@@ -71,6 +71,47 @@ for (const backend of storageTestBackends()) {
     const open = () =>
       testRuntime({ postgres: backend === "postgres" ? process.env.SYNERGY_TEST_POSTGRES_URL : undefined })
 
+    test("release requires a receipt and restoration atomically replaces physical identity", async () => {
+      await using runtime = await open()
+      await runtime.run(async () => {
+        const input = registration("/recoverable", { physicalID: "original-file" })
+        const original = await WorkspaceCatalog.register(input)
+        let owned = await WorkspaceCatalog.beginRetirement([original])
+        await expect(WorkspaceCatalog.completeRetirement(owned, "released")).rejects.toMatchObject({
+          name: "WorkspaceInvalid",
+        })
+        const active = await WorkspaceCatalog.completeRetirement(owned, "active")
+        const recovery = { provider: "fixture", spec: { commit: "saved" } }
+        owned = await WorkspaceCatalog.beginRetirement(active, recovery)
+        const released = await WorkspaceCatalog.completeRetirement(owned, "released")
+        expect((await WorkspaceCatalog.get(original.id, "home")).recovery).toEqual(recovery)
+        await expect(WorkspaceCatalog.register(registration("/recoverable/child"))).rejects.toMatchObject({
+          name: "WorkspaceUnavailable",
+        })
+        const conflict = await WorkspaceCatalog.register(registration("/other", { physicalID: "occupied-file" }))
+        const before = await catalogState()
+        await expect(WorkspaceCatalog.restoreReleased(released, "occupied-file")).rejects.toMatchObject({
+          name: "WorkspaceUnavailable",
+        })
+        expect(await catalogState()).toEqual(before)
+        const [restored] = await WorkspaceCatalog.restoreReleased(released, "replacement-file")
+        expect(restored).toMatchObject({
+          id: original.id,
+          lifecycle: "active",
+          binding: { physicalID: "replacement-file", generation: original.binding.generation + 1 },
+        })
+        expect(restored!.recovery).toBeUndefined()
+        expect(await WorkspaceCatalog.findByLocation(input)).toEqual(restored!)
+        expect(await WorkspaceCatalog.get(conflict.id, "home")).toEqual(conflict)
+        await expect(WorkspaceCatalog.restoreReleased(released, "another-file")).rejects.toMatchObject({
+          name: "WorkspaceBindingChanged",
+        })
+        const reused = await WorkspaceCatalog.register(registration("/reused", { physicalID: "original-file" }))
+        expect(reused.id).not.toBe(original.id)
+        expect(WorkspaceCatalog.forImport(released[0]!, "imported").recovery).toBeUndefined()
+      })
+    })
+
     test("retirement admission rejects a stale member atomically and excludes duplicate owners", async () => {
       await using runtime = await open()
       await runtime.run(async () => {

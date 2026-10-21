@@ -39371,7 +39371,7 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["active", "detached", "gc_candidate", "deleted"]
+            "enum": ["active", "detached", "gc_candidate", "released", "deleted"]
           },
           "createdAt": {
             "type": "number"
@@ -39584,7 +39584,7 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["active", "detached", "gc_candidate", "deleted"]
+            "enum": ["active", "detached", "gc_candidate", "released", "deleted"]
           },
           "createdAt": {
             "type": "number"
@@ -54477,6 +54477,23 @@
             },
             "required": ["provider", "spec"]
           },
+          "recovery": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "spec": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": ["provider", "spec"]
+          },
           "content": {
             "type": "object",
             "properties": {
@@ -54559,7 +54576,7 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["active", "deleting", "deleted"]
+            "enum": ["active", "deleting", "released", "deleted"]
           },
           "createdAt": {
             "type": "number"
@@ -55954,7 +55971,7 @@
         "type": "object",
         "properties": {
           "maxManaged": {
-            "description": "Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones",
+            "description": "Soft limit for materialized managed worktrees; only archived or unreferenced, finished, clean worktrees can be released and restored on demand",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991

@@ -5,6 +5,7 @@ import { ExecutionCapacity } from "./execution-capacity"
 
 export namespace SessionWorkspaceRuntime {
   export interface Provider {
+    prepare?(session: Info, signal?: AbortSignal): Promise<void>
     homeWorkspace(): Promise<Info["workspace"]>
     withWorktree<T>(directory: string, sessionID: string | undefined, fn: () => Promise<T>): Promise<T>
     createWorktree(input: {
@@ -88,6 +89,9 @@ export namespace SessionWorkspaceRuntime {
   }
   export async function homeWorkspace(): Promise<Info["workspace"]> {
     return state().provider?.homeWorkspace() ?? null
+  }
+  export async function prepare(session: Info, signal?: AbortSignal) {
+    await state().provider?.prepare?.(session, signal)
   }
   export function get(): Provider {
     const provider = state().provider

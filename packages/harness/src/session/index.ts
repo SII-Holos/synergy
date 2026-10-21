@@ -1368,6 +1368,14 @@ export namespace Session {
       }
       if (result.workspaceID != null && (options?.workspaceChange || result.workspaceID !== before.workspaceID))
         await WorkspaceCatalog.assertActive(result.workspaceID, scope.id)
+      if (result.workspaceID != null && before.time.archived && !result.time.archived) {
+        const workspace = await WorkspaceCatalog.get(result.workspaceID, scope.id)
+        if (workspace.lifecycle === "deleting")
+          throw new WorkspaceCatalog.Unavailable({
+            workspaceID: workspace.id,
+            message: "Workspace release is in progress; retry when it finishes",
+          })
+      }
       if (!options?.preserveActivityAt) result.time.updated = Date.now()
       await Storage.write(StoragePath.sessionInfo(scopeID, sessionID), SessionRecords.serialize(result))
 
