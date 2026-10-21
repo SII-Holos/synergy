@@ -38,7 +38,21 @@ test("activity snapshots retain the real phase and reject obsolete root, lease a
           activity: { phase: "running_tools", rootID: "root-1", tool: { id: "read", count: 2 } },
         })
         expect(toStatus(working)).toEqual((await SessionManager.listStatuses())[session.id])
+        const retry = {
+          type: "retry" as const,
+          rootID: "root-1",
+          messageID: "message-1",
+          phase: "waiting" as const,
+          attempt: 1,
+          message: "Unavailable",
+          error: "Unavailable",
+          startedAt: Date.now(),
+          canRetry: true,
+        }
+        expect(SessionManager.setStatus(session.id, retry, owner)).toBe(true)
+        expect(toStatus(WorkingInfo.parse(await resolve(session.id)))).toEqual(retry)
         SessionManager.bindRootTask(first, "root-2")
+        expect(SessionManager.setStatus(session.id, retry, owner)).toBe(false)
         expect(SessionManager.setActivity(session.id, { phase: "responding" }, owner)).toBe(false)
         SessionManager.signalAbort(session.id)
         expect(SessionManager.setActivity(session.id, { phase: "waiting_model" }, { ...owner, rootID: "root-2" })).toBe(
@@ -51,6 +65,7 @@ test("activity snapshots retain the real phase and reject obsolete root, lease a
         await SessionManager.release(first, { requestNextWork: false })
         const second = SessionManager.acquire(session.id)!
         SessionManager.bindRootTask(second, "root-3")
+        expect(SessionManager.setStatus(session.id, retry, owner)).toBe(false)
         expect(SessionManager.setActivity(session.id, { phase: "responding" }, owner)).toBe(false)
         expect(
           SessionManager.setActivity(

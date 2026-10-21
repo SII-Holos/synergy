@@ -81,7 +81,7 @@ const stubModules: Record<string, string> = {
   "stub-global-sync.ts": `
     export const FIXTURE_SESSION_STATUS = {
       ses_busy: { type: "busy" },
-      ses_retry: { type: "retry", attempt: 1, message: "rate limited", next: 1000 },
+      ses_retry: { type: "retry", rootID: "retry-root", messageID: "retry-message", phase: "waiting", error: "rate limited", startedAt: 0, canRetry: true, attempt: 1, message: "rate limited", next: 1000 },
       ses_paused: { type: "paused", reason: "aborted", since: 1 },
       ses_idle: { type: "idle" },
     }

@@ -8,6 +8,8 @@ import {
   SessionLocationError,
   submitInput,
   retryInput,
+  retrySessionRequest,
+  RetrySessionRequestInput,
   restoreInput,
   submitCommand,
 } from "@ericsanchezok/synergy-local-runtime/session-api"
@@ -791,6 +793,24 @@ export const SessionRoute = () =>
         const result = await Session.fork({ ...body, sessionID })
         return c.json(Session.publicInfo(result))
       },
+    )
+    .post(
+      "/:sessionID/message/:messageID/retry",
+      describeRoute({
+        summary: "Retry a model request",
+        description:
+          "Wake a waiting request or resume the latest retryable failure through the existing task Inbox. Server cooldowns and a shared recovery probe remain authoritative. Stale or duplicate requests report handled false.",
+        operationId: "session.retryRequest",
+        responses: {
+          200: {
+            description: "Retry result",
+            content: { "application/json": { schema: resolver(z.object({ handled: z.boolean() })) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", RetrySessionRequestInput),
+      async (c) => c.json(await retrySessionRequest(c.req.valid("param"))),
     )
     .post(
       "/:sessionID/continue",

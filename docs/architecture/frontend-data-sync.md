@@ -93,6 +93,8 @@ Question drafts use an independent v1 Persist workspace entry keyed by server an
 
 Progress visibility follows the resolved canonical session activity, pending decisions, loaded session metadata and transport connection. Completion of Todo/DAG entries supplies counts, not execution-end evidence. Initially idle sessions suppress receipts; observed execution changing to confirmed idle schedules the receipt removal, including failures. Waiting, paused and disconnected states cancel removal. Retained hidden DAG presentation uses inert, aria-hidden and frozen without allocating a second graph or changing volatile state ownership.
 
+The conversation recovery slot is keyed by the logical root and reads `SessionStatus.retry` from the same event/snapshot reconciliation as other activity. `SessionRecovery` projects this status and the latest unresolved assistant error into the shared `ErrorCard`; retries never append error messages. Its clock derives remaining time from the server deadline and suspends with the view. A new empty assistant does not erase the prior failure; meaningful output or successful completion does. Terminal failures remain readable, with raw structured details and only applicable retry, provider-connection or model-selection actions. App owns those actions through the generated SDK and existing dialogs; the Composer owns stopping.
+
 ## Reconcile, Do Not Replace
 
 Existing store objects and list entries are updated with Solid's `reconcile()`.

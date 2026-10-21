@@ -39,7 +39,20 @@ test("activity motion requires current runtime evidence and stops for human or t
   }
   expect(sessionActivityLabel(status, undefined, { connected: false })).toBe("Reconnecting")
   expect(sessionActivityAnimating({ type: "busy", description: "working" })).toBe(false)
-  expect(sessionActivityAnimating({ type: "retry", attempt: 1, message: "retry", next: 1 })).toBe(false)
+  expect(
+    sessionActivityAnimating({
+      type: "retry",
+      rootID: "retry-root",
+      messageID: "retry-message",
+      phase: "waiting",
+      error: "rate limited",
+      startedAt: 0,
+      canRetry: true,
+      attempt: 1,
+      message: "retry",
+      next: 1,
+    }),
+  ).toBe(false)
   for (const phase of ["stopping", "reconnecting"] as const) {
     expect(sessionActivityAnimating({ type: "busy", activity: { phase, startedAt: 1 } })).toBe(false)
   }

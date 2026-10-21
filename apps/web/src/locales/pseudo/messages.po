@@ -26820,6 +26820,10 @@ msgid "ui.errorCard.detailsTitle"
 msgstr "⟦Error details⟧"
 
 #. js-lingui-explicit-id
+msgid "ui.errorCard.showDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr "⟦Tool input⟧"
 
@@ -26966,6 +26970,50 @@ msgstr "⟦Generation failed⟧"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.connecting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdownAttempt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.provider"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.reconnect"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retryNow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.selectModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.waitingResponse"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.resource.close"

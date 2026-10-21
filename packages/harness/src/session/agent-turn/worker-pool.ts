@@ -5,6 +5,7 @@ import { ObservabilityContext } from "../../observability/context"
 import { RolloutContext } from "../rollout/context"
 import { exponentialBackoffDelayMs, largestExponentialBackoffStepMs } from "../../util/exponential-backoff"
 import type { LLM } from "../llm"
+import type { ProviderRecoveryOptions } from "../../provider/retry-coordinator"
 import type { ToolCatalog } from "../tool-catalog"
 import type { ContextUsage } from "../context-usage"
 import { AgentTurnProtocol } from "./protocol"
@@ -18,6 +19,7 @@ export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 export type AgentTurnLane = "interactive" | "background"
 
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn"> {
+  recovery?: ProviderRecoveryOptions
   onPhase?: (phase: "queued_agent" | "waiting_model") => void
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance
@@ -29,7 +31,16 @@ export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryT
 
 export type AgentTurnWorkerInput = Omit<
   AgentTurnInput,
-  "abort" | "user" | "agent" | "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex" | "lane" | "onPhase"
+  | "abort"
+  | "user"
+  | "agent"
+  | "contextUsageProvenance"
+  | "recording"
+  | "usageRole"
+  | "retryIndex"
+  | "lane"
+  | "onPhase"
+  | "recovery"
 > & {
   user: Pick<AgentTurnInput["user"], "id">
   agent: Pick<AgentTurnInput["agent"], "name">
@@ -38,7 +49,7 @@ export type AgentTurnWorkerInput = Omit<
 
 export type AgentTurnPoolInput = Omit<
   AgentTurnInput,
-  "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex"
+  "contextUsageProvenance" | "recording" | "usageRole" | "retryIndex" | "recovery"
 > & {
   prepared: LLM.PreparedTurn
   archive?: RolloutTransportSchema.Sink

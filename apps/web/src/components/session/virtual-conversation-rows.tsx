@@ -1133,7 +1133,7 @@ function ConversationActivityStatus(
     question: props.lastUserMessage()?.id === row().root.id && view.questionsFor(props.sessionID).length > 0,
     connected: input.connected?.(),
   })
-  const active = () => row().activity?.active && (sessionStatus()?.type === "busy" || sessionStatus()?.type === "retry")
+  const active = () => row().activity?.active && sessionStatus()?.type === "busy"
   return (
     <ActivityBatchStatus
       label={active() ? sessionActivityLabel(sessionStatus(), i18n(), activityContext()) : undefined}

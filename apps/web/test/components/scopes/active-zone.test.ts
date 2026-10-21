@@ -46,7 +46,18 @@ describe("getActiveReason", () => {
   test("reports working for busy and retry statuses", () => {
     const statuses: SessionStatus[] = [
       { type: "busy" },
-      { type: "retry", attempt: 1, message: "rate limited", next: 100 },
+      {
+        type: "retry",
+        rootID: "retry-root",
+        messageID: "retry-message",
+        phase: "waiting",
+        error: "rate limited",
+        startedAt: 0,
+        canRetry: true,
+        attempt: 1,
+        message: "rate limited",
+        next: 100,
+      },
     ]
     for (const status of statuses) {
       expect(getActiveReason(session(), runtime({ sessionStatus: { ses_1: status } }), notification)).toBe("working")

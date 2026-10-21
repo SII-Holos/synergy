@@ -174,6 +174,18 @@ export const Activity = z
   .meta({ ref: "SessionActivity" })
 export type Activity = z.infer<typeof Activity>
 
+const RetryInfo = z.object({
+  rootID: z.string(),
+  messageID: z.string(),
+  phase: z.enum(["waiting", "waiting_provider", "connecting"]),
+  attempt: z.number(),
+  message: z.string(),
+  error: z.string(),
+  startedAt: z.number(),
+  next: z.number().optional(),
+  canRetry: z.boolean(),
+})
+
 export const WorkingInfo = z
   .union([
     z.object({
@@ -181,12 +193,7 @@ export const WorkingInfo = z
       description: z.string().optional(),
       activity: Activity.optional(),
     }),
-    z.object({
-      status: z.literal("retry"),
-      attempt: z.number(),
-      message: z.string(),
-      next: z.number(),
-    }),
+    RetryInfo.extend({ status: z.literal("retry") }),
     z.object({
       status: z.literal("paused"),
       reason: PausedReason,
@@ -339,12 +346,7 @@ export const StatusInfo = z
     z.object({
       type: z.literal("idle"),
     }),
-    z.object({
-      type: z.literal("retry"),
-      attempt: z.number(),
-      message: z.string(),
-      next: z.number(),
-    }),
+    RetryInfo.extend({ type: z.literal("retry") }),
     z.object({
       type: z.literal("busy"),
       description: z.string().optional(),

@@ -16,7 +16,14 @@ import { RolloutLifecycle } from "@ericsanchezok/synergy-harness/session/rollout
 import { RolloutQuery } from "@ericsanchezok/synergy-harness/session/rollout/query"
 import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "./question"
-import { abandonSession, continueSession, createSession, submitInput, submitCommand } from "./session-api"
+import {
+  abandonSession,
+  continueSession,
+  createSession,
+  submitInput,
+  submitCommand,
+  retrySessionRequest,
+} from "./session-api"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 
 export const RuntimeEvent = z.discriminatedUnion("type", [
@@ -147,6 +154,9 @@ export function createLocalClient(runtime: RuntimeHandle.Handle, selector: Scope
       // routes use, rather than a second definition that can drift.
       continue: inScope(async (input: { sessionID: string }, _options?: RequestOptions) =>
         success({ handled: await continueSession(input.sessionID) }),
+      ),
+      retryRequest: inScope(async (input: Parameters<typeof retrySessionRequest>[0], _options?: RequestOptions) =>
+        success(await retrySessionRequest(input)),
       ),
       abandon: inScope(async (input: { sessionID: string }, _options?: RequestOptions) =>
         success(await abandonSession(input.sessionID)),

@@ -796,6 +796,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRetryRequestErrors,
+  SessionRetryRequestResponses,
   SessionRollbackAckErrors,
   SessionRollbackAckInput,
   SessionRollbackAckResponses,
@@ -4150,6 +4152,42 @@ export class Session extends HeyApiClient {
         ...params.headers,
       },
     })
+  }
+
+  /**
+   * Retry a model request
+   *
+   * Wake a waiting request or resume the latest retryable failure through the existing task Inbox. Server cooldowns and a shared recovery probe remain authoritative. Stale or duplicate requests report handled false.
+   */
+  public retryRequest<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionRetryRequestResponses, SessionRetryRequestErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/message/{messageID}/retry",
+        ...options,
+        ...params,
+      },
+    )
   }
 
   /**

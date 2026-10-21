@@ -507,7 +507,22 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       h.emit("index-scope", 9, "session.updated", { info: { id: "derived", time: {}, working: paused } })
       expect(api.sessionStatus["derived"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
       h.emit("index-scope", 10, "session.updated", {
-        info: { id: "derived", time: {}, working: { status: "retry", attempt: 1, message: "again", next: 2 } },
+        info: {
+          id: "derived",
+          time: {},
+          working: {
+            status: "retry",
+            rootID: "retry-root",
+            messageID: "retry-message",
+            phase: "waiting",
+            error: "rate limited",
+            startedAt: 0,
+            canRetry: true,
+            attempt: 1,
+            message: "again",
+            next: 2,
+          },
+        },
       })
       expect(api.sessionStatus["derived"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
       h.emit("index-scope", 11, "session.status", { sessionID: "derived", status: { type: "busy" } })

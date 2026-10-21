@@ -50,7 +50,18 @@ describe("prompt dock navigation targets", () => {
 describe("subagent footer session ownership", () => {
   test("looks up runtime status by the represented subagent session, not the current route session", () => {
     const parentStatus: SessionStatus = { type: "busy", description: "parent is running" }
-    const subagentStatus: SessionStatus = { type: "retry", attempt: 2, message: "subagent retry", next: 0 }
+    const subagentStatus: SessionStatus = {
+      type: "retry",
+      rootID: "retry-root",
+      messageID: "retry-message",
+      phase: "waiting",
+      error: "rate limited",
+      startedAt: 0,
+      canRetry: true,
+      attempt: 2,
+      message: "subagent retry",
+      next: 0,
+    }
 
     expect(
       subagentFooterSessionStatus(

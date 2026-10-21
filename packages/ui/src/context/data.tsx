@@ -3,6 +3,7 @@ import type { DagNode, Message, Part, Session, FileDiff, Todo } from "@ericsanch
 import { createSimpleContext } from "./helper"
 import { createSessionDataView, type SessionDataRuntime, type SessionDataView } from "./session-data-view"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
+import type { SessionRecoveryAction } from "../components/session-recovery"
 
 export type Data = {
   session: Session[]
@@ -55,6 +56,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
     hasFeature?: (id: string) => boolean
     onPermissionRespond?: PermissionRespondFn
     onNavigateToSession?: NavigateToSessionFn
+    onSessionRecovery?: (action: SessionRecoveryAction) => Promise<void>
   }) => {
     return {
       get store() {
@@ -72,6 +74,7 @@ export const { use: useData, provider: DataProvider } = createSimpleContext({
       hasFeature: (id: string) => props.hasFeature?.(id) ?? false,
       respondToPermission: props.onPermissionRespond,
       navigateToSession: props.onNavigateToSession,
+      recoverSession: props.onSessionRecovery,
     }
   },
 })

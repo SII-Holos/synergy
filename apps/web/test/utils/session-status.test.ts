@@ -10,7 +10,18 @@ import {
 
 const idle: SessionStatus = { type: "idle" }
 const busy: SessionStatus = { type: "busy" }
-const retry: SessionStatus = { type: "retry", attempt: 1, message: "rate limited", next: 100 }
+const retry: SessionStatus = {
+  type: "retry",
+  rootID: "retry-root",
+  messageID: "retry-message",
+  phase: "waiting",
+  error: "rate limited",
+  startedAt: 0,
+  canRetry: true,
+  attempt: 1,
+  message: "rate limited",
+  next: 100,
+}
 const paused: SessionStatus = { type: "paused", reason: "interrupted", since: 1 }
 
 test("a working snapshot preserves current activity through status projection and reload", () => {
