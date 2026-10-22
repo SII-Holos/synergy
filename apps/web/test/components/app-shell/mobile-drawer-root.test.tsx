@@ -17,7 +17,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><script type="module" src="/main.ts"></script>',
+      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><div id="grouped"></div><div id="account"></div><script type="module" src="/main.ts"></script>',
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
@@ -26,6 +26,7 @@ beforeAll(async () => {
         import { render } from "solid-js/web"
         import {
           MobileDrawerAddProjectButton,
+          MobileDrawerAccountRow,
           MobileDrawerRecent,
           MobileDrawerSettingsButton,
         } from ${JSON.stringify(`/@fs/${componentPath}`)}
@@ -176,6 +177,39 @@ beforeAll(async () => {
             }),
           document.querySelector("#empty")!,
         )
+
+        render(
+          () =>
+            createComponent(MobileDrawerRecent, {
+              label: "Recent",
+              emptyLabel: "No recent sessions",
+              loadMoreLabel: "Load more",
+              untitledLabel: "Untitled",
+              draftLabel: "Draft",
+              hasDraft: () => false,
+              entries: [
+                { ...entry("ses_today", "Today session"), lastActivityAt: Date.now() },
+                { ...entry("ses_earlier", "Earlier session"), lastActivityAt: 1 },
+              ],
+              visualFor: () => homeVisual("", "home"),
+              hasMore: false,
+              onSelect: () => {},
+              onLoadMore: () => {},
+              groups: { today: "Today", earlier: "Earlier" },
+            }),
+          document.querySelector("#grouped")!,
+        )
+
+        render(
+          () =>
+            createComponent(MobileDrawerAccountRow, {
+              name: "Eric",
+              description: "Connected to Holos",
+              avatarSrc: "/avatar.png",
+              onClick: () => actions.push("account"),
+            }),
+          document.querySelector("#account")!,
+        )
       `,
     ),
   ])
@@ -275,6 +309,38 @@ describe("mobile drawer root navigation", () => {
       const empty = page.locator("#empty")
       await expect(empty.getByText("No recent sessions").count()).resolves.toBe(1)
       expect(await empty.locator("[data-session-id]").count()).toBe(0)
+    })
+  })
+
+  test("groups recents under today and earlier headings when the caller supplies labels", async () => {
+    await withFixture(async (page) => {
+      const grouped = page.locator("#grouped")
+      expect(await grouped.locator("h3").allTextContents()).toEqual(["Today", "Earlier"])
+      expect(await grouped.locator("[data-session-id]").count()).toBe(2)
+      const order = await grouped
+        .locator("[data-session-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")))
+      expect(order).toEqual(["ses_today", "ses_earlier"])
+    })
+  })
+
+  test("keeps the flat recent list when no grouping labels are supplied", async () => {
+    await withFixture(async (page) => {
+      const recent = page.locator("#recent")
+      expect(await recent.locator("h3").count()).toBe(0)
+      expect(await recent.locator("[data-session-id]").count()).toBe(2)
+    })
+  })
+
+  test("renders the account row with its identity and opens account settings", async () => {
+    await withFixture(async (page) => {
+      const account = page.locator("#account")
+      await expect(account.getByText("Eric", { exact: true }).count()).resolves.toBe(1)
+      await expect(account.getByText("Connected to Holos", { exact: true }).count()).resolves.toBe(1)
+      expect(await account.locator("img").getAttribute("src")).toBe("/avatar.png")
+      await account.getByRole("button").click()
+      const actions = await page.evaluate(() => (window as any).__mobileDrawerState.actions)
+      expect(actions).toContain("account")
     })
   })
 })
