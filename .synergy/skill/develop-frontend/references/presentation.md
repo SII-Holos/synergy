@@ -90,7 +90,7 @@ For reply completion, verify the footer and copy actions while a real detached c
 2. Preserve polarity: dark content/selection surfaces step brighter inward; light surfaces step darker inward.
 3. Use semantic color/type/spacing tokens. Reserve state colors for real state rather than decoration.
 4. Keep controls labeled, keyboard reachable, focus-visible, WCAG AA, reduced-motion safe, and usable at narrow widths.
-5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior.
+5. Implement loading, empty, error, disabled, and reconnect states as first-class behavior. A whole-surface state owns one identity mark, one state name and at most one action, sized with the same `size="large"` action the other full-page states use. The action label is the instruction: never explain recovery mechanics, identity handling or what will not be restored, and never print a raw status value as visible copy. Verify the state's own text nodes and action count in a real browser fixture rather than asserting that some explanation exists.
 6. Update `PRODUCT.md` when an interaction or visual rule should survive refactors.
 7. For imperative renderers, use the dependency's typed live-update API and cover it with a boundary test. Do not hide an unsupported method behind a cast; same-mode theme changes must repaint already-mounted renderers.
 

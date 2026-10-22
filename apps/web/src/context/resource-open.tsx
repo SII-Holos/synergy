@@ -10,7 +10,7 @@ import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useNoteDocuments } from "@/components/note/documents"
 import { noteReferenceExcerpt, resolveNoteReference } from "./note-reference"
 import { createResourcePreviewCache } from "./resource-preview-cache"
-import { fileWriteErrorMessage } from "./file/errors"
+import { fileWriteErrorMessage, isWorkspaceFileNotFoundError } from "./file/errors"
 import { usePlatform } from "./platform"
 import {
   BROWSER_PROTOCOL_VERSION,
@@ -32,6 +32,7 @@ import {
   type ResourceOpenResult,
   type ResourceOpenOptions,
   type ResourcePreview,
+  type ResourceAvailability,
   type ToolReviewTarget,
   type ToolActivityTarget,
   type ActivityDetailTarget,
@@ -603,6 +604,88 @@ export function ResourceOpenProvider(props: ParentProps) {
       })
     } catch {
       return
+    }
+  }
+
+  const inspectReference = async (
+    reference: ResourceReference.Target,
+    context?: ResourceReference.Context,
+  ): Promise<ResourceAvailability> => {
+    if (reference.kind === "asset") {
+      const attachment = attachmentFromReference(reference.url)
+      const url = attachment ? resolveAttachmentUrl(sdk.url, attachment) : undefined
+      // The asset route is content-addressed and immutable, so a plain existence
+      // probe decides this without downloading the bytes.
+      if (
+        url &&
+        (await fetch(url, { method: "HEAD" }).then(
+          (response) => response.ok,
+          () => true,
+        ))
+      )
+        return { state: "available" }
+      return {
+        state: "unavailable",
+        code: "missing-asset",
+        path: reference.url,
+        reason: _({ id: "app.reference.assetMissing", message: "This attachment is no longer stored." }),
+      }
+    }
+    if (reference.kind !== "workspace-file") return { state: "available" }
+    let target: ReturnType<typeof workspaceTarget>
+    try {
+      target = workspaceTarget(reference.path, context)
+    } catch (error) {
+      const unbound = context?.state !== "bound"
+      return {
+        state: "unavailable",
+        code: unbound ? "unbound-workspace" : "outside-workspace",
+        path: reference.path,
+        reason:
+          error instanceof Error
+            ? error.message
+            : _({ id: "app.reference.unavailable", message: "The resource is unavailable." }),
+      }
+    }
+    try {
+      const response = await sdk.client.workspace.files.stat(
+        {
+          path: target.path,
+          workspaceID: target.workspace.id,
+          workspaceGeneration: target.workspace.generation,
+        },
+        { throwOnError: true },
+      )
+      const node = response.data
+      if (!node)
+        return {
+          state: "unavailable",
+          code: "missing",
+          path: target.path,
+          reason: _({ id: "app.reference.fileMissing", message: "This file no longer exists." }),
+        }
+      if (node.ignored)
+        return {
+          state: "unavailable",
+          code: "ignored",
+          path: target.path,
+          reason: _({
+            id: "app.reference.fileIgnored",
+            message: "This path is excluded from the workspace, so it cannot be opened.",
+          }),
+        }
+      return { state: "available" }
+    } catch (error) {
+      if (isWorkspaceFileNotFoundError(error))
+        return {
+          state: "unavailable",
+          code: "missing",
+          path: target.path,
+          reason: _({ id: "app.reference.fileMissing", message: "This file no longer exists." }),
+        }
+      // A transient runtime failure must not rewrite a healthy reference into a
+      // placeholder; leave it to the image error path if it really cannot load.
+      return { state: "available" }
     }
   }
 
@@ -1237,6 +1320,7 @@ export function ResourceOpenProvider(props: ParentProps) {
         }
       })()
       showToast({
+        key: `reference-open-failed\u0000${reference ?? reason}`,
         type: "error",
         title: _({ id: "app.reference.openFailed", message: "Couldn’t open reference" }),
         description: reason,
@@ -1368,6 +1452,7 @@ export function ResourceOpenProvider(props: ParentProps) {
     nativeLink,
     contextKey,
     resolveUrl,
+    inspectReference,
     openToolReview,
     openToolActivity,
     isToolActivitySelected,

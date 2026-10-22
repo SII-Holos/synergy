@@ -1,5 +1,7 @@
 import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { SemanticIconTokenName } from "./semantic-icon"
+import { siteIcon } from "./site-icons/model"
+import type { IconName as SiteIconName } from "./site-icons/types"
 
 const readable = (value: string) => {
   try {
@@ -43,13 +45,19 @@ export function resourceDisplay(
 ): {
   label: string
   source: string
+  /** Exactly one visual is produced: a site brand mark for a recognized host,
+   *  otherwise a semantic token. Consumers check `site` before `icon`. */
   icon?: SemanticIconTokenName
+  site?: SiteIconName
   file?: string
   disambiguatedLabel?: string
 } {
   if (reference.kind === "url") {
     const url = new URL(reference.url)
-    const icon = url.hostname === "github.com" ? "github.main" : "browser.main"
+    // A recognized site gets its own brand mark; anything else keeps the neutral
+    // globe rather than guessing from the URL text.
+    const site = siteIcon(url.hostname)
+    const visual = site ? { site } : { icon: "browser.main" as const }
     const target = githubTarget(url)
     if (!target)
       return {
@@ -57,7 +65,7 @@ export function resourceDisplay(
           ? `${url.host}${readable(url.pathname === "/" ? "" : url.pathname)}${readable(url.href.match(/[?#].*$/)?.[0] ?? "")}`
           : reference.url,
         source: url.hostname || url.protocol.slice(0, -1),
-        icon,
+        ...visual,
       }
     let label = target.label
     let collisions = peers.flatMap((peer) => {
@@ -92,7 +100,7 @@ export function resourceDisplay(
     return {
       label,
       source: url.hostname,
-      icon,
+      ...visual,
       disambiguatedLabel: `${target.owner}/${target.repository} / ${target.route}${target.suffix}`,
     }
   }

@@ -118,6 +118,8 @@ export { toaster }
 export type ToastType = "info" | "success" | "warning" | "error"
 export const DEFAULT_TOAST_DURATION_MS = 4000
 
+const activeKeys = new Map<string, number>()
+
 export interface ToastAction {
   label: string
   onClick: "dismiss" | (() => void)
@@ -139,6 +141,10 @@ export function getToastConfig(): ToastConfig | undefined {
 
 export interface ToastOptions {
   onClose?: () => void
+  /** Identifies a repeatable condition. Re-showing the same key while its toast
+   *  is still visible returns the existing toast instead of stacking a duplicate,
+   *  which is what repeated clicks on the same dead reference produced. */
+  key?: string
   type?: ToastType
   title?: string
   description?: string
@@ -166,10 +172,17 @@ export function showToast(options: ToastOptions): number {
 
   if (toastConfig?.muted?.includes(type)) return 0
 
+  const key = options.key
+  const active = key ? activeKeys.get(key) : undefined
+  if (active !== undefined) return active
+
   const resolvedDuration = options.duration ?? toastConfig?.durationOverrides?.[type]
   const iconName = options.icon ?? defaultIconForType(type)
-  return toaster.show((props) => {
-    onCleanup(() => options.onClose?.())
+  const id = toaster.show((props) => {
+    onCleanup(() => {
+      if (key && activeKeys.get(key) === id) activeKeys.delete(key)
+      options.onClose?.()
+    })
     const { _ } = useLingui()
     const [countdown, setCountdown] = createSignal("")
     const duration = resolvedDuration ?? DEFAULT_TOAST_DURATION_MS
@@ -288,4 +301,6 @@ export function showToast(options: ToastOptions): number {
       </Toast>
     )
   })
+  if (key) activeKeys.set(key, id)
+  return id
 }

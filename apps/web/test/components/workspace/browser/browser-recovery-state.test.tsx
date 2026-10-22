@@ -54,7 +54,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent, createSignal } from "solid-js"
+        import { createComponent } from "solid-js"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
@@ -93,12 +93,13 @@ beforeAll(async () => {
           clearBrowserError: () => store.setBrowserError(null),
           pageId: () => store.pageId(),
           setPresentation: (enabled: boolean) => store.setPresentation(enabled ? nativePresentation : null),
+          setPageStatus: (status: string) =>
+            browserCatalog.replacePages([{ ...pageState, profileId: "personal", status } as any]),
 
           retryCalls,
         }
 
         function App() {
-          const [recovering, setRecovering] = createSignal(false)
           return createComponent(I18nProvider, {
             i18n,
             get children() {
@@ -110,7 +111,6 @@ beforeAll(async () => {
                     clientPresentation: "native",
                     ownerKey: "owner-1",
                     onRetryNative: () => retryCalls.push("retry"),
-                    get recovering() { return recovering() },
                   })
                 },
               })
@@ -170,7 +170,7 @@ afterAll(async () => {
 describe("Browser native recovery surface", () => {
   test("renders restarting, failed, and ready states while keeping the page and Retry reachable", async () => {
     expect(await page.locator(".browser-empty-title").textContent()).toBe("Recovering the native browser…")
-    expect(await page.locator(".browser-empty-text").textContent()).toContain("Synergy is reconnecting")
+    expect(await page.getByRole("button").count()).toBe(0)
     expect(await page.locator('[data-testid="native-surface"]').count()).toBe(0)
     expect(await page.locator("video").count()).toBe(0)
     expect(await page.evaluate(() => (window as any).__browserRecovery.pageId())).toBe("page-1")
@@ -186,7 +186,6 @@ describe("Browser native recovery surface", () => {
       })
     })
     await expect(page.locator(".browser-empty-title").textContent()).resolves.toBe("Native browser recovery failed")
-    expect(await page.locator(".browser-empty-text").textContent()).toContain("retry now")
     const retry = page.getByRole("button", { name: "Retry" })
     await expect(retry.count()).resolves.toBe(1)
     await retry.click()
@@ -203,5 +202,21 @@ describe("Browser native recovery surface", () => {
     expect(await page.locator(".browser-empty-state").count()).toBe(0)
     expect(await page.locator('[data-testid="native-surface"]').count()).toBe(1)
     expect(await page.locator("video").count()).toBe(0)
+  })
+
+  test("names a suspended page and offers one resume action without explanation copy", async () => {
+    await page.evaluate(() => {
+      const state = (window as any).__browserRecovery
+      state.setPresentation(false)
+      state.setHostStatus("ready")
+      state.setPageStatus("suspended")
+    })
+    await expect(page.locator(".browser-empty-title").textContent()).resolves.toBe("Page suspended")
+    const content = (await page.locator(".browser-empty-state > *").allInnerTexts()).filter(Boolean)
+    expect(content).toEqual(["Page suspended", "Resume page"])
+    const resume = page.getByRole("button", { name: "Resume page" })
+    await expect(resume.count()).resolves.toBe(1)
+    await resume.click()
+    expect(await page.evaluate(() => (window as any).__browserRecovery.retryCalls)).toEqual(["retry", "retry"])
   })
 })
