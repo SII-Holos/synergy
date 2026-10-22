@@ -11,6 +11,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { WorkflowSessionService } from "@ericsanchezok/synergy-blueprint/session/workflow"
 import { BlueprintLoopStore } from "./loop-store"
 import { BlueprintLoopSources } from "./source"
+import { LoopError } from "./error"
 import { BLUEPRINT_PAUSE_GUIDANCE } from "./prompt"
 import type { Info } from "./types"
 
@@ -183,19 +184,31 @@ export namespace BlueprintLoopService {
   export async function start(scopeID: string, loopID: string, userPrompt?: string): Promise<Info> {
     const normalized = normalizeStartUserPrompt(userPrompt)
     const before = await BlueprintLoopStore.get(scopeID, loopID)
+    // The drive gate refuses a paused session, so a delivery made under the
+    // latch parks in the inbox while the loop and the Note both report a run
+    // that never starts. Settle the latch before anything is written, so a
+    // blocked start leaves neither a binding nor a `running` claim behind.
+    //
+    // A user-owned start is the user taking the session back: the first prompt
+    // is a new task root, so the previous failure's pause must be released. A
+    // machine-owned start may not release it — resuming work the user stopped
+    // behind their back is the defect the latch exists to prevent — so it fails
+    // with the fact and lets its owner decide what that means for its own
+    // lifecycle.
+    if (await SessionLifecycle.blocksDrive(await Session.get(before.sessionID))) {
+      if (before.source !== "user")
+        throw new LoopError.SessionPaused({
+          loopID,
+          sessionID: before.sessionID,
+          source: before.source,
+        })
+      await SessionLifecycle.startNewTask(before.sessionID)
+    }
     await bindSessionToLoop(before.sessionID, loopID, "execution")
     const loop = await BlueprintLoopStore.updateStatus(scopeID, loopID, {
       status: "running",
       userPrompt: normalized ?? null,
     })
-    // A user-owned start is the user taking the session back: the first prompt
-    // is a new task root, so a pause left by the previous failure must be
-    // released here. The drive gate refuses paused sessions, which would
-    // otherwise park this delivery in the inbox while the loop already reported
-    // `running`. Machine-owned starts (`lattice`, `plugin`) keep the latch,
-    // because resuming work the user stopped behind their back is the defect
-    // the latch exists to prevent.
-    if (before.source === "user") await SessionLifecycle.startNewTask(before.sessionID)
     void deliverFirstPrompt(before.sessionID, before, normalized).catch(async (err) => {
       // Delivery awaits the executing turn; a user interruption is not a failed start.
       if (
