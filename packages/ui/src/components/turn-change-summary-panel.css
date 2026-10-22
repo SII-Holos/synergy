@@ -1,5 +1,5 @@
 [data-component="turn-change-summary-panel"] {
-  width: min(54rem, 100%);
+  width: min(var(--conversation-reading-max-width, 54rem), 100%);
   margin-inline: auto;
   border: 1px solid var(--border-weak-base);
   border-radius: var(--radius-lg);
