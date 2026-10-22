@@ -130,6 +130,8 @@ for (const ended of [false, true]) {
 
 for (const completionFrame of [0, 1, 16]) {
   test(`a returned live backlog remains readable when it completes at frame ${completionFrame}`, async () => {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
     await page.goto(`${url}?resident&scrolling&motion&content=background`)
     await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
     await page.evaluate(() => window.__conversationProcess.latest())

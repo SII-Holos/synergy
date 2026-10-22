@@ -2872,7 +2872,14 @@ async function withDeadline<T>(promise: Promise<T>, ms: number, message: string)
   }
 }
 
-for (const stoppedBy of ["abandonment", "run cancellation", "completion", "completion with a late pause"] as const)
+for (const stoppedBy of [
+  "abandonment",
+  "run cancellation",
+  "completion",
+  "completion with a late pause",
+  "failure",
+  "failure without a pause latch",
+] as const)
   test(`new input after ${stoppedBy} preserves the terminal rollout and starts a new task`, () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -2889,6 +2896,7 @@ for (const stoppedBy of ["abandonment", "run cancellation", "completion", "compl
             const session = await Session.create({})
             try {
               const completed = stoppedBy.startsWith("completion")
+              const failed = stoppedBy.startsWith("failure")
               const rootID = Identifier.ascending("message")
               await Session.updateMessage({
                 ...(userMessage(rootID).info as MessageV2.User),
@@ -2901,16 +2909,20 @@ for (const stoppedBy of ["abandonment", "run cancellation", "completion", "compl
                 ...(assistantMessage(Identifier.ascending("message"), rootID, "").info as MessageV2.Assistant),
                 sessionID: session.id,
                 rootID,
-                finish: completed ? "stop" : "tool-calls",
+                finish: failed ? "error" : completed ? "stop" : "tool-calls",
+                error: failed ? { name: "UnknownError", data: { message: "Previous preparation failed" } } : undefined,
                 time: { created: Date.now(), completed: Date.now() },
               })
               const owner = RolloutLifecycle.owner(session)
               await RolloutLifecycle.configuration(session, rootID)
-              if (completed) await RolloutLedger.finishRun(owner, rootID, "completed")
+              if (failed) await RolloutLedger.finishRun(owner, rootID, "failed")
+              else if (completed) await RolloutLedger.finishRun(owner, rootID, "completed")
               else await RolloutLifecycle.cancel(session.id, rootID)
               if (stoppedBy === "abandonment")
                 await SessionAbort.abort(session.id, { terminalize: true, abandonWorkflow: true })
-              if (stoppedBy === "completion with a late pause") {
+              if (stoppedBy === "failure") {
+                await SessionLifecycle.pause({ sessionID: session.id, reason: "failed" })
+              } else if (stoppedBy === "completion with a late pause") {
                 await SessionAbort.abort(session.id)
                 expect((await SessionLifecycle.snapshot(session.id))?.reason).toBe("aborted")
               } else expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
@@ -2928,7 +2940,10 @@ for (const stoppedBy of ["abandonment", "run cancellation", "completion", "compl
               await SessionManager.waitForIdle(session.id)
               expect(processedRoot).toBe(submitted.item.messageID)
               expect(processedRoot).not.toBe(rootID)
-              expect((await RolloutLedger.getRun(owner, rootID)).status).toBe(completed ? "completed" : "cancelled")
+              expect((await RolloutLedger.getRun(owner, rootID)).status).toBe(
+                failed ? "failed" : completed ? "completed" : "cancelled",
+              )
+              expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
             } finally {
               SessionManager.signalAbort(session.id)
               await SessionManager.waitForIdle(session.id)

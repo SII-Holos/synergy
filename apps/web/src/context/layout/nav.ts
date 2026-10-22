@@ -1,13 +1,5 @@
 import type { LocalScope, NavCursor, NavEntry, NavListState, ScopeNavEntry } from "."
 
-// Instant in-place projection of a session.updated event onto a nav list
-// (frontend sync redesign, P3). Applying the event directly gives the sidebar
-// immediate feedback for an already-loaded session — title, pin, activity, and
-// archival — without waiting on the debounced refetch, which still runs as the
-// authority for ordering, new entries, and project-level aggregates. Because
-// orderNavEntries sorts at read time, updating lastActivityAt in place is enough
-// to reorder; no explicit re-sort is needed here.
-
 export type NavSessionUpdate = {
   id: string
   title?: string
@@ -61,32 +53,35 @@ export function navUpdateFromSession(
 }
 
 /**
- * Apply a session update to a nav list in place. Returns the (possibly new) list
- * and whether the entry was present. `applied: false` means the session is not
- * in this list (e.g. a brand-new session) and the caller should rely on the
- * refetch to surface it.
+ * Complete row projections settle metadata locally. Membership, pagination and
+ * aggregate changes still require an authoritative list read.
+ * Provenance: https://tanstack.com/query/latest/docs/framework/react/guides/updates-from-mutation-responses
+ * Local adaptation: apply server event projections to existing Solid rows; invalidate structural changes.
  */
 export function applySessionToNavList(
   list: NavListState,
   update: NavSessionUpdate,
-): { list: NavListState; applied: boolean } {
+  projection?: NavEntry,
+): { list: NavListState; applied: boolean; refresh: boolean } {
   const idx = list.items.findIndex((entry) => entry.id === update.id)
-  if (idx === -1) return { list, applied: false }
-  if (update.archived) {
+  if (idx === -1) return { list, applied: false, refresh: true }
+  if (projection?.id !== update.id) projection = undefined
+  if (update.archived || projection?.archived) {
     const items = list.items.filter((_, i) => i !== idx)
-    return { list: { ...list, items, total: Math.max(0, list.total - 1) }, applied: true }
+    return { list: { ...list, items, total: Math.max(0, list.total - 1) }, applied: true, refresh: true }
   }
   const prev = list.items[idx]
+  const base = projection ?? prev
   const merged: NavEntry = {
-    ...prev,
-    title: update.title ?? prev.title,
-    tags: update.tags ?? prev.tags,
-    pinned: update.pinned ?? prev.pinned,
-    lastActivityAt: update.lastActivityAt ?? prev.lastActivityAt,
-    parentID: update.parentID ?? prev.parentID,
+    ...base,
+    title: update.title ?? base.title,
+    tags: update.tags ?? base.tags,
+    pinned: update.pinned ?? base.pinned,
+    lastActivityAt: update.lastActivityAt ?? base.lastActivityAt,
+    parentID: update.parentID ?? base.parentID,
     completionNotice: {
-      unread: update.completionNoticeUnread ?? prev.completionNotice.unread,
-      unreadCount: update.completionNoticeUnreadCount ?? prev.completionNotice.unreadCount,
+      unread: update.completionNoticeUnread ?? base.completionNotice.unread,
+      unreadCount: update.completionNoticeUnreadCount ?? base.completionNotice.unreadCount,
     },
   }
   // The projected identity keys are authoritative when present, including when
@@ -95,7 +90,15 @@ export function applySessionToNavList(
   if ("workspaceType" in update) merged.workspaceType = update.workspaceType
   if ("workflow" in update) merged.workflow = update.workflow
   const items = list.items.map((entry, i) => (i === idx ? merged : entry))
-  return { list: { ...list, items }, applied: true }
+  const refresh =
+    !projection ||
+    (
+      ["scopeID", "scopeType", "category", "parentID", "pinned", "archived", "channelType", "channelAccountId"] as const
+    ).some((key) => prev[key] !== merged[key]) ||
+    merged.lastActivityAt < prev.lastActivityAt ||
+    merged.completionNotice.unreadCount !== prev.completionNotice.unreadCount ||
+    merged.completionNotice.unread !== prev.completionNotice.unread
+  return { list: { ...list, items }, applied: true, refresh }
 }
 
 export function removeScopeFromNavList(list: NavListState, scopeID: string): NavListState {
@@ -222,7 +225,11 @@ export function rootNavSectionsForSessionUpdate(input: {
   channelType?: string
   channelApplied: boolean
 }): RootNavSectionKey[] {
-  if (input.scopeID === "home") return ["home", "channel", "background"]
+  if (input.scopeID === "home") {
+    if (input.navCategory === "home" || input.navCategory === "channel" || input.navCategory === "background")
+      return [input.navCategory]
+    return ["home", "channel", "background"]
+  }
   if (
     (input.navCategory === "channel" && (input.channelType === "feishu" || input.channelType === "github")) ||
     input.channelApplied

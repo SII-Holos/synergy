@@ -9,6 +9,10 @@ import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionInteraction } from "../../src/session/interaction"
 import { SessionLifecycle } from "../../src/session/lifecycle"
+import { SessionDrive } from "../../src/session/drive"
+import { SessionManager } from "../../src/session/manager"
+import { withStorageQueueOptions } from "../../src/storage/queue"
+import { StorageBusyError } from "../../src/storage/errors"
 
 /** A root user message with no terminal assistant after it is exactly the
  *  evidence startup reconciliation looks for, so the fixture reproduces the
@@ -43,6 +47,32 @@ async function createInterruptedTurn(sessionID: string) {
 }
 
 describe("SessionLifecycle pause latch", () => {
+  test("storage admission failure cannot masquerade as an absent pause latch", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await SessionLifecycle.pause({ sessionID: session.id, reason: "failed" })
+          for (const read of [
+            () => SessionLifecycle.snapshot(session.id),
+            () => SessionLifecycle.clear(session.id),
+            () => SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" }),
+            () => SessionDrive.request(session.id, "fixture", { force: true }),
+            () => SessionManager.wake(session.id),
+          ])
+            await expect(
+              withStorageQueueOptions({ deadline: performance.now() - 1 }, async () => {
+                await read()
+              }),
+            ).rejects.toBeInstanceOf(StorageBusyError)
+          expect(await SessionLifecycle.snapshot(session.id)).toMatchObject({ reason: "failed" })
+          expect(await SessionLifecycle.clear(session.id)).toBe(true)
+        },
+      })
+    }))
+
   test("concurrent pauses retain the first persisted reason", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

@@ -7,6 +7,7 @@ import { setupI18n } from "../../../src/testing/i18n"
 
 const [status, setStatus] = createSignal<SessionStatus>({ type: "idle" })
 const [error, setError] = createSignal<AssistantMessage["error"]>()
+const [olderError, setOlderError] = createSignal<AssistantMessage["error"]>()
 const calls: unknown[] = []
 let resolve: (() => void) | undefined
 const dispose = render(
@@ -15,7 +16,6 @@ const dispose = render(
       <SessionRecovery
         sessionID="session"
         rootID="root"
-        messageID="message"
         providerID="test"
         current
         status={status()}
@@ -27,11 +27,11 @@ const dispose = render(
           })
         }}
       />
-      <SessionRecovery sessionID="session" rootID="old-root" current={false} status={status()} />
+      <SessionRecovery sessionID="session" rootID="old-root" current={false} status={status()} error={olderError()} />
     </I18nProvider>
   ),
   document.querySelector("#root")!,
 )
 Object.assign(globalThis, {
-  __recovery: { setStatus, setError, calls, resolve: () => resolve?.(), dispose },
+  __recovery: { setStatus, setError, setOlderError, calls, resolve: () => resolve?.(), dispose },
 })

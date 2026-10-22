@@ -150,6 +150,11 @@ export namespace SessionCompat {
   }
 
   export async function requireImported(sessionID: string) {
+    // Storage admission delay alone is not evidence of historical preparation.
+    const [stored] = await Storage.readMany<StorageCompat.Locator>([StorageCompat.locatorKey(sessionID)])
+    if (!stored) return { sessionID, scopeID: "", status: "imported" as const }
+    if (stored.status === "imported") return stored
+    if (stored.status === "quarantined") throw new BlockedError(sessionID, stored.source ?? "quarantined data")
     const pending = ensureImported(sessionID)
     let timer: ReturnType<typeof setTimeout> | undefined
     const locator = await Promise.race([

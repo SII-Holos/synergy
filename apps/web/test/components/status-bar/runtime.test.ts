@@ -67,6 +67,30 @@ describe("status bar runtime state", () => {
     expect(state.copyText).toBeUndefined()
   })
 
+  test("reports a healthy retry wait without the danger tone", () => {
+    const i18n = mockI18n()
+    const retry = (phase: Extract<SessionStatus, { type: "retry" }>["phase"]): SessionStatus => ({
+      type: "retry",
+      rootID: "retry-root",
+      messageID: "retry-message",
+      phase,
+      error: "rate limited",
+      startedAt: 0,
+      canRetry: true,
+      attempt: 1,
+      message: "Provider unavailable",
+    })
+
+    // Only local backoff is a failure with a deadline to count down, so the two
+    // waits that own nothing must not paint the page as an incident.
+    for (const phase of ["waiting_provider", "connecting"] as const) {
+      const state = resolveRuntimeIconState(retry(phase), false, i18n)
+      expect(state.tone).toBe("base")
+      expect(state.pulse).toBe(true)
+      expect(state.icon).toBe(getSemanticIcon("session.running"))
+    }
+  })
+
   test("keeps busy and idle runtime states unchanged", () => {
     const i18n = mockI18n()
     expect(resolveRuntimeIconState({ type: "busy", description: "running tool" }, false, i18n)).toMatchObject({

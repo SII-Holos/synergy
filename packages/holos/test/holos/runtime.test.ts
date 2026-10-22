@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, spyOn, test } from "bun:test"
 import { HolosAccounts } from "../../src/holos/accounts"
 import { HolosProvider } from "../../src/holos/runtime"
 import { Presence } from "../../src/holos/presence"
@@ -350,6 +350,8 @@ describe("HolosProvider heartbeat liveness", () => {
   test("keeps the tunnel open while the gateway returns pong frames", () =>
     runtime.run(async () => {
       let pingCount = 0
+      let now = Date.now()
+      const exchanged = Promise.withResolvers<string>()
       const disconnected = Promise.withResolvers<string | undefined>()
       using server = Bun.serve({
         port: 0,
@@ -366,6 +368,7 @@ describe("HolosProvider heartbeat liveness", () => {
             const envelope = JSON.parse(String(message)) as { type?: string }
             if (envelope.type !== "ping") return
             pingCount++
+            now += 40
             socket.send(
               JSON.stringify({
                 type: "pong",
@@ -375,6 +378,7 @@ describe("HolosProvider heartbeat liveness", () => {
                 caller: null,
               }),
             )
+            if (pingCount === 4) exchanged.resolve("exchanged")
           },
         },
       })
@@ -395,12 +399,10 @@ describe("HolosProvider heartbeat liveness", () => {
           heartbeat: { intervalMs: 20, pongDeadlineMs: 80 },
         })
 
-        await Bun.sleep(180)
-
+        now = Date.now()
+        using clock = spyOn(Date, "now").mockImplementation(() => now)
+        await expect(Promise.race([disconnected.promise, exchanged.promise])).resolves.toBe("exchanged")
         expect(pingCount).toBeGreaterThanOrEqual(4)
-        await expect(Promise.race([disconnected.promise, Bun.sleep(20).then(() => "still_connected")])).resolves.toBe(
-          "still_connected",
-        )
       } finally {
         abort.abort()
       }

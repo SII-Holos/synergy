@@ -29,7 +29,6 @@ export function sessionRecoveryMessage(
 export function SessionRecovery(props: {
   sessionID: string
   rootID: string
-  messageID?: string
   providerID?: string
   current: boolean
   status?: SessionStatus
@@ -45,21 +44,30 @@ export function SessionRecovery(props: {
   const retry = createMemo(() =>
     props.status?.type === "retry" && props.status.rootID === props.rootID ? props.status : undefined,
   )
-  const visible = () => !!retry() || !!props.error
-  const connecting = () =>
-    retry()?.phase === "connecting" || (props.current && !!props.error && props.status?.type === "busy")
+  // Only local backoff owns a deadline, so it is the only wait this card can
+  // count down. Provider admission and the in-flight attempt belong to the
+  // activity header; rendering them here would claim a deadline that any
+  // concurrent failure can push back.
+  const countdown = createMemo(() => (retry()?.phase === "waiting" ? retry() : undefined))
+  // A terminal failure keeps its evidence until this same turn runs again. The
+  // retry is the acknowledgement, and the header names it meanwhile; a newer
+  // turn running elsewhere must not erase an older failure.
+  const terminal = () => {
+    if (retry() || !props.error) return undefined
+    if (props.status?.type !== "busy") return props.error
+    if (props.current || props.status.activity?.rootID === props.rootID) return undefined
+    return props.error
+  }
+  const visible = () => !!countdown() || !!terminal()
   createEffect(() => {
     setNow(Date.now())
-    if (!active() || retry()?.next === undefined) return
+    if (!active() || countdown()?.next === undefined) return
     const timer = setInterval(() => setNow(Date.now()), 250)
     onCleanup(() => clearInterval(timer))
   })
-  const seconds = () => Math.max(0, Math.ceil(((retry()?.next ?? now()) - now()) / 1000))
+  const seconds = () => Math.max(0, Math.ceil(((countdown()?.next ?? now()) - now()) / 1000))
   const summary = () => {
-    const state = retry()
-    if (connecting()) return _({ id: "ui.recovery.connecting", message: "Reconnecting" })
-    if (state?.phase === "waiting_provider")
-      return _({ id: "ui.recovery.provider", message: "Waiting for the model connection to recover" })
+    const state = countdown()
     if (state) return errorPreview(state.message)
     return (
       props.summary ??
@@ -69,28 +77,25 @@ export function SessionRecovery(props: {
     )
   }
   const description = () => {
-    const state = retry()
-    if (connecting()) return _({ id: "ui.recovery.waitingResponse", message: "Waiting for a model response" })
-    if (!state) return undefined
-    if (state.next === undefined) return undefined
+    const state = countdown()
+    if (!state?.next) return undefined
     if (seconds() === 0) return _({ id: "ui.recovery.starting", message: "Preparing to retry" })
-    return state.attempt > 0
-      ? _({
-          id: "ui.recovery.countdownAttempt",
-          message: "Retry {attempt} · Automatically retrying in {seconds}s",
-          values: { attempt: state.attempt, seconds: seconds() },
-        })
-      : _({
-          id: "ui.recovery.countdown",
-          message: "Automatically retrying in {seconds}s",
-          values: { seconds: seconds() },
-        })
+    // `wait()` is only reached after the attempt counter advances, so a
+    // countdown always belongs to a numbered attempt.
+    return _({
+      id: "ui.recovery.countdownAttempt",
+      message: "Retry {attempt} · Automatically retrying in {seconds}s",
+      values: { attempt: state.attempt, seconds: seconds() },
+    })
   }
   const action = createMemo<SessionRecoveryAction | undefined>(() => {
     if (!props.onAction || !props.current || props.status?.type === "busy") return
-    const state = retry()
+    const state = countdown()
     if (state)
       return state.canRetry ? { kind: "retry", sessionID: props.sessionID, messageID: state.messageID } : undefined
+    // A terminal failure offers only the repairs a new message cannot reach:
+    // re-authenticating, or choosing a model that exists. An exhausted retry
+    // budget restarts by sending a message, so it gets no button.
     const error = props.error
     if (error?.name === "ProviderAuthError")
       return { kind: "authenticate", sessionID: props.sessionID, providerID: error.data.providerID }
@@ -99,21 +104,16 @@ export function SessionRecovery(props: {
     if (error?.name !== "APIError") return
     if (error.data.statusCode === 401 && props.providerID)
       return { kind: "authenticate", sessionID: props.sessionID, providerID: props.providerID }
-    if (error.data.isRetryable && props.messageID)
-      return { kind: "retry", sessionID: props.sessionID, messageID: props.messageID }
   })
   const actionLabel = () => {
-    switch (action()?.kind) {
+    const selected = action()
+    switch (selected?.kind) {
       case "retry":
-        return retry()
-          ? _({ id: "ui.recovery.retryNow", message: "Retry now" })
-          : _({ id: "ui.recovery.retry", message: "Retry" })
+        return _({ id: "ui.recovery.retryNow", message: "Retry now" })
       case "authenticate":
         return _({ id: "ui.recovery.reconnect", message: "Reconnect" })
       case "select_model":
         return _({ id: "ui.recovery.selectModel", message: "Choose model" })
-      default:
-        return _({ id: "ui.recovery.retry", message: "Retry" })
     }
   }
   const run = async () => {
@@ -130,16 +130,15 @@ export function SessionRecovery(props: {
     }
   }
   createEffect(() => {
-    props.messageID
     props.error
     retry()?.phase
     setActionError(undefined)
   })
   const details = () =>
-    [retry()?.error ?? JSON.stringify(props.error, null, 2), actionError()].filter(Boolean).join("\n\n")
+    [countdown()?.error ?? JSON.stringify(props.error, null, 2), actionError()].filter(Boolean).join("\n\n")
   const progress = () => {
-    const state = retry()
-    if (!state?.next || state.phase === "connecting") return undefined
+    const state = countdown()
+    if (!state?.next) return undefined
     return {
       value: Math.max(0, Math.min(100, (100 * (now() - state.startedAt)) / Math.max(1, state.next - state.startedAt))),
       label: description()!,

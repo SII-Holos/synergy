@@ -16922,13 +16922,17 @@ msgstr "Reconnecting"
 msgid "session.activity.responding"
 msgstr "Generating response"
 
-#. js-lingui-explicit-id
+#. Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
 msgid "session.activity.retry"
 msgstr "Waiting to retry · attempt {attempt}"
 
 #. js-lingui-explicit-id
 msgid "session.activity.retryingInput"
 msgstr "Waiting to retry preparation"
+
+#. Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
+msgid "session.activity.retryProvider"
+msgstr "Waiting for model connection recovery"
 
 #. js-lingui-explicit-id
 msgid "session.activity.runningTools"
@@ -27087,15 +27091,7 @@ msgstr "Generation failed"
 msgid "ui.mediaGeneration.generating"
 msgstr "Generating media"
 
-#. js-lingui-explicit-id
-msgid "ui.recovery.connecting"
-msgstr "Reconnecting"
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.countdown"
-msgstr "Automatically retrying in {seconds}s"
-
-#. js-lingui-explicit-id
+#. countdown always belongs to a numbered attempt.
 msgid "ui.recovery.countdownAttempt"
 msgstr "Retry {attempt} · Automatically retrying in {seconds}s"
 
@@ -27104,16 +27100,8 @@ msgid "ui.recovery.failed"
 msgstr "Request failed"
 
 #. js-lingui-explicit-id
-msgid "ui.recovery.provider"
-msgstr "Waiting for the model connection to recover"
-
-#. js-lingui-explicit-id
 msgid "ui.recovery.reconnect"
 msgstr "Reconnect"
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.retry"
-msgstr "Retry"
 
 #. js-lingui-explicit-id
 msgid "ui.recovery.retryNow"
@@ -27126,10 +27114,6 @@ msgstr "Choose model"
 #. js-lingui-explicit-id
 msgid "ui.recovery.starting"
 msgstr "Preparing to retry"
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.waitingResponse"
-msgstr "Waiting for a model response"
 
 #. js-lingui-explicit-id
 msgid "ui.resource.close"

@@ -315,7 +315,7 @@ export function VirtualConversationRows(
         locatedIndex(),
         keys().indexOf(readingOwner() ?? ""),
         keys().indexOf(outerReadingOwner() ?? ""),
-        active() &&
+        ...(active() &&
         resumed() &&
         !motionReady() &&
         props.autoScroll &&
@@ -323,10 +323,14 @@ export function VirtualConversationRows(
         !props.scrolledUp() &&
         !readingOwner() &&
         !located()
-          ? rows().findLastIndex(
-              (row) => !row.exiting && row.kind === "activity" && row.activity.active && row.activity.open,
-            )
-          : -1,
+          ? [
+              rows().findLastIndex(
+                (row) => !row.exiting && row.kind === "activity" && row.activity.active && row.activity.open,
+              ),
+              // Completion can remove the active process before Virtua measures the returned tail.
+              rows().findLastIndex((row) => !row.exiting && row.kind !== "load"),
+            ]
+          : []),
       ]),
     ].filter((index) => index >= 0),
   )

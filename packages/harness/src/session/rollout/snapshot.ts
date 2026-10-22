@@ -96,14 +96,16 @@ export namespace RolloutSnapshot {
     })
   }
 
-  export function currentAll(owners: RolloutSchema.Owner[]) {
-    return workMap(8, owners, current)
+  export function currentAll(owners: RolloutSchema.Owner[], signal?: AbortSignal) {
+    return workMap(8, owners, (owner) => current(owner, signal))
   }
 
   /** Discardable presentation checkpoint; recovery and archives use strict read(). */
-  export async function current(owner: RolloutSchema.Owner): Promise<Info> {
+  export async function current(owner: RolloutSchema.Owner, signal?: AbortSignal): Promise<Info> {
+    signal?.throwIfAborted()
     await RolloutJournal.prepare(owner)
     await prepareOwnerMigrations(owner)
+    signal?.throwIfAborted()
     const root = RolloutArtifact.root(owner)
     const key = [...root, "snapshot-v1"]
     const eventKey = (seq: number) => [...root, "journal", "events", String(seq).padStart(12, "0")]
@@ -123,7 +125,10 @@ export namespace RolloutSnapshot {
     })
     if (!revision) return fold(owner, 0)
     if (seed?.revision === revision) return seed
-    const snapshot = await withStorageQueueOptions({ priority: "background" }, () => fold(owner, revision, {}, seed))
+    const snapshot = await withStorageQueueOptions({ priority: "background", signal }, () =>
+      fold(owner, revision, { onProgress: () => signal?.throwIfAborted() }, seed),
+    )
+    signal?.throwIfAborted()
     await Storage.transaction(async () => {
       if (!boundary || (await RolloutJournal.head(owner)).committed < revision) return
       if ((await optional(eventKey(revision)))?.revision !== boundary.revision) return

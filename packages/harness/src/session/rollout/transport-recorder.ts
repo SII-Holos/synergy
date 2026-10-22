@@ -7,7 +7,7 @@ import { RolloutTransportSchema } from "./transport-schema"
 import { record } from "./error"
 
 export namespace RolloutTransportRecorder {
-  export function create(call: RolloutSchema.CallRecord) {
+  export function create(call: RolloutSchema.CallRecord, now = () => performance.now()) {
     const active = new Map<
       string,
       {
@@ -15,6 +15,8 @@ export namespace RolloutTransportRecorder {
         request: RolloutArtifact.Writer
         response?: RolloutArtifact.Writer
         usage?: ReturnType<typeof RolloutUsageCapture.create>
+        progressAt: number
+        progressBytes: number
       }
     >()
     let count = 0
@@ -50,7 +52,7 @@ export namespace RolloutTransportRecorder {
           request: await RolloutArtifact.get(call.owner, request.id),
         }
         await RolloutLedger.writeAttempt(value)
-        active.set(event.attemptID, { value, request })
+        active.set(event.attemptID, { value, request, progressAt: now(), progressBytes: 0 })
         return
       }
       const attempt = active.get(event.attemptID)
@@ -90,10 +92,24 @@ export namespace RolloutTransportRecorder {
             attempt.value.usageFinal = false
           }
           await writer.append(event.data)
-          await writer.checkpoint(async (ref, publish) => {
-            attempt.value[event.channel] = ref
-            await RolloutLedger.writeAttempt(attempt.value, publish)
-          })
+          attempt.progressBytes += event.data.byteLength
+          if (
+            (event.data.byteLength > 0 && !attempt.value[event.channel]?.bytes) ||
+            now() - attempt.progressAt >= 1000 ||
+            attempt.progressBytes >= 1024 * 1024 ||
+            attempt.usage?.hasFinalUsage()
+          ) {
+            await writer.checkpoint(async (ref, publish) => {
+              attempt.value[event.channel] = ref
+              await RolloutLedger.writeAttempt(attempt.value, publish)
+            })
+            attempt.progressAt = now()
+            attempt.progressBytes = 0
+          } else {
+            // Recovery resolves the artifact ID to its latest durable manifest.
+            // Only the presentation journal is sampled; bytes still commit before delivery.
+            attempt.value[event.channel] = await writer.checkpoint()
+          }
           return
         }
         attempt.value[event.channel] = await writer.finish(event.complete ? "complete" : "partial")
@@ -123,6 +139,8 @@ export namespace RolloutTransportRecorder {
         return
       }
       await RolloutLedger.writeAttempt(attempt.value)
+      attempt.progressAt = now()
+      attempt.progressBytes = 0
     }
 
     return {

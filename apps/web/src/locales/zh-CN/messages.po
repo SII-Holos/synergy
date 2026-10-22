@@ -16922,13 +16922,17 @@ msgstr "正在恢复连接"
 msgid "session.activity.responding"
 msgstr "正在生成回复"
 
-#. js-lingui-explicit-id
+#. Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
 msgid "session.activity.retry"
 msgstr "等待重试 · 第 {attempt} 次"
 
 #. js-lingui-explicit-id
 msgid "session.activity.retryingInput"
 msgstr "等待重试准备过程"
+
+#. Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
+msgid "session.activity.retryProvider"
+msgstr "等待模型连接恢复"
 
 #. js-lingui-explicit-id
 msgid "session.activity.runningTools"
@@ -27087,15 +27091,7 @@ msgstr "生成失败"
 msgid "ui.mediaGeneration.generating"
 msgstr "正在生成"
 
-#. js-lingui-explicit-id
-msgid "ui.recovery.connecting"
-msgstr "正在重新连接"
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.countdown"
-msgstr "{seconds} 秒后自动重试"
-
-#. js-lingui-explicit-id
+#. countdown always belongs to a numbered attempt.
 msgid "ui.recovery.countdownAttempt"
 msgstr "第 {attempt} 次重试 · {seconds} 秒后自动重试"
 
@@ -27104,16 +27100,8 @@ msgid "ui.recovery.failed"
 msgstr "请求失败"
 
 #. js-lingui-explicit-id
-msgid "ui.recovery.provider"
-msgstr "正在等待模型连接恢复"
-
-#. js-lingui-explicit-id
 msgid "ui.recovery.reconnect"
 msgstr "重新连接"
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.retry"
-msgstr "重试"
 
 #. js-lingui-explicit-id
 msgid "ui.recovery.retryNow"
@@ -27126,10 +27114,6 @@ msgstr "选择模型"
 #. js-lingui-explicit-id
 msgid "ui.recovery.starting"
 msgstr "正在准备重试"
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.waitingResponse"
-msgstr "等待模型响应"
 
 #. js-lingui-explicit-id
 msgid "ui.resource.close"

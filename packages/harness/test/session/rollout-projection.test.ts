@@ -226,3 +226,28 @@ test("checkpoint reconstruction yields storage priority to interactive reads", (
     expect(priorities).toEqual(["background"])
     expect(storageQueuePriority()).toBe("foreground")
   }))
+
+test("cancelled presentation stops replay and leaves no partial checkpoint", () =>
+  runtime.run(async () => {
+    const target = owner()
+    const root = RolloutArtifact.root(target)
+    const key = [...root, "runs", "run", "info"]
+    await RolloutJournal.write(target, key, value(target, "running"))
+    await RolloutJournal.write(target, key, value(target, "completed"))
+    const abort = new AbortController()
+    const original = RolloutJournal.events
+    let read = 0
+    {
+      using events = spyOn(RolloutJournal, "events").mockImplementation(async function* (...args) {
+        for await (const event of original(...args)) {
+          read++
+          abort.abort()
+          yield event
+        }
+      })
+      await expect(RolloutSnapshot.current(target, abort.signal)).rejects.toMatchObject({ name: "AbortError" })
+    }
+    expect(read).toBe(1)
+    await expect(Storage.read([...root, "snapshot-v1"])).rejects.toBeInstanceOf(Storage.NotFoundError)
+    expect(await RolloutSnapshot.current(target)).toEqual(await RolloutSnapshot.read(target))
+  }))

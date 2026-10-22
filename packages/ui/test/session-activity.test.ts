@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
+import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { sessionActivityAnimating, sessionActivityLabel } from "../src/components/session-status"
 
 test("current activity is localized without deriving it from loaded tool parts or diagnostic descriptions", () => {
@@ -71,4 +72,38 @@ test("an ID-only Blueprint activity does not guess whether the executor is revie
     },
   })
   expect(sessionActivityLabel(status, i18n)).toBe("正在调用工具 · 蓝图操作")
+})
+
+test("each retry phase names only what its own wait can honour", () => {
+  const retry = (phase: Extract<SessionStatus, { type: "retry" }>["phase"]): SessionStatus => ({
+    type: "retry",
+    rootID: "root",
+    messageID: "message",
+    phase,
+    attempt: 2,
+    message: "rate limited",
+    error: "rate limited",
+    startedAt: 1,
+    canRetry: true,
+  })
+
+  // Local backoff is the only phase that owns a deadline, so it is the only one
+  // that reports an attempt number.
+  expect(sessionActivityLabel(retry("waiting"))).toBe("Waiting to retry · attempt 2")
+  expect(sessionActivityLabel(retry("waiting_provider"))).toBe("Waiting for model connection recovery")
+  expect(sessionActivityLabel(retry("connecting"))).toBe("Waiting for model response")
+
+  const i18n = setupI18n({
+    locale: "zh-CN",
+    messages: {
+      "zh-CN": {
+        "session.activity.retry": "等待重试 · 第 {attempt} 次",
+        "session.activity.retryProvider": "等待模型连接恢复",
+        "session.activity.waitingModel": "等待模型回复",
+      },
+    },
+  })
+  expect(sessionActivityLabel(retry("waiting"), i18n)).toBe("等待重试 · 第 2 次")
+  expect(sessionActivityLabel(retry("waiting_provider"), i18n)).toBe("等待模型连接恢复")
+  expect(sessionActivityLabel(retry("connecting"), i18n)).toBe("等待模型回复")
 })

@@ -3,6 +3,7 @@ import z from "zod"
 import { Log } from "../util/log"
 import { SessionInteraction } from "./interaction"
 import type { Info, PausedInfo, PausedReason } from "./types"
+import { Storage } from "../storage/storage"
 
 export namespace SessionLifecycle {
   const log = Log.create({ service: "session.lifecycle" })
@@ -36,7 +37,10 @@ export namespace SessionLifecycle {
    */
   export async function pause(input: PauseInput): Promise<boolean> {
     const { Session } = await import(".")
-    const session = await Session.get(input.sessionID).catch(() => undefined)
+    const session = await Session.get(input.sessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!latchable(session)) return false
     // First pause wins: a later reason describes the same stoppage, so
     // rewriting would churn `since` and lose the original cause.
@@ -73,7 +77,10 @@ export namespace SessionLifecycle {
    */
   export async function clear(sessionID: string): Promise<boolean> {
     const { Session } = await import(".")
-    const session = await Session.get(sessionID).catch(() => undefined)
+    const session = await Session.get(sessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!session?.paused) return false
     await Session.update(sessionID, (draft) => {
       draft.paused = undefined
@@ -85,7 +92,7 @@ export namespace SessionLifecycle {
   /** The latch as stored, or undefined when the session is not paused. */
   export async function snapshot(sessionID: string): Promise<PausedInfo | undefined> {
     const { SessionManager } = await import("./manager")
-    const session = await SessionManager.getSession(sessionID).catch(() => undefined)
+    const session = await SessionManager.getSession(sessionID)
     return session?.paused
   }
 

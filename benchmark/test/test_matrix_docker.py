@@ -701,12 +701,29 @@ async def run_native_matrix(
 
         root = Path(read_json(tmp_path / "prepared.json")["root"])
         print(f"Matrix evidence: {root}", flush=True)
-        code = await run_process(
-            [sys.executable, "-m", "synergy_bench.cli", "resume", str(root)],
-            env=recorded_environment(root, read_json(root / "plan.json")["evaluator"]),
-            log=root / "integration-cli.log",
-            deadline=420 if business else 2400 if long_session else 1200,
+        execution = asyncio.create_task(
+            run_process(
+                [sys.executable, "-m", "synergy_bench.cli", "resume", str(root)],
+                env=recorded_environment(root, read_json(root / "plan.json")["evaluator"]),
+                log=root / "integration-cli.log",
+                deadline=None if business else 2400 if long_session else 1200,
+            )
         )
+        try:
+            if business:
+                # Image preparation and shared-cache admission do not consume the compaction budget.
+                while not await asyncio.to_thread(
+                    lambda: any(read_json(file).get("agent") for file in root.glob("trials/*/attempt-*/stages.json"))
+                ):
+                    if execution.done():
+                        break
+                    await asyncio.sleep(0.05)
+            async with asyncio.timeout(420 if business else None):
+                code = await execution
+        finally:
+            if not execution.done():
+                execution.cancel()
+            await asyncio.gather(execution, return_exceptions=True)
         assert code == 0, (root / "integration-cli.log").read_text()[-20000:]
 
         def retained_results():

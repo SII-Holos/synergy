@@ -12,12 +12,14 @@
 
 - **Executive summary** — failure, cause, lesson.
 - **Summary** — failure details.
-- **Timeline** — dated observations.
+- **Timeline** — observations.
 - **Root cause** — mechanism and missing safeguards.
 - **Guardrails** — tests, docs, gates.
-- **Lessons** — durable takeaways.
+- **Lessons** — takeaways.
 
 ## Index
+
+- [0088](0088-storage-admission-misclassified-as-session-preparation.md)
 
 - [0087](0087-browser-view-completed-without-presentation.md)
 

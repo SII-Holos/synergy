@@ -276,8 +276,15 @@ describe("ObservabilityStore worker mode", () => {
           unit: "bytes" as const,
           scopeID: "worker-uncertain-delta",
         }
+        ObservabilityMetrics.record({
+          name: "storage.queue.depth",
+          value: 1,
+          unit: "count",
+          module: "storage",
+          labels: { queue: "worker-startup" },
+        })
         for (const observedValue of [120, 180]) ObservabilityIssues.observeCondition({ ...input, observedValue })
-        ObservabilityStore.flush()
+        ObservabilityStore.flush(true)
         await ObservabilityTelemetryClient.flushAndWait()
         const [first] = ObservabilityIssues.list({ scopeID: input.scopeID })
         const beforeFault = ObservabilityTelemetryClient.stats()
@@ -300,6 +307,8 @@ describe("ObservabilityStore worker mode", () => {
             control.exec("BEGIN IMMEDIATE")
             writeBlocked = true
           }
+          // Startup gauges must stay in the acknowledged prefix even if they mature during the fault.
+          ObservabilityMetrics.flushAggregates(true)
           for (const observedValue of [200, 260, 500, 240, 230, 220, 210])
             ObservabilityIssues.observeCondition({ ...input, observedValue })
           ObservabilityStore.flush()

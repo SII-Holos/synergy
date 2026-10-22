@@ -313,6 +313,12 @@ def test_faults_preserve_terminal_evidence_and_cleanup(experiment_fixture, mode:
             await execution
             return
         try:
+            # Preparation owns its deadline; cold image builds cannot consume the fault observation budget.
+            while not any(read_json(file).get("agent") for file in root.glob("trials/*/attempt-*/stages.json")):
+                if execution.done():
+                    await execution
+                    pytest.fail("Native execution never started")
+                await asyncio.sleep(0.05)
             async with asyncio.timeout(180):
                 while not (provider_artifacts / "provider-started").exists():
                     if execution.done():

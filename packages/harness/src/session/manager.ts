@@ -765,7 +765,7 @@ export namespace SessionManager {
     if (!runtimeState().accepting) return
     if (isRunning(sessionID)) return
     const { SessionInbox } = await import("./inbox")
-    const session = await getSession(sessionID).catch(() => undefined)
+    const session = await getSession(sessionID)
     if (session && (await SessionInbox.peekIdleNoReply(sessionID)).length) {
       await run(
         sessionID,

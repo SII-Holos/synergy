@@ -717,10 +717,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return rootNavStore[category]?.nextCursor != null
     }
 
-    // --- Nav event refresh ---
-    // On session.updated, refresh nav lists preserving current depth.
     const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
     const NAV_REFRESH_DEBOUNCE_MS = 300
+    onCleanup(() => {
+      for (const timer of navRefreshTimers.values()) clearTimeout(timer)
+      navRefreshTimers.clear()
+    })
+    function scheduleNavRefresh(key: string, busy: () => boolean, refresh: () => Promise<void>) {
+      clearTimeout(navRefreshTimers.get(key))
+      navRefreshTimers.set(
+        key,
+        setTimeout(() => {
+          navRefreshTimers.delete(key)
+          if (busy()) return scheduleNavRefresh(key, busy, refresh)
+          void refresh()
+        }, NAV_REFRESH_DEBOUNCE_MS),
+      )
+    }
     function scheduleScopeIndexRefresh() {
       const pending = navRefreshTimers.get("__scopeIndex__")
       if (pending) clearTimeout(pending)
@@ -734,6 +747,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     function applyScopeRemoval(scopeID: string, directory?: string) {
+      clearTimeout(navRefreshTimers.get(scopeID))
+      navRefreshTimers.delete(scopeID)
       const removed = removeScopeFromIndex(scopeIndex(), scopeID, directory)
       server.scopes.close(scopeID)
       scopeNavLoaders.get(scopeID)?.dispose()
@@ -815,53 +830,35 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         const scope = info?.scope
         if (!scope) return
 
-        // Instant in-place projection: update any already-loaded nav entry for
-        // this session immediately (title/pin/activity/archive), so the sidebar
-        // doesn't lag the debounced refetch. The refetch below still runs as the
-        // authority for ordering, new entries, and project aggregates.
-        const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], properties?.navEntry)
-        let channelApplied = false
-        {
-          const recentResult = applySessionToNavList(recentEntries, navUpdate)
-          if (recentResult.applied) setRecentEntries(recentResult.list)
-          const dir = scope.id
-          if (dir && navEntries[dir]) {
-            const scopeResult = applySessionToNavList(navEntries[dir], navUpdate)
-            if (scopeResult.applied) setNavEntries(dir, scopeResult.list)
-          }
-          for (const category of ROOT_NAV_SECTION_KEYS) {
-            if (!rootNavStore[category]) continue
-            const rootResult = applySessionToNavList(rootNavStore[category], navUpdate)
-            if (category === "channel") channelApplied = rootResult.applied
-            if (rootResult.applied) setRootNavStore(category, rootResult.list)
-          }
-        }
-
-        const recentPending = navRefreshTimers.get("__recent__")
-        if (recentPending) clearTimeout(recentPending)
-        navRefreshTimers.set(
-          "__recent__",
-          setTimeout(() => {
-            navRefreshTimers.delete("__recent__")
-            refreshGlobalRecent()
-          }, NAV_REFRESH_DEBOUNCE_MS),
-        )
-        const affectedRootSections = rootNavSectionsForSessionUpdate({
-          scopeID: scope.id,
-          navCategory: properties?.navEntry?.category,
-          channelType: properties?.navEntry?.channelType,
-          channelApplied,
+        const projection = properties?.navEntry
+        const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], projection)
+        const recentResult = applySessionToNavList(recentEntries, navUpdate, projection)
+        if (recentResult.applied) setRecentEntries(recentResult.list)
+        const scopeResult =
+          scope.id && navEntries[scope.id]
+            ? applySessionToNavList(navEntries[scope.id], navUpdate, projection)
+            : undefined
+        if (scopeResult?.applied) setNavEntries(scope.id!, scopeResult.list)
+        const roots = ROOT_NAV_SECTION_KEYS.map((category) => {
+          const result = applySessionToNavList(rootNavStore[category], navUpdate, projection)
+          if (result.applied) setRootNavStore(category, result.list)
+          return { category, result }
         })
-        for (const category of affectedRootSections) {
-          const pending = navRefreshTimers.get(`__root_${category}`)
-          if (pending) clearTimeout(pending)
-          navRefreshTimers.set(
-            `__root_${category}`,
-            setTimeout(() => {
-              navRefreshTimers.delete(`__root_${category}`)
-              refreshRootNavSection(category)
-            }, NAV_REFRESH_DEBOUNCE_MS),
-          )
+        const recentBusy = () => recentRequest().loading || navPending.has("__refresh__recent__")
+        if (recentResult.refresh || recentBusy()) scheduleNavRefresh("__recent__", recentBusy, refreshGlobalRecent)
+        const affectedRootSections = new Set(
+          rootNavSectionsForSessionUpdate({
+            scopeID: scope.id,
+            navCategory: projection?.category,
+            channelType: projection?.channelType,
+            channelApplied: roots.some(({ category, result }) => category === "channel" && result.applied),
+          }),
+        )
+        for (const { category, result } of roots) {
+          if (!affectedRootSections.has(category) && !result.applied) continue
+          const busy = () => navPending.has(`__root_${category}`) || navPending.has(`__refresh_root_${category}`)
+          if (result.refresh || busy())
+            scheduleNavRefresh(`__root_${category}`, busy, () => refreshRootNavSection(category))
         }
         if (scope.id === "home") return
         // Managed Channel projects order within their account by the server's
@@ -880,15 +877,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         }
         const dir = scope.id
         if (!dir || !navEntries[dir]) return
-        const pending = navRefreshTimers.get(dir)
-        if (pending) clearTimeout(pending)
-        navRefreshTimers.set(
-          dir,
-          setTimeout(() => {
-            navRefreshTimers.delete(dir)
-            refreshScopeNav(dir)
-          }, NAV_REFRESH_DEBOUNCE_MS),
-        )
+        const busy = () => !!scopeNavRequests[dir]?.loading || navPending.has(`__refresh_${dir}`)
+        if (scopeResult?.refresh || busy()) scheduleNavRefresh(dir, busy, () => refreshScopeNav(dir))
       })
       onCleanup(unsub)
     })

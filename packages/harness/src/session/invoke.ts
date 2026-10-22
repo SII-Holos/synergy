@@ -1961,7 +1961,13 @@ export namespace SessionInvoke {
 
     for (let index = messages.length - 1; index >= 0; index--) {
       const msg = messages[index]
-      if (msg.info.role === "assistant") return msg
+      if (
+        msg.info.role === "assistant" &&
+        (!lastReplyRequiredUser ||
+          msg.info.parentID === lastReplyRequiredUser.id ||
+          msg.info.rootID === lastReplyRequiredUser.id)
+      )
+        return msg
     }
   }
 

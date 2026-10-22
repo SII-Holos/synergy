@@ -102,6 +102,10 @@ Use [Development reference](../../../../docs/reference/development.md) and [Open
 
 ## Diagnose Failures
 
+When a timeout is classified as domain state, hold real storage admission beyond that timeout and verify both absent and already-completed owner records. Queue pressure must not manufacture preparation, missing state or a successful pause clear. Keep storage errors observable, and test that a new input cannot inherit an earlier root's terminal result.
+
+Before injecting telemetry acknowledgement loss, force-flush and acknowledge the accepted prefix, including young aggregated gauges. Advance deferred publication explicitly to cover the boundary without sleeps; retain exact uncertain counts and committed versus uncommitted recovery assertions.
+
 1. Re-run the narrow test alone and capture the first causal failure.
 2. Check isolation leaks, stale generated files, timeouts, open handles, environment restoration, ordering, and platform assumptions.
 3. Distinguish a product regression from a brittle expectation. Change the test only when the intended public contract is wrong or was asserted at the wrong level.
