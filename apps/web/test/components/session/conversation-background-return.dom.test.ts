@@ -84,6 +84,7 @@ for (const ended of [false, true]) {
         const rect = latest?.getBoundingClientRect()
         samples.push({
           open: open.length,
+          rows: viewport.querySelectorAll("[data-display-row]").length,
           latest:
             !!rect && !!bounds && rect.height > 0 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1,
           gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
@@ -109,6 +110,7 @@ for (const ended of [false, true]) {
       JSON.stringify(result.samples.slice(0, 8)),
     ).toEqual(Array(64).fill(ended ? 0 : 1))
     expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
+    expect(result.samples.every((sample) => sample.rows > 0)).toBe(true)
     expect(result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
     if (ended) {
       expect(result.answer).toBe(true)
@@ -117,6 +119,51 @@ for (const ended of [false, true]) {
       expect(result.samples.slice(8).every((sample) => sample.latest)).toBe(true)
       expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-")).length).toBeLessThan(40)
     }
+    expect(errors).toEqual([])
+  }, 30000)
+}
+
+for (const completionFrame of [0, 1, 16]) {
+  test(`a returned live backlog remains readable when it completes at frame ${completionFrame}`, async () => {
+    await page.goto(`${url}?resident&scrolling&motion&content=background`)
+    await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+    await page.evaluate(() => window.__conversationProcess.latest())
+    await page.waitForFunction(
+      () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+    )
+    const result = await page.evaluate(async (completionFrame) => {
+      const fixture = window.__conversationProcess
+      const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+      const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+      const before = fixture.contentStats()
+      fixture.select("peer")
+      await settle()
+      fixture.backlog(24, false)
+      await settle()
+      const hidden = fixture.contentStats()
+      fixture.select("session")
+      const samples = []
+      for (let frame = 0; frame < 96; frame++) {
+        if (frame === completionFrame) fixture.background(true, false)
+        await settle()
+        const bounds = viewport.getBoundingClientRect()
+        samples.push({
+          rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
+            const rect = row.getBoundingClientRect()
+            return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
+          }).length,
+          gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        })
+      }
+      return { before, hidden, samples, answer: viewport.textContent?.includes("Background answer.") }
+    }, completionFrame)
+    expect(result.hidden).toEqual(result.before)
+    expect(
+      result.samples.every((sample) => sample.rows > 0),
+      JSON.stringify(result.samples.slice(0, 24)),
+    ).toBe(true)
+    expect(result.samples.every((sample) => Math.abs(sample.gap) <= 2)).toBe(true)
+    expect(result.answer).toBe(true)
     expect(errors).toEqual([])
   }, 30000)
 }
