@@ -33,7 +33,8 @@ export function WelcomeStage(props: {
   const [paused, setPaused] = createSignal(reducedMotion())
   const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
   const [intersecting, setIntersecting] = createSignal(true)
-  const [expanded, setExpanded] = createSignal(false)
+  const [covered, setCovered] = createSignal(false)
+  const [resting, setResting] = createSignal(0)
   const [scene, { refetch }] = createResource(
     () => props.definition,
     (definition) => definition.load(),
@@ -41,9 +42,15 @@ export function WelcomeStage(props: {
   let root!: HTMLDivElement
   const [pane, setPane] = createSignal<Element>()
   const interact = () => setPaused(false)
-  const gameActive = () => !paused() && visible() && intersecting() && !expanded() && !props.blocked
+  const gameActive = () => !paused() && visible() && intersecting() && !covered() && !props.blocked
   createEffect(() => {
     if (reducedMotion()) setPaused(true)
+  })
+  createEffect(() => {
+    const height = resting()
+    if (!root) return
+    if (covered() && height > 0) root.style.minHeight = `${height}px`
+    else root.style.removeProperty("min-height")
   })
   onMount(() => {
     const visibility = () => setVisible(document.visibilityState !== "hidden")
@@ -65,15 +72,30 @@ export function WelcomeStage(props: {
     observeVisual()
     const pane = root.closest(".session-workbench-pane")
     setPane(pane ?? root)
-    const measureExpanded = () => setExpanded(!!pane?.querySelector(".session-composer[data-expanded]"))
-    const mutation = new MutationObserver(measureExpanded)
-    if (pane) mutation.observe(pane, { subtree: true, attributes: true, attributeFilter: ["data-expanded"] })
-    measureExpanded()
+    const measureCovered = () =>
+      setCovered(
+        !!pane?.querySelector(
+          ".session-composer[data-expanded],.session-composer[data-resized],.session-composer[data-motion]",
+        ),
+      )
+    const mutation = new MutationObserver(measureCovered)
+    if (pane)
+      mutation.observe(pane, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["data-expanded", "data-resized", "data-motion"],
+      })
+    measureCovered()
+    const resize = new ResizeObserver(() => {
+      if (!covered()) setResting(root.clientHeight)
+    })
+    resize.observe(root)
     onCleanup(() => {
       document.removeEventListener("visibilitychange", visibility)
       observer.disconnect()
       visualChanges.disconnect()
       mutation.disconnect()
+      resize.disconnect()
     })
   })
   return (
@@ -83,6 +105,7 @@ export function WelcomeStage(props: {
       data-welcome-scene={props.definition.id}
       data-prevent-autofocus
       data-active={gameActive() ? "" : undefined}
+      data-covered={covered() ? "" : undefined}
     >
       <Show when={pane()}>
         {(target) => (

@@ -35,6 +35,7 @@ beforeAll(async () => {
     import { sceneRandom } from "${source}/components/session/welcome/random"
     import { sprite, sprites } from "${source}/components/session/welcome/pixels"
     import { handleComposerTypingAutofocus } from "${source}/components/prompt-input/typing-autofocus"
+    import { createPromptDockHeight } from "${source}/components/session/prompt-dock-height"
     import "@ericsanchezok/synergy-ui/styles"
     import "${source}/index.css"
     let resolveLate
@@ -52,6 +53,31 @@ beforeAll(async () => {
     }
     let failCount = 0
     const failing = {id:"failure", title:{id:"fixture.failure",message:"Failure"}, load:async()=>{if(!failCount++) throw Error("Fixture load failure"); return {default:()=> <div>Recovered scene</div>}}}
+    function Reserved(props) {
+      const [expanded, setExpanded] = createSignal(false)
+      const [resized, setResized] = createSignal(false)
+      const [motion, setMotion] = createSignal()
+      const [promptHeight, setPromptHeight] = createSignal(0)
+      const dock = createPromptDockHeight(next => setPromptHeight(next))
+      const toggle = () => {
+        const next = !expanded()
+        setMotion(next ? "expanding" : "collapsing")
+        setExpanded(next)
+        setTimeout(() => setMotion(undefined), next ? 340 : 240)
+      }
+      const height = () => (expanded() ? 420 : resized() ? 300 : 96)
+      return <><div class="fixture-controls"><button data-expand onClick={toggle}>Expand</button><button data-resize onClick={()=>setResized(!resized())}>Resize</button></div>
+        <div class="session-workbench-pane" style={"position:relative;height:calc(100dvh - 36px);display:flex;flex-direction:column;--prompt-height:" + promptHeight() + "px"}>
+          <div style="flex:1;min-height:0;overflow:hidden">
+            <div class="session-empty-view" data-interactive><div class="session-welcome-region"><WelcomeStage definition={props.definition} memory={props.memory} seed={8} blocked={props.blocked} /></div></div>
+          </div>
+          <div ref={element => dock.mount(element)} class="session-prompt-dock" style="position:absolute;bottom:0;left:0;right:0;padding-bottom:24px">
+            <div class="session-composer" data-expanded={expanded() ? "" : undefined} data-resized={resized() ? "" : undefined} data-motion={motion()} style={"height:" + height() + "px"}>
+              <textarea data-component="prompt-input" aria-label="Message" style="height:100%;width:100%" />
+            </div>
+          </div>
+        </div></>
+    }
     function App() {
       if (new URLSearchParams(location.search).has("lifecycle")) return <Lifecycle />
       const theme = useTheme()
@@ -137,6 +163,8 @@ beforeAll(async () => {
       let input
       document.addEventListener("keydown", e => handleComposerTypingAutofocus(e, input, blocked()))
       const select = value => {setMemory(createWelcomeMemory()); setDefinition(value)}
+      if (new URLSearchParams(location.search).get("layout") === "reserved")
+        return <Reserved definition={definition()} memory={memory()} blocked={blocked()} />
       return <><div class="fixture-controls"><button onClick={()=>select(failing)}>Load failing</button><button onClick={()=>theme.setThemeId(theme.themeId()==="synergy"?"catppuccin":"synergy")}>Theme</button><button onClick={()=>select(late)}>Load late</button><button onClick={()=>select(fifth)}>Load fifth</button><button onClick={()=>resolveLate?.({default:()=> <div>Obsolete scene</div>})}>Resolve late</button><button onClick={()=>setBlocked(!blocked())}>Overlay</button><button onClick={()=>setShown(!shown())}>Mount</button></div>
         <div class="session-workbench-pane" style="height:calc(100dvh - 36px);display:flex;flex-direction:column">
           <main style="flex:1;min-height:0;overflow:auto"><Show when={shown()}><WelcomeStage definition={definition()} memory={memory()} seed={8} blocked={blocked()} /></Show></main>
@@ -177,6 +205,81 @@ async function open(scene = "stack") {
   await page.locator(".welcome-game-canvas").waitFor()
   expect(errors).toEqual([])
 }
+
+async function openReserved(scene = "slingshot") {
+  errors.length = 0
+  await page.goto(`${url}?scene=${scene}&layout=reserved`)
+  await page.locator(".welcome-game-canvas").waitFor()
+  await page.waitForFunction(
+    () =>
+      Number.parseFloat(
+        getComputedStyle(document.querySelector(".session-workbench-pane")!).getPropertyValue("--prompt-height"),
+      ) > 0,
+  )
+  await page.waitForFunction(() => getComputedStyle(document.querySelector(".welcome-stage")!).opacity === "1")
+  expect(errors).toEqual([])
+}
+
+test("expanding the composer covers the playfield without resizing, repainting or moving it", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await openReserved("slingshot")
+  const canvas = page.locator(".welcome-game-canvas")
+  const stage = page.locator(".welcome-stage")
+  const reserved = () =>
+    page.locator(".session-empty-view").evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom))
+  const restingReserved = await reserved()
+  const restingBox = (await canvas.boundingBox())!
+  const bitmap = () => canvas.evaluate((el) => [(el as HTMLCanvasElement).width, (el as HTMLCanvasElement).height])
+  const restingBitmap = await bitmap()
+
+  await page.locator("[data-expand]").click()
+  await page.waitForTimeout(500)
+  expect(await reserved()).toBeGreaterThan(restingReserved + 100)
+  expect(await stage.getAttribute("data-active")).toBeNull()
+
+  const expandedBox = (await canvas.boundingBox())!
+  expect(Math.abs(expandedBox.width - restingBox.width)).toBeLessThan(0.5)
+  expect(Math.abs(expandedBox.height - restingBox.height)).toBeLessThan(0.5)
+  expect(Math.abs(expandedBox.x - restingBox.x)).toBeLessThan(0.5)
+  expect(Math.abs(expandedBox.y - restingBox.y)).toBeLessThan(0.5)
+  expect(await bitmap()).toEqual(restingBitmap)
+  expect(await stage.getAttribute("data-covered")).toBe("")
+
+  await page.locator("[data-expand]").click()
+  await page.waitForTimeout(500)
+  expect(await reserved()).toBeCloseTo(restingReserved, 0)
+  const restored = (await canvas.boundingBox())!
+  expect(Math.abs(restored.height - restingBox.height)).toBeLessThan(0.5)
+  expect(await stage.getAttribute("data-active")).toBe("")
+  expect(errors).toEqual([])
+})
+
+test("dragging the composer taller covers the playfield without resizing it", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await openReserved("slingshot")
+  const canvas = page.locator(".welcome-game-canvas")
+  const stage = page.locator(".welcome-stage")
+  const restingBox = (await canvas.boundingBox())!
+  const bitmap = () => canvas.evaluate((el) => [(el as HTMLCanvasElement).width, (el as HTMLCanvasElement).height])
+  const restingBitmap = await bitmap()
+
+  await page.locator("[data-resize]").click()
+  await page.waitForTimeout(400)
+  expect(await stage.getAttribute("data-covered")).toBe("")
+
+  const resizedBox = (await canvas.boundingBox())!
+  expect(Math.abs(resizedBox.width - restingBox.width)).toBeLessThan(0.5)
+  expect(Math.abs(resizedBox.height - restingBox.height)).toBeLessThan(0.5)
+  expect(Math.abs(resizedBox.y - restingBox.y)).toBeLessThan(0.5)
+  expect(await bitmap()).toEqual(restingBitmap)
+
+  await page.locator("[data-resize]").click()
+  await page.waitForTimeout(400)
+  expect(await stage.getAttribute("data-covered")).toBeNull()
+  const restored = (await canvas.boundingBox())!
+  expect(Math.abs(restored.height - restingBox.height)).toBeLessThan(0.5)
+  expect(errors).toEqual([])
+})
 
 test("the background covers the pane, while the game has no pointer focus frame or redundant actions", async () => {
   await open()

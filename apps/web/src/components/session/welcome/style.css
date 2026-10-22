@@ -77,6 +77,10 @@
   min-height: 200px;
   position: relative;
   display: flex;
+  transition: opacity 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+.welcome-stage[data-covered] .welcome-game-space {
+  opacity: 0.5;
 }
 .welcome-game-canvas {
   display: block;
@@ -121,6 +125,9 @@
 @media (prefers-reduced-motion: reduce) {
   .welcome-stage {
     animation: none;
+  }
+  .welcome-game-space {
+    transition: none;
   }
 }
 @container (max-width: 400px) {
