@@ -211,11 +211,15 @@ describe("Markdown managed resources", () => {
       expect(links[0].getAttribute("href")).toBe(github)
       expect(links[0].dataset.resourceLabel).toBe("deepseek-harness / index.ts:289–327")
       expect(links[0].textContent).toBe(github)
-      expect(links[0].dataset.resourceIcon).toBe("github.main")
+      expect(
+        links[0].querySelector("[data-reference-icon] [data-component='site-icon'] use")?.getAttribute("href"),
+      ).toEndWith("#github")
       expect(links[1].textContent).toBe("Original label")
       expect(links[1].hasAttribute("data-resource-label")).toBe(false)
       expect(links[2].dataset.resourceKind).toBe("note")
-      expect(links[3].dataset.resourceIcon).toBe("browser.main")
+      // A host outside the brand table keeps the neutral globe instead of a guess.
+      expect(links[3].querySelector("[data-reference-icon] [data-component='site-icon']")).toBeNull()
+      expect(links[3].querySelector("[data-reference-icon] [data-component='icon']")).not.toBeNull()
       links[0].dispatchEvent(new dom.window.MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }))
       expect(f.references.at(-1)).toMatchObject({ resource: { kind: "url", url: github }, options: { newTab: true } })
     } finally {

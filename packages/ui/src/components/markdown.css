@@ -109,7 +109,8 @@
 }
 
 [data-component="markdown"] [data-reference-icon] [data-component="icon"],
-[data-component="markdown"] [data-reference-icon] [data-component="file-icon"] {
+[data-component="markdown"] [data-reference-icon] [data-component="file-icon"],
+[data-component="markdown"] [data-reference-icon] [data-component="site-icon"] {
   display: inline-flex;
   width: 1em;
   height: 1em;

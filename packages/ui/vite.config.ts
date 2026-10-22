@@ -21,6 +21,13 @@ export default defineConfig({
         formatter: "prettier",
         iconNameTransformer: (iconName) => iconName,
       },
+      {
+        withTypes: true,
+        inputDir: "src/assets/icons/site",
+        outputDir: "src/components/site-icons",
+        formatter: "prettier",
+        iconNameTransformer: (iconName) => iconName,
+      },
     ]),
   ],
   server: { port: 3001 },
