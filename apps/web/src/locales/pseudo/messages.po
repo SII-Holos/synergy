@@ -13161,6 +13161,10 @@ msgid "message-part.part-render-error"
 msgstr "⟦Couldn’t display this content:⟧"
 
 #. ── Message-part chrome ────────────────────────────────────────────
+msgid "message-part.quote-label"
+msgstr ""
+
+#. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.search-early-stop"
 msgstr "⟦Search ended early⟧"
 
@@ -13315,50 +13319,6 @@ msgstr ""
 #. js-lingui-explicit-id
 msgid "note.tag.remove"
 msgstr ""
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.back"
-msgstr "⟦Back⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.close"
-msgstr "⟦Close⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.copy"
-msgstr "⟦Copy⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.cut"
-msgstr "⟦Cut⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.failed"
-msgstr "⟦Text action failed⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.loading"
-msgstr "⟦Working…⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.menu"
-msgstr "⟦Text actions⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.paste"
-msgstr "⟦Paste⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.retry"
-msgstr "⟦Retry⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "⟦Select all⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.unavailable"
-msgstr "⟦This editing action is unavailable.⟧"
 
 #. js-lingui-explicit-id
 msgid "project.entry.addFolder"
@@ -25542,6 +25502,38 @@ msgstr "⟦Location unavailable⟧"
 #. js-lingui-explicit-id
 msgid "task.location.useFiles"
 msgstr "⟦Use these files⟧"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.addToChat"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.close"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copy"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copyFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.loading"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.retry"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.toolbar"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "tool.computer.accessibility"

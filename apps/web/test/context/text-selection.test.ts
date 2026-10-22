@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { TextSelectionController, groupTextActions, type TextSelectionSnapshot } from "../../src/context/text-selection"
+import {
+  TextSelectionController,
+  presentTextActions,
+  type TextSelectionSnapshot,
+} from "../../src/context/text-selection"
 
 const snapshot = (text: string): Omit<TextSelectionSnapshot, "selectionId"> => ({
   text,
@@ -175,8 +179,8 @@ describe("TextSelectionController", () => {
     expect(controller.actionsFor(controller.current()!).map((action) => action.id)).toEqual(["explain-code"])
   })
 
-  test("groups actions by plugin without collapsing duplicate local labels", () => {
-    const groups = groupTextActions([
+  test("presents one flat ordered list, qualifying labels claimed twice", () => {
+    const presented = presentTextActions([
       {
         id: "alpha:translate",
         pluginId: "alpha",
@@ -202,9 +206,10 @@ describe("TextSelectionController", () => {
         run: async () => undefined,
       },
     ])
-    expect(groups.map((group) => [group.pluginName, group.actions.map((action) => action.id)])).toEqual([
-      ["Alpha", ["alpha:explain", "alpha:translate"]],
-      ["Beta", ["beta:translate"]],
+    expect(presented.map((item) => [item.action.id, item.label])).toEqual([
+      ["alpha:explain", "Explain"],
+      ["beta:translate", "Translate · Beta"],
+      ["alpha:translate", "Translate · Alpha"],
     ])
   })
 })

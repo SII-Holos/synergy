@@ -1,6 +1,11 @@
 import type { Accessor } from "solid-js"
 import { createMemo, For, Show } from "solid-js"
-import type { NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
+import type {
+  NoteAttachmentPart,
+  QuoteAttachmentPart,
+  SessionAttachmentPart,
+  UploadedAttachmentPart,
+} from "@/context/prompt"
 import {
   AttachmentCard,
   resolveImagePreviewImage,
@@ -9,6 +14,7 @@ import {
 import type { ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { buildPromptUploadEntries } from "./attachment-preview"
+import { referencePartTitle } from "./reference-part"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
 import type { PendingPromptAttachment } from "./pending-attachments"
@@ -20,12 +26,32 @@ type Entry = { id: string } & (
   | { kind: "upload"; value: ReturnType<typeof buildPromptUploadEntries>[number] }
   | { kind: "note"; value: NoteAttachmentPart }
   | { kind: "session"; value: SessionAttachmentPart }
+  | { kind: "quote"; value: QuoteAttachmentPart }
 )
+
+type ReferenceEntry = Extract<Entry, { kind: "note" | "session" | "quote" }>
+
+function ReferenceCard(props: { entry: ReferenceEntry }) {
+  const { i18n } = useLocale()
+  const title = () =>
+    props.entry.kind === "quote"
+      ? referencePartTitle(props.entry.value)
+      : props.entry.value.title || i18n._({ id: "prompt.attachments.untitled", message: "Untitled" })
+  const icon = () =>
+    props.entry.kind === "note" ? "notes.main" : props.entry.kind === "quote" ? "prompt.quote" : "session.default"
+  return (
+    <div class="prompt-attachment-reference" data-kind={props.entry.kind}>
+      <Icon name={getSemanticIcon(icon())} size="small" />
+      <span title={title()}>{title()}</span>
+    </div>
+  )
+}
 
 export function PromptAttachments(props: {
   uploads: Accessor<UploadedAttachmentPart[]>
   notes: Accessor<NoteAttachmentPart[]>
   sessions: Accessor<SessionAttachmentPart[]>
+  quotes: Accessor<QuoteAttachmentPart[]>
   pending: Accessor<PendingPromptAttachment[]>
   order: Accessor<string[]>
   pendingFile: (id: string) => File | undefined
@@ -52,6 +78,7 @@ export function PromptAttachments(props: {
       ...uploadEntries().map((value) => ({ id: value.attachment.id, kind: "upload" as const, value })),
       ...props.notes().map((value) => ({ id: value.id, kind: "note" as const, value })),
       ...props.sessions().map((value) => ({ id: value.id, kind: "session" as const, value })),
+      ...props.quotes().map((value) => ({ id: value.id, kind: "quote" as const, value })),
       ...props
         .pending()
         .filter((entry) => !uploaded.has(entry.id))
@@ -78,6 +105,12 @@ export function PromptAttachments(props: {
       )
       ;(entry?.querySelector<HTMLElement>("button, a") ?? fallback)?.focus()
     })
+  }
+  const entryTitle = (entry: Entry) => {
+    if (entry.kind === "upload") return entry.value.attachment.filename
+    if (entry.kind === "pending") return entry.value.filename
+    if (entry.kind === "quote") return referencePartTitle(entry.value)
+    return entry.value.title || i18n._({ id: "prompt.attachments.untitled", message: "Untitled" })
   }
   return (
     <div class="prompt-attachments" ref={root}>
@@ -128,49 +161,27 @@ export function PromptAttachments(props: {
                 }
               >
                 <div class="prompt-attachment-entry relative group">
-                  <Show
-                    when={entry.kind === "upload"}
-                    fallback={
-                      <div class="prompt-attachment-reference">
-                        <Icon
-                          name={getSemanticIcon(entry.kind === "note" ? "notes.main" : "session.default")}
-                          size="small"
-                        />
-                        <span title={entry.kind === "note" || entry.kind === "session" ? entry.value.title : undefined}>
-                          {entry.kind === "note" || entry.kind === "session"
-                            ? entry.value.title || i18n._({ id: "prompt.attachments.untitled", message: "Untitled" })
-                            : ""}
-                        </span>
-                      </div>
-                    }
-                  >
-                    {entry.kind === "upload" && (
-                      <AttachmentCard
-                        file={entry.value.file}
-                        serverUrl={props.serverUrl}
-                        compact="draft"
-                        onOpen={props.onOpen ? (file) => props.onOpen?.(file, entry.id) : undefined}
-                        imagePreview={
-                          entry.value.imagePreviewIndex !== undefined
-                            ? { images: previewImages(), index: entry.value.imagePreviewIndex }
-                            : undefined
-                        }
-                      />
-                    )}
-                  </Show>
+                  {entry.kind === "upload" ? (
+                    <AttachmentCard
+                      file={entry.value.file}
+                      serverUrl={props.serverUrl}
+                      compact="draft"
+                      onOpen={props.onOpen ? (file) => props.onOpen?.(file, entry.id) : undefined}
+                      imagePreview={
+                        entry.value.imagePreviewIndex !== undefined
+                          ? { images: previewImages(), index: entry.value.imagePreviewIndex }
+                          : undefined
+                      }
+                    />
+                  ) : entry.kind === "pending" ? null : (
+                    <ReferenceCard entry={entry} />
+                  )}
                   <button
                     type="button"
                     class="prompt-attachment-remove"
                     aria-label={i18n._({
                       ...PI.attachRemoveButton,
-                      values: {
-                        filename:
-                          entry.kind === "upload"
-                            ? entry.value.attachment.filename
-                            : entry.kind === "note" || entry.kind === "session"
-                              ? entry.value.title
-                              : "",
-                      },
+                      values: { filename: entryTitle(entry) },
                     })}
                     onClick={(event) => {
                       event.stopPropagation()

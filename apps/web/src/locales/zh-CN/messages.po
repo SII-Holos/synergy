@@ -13161,6 +13161,10 @@ msgid "message-part.part-render-error"
 msgstr "无法显示此内容："
 
 #. ── Message-part chrome ────────────────────────────────────────────
+msgid "message-part.quote-label"
+msgstr "引用"
+
+#. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.search-early-stop"
 msgstr "搜索已提前结束"
 
@@ -13315,50 +13319,6 @@ msgstr "已归档项目"
 #. js-lingui-explicit-id
 msgid "note.tag.remove"
 msgstr "移除标签 {tag}"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.back"
-msgstr "返回"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.close"
-msgstr "关闭"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.copy"
-msgstr "复制"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.cut"
-msgstr "剪切"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.failed"
-msgstr "文本操作失败"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.loading"
-msgstr "正在处理…"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.menu"
-msgstr "文本操作"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.paste"
-msgstr "粘贴"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.retry"
-msgstr "重试"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "全选"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.unavailable"
-msgstr "此编辑操作当前不可用。"
 
 #. js-lingui-explicit-id
 msgid "project.entry.addFolder"
@@ -25542,6 +25502,38 @@ msgstr "位置不可用"
 #. js-lingui-explicit-id
 msgid "task.location.useFiles"
 msgstr "使用这些文件"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.addToChat"
+msgstr "添加到对话"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.close"
+msgstr "关闭"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copy"
+msgstr "复制"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copyFailed"
+msgstr "无法复制选中的内容。"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.failed"
+msgstr "操作失败"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.loading"
+msgstr "处理中…"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.retry"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.toolbar"
+msgstr "选中操作"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.accessibility"

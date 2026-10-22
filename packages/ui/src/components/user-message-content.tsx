@@ -151,13 +151,15 @@ export function UserMessageContent(props: {
   const files = () => props.files
   const isNoteAttachment = (file: UserMessageFile) => file.metadata?.kind === "note"
   const isSessionAttachment = (file: UserMessageFile) => file.metadata?.kind === "session"
+  const isQuoteAttachment = (file: UserMessageFile) => file.metadata?.kind === "quote"
 
   const noteAttachments = createMemo(() => files().filter(isNoteAttachment))
   const sessionAttachments = createMemo(() => files().filter(isSessionAttachment))
+  const quoteAttachments = createMemo(() => files().filter(isQuoteAttachment))
 
   const attachments = createMemo(() =>
     files().filter((f) => {
-      if (isNoteAttachment(f) || isSessionAttachment(f)) return false
+      if (isNoteAttachment(f) || isSessionAttachment(f) || isQuoteAttachment(f)) return false
       if (f.source?.text && f.source.text.end > f.source.text.start) return false
       return true
     }),
@@ -167,7 +169,7 @@ export function UserMessageContent(props: {
   const hasText = () => props.hasText ?? !!text()
   const inlineFiles = createMemo(() =>
     files().filter((f) => {
-      if (isNoteAttachment(f) || isSessionAttachment(f)) return false
+      if (isNoteAttachment(f) || isSessionAttachment(f) || isQuoteAttachment(f)) return false
       return !!f.source?.text && f.source.text.end > f.source.text.start
     }),
   )
@@ -182,7 +184,14 @@ export function UserMessageContent(props: {
 
   return (
     <div data-component="user-message" data-variant={props.variant ?? "default"}>
-      <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
+      <Show
+        when={
+          attachments().length > 0 ||
+          noteAttachments().length > 0 ||
+          sessionAttachments().length > 0 ||
+          quoteAttachments().length > 0
+        }
+      >
         <div data-slot="user-message-attachments">
           <AttachmentGallery
             files={attachments()}
@@ -196,6 +205,7 @@ export function UserMessageContent(props: {
           />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
+          <For each={quoteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="quote" />}</For>
         </div>
       </Show>
       <Show when={text()}>
@@ -303,20 +313,28 @@ export function UserMessageContent(props: {
   )
 }
 
-export function SpecialFileAttachment(props: { file: UserMessageFile; kind: "note" | "session" }) {
+export function SpecialFileAttachment(props: { file: UserMessageFile; kind: "note" | "session" | "quote" }) {
   const { _ } = useLingui()
-  const title = createMemo(
-    () => (props.file.metadata?.title as string | undefined) || props.file.filename || _(MESSAGE_PART_DESC.untitled),
+  const quoteText = createMemo(() => (props.file.metadata?.text as string | undefined)?.trim() ?? "")
+  const title = createMemo(() => {
+    if (props.kind === "quote") return quoteText() || _(MESSAGE_PART_DESC.quoteLabel)
+    return (props.file.metadata?.title as string | undefined) || props.file.filename || _(MESSAGE_PART_DESC.untitled)
+  })
+  const subtitle = createMemo(() =>
+    props.kind === "note"
+      ? _(MESSAGE_PART_DESC.noteLabel)
+      : props.kind === "session"
+        ? _(MESSAGE_PART_DESC.sessionLabel)
+        : _(MESSAGE_PART_DESC.quoteLabel),
   )
+  const icon = () => (props.kind === "note" ? "notebook-pen" : props.kind === "session" ? "message-square" : "quote")
   return (
     <div data-slot="user-message-attachment" data-type={props.kind}>
       <div data-slot="user-message-note-attachment">
-        <Icon name={props.kind === "note" ? "notebook-pen" : "message-square"} data-slot="user-message-note-icon" />
+        <Icon name={icon()} data-slot="user-message-note-icon" />
         <div data-slot="user-message-note-copy">
           <span data-slot="user-message-note-title">{title()}</span>
-          <span data-slot="user-message-note-subtitle">
-            {props.kind === "note" ? _(MESSAGE_PART_DESC.noteLabel) : _(MESSAGE_PART_DESC.sessionLabel)}
-          </span>
+          <span data-slot="user-message-note-subtitle">{subtitle()}</span>
         </div>
       </div>
     </div>

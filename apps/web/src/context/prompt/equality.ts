@@ -3,6 +3,7 @@ import type {
   FileAttachmentPart,
   NoteAttachmentPart,
   Prompt,
+  QuoteAttachmentPart,
   SessionAttachmentPart,
   TextPart,
   UploadedAttachmentPart,
@@ -40,6 +41,9 @@ export function isPromptEqual(promptA: Prompt, promptB: Prompt): boolean {
       return false
     }
     if (partA.type === "session" && partA.id !== (partB as SessionAttachmentPart).id) {
+      return false
+    }
+    if (partA.type === "quote" && partA.id !== (partB as QuoteAttachmentPart).id) {
       return false
     }
   }

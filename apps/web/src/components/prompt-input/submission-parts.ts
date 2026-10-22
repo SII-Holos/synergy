@@ -4,13 +4,14 @@ import type {
   FileContextItem,
   NoteAttachmentPart,
   Prompt,
+  QuoteAttachmentPart,
   SessionAttachmentPart,
   UploadedAttachmentPart,
 } from "@/context/prompt"
-import { base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { Identifier } from "@/utils/id"
-import { formatNoteContent, formatSessionReference, inlineText } from "./content"
+import { inlineText } from "./content"
+import { referenceAttachmentInputPart } from "./reference-part"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 
@@ -32,6 +33,7 @@ export function createSubmissionParts(input: {
   attachments: readonly UploadedAttachmentPart[]
   notes: readonly NoteAttachmentPart[]
   sessions: readonly SessionAttachmentPart[]
+  quotes: readonly QuoteAttachmentPart[]
   workspace?: string | null
   sessionContent?: ReadonlyMap<string, string>
 }) {
@@ -93,33 +95,13 @@ export function createSubmissionParts(input: {
     ...files,
     ...context,
     ...input.attachments.map((part) => createUploadedAttachmentInputPart(part, input.id(`upload:${part.id}`))),
-    ...input.notes.map((part) => ({
-      id: input.id(`note:${part.id}`),
-      type: "attachment" as const,
-      mime: "text/plain",
-      url: `data:text/plain;base64,${base64EncodeStandard(formatNoteContent(part))}`,
-      filename: `${part.title || "Untitled"}.md`,
-      model: { mode: "content" as const, text: formatNoteContent(part) },
-      metadata: { kind: "note", noteId: part.noteId, title: part.title || "Untitled" },
-    })),
-    ...input.sessions.map((part) => {
-      const content = input.sessionContent?.get(part.id) ?? formatSessionReference(part)
-      return {
-        id: input.id(`session:${part.id}`),
-        type: "attachment" as const,
-        mime: "text/plain",
-        url: `data:text/plain;base64,${base64EncodeStandard(content)}`,
-        filename: `${part.title || "session"}.session.txt`,
-        model: { mode: "content" as const, text: content },
-        metadata: {
-          kind: "session",
-          sessionId: part.sessionId,
-          scopeID: part.scopeID,
-          title: part.title || "Untitled",
-          updatedAt: part.updatedAt,
-        },
-      }
-    }),
+    ...input.notes.map((part) => referenceAttachmentInputPart(part, input.id(`note:${part.id}`))),
+    ...input.sessions.map((part) =>
+      referenceAttachmentInputPart(part, input.id(`session:${part.id}`), {
+        sessionText: input.sessionContent?.get(part.id),
+      }),
+    ),
+    ...input.quotes.map((part) => referenceAttachmentInputPart(part, input.id(`quote:${part.id}`))),
   ].sort((a, b) => a.id.localeCompare(b.id))
 }
 

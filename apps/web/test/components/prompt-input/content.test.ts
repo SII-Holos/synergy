@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import type { Prompt } from "@/context/prompt"
-import { inlineCompletionPrefix, inlineText } from "../../../src/components/prompt-input/content"
+import { formatQuoteContent, inlineCompletionPrefix, inlineText } from "../../../src/components/prompt-input/content"
 
 test("includes visible file pills before an inline completion", () => {
   const prompt: Prompt = [
@@ -21,4 +21,13 @@ test("keeps file pill content in the submitted text coordinate space", () => {
   ]
 
   expect(inlineText(prompt)).toBe("Read @src/app.ts now")
+})
+
+test("serializes a quoted selection as one attributed block", () => {
+  expect(formatQuoteContent({ type: "quote", id: "quote-1", text: "line one\nline two", role: "assistant" })).toBe(
+    '<quoted-text role="assistant">\n\nline one\nline two\n\n</quoted-text>',
+  )
+  expect(formatQuoteContent({ type: "quote", id: "quote-2", text: "plain" })).toBe(
+    "<quoted-text>\n\nplain\n\n</quoted-text>",
+  )
 })

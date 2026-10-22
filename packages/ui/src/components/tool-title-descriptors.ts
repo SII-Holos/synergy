@@ -449,6 +449,7 @@ export const MESSAGE_PART_DESC = {
   copyFailure: d("message-part.copy-failure", "Unable to copy the message."),
   noteLabel: d("message-part.note-label", "Note"),
   sessionLabel: d("message-part.session-label", "Session"),
+  quoteLabel: d("message-part.quote-label", "Quote"),
   untitled: d("message-part.untitled", "Untitled"),
 } as const
 

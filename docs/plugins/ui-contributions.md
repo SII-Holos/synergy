@@ -88,7 +88,7 @@ Use qualified panel IDs, such as ``context.workbench.open(`${context.pluginId}:n
 
 `selectionExtension()` receives settled immutable text after 250 ms, with a selection ID, source, origin and editable/container flags. Passwords, credentials, excluded nodes and oversized selections are excluded. Browser-page selection stays with Browser ownership.
 
-`textAction()` refers to a same-plugin UI-exposed command operation and finite selection conditions. The command receives `{ selection }`. A result presentation receives `PluginTextActionSurfaceContext`: invocation ID, frozen selection, validated output and `close()`. The host owns collision handling, loading/error/retry, cancellation, Escape, focus return and the narrow-screen presentation. Plugin actions remain distinct from native edit commands.
+`textAction()` refers to a same-plugin UI-exposed command operation and finite selection conditions. The command receives `{ selection }`. A result presentation receives `PluginTextActionSurfaceContext`: invocation ID, frozen selection, validated output and `close()`. The host owns the selection surface in `apps/web/src/components/text-selection/selection-toolbar.tsx`: ordering, duplicate-label qualification, loading/error/retry, cancellation, Escape, the narrow-screen sheet and its own built-in release action. The surface serves reading selections only — message prose, code and terminal output — because editable selections keep the native editing menu; see [the selection decision](../decisions/implemented/feature/2026-10-22-quote-a-selection-into-the-composer.md). Plugin actions remain distinct from native edit commands.
 
 ## Message renderers and settings
 
