@@ -62,6 +62,7 @@ const playwrightIsolated = [
   "test/components/workspace/browser/browser-panel-presentation.dom.test.tsx",
   "test/components/workspace/browser/browser-opening.dom.test.tsx",
   "test/components/workspace/browser/browser-workbench-sync.dom.test.tsx",
+  "test/components/workspace/browser/browser-recovery-presentation.dom.test.tsx",
   "test/components/session/session-recovery.dom.test.ts",
   "test/components/search/session-search-dialog.dom.test.ts",
   "test/components/toolbar-selector.dom.test.ts",

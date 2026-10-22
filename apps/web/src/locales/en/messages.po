@@ -1778,10 +1778,6 @@ msgid "app.browser.empty.ready"
 msgstr "Browser ready"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.empty.waiting"
-msgstr "Waiting for the page surface."
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.error.bootstrapFailed"
 msgstr "Browser session could not be loaded"
 
@@ -1865,10 +1861,6 @@ msgstr "Recovering the native browser…"
 msgid "app.browser.native.recoveryFailed"
 msgstr "Native browser recovery failed"
 
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.native.recoveryHint"
-msgstr "Synergy is reconnecting to the browser. You can retry now."
-
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "Back"
@@ -1948,10 +1940,6 @@ msgstr "Remote browser text input"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.resume"
 msgstr "Resume page"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.resumeHint"
-msgstr "Resume to reload this address using its saved identity. Unsaved forms are not restored."
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"

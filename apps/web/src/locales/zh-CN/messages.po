@@ -1778,10 +1778,6 @@ msgid "app.browser.empty.ready"
 msgstr "浏览器已就绪"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.empty.waiting"
-msgstr "正在等待浏览器页面。"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.error.bootstrapFailed"
 msgstr "无法加载浏览器会话"
 
@@ -1865,10 +1861,6 @@ msgstr "正在恢复原生浏览器…"
 msgid "app.browser.native.recoveryFailed"
 msgstr "原生浏览器恢复失败"
 
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.native.recoveryHint"
-msgstr "Synergy 正在重新连接浏览器，也可以立即重试。"
-
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "后退"
@@ -1948,10 +1940,6 @@ msgstr "远程浏览器文本输入"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.resume"
 msgstr "恢复页面"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.resumeHint"
-msgstr "恢复后会使用此页面的身份重新加载网址，未保存的表单不会恢复。"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"

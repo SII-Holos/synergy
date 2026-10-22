@@ -1,12 +1,13 @@
 import { BrowserPageDialog } from "./page-dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { ResourceIcon } from "@ericsanchezok/synergy-ui/resource-icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
-import { browser as B } from "@/locales/messages"
+import { browser as B, type AppMessageDescriptor } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
 import { shouldShowBrowserPresentationSurface } from "./browser-presentation"
 
@@ -29,7 +30,6 @@ export function BrowserSurface(props: {
   ownerKey: string
   clientPresentation: "native"
   onRetryNative?: () => void
-  recovering?: boolean
 }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
@@ -39,7 +39,6 @@ export function BrowserSurface(props: {
 
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
-  const nativeRecoveryAvailable = () => props.clientPresentation === "native" && Boolean(platform.browserNative)
 
   async function chooseFiles(files: FileList | null) {
     const request = browser.fileChooserRequest()
@@ -84,6 +83,26 @@ export function BrowserSurface(props: {
     })
   }
 
+  // One state, one gesture: a mark, a title and at most one action. The copy
+  // names the state and never explains how recovery works internally — the
+  // action is the instruction.
+  const empty = createMemo((): { title: AppMessageDescriptor; action?: AppMessageDescriptor } => {
+    const host = browser.hostStatus()
+    const retry = platform.browserNative && props.onRetryNative ? B.retry : undefined
+    if (host === "restarting") return { title: B.nativeRecovering }
+    if (host === "failed") return { title: B.nativeRecoveryFailed, action: retry }
+    if (browser.page()?.status === "suspended")
+      return { title: B.suspended, action: props.onRetryNative ? B.resume : undefined }
+    return { title: B.ready, action: host === "detached" ? retry : undefined }
+  })
+
+  // A suspended or recovering page still has an identity: its own site. The
+  // brand mark says which page is coming back without a sentence explaining it.
+  const identity = createMemo(() => {
+    const url = browser.page()?.url
+    return url && /^https?:\/\//i.test(url) ? ({ kind: "url", url } as const) : undefined
+  })
+
   return (
     <div
       ref={wrapperRef}
@@ -95,57 +114,18 @@ export function BrowserSurface(props: {
         fallback={
           <div class="browser-empty-state">
             <div class="browser-empty-mark">
-              <Icon name={getSemanticIcon("browser.main")} class="size-4" />
-            </div>
-            <div class="browser-empty-title">
-              <Show
-                when={browser.hostStatus() === "restarting" || browser.hostStatus() === "failed"}
-                fallback={
-                  browser.page()?.status === "suspended" ? (
-                    <Trans id={B.suspended.id} message={B.suspended.message} />
-                  ) : (
-                    <Trans id={B.ready.id} message={B.ready.message} />
-                  )
-                }
-              >
-                <Show
-                  when={browser.hostStatus() === "failed"}
-                  fallback={<Trans id={B.nativeRecovering.id} message={B.nativeRecovering.message} />}
-                >
-                  <Trans id={B.nativeRecoveryFailed.id} message={B.nativeRecoveryFailed.message} />
-                </Show>
+              <Show when={identity()} fallback={<Icon name={getSemanticIcon("browser.main")} size="large" />}>
+                {(reference) => <ResourceIcon reference={reference()} />}
               </Show>
             </div>
-            <div class="browser-empty-text">
-              <Show
-                when={browser.hostStatus() === "restarting" || browser.hostStatus() === "failed"}
-                fallback={
-                  browser.page()?.status === "suspended" ? (
-                    <Trans id={B.resumeHint.id} message={B.resumeHint.message} />
-                  ) : (
-                    <Trans id={B.waitingForSurface.id} message={B.waitingForSurface.message} />
-                  )
-                }
-              >
-                <Trans id={B.nativeRecoveryHint.id} message={B.nativeRecoveryHint.message} />
-              </Show>
-            </div>
-            <Show
-              when={
-                (browser.hostStatus() === "failed" || browser.hostStatus() === "detached") &&
-                nativeRecoveryAvailable() &&
-                props.onRetryNative
-              }
-            >
-              <Button size="small" variant="primary" onClick={() => props.onRetryNative?.()}>
-                {browser.page()?.status === "suspended" ? (
-                  <Trans id={B.resume.id} message={B.resume.message} />
-                ) : (
-                  <Trans id={B.retry.id} message={B.retry.message} />
-                )}
-              </Button>
+            <div class="browser-empty-title">{lingui._(empty().title)}</div>
+            <Show when={empty().action}>
+              {(action) => (
+                <Button size="large" variant="primary" onClick={() => props.onRetryNative?.()}>
+                  {lingui._(action())}
+                </Button>
+              )}
             </Show>
-            <div class="browser-status-pill">{browser.session.connectionStatus}</div>
           </div>
         }
       >
