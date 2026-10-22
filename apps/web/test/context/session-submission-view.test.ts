@@ -25,6 +25,7 @@ test("file submissions retain their own workspace and encode reserved filename c
     attachments: [],
     notes: [],
     sessions: [],
+    quotes: [],
   })
   expect(parts.find((part) => part.type === "attachment")).toMatchObject({
     url: "file:///original/%E6%96%87%E6%A1%A3/a%20%23%3F%25.ts",
@@ -104,6 +105,7 @@ test("preflight changes and workspace binding preserve part identities and the c
     context: [],
     notes: [],
     sessions: [],
+    quotes: [],
     attachments: [
       { type: "attachment" as const, id: "upload", mime: "image/png", url: "asset://image", filename: "image.png" },
     ],

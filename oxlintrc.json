@@ -6,6 +6,14 @@
     "suspicious": "error"
   },
   "rules": {
+    "eslint/no-restricted-properties": [
+      "error",
+      {
+        "object": "navigator",
+        "property": "clipboard",
+        "message": "Call copyTextToClipboard() from @ericsanchezok/synergy-ui/clipboard; the raw Clipboard API loses the Desktop writer and the execCommand fallback. See apps/web/PRODUCT.md."
+      }
+    ],
     "eslint/no-unused-vars": "off",
     "eslint/no-control-regex": "off",
     "eslint/no-unassigned-vars": "off",
@@ -51,6 +59,12 @@
       "files": ["packages/sdk/js/src/gen/**", "packages/**/test/**", "test/**"],
       "rules": {
         "typescript/no-explicit-any": "off"
+      }
+    },
+    {
+      "files": ["apps/web/test/**", "packages/**/test/**", "test/**"],
+      "rules": {
+        "eslint/no-restricted-properties": "off"
       }
     }
   ]

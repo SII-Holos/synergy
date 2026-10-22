@@ -60,6 +60,7 @@ function Fixture() {
             uploads={uploads}
             notes={() => []}
             sessions={() => []}
+            quotes={() => []}
             pending={pending}
             order={() => (imageMode ? ["image"] : ["first", "second", "third", "fourth"])}
             pendingFile={() => (imageMode ? imageFile : undefined)}

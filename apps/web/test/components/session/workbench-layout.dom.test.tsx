@@ -585,3 +585,48 @@ test("cancelling a constrained column drag preserves the stored width and End us
     await page.waitForFunction(() => document.querySelector("[data-message]")!.getBoundingClientRect().width === 2400)
   }
 })
+
+test("the column grip stays hidden until the pointer or keyboard reaches it", async () => {
+  await open()
+  await page.locator("[data-send]").click()
+  const handle = page.getByRole("separator", { name: "Resize conversation" })
+  const grip = () =>
+    handle.evaluate((element) => {
+      const style = getComputedStyle(element, "::after")
+      return { opacity: style.opacity, width: element.getBoundingClientRect().width }
+    })
+
+  expect((await grip()).opacity).toBe("0")
+  expect((await grip()).width).toBe(16)
+
+  const box = await handle.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[role="separator"]')!, "::after").opacity === "1",
+  )
+
+  await page.mouse.move(0, 0)
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[role="separator"]')!, "::after").opacity === "0",
+  )
+
+  // A keyboard user cannot position a grip they cannot see, so real Tab
+  // navigation must reveal it. Programmatic focus does not set the keyboard
+  // modality, which is why this walks the actual tab order.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+  let reached = false
+  for (let step = 0; step < 60 && !reached; step++) {
+    await page.keyboard.press("Tab")
+    reached = await page.evaluate(() => document.activeElement?.classList.contains("conversation-column-resize-handle"))
+  }
+  expect(reached).toBe(true)
+  expect(await handle.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+  // The grip fades in over 150ms, so wait for the transition to settle rather
+  // than reading the first frame.
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[role="separator"]')!, "::after").opacity === "1",
+  )
+  expect((await grip()).opacity).toBe("1")
+  await handle.press("ArrowRight")
+  expect((await bounds("[data-message]")).width).toBe(832)
+})

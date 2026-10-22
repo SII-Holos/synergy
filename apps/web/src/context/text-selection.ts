@@ -45,11 +45,10 @@ type TextActionSlotEntry = Omit<SlotEntryBase, "when" | "loader"> & {
   action: TextAction
 }
 
-export type TextActionGroup = {
-  pluginId: string
-  pluginName: string
-  order: number
-  actions: TextAction[]
+export type PresentedTextAction = {
+  action: TextAction
+  /** Visible label: the action's own label, qualified when another action claims the same one. */
+  label: string
 }
 
 type SelectionUpdateOptions = Partial<Omit<TextSelectionSnapshot, "selectionId" | "text">> & {
@@ -60,24 +59,14 @@ type SelectionUpdateOptions = Partial<Omit<TextSelectionSnapshot, "selectionId" 
 
 const actionOrder = (a: TextAction, b: TextAction) => a.order - b.order || a.id.localeCompare(b.id)
 
-export function groupTextActions(actions: TextAction[]): TextActionGroup[] {
-  const groups = new Map<string, TextActionGroup>()
-  for (const action of actions) {
-    const group = groups.get(action.pluginId) ?? {
-      pluginId: action.pluginId,
-      pluginName: action.pluginName,
-      order: action.order,
-      actions: [],
-    }
-    group.order = Math.min(group.order, action.order)
-    group.actions.push(action)
-    groups.set(action.pluginId, group)
-  }
-  return [...groups.values()]
-    .map((group) => ({ ...group, actions: group.actions.toSorted(actionOrder) }))
-    .toSorted(
-      (a, b) => a.order - b.order || a.pluginName.localeCompare(b.pluginName) || a.pluginId.localeCompare(b.pluginId),
-    )
+export function presentTextActions(actions: readonly TextAction[]): PresentedTextAction[] {
+  const ordered = [...actions].toSorted(actionOrder)
+  const claims = new Map<string, number>()
+  for (const action of ordered) claims.set(action.label, (claims.get(action.label) ?? 0) + 1)
+  return ordered.map((action) => ({
+    action,
+    label: (claims.get(action.label) ?? 0) > 1 ? `${action.label} · ${action.pluginName}` : action.label,
+  }))
 }
 
 function actionApplies(action: TextAction, snapshot: TextSelectionSnapshot) {
@@ -112,10 +101,6 @@ export class TextSelectionController {
 
   current() {
     return this.#current ? { ...this.#current } : undefined
-  }
-
-  owner() {
-    return this.#owner
   }
 
   anchor() {

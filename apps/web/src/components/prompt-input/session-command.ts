@@ -1,9 +1,13 @@
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
-import { base64EncodeStandard } from "@ericsanchezok/synergy-util/encode"
-import type { NoteAttachmentPart, SessionAttachmentPart, UploadedAttachmentPart } from "@/context/prompt"
+import type {
+  NoteAttachmentPart,
+  QuoteAttachmentPart,
+  SessionAttachmentPart,
+  UploadedAttachmentPart,
+} from "@/context/prompt"
 import { Identifier } from "@/utils/id"
 import { createUploadedAttachmentInputPart } from "./attachment-submit"
-import { formatNoteContent, formatSessionReference } from "./content"
+import { referenceAttachmentInputPart } from "./reference-part"
 
 export type SessionCommandModel = {
   providerID: string
@@ -21,53 +25,25 @@ export type SessionCommandInput = {
   attachments?: UploadedAttachmentPart[]
   notes?: NoteAttachmentPart[]
   sessions?: SessionAttachmentPart[]
+  quotes?: QuoteAttachmentPart[]
 }
 
 export function createSessionCommandParts(input: {
   attachments?: UploadedAttachmentPart[]
   notes?: NoteAttachmentPart[]
   sessions?: SessionAttachmentPart[]
+  quotes?: QuoteAttachmentPart[]
 }) {
   const attachments = input.attachments ?? []
   const notes = input.notes ?? []
   const sessions = input.sessions ?? []
+  const quotes = input.quotes ?? []
 
   return [
     ...attachments.map((attachment) => createUploadedAttachmentInputPart(attachment)),
-    ...notes.map((attachment) => {
-      const text = formatNoteContent(attachment)
-      return {
-        id: Identifier.ascending("part"),
-        type: "attachment" as const,
-        mime: "text/plain",
-        url: `data:text/plain;base64,${base64EncodeStandard(text)}`,
-        filename: `${attachment.title || "Untitled"}.md`,
-        model: { mode: "content" as const, text },
-        metadata: {
-          kind: "note",
-          noteId: attachment.noteId,
-          title: attachment.title || "Untitled",
-        },
-      }
-    }),
-    ...sessions.map((attachment) => {
-      const text = formatSessionReference(attachment)
-      return {
-        id: Identifier.ascending("part"),
-        type: "attachment" as const,
-        mime: "text/plain",
-        url: `data:text/plain;base64,${base64EncodeStandard(text)}`,
-        filename: `${attachment.title || "session"}.session.txt`,
-        model: { mode: "content" as const, text },
-        metadata: {
-          kind: "session",
-          sessionId: attachment.sessionId,
-          scopeID: attachment.scopeID,
-          title: attachment.title || "Untitled",
-          updatedAt: attachment.updatedAt,
-        },
-      }
-    }),
+    ...notes.map((part) => referenceAttachmentInputPart(part, Identifier.ascending("part"))),
+    ...sessions.map((part) => referenceAttachmentInputPart(part, Identifier.ascending("part"))),
+    ...quotes.map((part) => referenceAttachmentInputPart(part, Identifier.ascending("part"))),
   ]
 }
 
@@ -83,6 +59,7 @@ export function sendSessionCommand(input: SessionCommandInput) {
       attachments: input.attachments,
       notes: input.notes,
       sessions: input.sessions,
+      quotes: input.quotes,
     }),
   })
 }

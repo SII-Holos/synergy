@@ -53,17 +53,19 @@
     gap: 2px;
     margin-left: auto;
     flex: none;
-    padding: 2px;
-    border: 1px solid var(--border-weak-base);
-    border-radius: 8px;
-    background: var(--surface-base);
+    padding: 3px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--surface-inset-base);
     pointer-events: auto;
   }
   [data-slot="dag-graph-controls"] button {
-    min-height: 32px;
-    min-width: 32px;
-    padding: 0 8px;
-    border-radius: 6px;
+    min-height: 30px;
+    min-width: 30px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
     font-size: 12px;
     line-height: 18px;
     color: var(--text-weak);
@@ -74,7 +76,7 @@
   }
   [data-slot="dag-graph-controls"] button:hover {
     color: var(--text-base);
-    background: var(--surface-base-hover);
+    background: var(--surface-inset-base-hover);
   }
   [data-slot="dag-graph-controls"] span {
     min-width: 36px;
@@ -146,37 +148,30 @@
   }
   [data-slot="dag-graph-card"] {
     position: absolute;
-    border: 1px solid var(--border-weak-base);
-    border-radius: 12px;
-    background: var(--surface-raised-base);
+    border: 0;
+    border-radius: 10px;
+    background: var(--surface-inset-base);
     overflow: hidden;
-    transition:
-      border-color 180ms ease-out,
-      background-color 180ms ease-out;
+    transition: background-color 180ms ease-out;
   }
   [data-slot="dag-graph-card"]:hover,
   [data-slot="dag-graph-card"][data-ready="true"] {
-    border-color: var(--border-weak-hover);
+    background: var(--surface-inset-base-hover);
   }
   [data-slot="dag-graph-card"][data-status="completed"] {
-    border-color: var(--border-success-base);
     background: var(--surface-success-weak);
   }
   [data-slot="dag-graph-card"][data-status="running"] {
-    border-color: var(--border-interactive-base);
     background: var(--surface-info-weak);
   }
   [data-slot="dag-graph-card"][data-status="blocked"] {
-    border-color: var(--border-warning-base);
     background: var(--surface-warning-weak);
   }
   [data-slot="dag-graph-card"][data-status="failed"] {
-    border-color: var(--border-critical-base);
     background: var(--surface-critical-weak);
   }
   [data-slot="dag-graph-card"][data-selected="true"] {
-    outline: 2px solid var(--border-interactive-base);
-    outline-offset: 2px;
+    box-shadow: 0 0 0 1.5px var(--border-interactive-base);
   }
   [data-slot="dag-graph-node-action"] {
     display: flex;

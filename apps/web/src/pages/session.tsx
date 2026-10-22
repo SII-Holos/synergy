@@ -1878,6 +1878,7 @@ function SessionPageContent() {
         if (part.type === "attachment") return `[file:${part.filename}]`
         if (part.type === "note") return `[note:${part.title || "Untitled"}]`
         if (part.type === "session") return `[session:${part.title || "Untitled"}]`
+        if (part.type === "quote") return `[quote:${part.text.slice(0, 40)}]`
         return part.content
       })
       .join("")

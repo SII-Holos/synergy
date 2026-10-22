@@ -61,7 +61,8 @@
       width: auto;
     }
 
-    &[data-type="note"] {
+    &[data-type="note"],
+    &[data-type="quote"] {
       height: auto;
       width: auto;
     }

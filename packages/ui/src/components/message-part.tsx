@@ -1319,11 +1319,19 @@ PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
   const isInlineReference = createMemo(() => file().source?.text?.start !== undefined)
   const isNoteAttachment = createMemo(() => file().metadata?.kind === "note")
   const isSessionAttachment = createMemo(() => file().metadata?.kind === "session")
+  const isQuoteAttachment = createMemo(() => file().metadata?.kind === "quote")
 
   return (
     <Show when={!isInlineReference()}>
       <div data-component="attachment-part">
         <Switch>
+          <Match when={isQuoteAttachment()}>
+            <div data-component="user-message">
+              <div data-slot="user-message-attachments">
+                <SpecialFileAttachment file={file()} kind="quote" />
+              </div>
+            </div>
+          </Match>
           <Match when={isNoteAttachment()}>
             <div data-component="user-message">
               <div data-slot="user-message-attachments">

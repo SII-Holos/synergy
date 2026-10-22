@@ -2,78 +2,15 @@ import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
 import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt/sanitize"
-
-type FileSelection = {
-  startLine: number
-  startChar: number
-  endLine: number
-  endChar: number
-}
-
-type TextPromptPart = {
-  type: "text"
-  content: string
-  start: number
-  end: number
-}
-
-type FileAttachmentPart = {
-  type: "file"
-  path: string
-  workspace?: ResourceReference.Workspace
-  content: string
-  start: number
-  end: number
-  selection?: FileSelection
-}
-
-type UploadedAttachmentPart = {
-  type: "attachment"
-  id: string
-  filename: string
-  mime: string
-  url: string
-  metadata?: Record<string, unknown>
-  presentation?: {
-    hidden?: boolean
-    renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
-    size?: "original" | "small" | "medium" | "large"
-    crop?: boolean
-  }
-}
-
-type NoteAttachmentPart = {
-  type: "note"
-  id: string
-  noteId: string
-  title: string
-  content: string
-}
-
-type SessionAttachmentPart = {
-  type: "session"
-  id: string
-  sessionId: string
-  scopeID: string | null
-  legacyDirectory?: string
-  title: string
-  updatedAt?: number
-}
-
-type Prompt = Array<
-  TextPromptPart | FileAttachmentPart | UploadedAttachmentPart | NoteAttachmentPart | SessionAttachmentPart
->
-
-type ContextItem = {
-  type: "file"
-  path: string
-  workspace?: ResourceReference.Workspace
-  selection?: FileSelection
-}
-
-type PromptContextSnapshot = {
-  items: ContextItem[]
-}
+import type {
+  ContextItem,
+  FileAttachmentPart,
+  NoteAttachmentPart,
+  Prompt,
+  PromptContextSnapshot,
+  SessionAttachmentPart,
+  UploadedAttachmentPart,
+} from "@/context/prompt"
 
 function keyForContextItem(item: ContextItem) {
   const startLine = item.selection?.startLine

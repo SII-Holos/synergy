@@ -257,7 +257,9 @@ Special user-message renderers should keep workflow prompts lightweight in the m
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
 
-Copy controls should use the shared clipboard capability and shared copied/failed feedback. Success is shown in the triggering control, while failures use the global error toast; do not add local `navigator.clipboard` or `execCommand` implementations in product UI.
+Copy controls call `copyTextToClipboard()` from `@ericsanchezok/synergy-ui/clipboard` directly; do not add local `navigator.clipboard` or `execCommand` implementations, and do not add a wrapper module around it. That function is the only path that reaches the Desktop `platform.clipboard.writeText` bridge (the Desktop shell denies ordinary clipboard permissions) and the hidden-textarea `execCommand` fallback (an unfocused document rejects `writeText` with `NotAllowedError`). `oxlintrc.json` enforces this with `no-restricted-properties` on `navigator.clipboard`; tests are exempt because they drive the real page clipboard.
+
+Success is shown in the triggering control. Failures use the global clipboard hook by default; a caller that can reach the reactive locale passes `notifyFailure: false` and raises its own toast with its own descriptor, because the global hook is configured before the locale tree mounts and can only emit static English strings. Do not implement both paths for one control.
 
 Markdown code blocks in the message stream are document content surfaces, not form controls. In light mode they should stay close to the white workbench surface with a hairline border and low-emphasis copy control; in dark mode they may keep the inward-brighter relationship.
 

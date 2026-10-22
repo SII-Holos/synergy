@@ -70,8 +70,20 @@ export interface SessionAttachmentPart {
   updatedAt?: number
 }
 
+export interface QuoteAttachmentPart {
+  type: "quote"
+  id: string
+  text: string
+  role?: "user" | "assistant"
+}
+
 export type ContentPart =
-  TextPart | FileAttachmentPart | UploadedAttachmentPart | NoteAttachmentPart | SessionAttachmentPart
+  | TextPart
+  | FileAttachmentPart
+  | UploadedAttachmentPart
+  | NoteAttachmentPart
+  | SessionAttachmentPart
+  | QuoteAttachmentPart
 export type Prompt = ContentPart[]
 
 export type FileContextItem = {
@@ -96,6 +108,7 @@ function clonePart(part: ContentPart): ContentPart {
   if (part.type === "attachment") return { ...part }
   if (part.type === "note") return { ...part }
   if (part.type === "session") return { ...part }
+  if (part.type === "quote") return { ...part }
   return {
     ...part,
     selection: cloneSelection(part.selection),

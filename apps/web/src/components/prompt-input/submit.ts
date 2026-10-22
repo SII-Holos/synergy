@@ -24,6 +24,7 @@ import type {
   FileAttachmentPart,
   NoteAttachmentPart,
   Prompt,
+  QuoteAttachmentPart,
   SessionAttachmentPart,
   UploadedAttachmentPart,
 } from "@/context/prompt"
@@ -95,6 +96,7 @@ type PromptSubmitInput = {
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
+  quoteAttachments: Accessor<QuoteAttachmentPart[]>
   attachmentsUploading: Accessor<boolean>
   attachmentsFailed?: Accessor<boolean>
   selectedControlProfile: Accessor<ControlProfileId>
@@ -187,6 +189,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           attachments: input.uploadedAttachments().slice(),
           notes: input.noteAttachments().slice(),
           sessions: input.sessionAttachments().slice(),
+          quotes: input.quoteAttachments().slice(),
           mode: input.store.mode,
           currentContext,
           draftSnapshot: createPromptDraftSnapshot({
@@ -207,6 +210,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         attachments,
         notes,
         sessions,
+        quotes,
         mode,
         currentContext,
         draftSnapshot,
@@ -340,6 +344,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           attachments,
           notes,
           sessions,
+          quotes,
           workspace: input.props.newSessionCanonicalDirectory ?? sdk.directory,
         }).map((part) => ({ ...part, sessionID: submissionSessionID, messageID: submissionMessageID })) as Part[]
         return {
@@ -398,6 +403,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           attachments,
           notes,
           sessions,
+          quotes,
           mode,
           currentContext,
           draftSnapshot,
@@ -976,6 +982,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           attachments,
           notes,
           sessions,
+          quotes,
         })
           .then(() => {
             finishNewSessionTransition()
@@ -1046,6 +1053,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         attachments,
         notes,
         sessions,
+        quotes,
         workspace: activeSession.workspace?.path,
         sessionContent,
       })

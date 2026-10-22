@@ -161,6 +161,18 @@ function sanitizePromptPart(part: unknown): Record<string, unknown> | undefined 
     }
   }
 
+  if (type === "quote") {
+    const text = stringValue(part.text).trim()
+    if (!text) return undefined
+    const role = part.role
+    return {
+      type,
+      id: stringValue(part.id),
+      text,
+      ...(role === "user" || role === "assistant" ? { role } : {}),
+    }
+  }
+
   return undefined
 }
 

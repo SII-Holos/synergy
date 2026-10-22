@@ -58,6 +58,7 @@ export function SubmissionFixture(props: { locale(): void }) {
     context: [],
     notes: [],
     sessions: [],
+    quotes: [],
     attachments: new URL(location.href).searchParams.has("image")
       ? Array.from({ length: new URL(location.href).searchParams.has("many") ? 8 : 1 }, (_, index) => ({
           type: "attachment",

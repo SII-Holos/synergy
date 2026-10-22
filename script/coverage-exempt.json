@@ -1151,10 +1151,6 @@
           "reason": "plugin runtime requires a live plugin process"
         },
         {
-          "glob": "src/plugin/plugin-interaction-i18n.ts",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
           "glob": "src/plugin/registries/composer-extension-registry.tsx",
           "reason": "plugin runtime requires a live plugin process"
         },
@@ -1184,10 +1180,6 @@
         },
         {
           "glob": "src/plugin/route-scope.tsx",
-          "reason": "plugin runtime requires a live plugin process"
-        },
-        {
-          "glob": "src/plugin/text-action-surface.tsx",
           "reason": "plugin runtime requires a live plugin process"
         },
         {
