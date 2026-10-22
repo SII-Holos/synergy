@@ -145,19 +145,24 @@
 }
 
 /* The greeting shares a phone screen with the Composer and the game board, so
-   the heading tightens and the subtitle yields its space. Both rules live in
-   the stage's own container query, so the desktop heading is untouched. */
-@container (max-width: 767px) {
-  .welcome-scene-heading h1 {
-    font-size: 24px;
-    line-height: 1.25;
+   the heading tightens and the subtitle yields its space. The stage is its own
+   container, and a container query alone would also fire inside a narrow
+   desktop session pane (split view, sidebar open), shrinking a desktop heading.
+   Both rules are therefore gated on the agreed mobile viewport breakpoint as
+   well as the container width. */
+@media (max-width: 767px) {
+  @container (max-width: 767px) {
+    .welcome-scene-heading h1 {
+      font-size: 24px;
+      line-height: 1.25;
+    }
   }
-}
-@container (max-width: 400px) {
-  .welcome-scene-heading h1 {
-    font-size: 22px;
-  }
-  .welcome-scene-heading p {
-    display: none;
+  @container (max-width: 400px) {
+    .welcome-scene-heading h1 {
+      font-size: 22px;
+    }
+    .welcome-scene-heading p {
+      display: none;
+    }
   }
 }

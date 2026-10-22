@@ -42,7 +42,7 @@ function Fixture() {
       <div class="frame session-composer" data-expanded={(version(), state.expanded) ? "" : undefined}>
         <form class="prompt-input-shell">
           <ComposerResizeControls input={input} availableHeight={500} />
-          <ComposerExpandButton input={input} />
+          <ComposerExpandButton input={input} availableHeight={500} />
           <div class="session-composer-editor" style={{ height: `${height()}px`, "max-height": "none" }} />
           <div class="footer" />
         </form>

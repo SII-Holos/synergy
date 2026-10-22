@@ -280,34 +280,45 @@ function SessionPrediction(props: Props) {
     onCleanup(() => props.bind!(undefined))
   }
   return (
-    <Show when={!props.bind}>
-      <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
-        <button
-          type="button"
-          class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
-          aria-label={_(twinCopy.predict)}
-          aria-busy={busy()}
-          disabled={disabled()}
-          onClick={() => {
-            props.focusEditor()
-            setSaved("suggestion", undefined)
-            requests.manual()
-          }}
-        >
-          <Show
-            when={busy()}
-            fallback={
-              <Icon
-                name={getSemanticIcon("action.predict")}
-                size="small"
-                color={disabled() ? "var(--icon-disabled)" : "var(--icon-base)"}
-              />
-            }
+    <>
+      <Show when={!props.bind}>
+        <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
+          <button
+            type="button"
+            class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+            aria-label={_(twinCopy.predict)}
+            aria-busy={busy()}
+            disabled={disabled()}
+            onClick={() => {
+              props.focusEditor()
+              setSaved("suggestion", undefined)
+              requests.manual()
+            }}
           >
-            <Spinner class="size-4 text-icon-base motion-reduce:[&>rect]:animate-none!" />
-          </Show>
-        </button>
-      </Tooltip>
+            <Show
+              when={busy()}
+              fallback={
+                <Icon
+                  name={getSemanticIcon("action.predict")}
+                  size="small"
+                  color={disabled() ? "var(--icon-disabled)" : "var(--icon-base)"}
+                />
+              }
+            >
+              <Spinner class="size-4 text-icon-base motion-reduce:[&>rect]:animate-none!" />
+            </Show>
+          </button>
+        </Tooltip>
+      </Show>
+      {/* Bind-mode layouts reach prediction through the add menu and render no
+          button, so both pending and failure feedback live here: without this,
+          a menu-triggered prediction had no visible progress and a rejection
+          was silent. */}
+      <Show when={props.bind && busy()}>
+        <span role="status" class="text-12-regular text-text-weak">
+          {_(twinCopy.predicting)}
+        </span>
+      </Show>
       <Show when={failure()}>
         {(reason) => (
           <span role="status" class="text-12-regular text-text-weak">
@@ -315,6 +326,6 @@ function SessionPrediction(props: Props) {
           </span>
         )}
       </Show>
-    </Show>
+    </>
   )
 }

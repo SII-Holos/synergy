@@ -2003,21 +2003,29 @@ a {
 }
 
 @media (max-width: 767px), (pointer: coarse) {
-  /* The desktop grip is an 80x24 hit area straddling the card's top seam: too
-     small to grab with a finger. Keep the same control and the same gesture,
-     and move it into the card's top control band at 44x44 beside the expand
-     control, so dragging still resizes the editor on touch. */
-  .composer-resize-handle {
-    position: absolute;
-    inset-inline-end: 52px;
-    top: 0;
-    width: 44px;
-    height: 44px;
-    transform: none;
+  /* A separate 44-pixel separator cannot coexist with the corner control here:
+     placed beside it, the fifth target pushes the card past its budget; placed
+     over the editor, it covers the first line of text and eats the drag that
+     selects a word. The resize gesture therefore moves onto the corner control,
+     which already lives inside the editor's 48-pixel `pr-12` gutter, so
+     dragging still resizes and no character is covered. */
+  .composer-resize-controls {
+    display: none;
   }
 
-  .composer-resize-handle span {
-    width: 18px;
+  /* The corner control is the only sizing affordance in this layout, so it stays
+     visible and clears the touch floor instead of waiting for hover. */
+  .composer-expand-region {
+    pointer-events: none;
+  }
+
+  .composer-expand-control {
+    top: 0;
+    inset-inline-end: 4px;
+    width: 44px;
+    height: 44px;
+    opacity: 1;
+    pointer-events: auto;
   }
 }
 

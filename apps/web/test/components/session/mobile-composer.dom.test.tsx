@@ -180,25 +180,59 @@ test("the chip line keeps the project, agent and permission controls at the touc
   }
 }, 120_000)
 
-test("dragging the separator on touch still resizes the editor", async () => {
+test("the corner control drags to resize, taps to expand, and never covers a typed character", async () => {
   const { page, close } = await open({ width: 375, height: 812 }, true)
   try {
-    const handle = page.locator(".composer-resize-handle")
-    const box = (await handle.boundingBox())!
+    // The narrow layout folds resizing onto the corner control, so the top-seam
+    // separator must not be reachable here — a second 44-pixel target either
+    // covers the first line or spends the card's fifth target. It stays in the
+    // DOM for the desktop layout and is hidden by the narrow rule.
+    expect(await page.locator(".composer-resize-handle").evaluate((element) => element.getClientRects().length)).toBe(0)
+    const control = page.locator(".composer-expand-control")
+    const box = (await control.boundingBox())!
     expect(box.width).toBeGreaterThanOrEqual(44)
     expect(box.height).toBeGreaterThanOrEqual(44)
-    expect(await handle.getAttribute("role")).toBe("separator")
-    expect(await page.locator(".prompt-input-shell").getAttribute("data-resized")).toBeNull()
+    expect(await page.locator(".session-composer").getAttribute("data-resized")).toBeNull()
     const before = (await page.locator(".session-composer-editor").boundingBox())!.height
 
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
     await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 60, { steps: 12 })
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 70, { steps: 12 })
     await page.mouse.up()
 
     expect(await page.locator(".session-composer").getAttribute("data-resized")).not.toBeNull()
     const after = (await page.locator(".session-composer-editor").boundingBox())!.height
     expect(after).toBeGreaterThan(before)
+    // A drag must not also expand; only a tap does that.
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).toBeNull()
+    await control.click()
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
+
+    // Typing across the width of the first line must stay hit-testable: every
+    // glyph's centre resolves to the editor, not to a control.
+    const hit = await page.evaluate(() => {
+      const node = document.querySelector<HTMLElement>('[data-component="prompt-input"]')!
+      node.focus()
+      const text = document.createTextNode("1234567890123456789012345678901234567890")
+      node.replaceChildren(text)
+      const range = document.createRange()
+      const centres: Array<{ x: number; y: number }> = []
+      for (let index = 0; index < text.length; index++) {
+        range.setStart(text, index)
+        range.setEnd(text, index + 1)
+        for (const rect of range.getClientRects())
+          centres.push({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
+      }
+      const hits = centres.map((point) => {
+        const element = document.elementFromPoint(point.x, point.y)
+        return element?.closest('[data-component="prompt-input"]')
+          ? "editor"
+          : (element?.className?.toString() ?? "none")
+      })
+      return { total: hits.length, stolen: hits.filter((value) => value !== "editor") }
+    })
+    expect(hit.total).toBeGreaterThan(30)
+    expect(hit.stolen).toEqual([])
     expect(errors).toEqual([])
   } finally {
     await close()
