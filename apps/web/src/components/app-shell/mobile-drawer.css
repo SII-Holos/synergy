@@ -55,3 +55,17 @@
     overflow-y: auto;
   }
 }
+
+/* The drawer only ever renders below the desktop breakpoint, so every control
+   inside it must meet the 44px touch floor; the header icons and the
+   Recent/Projects pills are smaller by default. */
+@media (max-width: 767px) {
+  .mobile-drawer-overlay [data-slot="dialog-body"] button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-drawer-overlay .navigation-collections > [data-slot="tabs-list"] [data-slot="tabs-trigger"] {
+    min-height: 44px;
+  }
+}
