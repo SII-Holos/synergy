@@ -277,6 +277,13 @@ const ACTIVITY_DESC = {
 
 type SessionActivityContext = { rootID?: string; approval?: boolean; question?: boolean; connected?: boolean }
 
+// Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
+const RETRY_PHASE_DESC = {
+  waiting: defineDescriptor("session.activity.retry", "Waiting to retry · attempt {attempt}"),
+  waiting_provider: defineDescriptor("session.activity.retryProvider", "Waiting for model connection recovery"),
+  connecting: ACTIVITY_DESC.waiting_model,
+} satisfies Record<Extract<SessionStatus, { type: "retry" }>["phase"], MessageDescriptor>
+
 export function sessionActivityAnimating(status: SessionStatus | undefined, context?: SessionActivityContext): boolean {
   if (context?.connected === false || context?.approval || context?.question) return false
   const activity = status?.type === "busy" ? status.activity : undefined
@@ -298,9 +305,11 @@ export function sessionActivityLabel(
   if (context?.question)
     return resolveMsg(i18n, defineDescriptor("session.activity.question", "Waiting for your answer"))
   if (status?.type === "retry")
-    return resolveMsg(i18n, defineDescriptor("session.activity.retry", "Waiting to retry · attempt {attempt}"), {
-      attempt: status.attempt,
-    })
+    return resolveMsg(
+      i18n,
+      RETRY_PHASE_DESC[status.phase],
+      status.phase === "waiting" ? { attempt: status.attempt } : undefined,
+    )
   if (!current || !activity) return resolveMsg(i18n, defineDescriptor("session.activity.processing", "Processing task"))
   if (activity.phase === "preparing_workspace" && activity.workspaceOperation) {
     const actions = {

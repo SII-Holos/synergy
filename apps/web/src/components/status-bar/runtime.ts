@@ -78,7 +78,10 @@ export function resolveRuntimeIconState(
       }
     }
     case "working":
-      if (status?.type === "retry") {
+      // Only local backoff is a failure with a deadline to count down. Provider
+      // admission and the in-flight attempt are ordinary waiting, so they must
+      // not outrank the rest of the page as a danger signal.
+      if (status?.type === "retry" && status.phase === "waiting") {
         const message = status.message.trim() || `Retry attempt ${status.attempt}`
         return {
           icon: getSemanticIcon("session.retry"),

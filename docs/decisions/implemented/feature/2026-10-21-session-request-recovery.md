@@ -2,6 +2,8 @@
 
 Status: implemented
 
+Superseded in part by [recovery surface reports only states it can prove](../bug-fix/2026-10-22-recovery-surface-reports-provable-state.md), which narrows the card to local backoff and terminal evidence and removes the terminal retry action.
+
 ## Problem
 
 Retryable model failures could leave the conversation showing context preparation while the provider admission gate waited. Terminal errors and transient recovery had different presentation, and repeated error rows would obscure the conversation. The ordinary Continue action does not re-execute an already terminal failed reply.
