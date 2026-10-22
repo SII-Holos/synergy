@@ -489,8 +489,18 @@ describe("retained panel keyboard ownership", () => {
     async (source) => {
       await page.goto(`${baseUrl}?notes`)
       const owner = page.locator("[data-retained-owner]")
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 })
       await owner.getByRole("button", { name: "Notes list options", exact: true }).press("Enter")
-      await page.getByRole("menuitem", { name: "Select notes", exact: true }).press("Enter")
+      await page.waitForFunction(() => document.querySelector('[role="menu"]')?.contains(document.activeElement))
+      await page.keyboard.press("End")
+      await page.keyboard.press("ArrowUp")
+      expect(
+        await page
+          .getByRole("menuitem", { name: "Select notes", exact: true })
+          .evaluate((element) => element === document.activeElement),
+      ).toBe(true)
+      await page.keyboard.press("Enter")
       await page.getByRole("menu").waitFor({ state: "hidden" })
       await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Notes list options")
       await owner.locator(".note-resource-row").press("Space")
