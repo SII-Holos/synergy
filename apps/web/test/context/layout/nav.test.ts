@@ -225,14 +225,19 @@ describe("rootNavSectionsForSessionUpdate", () => {
     ).toEqual(["channel"])
   })
 
-  test("keeps Home updates authoritative for every Home root section", () => {
+  test("refreshes the projected Home category and keeps the legacy broad refresh", () => {
     expect(
       rootNavSectionsForSessionUpdate({
         scopeID: "home",
         navCategory: "home",
         channelApplied: false,
       }),
-    ).toEqual(["home", "channel", "background"])
+    ).toEqual(["home"])
+    expect(rootNavSectionsForSessionUpdate({ scopeID: "home", channelApplied: false })).toEqual([
+      "home",
+      "channel",
+      "background",
+    ])
   })
 
   test("ignores unrelated project-scoped updates", () => {
@@ -473,6 +478,27 @@ describe("navUpdateFromSession", () => {
 })
 
 describe("applySessionToNavList", () => {
+  test("authoritative row updates avoid refresh while membership and aggregate changes require it", () => {
+    const previous = entry({ id: "known", title: "old", lastActivityAt: 10 })
+    const loaded = list([previous])
+    const apply = (next: NavEntry) => applySessionToNavList(loaded, navUpdateFromSession({ id: next.id }, next), next)
+    const next = { ...previous, title: "new", tags: ["tag"], lastActivityAt: 20, updatedAt: 30 }
+    expect(apply(next).refresh).toBe(false)
+    expect(apply(next).list.items[0]).toEqual(next)
+    for (const changed of [
+      { ...next, id: "new" },
+      { ...next, parentID: "parent" },
+      { ...next, scopeID: "other" },
+      { ...next, category: "background" as const },
+      { ...next, pinned: 1 },
+      { ...next, archived: true },
+      { ...next, lastActivityAt: 5 },
+      { ...next, completionNotice: { unread: true, unreadCount: 1 } },
+    ])
+      expect(apply(changed).refresh).toBe(true)
+    expect(applySessionToNavList(loaded, navUpdateFromSession({ id: "known", title: "legacy" })).refresh).toBe(true)
+  })
+
   test("returns applied=false when the session is not in the list", () => {
     const l = list([entry({ id: "a" })])
     const r = applySessionToNavList(l, navUpdateFromSession({ id: "missing", time: { updated: 5 } }))

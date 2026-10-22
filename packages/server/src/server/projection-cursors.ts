@@ -28,7 +28,7 @@ export function createProjectionCursors(send: (event: ViewEvent) => void, later:
       if (disposed) return null
       const previous = pending.get(event.scopeID)
       if (event.payload.type !== "server.cursor") {
-        flush(event.scopeID)
+        if (event.payload.seq !== undefined && event.payload.epoch !== undefined) flush(event.scopeID)
         return disposed ? null : event
       }
       if (

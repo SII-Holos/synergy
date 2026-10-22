@@ -22,6 +22,33 @@ const event = (text: string, delta?: string) => ({
 })
 const read = async () => ({ part: part("start"), epoch: "epoch", seq: 3 })
 
+test("unsequenced content does not split a contiguous cursor range", () => {
+  const sent: ViewEvent[] = []
+  const cursors = createProjectionCursors(
+    (event) => sent.push(event),
+    () => () => {},
+  )
+  for (let seq = 1; seq <= 20; seq++) {
+    cursors.project({
+      scopeID: "scope",
+      payload: { type: "server.cursor", epoch: "epoch", seq, properties: { epoch: "epoch", fromSeq: seq, toSeq: seq } },
+    })
+    const content: ViewEvent = {
+      scopeID: "scope",
+      payload: { type: "message.part.delta", streaming: true, properties: { delta: "text" } },
+    }
+    expect(cursors.project(content)).toBe(content)
+  }
+  expect(sent).toHaveLength(0)
+  const state: ViewEvent = {
+    scopeID: "scope",
+    payload: { type: "session.updated", epoch: "epoch", seq: 21, properties: {} },
+  }
+  expect(cursors.project(state)).toBe(state)
+  expect(sent).toMatchObject([{ payload: { seq: 20, properties: { fromSeq: 1, toSeq: 20 } } }])
+  cursors.dispose()
+})
+
 test("live and replay projections reuse the producer summary with exact JSON byte sizes", async () => {
   let text = ""
   const events = ["\ud83d", "\ude80", '\n"\\', " [report](asset://0123456789abcdef.docx)"].map((delta) => {

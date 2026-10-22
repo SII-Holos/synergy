@@ -29,6 +29,10 @@ beforeAll(async () => {
     const client=createSynergyClient({baseUrl:"http://navigation.test",fetch:async request=>{
       const url=new URL(request.url)
       if(url.pathname==="/scope" || url.pathname==="/scope/index")return Response.json([])
+      if(url.pathname==="/global/nav/recent"){
+        counts.recent=(counts.recent||0)+1
+        return Response.json({...empty,...replies.recent,unreadCompletionCount:0})
+      }
       if(url.pathname==="/session/index"){
         const id=url.searchParams.get("scopeID")
         counts[id]=(counts[id]||0)+1
@@ -48,6 +52,7 @@ beforeAll(async () => {
       reply:(id,value)=>replies[id]=value,
       release:id=>held[id](Response.json(empty)),
       remove:id=>receive({details:{type:"scope.removed",properties:{id}}}),
+      update:entry=>receive({details:{type:"session.updated",properties:{info:{id:entry.id,scope:{id:entry.scopeID},title:entry.title},navEntry:entry}}}),
       rename:()=>setState("scopes",items=>items.map(item=>({...item,name:"Renamed"}))),
     }
   `,
@@ -60,6 +65,7 @@ beforeAll(async () => {
     function Read(){const layout=useLayout();Object.assign(window.navigationFixture,{
       ready:()=>layout.nav.scopeIndexLoaded(),
       load:id=>layout.nav.loadScopeNav(id),
+      loadRecent:()=>layout.nav.retry(),
       snapshot:id=>({page:layout.nav.navEntries()[id],request:layout.nav.scopeRequestState?.(id)}),
     });return <div>Navigation fixture</div>}
     render(()=><LayoutProvider><Read/></LayoutProvider>,document.getElementById("root"))
@@ -82,6 +88,67 @@ afterAll(async () => {
   await browser?.close()
   await fixture?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
+})
+
+test("metadata bursts update loaded rows without requests and retain a refresh behind an older read", async () => {
+  const page = await browser.newPage()
+  try {
+    await page.goto(fixture.url)
+    await page.waitForFunction(() => Reflect.get(window, "navigationFixture").ready())
+    const before = await page.evaluate(async () => {
+      const f = Reflect.get(window, "navigationFixture")
+      const entry = {
+        id: "known",
+        scopeID: "project",
+        scopeType: "project",
+        category: "project",
+        title: "old",
+        lastActivityAt: 1,
+        pinned: 0,
+        archived: false,
+        completionNotice: { unread: false, unreadCount: 0 },
+      }
+      const list = { items: [entry], total: 1, nextCursor: null }
+      f.reply("project", list)
+      f.reply("recent", list)
+      await Promise.all([f.load("project"), f.loadRecent()])
+      f.entry = entry
+      for (let i = 0; i < 20; i++) f.update({ ...entry, title: "updated" })
+      return { project: f.counts.project, recent: f.counts.recent }
+    })
+    await page.waitForTimeout(400)
+    expect(
+      await page.evaluate(() => {
+        const f = Reflect.get(window, "navigationFixture")
+        return { project: f.counts.project, recent: f.counts.recent }
+      }),
+    ).toEqual(before)
+    expect(
+      await page.evaluate(() => Reflect.get(window, "navigationFixture").snapshot("project").page.items[0].title),
+    ).toBe("updated")
+    await page.evaluate(() => {
+      const f = Reflect.get(window, "navigationFixture")
+      f.reply("project", "hold")
+      void f.load("project")
+    })
+    await page.waitForFunction(() => Reflect.get(window, "navigationFixture").snapshot("project").request.loading)
+    await page.evaluate(() => {
+      const f = Reflect.get(window, "navigationFixture")
+      f.update({ ...f.entry, title: "newer" })
+    })
+    await page.waitForTimeout(400)
+    await page.evaluate(() => {
+      const f = Reflect.get(window, "navigationFixture")
+      f.reply("project", { items: [{ ...f.entry, title: "newer" }], total: 1, nextCursor: null })
+      f.release("project")
+    })
+    await page.waitForFunction(
+      () => Reflect.get(window, "navigationFixture").snapshot("project").page.items[0]?.title === "newer",
+    )
+    expect(await page.evaluate(() => Reflect.get(window, "navigationFixture").counts.project)).toBe(before.project + 2)
+  } finally {
+    await page.close()
+  }
 })
 
 test("newly tracked expanded projects load once after shell startup, including empty lists", async () => {
