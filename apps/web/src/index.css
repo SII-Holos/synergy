@@ -2014,3 +2014,33 @@ a {
     padding: 0 8px 4px;
   }
 }
+
+/* The game branch used to render the stage alone, so a new task could not reach
+   the project or file entry points without typing first. The frame keeps the
+   stage full-height and gives narrow layouts one lightweight action row. */
+.session-greeting-frame {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.session-greeting-stage {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.session-greeting-stage > * {
+  flex: 1;
+  min-width: 0;
+}
+.session-greeting-actions-mobile {
+  display: none;
+}
+@media (max-width: 767px) {
+  .session-greeting-actions-mobile {
+    display: block;
+    flex: none;
+    padding-bottom: 4px;
+  }
+}
