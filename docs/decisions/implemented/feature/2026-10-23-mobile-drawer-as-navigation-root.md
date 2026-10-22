@@ -10,7 +10,7 @@ Search itself already existed: `GlobalSearchModal` is mounted by the layout shel
 
 ## Decision
 
-The drawer header gains a search button that closes the drawer and opens the existing global search modal through `onSearchOpen`; the layout passes its existing callback down instead of the drawer owning a second search surface. A primary "New session" action sits above the tabs and routes to the Home scope, matching the desktop sidebar's new-task target. Session rows group under Today and Earlier by `lastActivityAt`, with the flat list retained when no group labels are supplied so the component stays usable without the grouping contract. The footer holds the account row beside a settings icon button; both open settings.
+The drawer header gains a search button that closes the drawer and opens the existing global search modal through `onSearchOpen`; the layout passes its existing callback down instead of the drawer owning a second search surface. A primary "New session" action sits above the tabs and routes to the Home scope, matching the desktop sidebar's new-task target. Session rows group under Pinned, Today and Earlier, with the flat list retained when no group labels are supplied so the component stays usable without the grouping contract. Pinned entries need their own heading rather than a place in the recency run: `orderNavEntries` sorts pinned sessions ahead of everything, so grouping by adjacent equal headings would emit Earlier/Today/Earlier for a pinned old session above a fresh one. The footer holds the account row beside a settings icon button; both open settings.
 
 Identity derivation moves into `resolveAccountIdentity`, a pure function shared by the desktop sidebar and the drawer, so the two surfaces cannot disagree about the displayed name, description, connection tone or avatar. It takes the labels a surface already owns, because both surfaces translate from the same descriptor set but call them differently.
 
@@ -24,7 +24,7 @@ Measured at 375×812: search, close, new session, the tabs, tools and the accoun
 
 **Keep search out and rely on the session list.** The Recent list loads a bounded page; searching across older sessions is not reachable by scrolling, so the absence was a real gap rather than a density choice.
 
-**Group by pinned/today/earlier.** Pinned entries are already ordered first by `orderNavEntries`; a third heading would separate pinned rows from their recency group and add a heading that is often empty.
+**Group by date only and let pinned entries fall into their recency bucket.** Rejected after measurement: `orderNavEntries` sorts pinned sessions first, so a pinned session from last week lands above today's sessions and a date-only grouping by adjacent runs emits Earlier/Today/Earlier. Bucketing into fixed Pinned/Today/Earlier lists keeps the order stable; the heading is omitted when its bucket is empty.
 
 **Render a full account menu in the drawer.** The drawer is a navigation root, and the desktop sidebar already owns the account menu surface; the drawer row opens the same settings destination, which keeps one menu implementation.
 
