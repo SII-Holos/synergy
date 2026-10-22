@@ -1,7 +1,8 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
-import { rm } from "node:fs/promises"
+import { mkdtemp, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
@@ -34,13 +35,18 @@ const stubbed = [
 let browser: Browser
 let server: ViteDevServer
 let baseUrl: string
+let cache: string
 const errors: string[] = []
 
 beforeAll(async () => {
+  // Vite writes optimized dependencies next to its cacheDir; keeping that in the
+  // system temp directory leaves the checked-in fixture tree clean even when a
+  // run is interrupted before cleanup.
+  cache = await mkdtemp(path.join(tmpdir(), "mobile-composer-tree-"))
   server = await createServer({
     configFile: false,
     root,
-    cacheDir: path.join(root, ".vite"),
+    cacheDir: cache,
     plugins: [
       {
         name: "mobile-composer-stubs",
@@ -74,7 +80,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await browser?.close()
   await server?.close()
-  await rm(path.join(root, ".vite"), { recursive: true, force: true })
+  if (cache) await rm(cache, { recursive: true, force: true })
 })
 
 async function open(viewport: { width: number; height: number }, touch: boolean) {
