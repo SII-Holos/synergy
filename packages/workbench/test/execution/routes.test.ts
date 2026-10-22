@@ -536,8 +536,9 @@ test("historical messages remain navigable without inventing a completed executi
         model: { providerID: "test", modelID: "test" },
         time: { created: 100 },
       })
+      const partID = Identifier.ascending("part")
       await Session.updatePart({
-        id: Identifier.ascending("part"),
+        id: partID,
         messageID: rootID,
         sessionID: legacy.id,
         type: "text",
@@ -553,9 +554,14 @@ test("historical messages remain navigable without inventing a completed executi
       const page = await ExecutionService.trajectory(legacy.id, ExecutionSchema.Query.parse({ runID: rootID }))
       const content = await ExecutionService.content(legacy.id, page.items[0].id, "message", 0, 65_536)
       expect(content.text).toContain("历史消息 中文")
+      expect(content.mediaType).toBe("text/plain")
+      expect(content.text).toBe("历史消息 中文")
       await expect(
         ExecutionService.content(legacy.id, page.items[0].id, "message", content.bytes + 1, 65_536),
       ).rejects.toThrow(RangeError)
+      await Session.updatePart({ id: partID, messageID: rootID, sessionID: legacy.id, type: "text", text: "" })
+      const empty = await ExecutionService.content(legacy.id, page.items[0].id, "message", 0, 65_536)
+      expect(empty).toMatchObject({ text: "", bytes: 0, nextOffset: null, mediaType: "text/plain" })
       await expect(ExecutionService.node(session.id, page.items[0].id)).rejects.toThrow()
       await Session.remove(legacy.id)
     }),

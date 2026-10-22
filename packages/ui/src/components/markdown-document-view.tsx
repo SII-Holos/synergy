@@ -69,6 +69,9 @@ export function MarkdownDocumentView(props: {
       const point = markdownReadingPoint(root, props.document, anchor.source)
       if (point === undefined) return
       virtual.restoreToIndex(index, point - root.getBoundingClientRect().top - anchor.offset)
+      queueMicrotask(() => {
+        if (!disposed) props.root.dispatchEvent(new Event("content-layout-restored", { bubbles: true }))
+      })
     })
   }
   const pin = (event?: Event) => {

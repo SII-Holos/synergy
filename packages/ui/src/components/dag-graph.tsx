@@ -8,169 +8,19 @@ import "./dag-graph.css"
 import { DAG_CHROME_DESC } from "./tool-title-descriptors"
 import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "./semantic-icon"
+import {
+  MIN_CARD_H,
+  computeLayout,
+  focusTargets,
+  type CardHeight,
+  type DagNode,
+  type LayoutNode,
+} from "./dag-graph-layout"
 
-export interface DagNode {
-  id: string
-  content: string
-  status: string
-  deps: string[]
-  assign?: string
-  task_id?: string
-  session_id?: string
-  memo?: string
-  result?: string
-  worktree?: string
-}
-
-interface LayoutNode {
-  node: DagNode
-  layer: number
-  index: number
-  x: number
-  y: number
-  h: number
-}
-
-interface LayoutEdge {
-  from: LayoutNode
-  to: LayoutNode
-}
-
-const CARD_W = 280
-const MIN_CARD_H = 108
-const MAX_CARD_H = 400
-const GAP_X = 32
-const GAP_Y = 56
-const PAD_X = 48
-const PAD_Y = 40
-
-const HEADER_H = 26
-const LINE_H = 20
-const CARD_PAD_Y = 26
-const CARD_GAP = 10
-const CHAR_W = 7.1
+export type { DagNode } from "./dag-graph-layout"
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
-}
-
-function estimateCardH(content: string | undefined): number {
-  const text = content ?? ""
-  const textW = Math.max(1, CARD_W - 34)
-  const charsPerLine = Math.max(1, Math.floor(textW / CHAR_W))
-  const numLines = Math.max(1, Math.ceil(text.length / charsPerLine))
-  return clamp(CARD_PAD_Y + HEADER_H + CARD_GAP + numLines * LINE_H, MIN_CARD_H, MAX_CARD_H)
-}
-
-function originalIndex(nodes: DagNode[]) {
-  return new Map(nodes.map((node, index) => [node.id, index]))
-}
-
-export function computeLayout(rawNodes: DagNode[], containerWidth: number) {
-  const nodes = rawNodes.filter((n) => n.id && n.status)
-  if (nodes.length === 0) return { laid: [] as LayoutNode[], edges: [] as LayoutEdge[], width: 0, height: 0, cardW: 0 }
-
-  const map = new Map(nodes.map((n) => [n.id, n]))
-  const original = originalIndex(nodes)
-
-  const layers = new Map<string, number>()
-  const visiting = new Set<string>()
-  function depth(id: string): number {
-    if (layers.has(id)) return layers.get(id)!
-    if (visiting.has(id)) {
-      layers.set(id, 0)
-      return 0
-    }
-    const node = map.get(id)
-    const deps = node?.deps
-    if (!node || !Array.isArray(deps) || deps.length === 0) {
-      layers.set(id, 0)
-      return 0
-    }
-    visiting.add(id)
-    const val = Math.max(...deps.map((d) => depth(d))) + 1
-    visiting.delete(id)
-    layers.set(id, val)
-    return val
-  }
-  for (const n of nodes) depth(n.id)
-
-  const layerGroups = new Map<number, DagNode[]>()
-  for (const n of nodes) {
-    const l = layers.get(n.id) ?? 0
-    const group = layerGroups.get(l) ?? []
-    group.push(n)
-    layerGroups.set(l, group)
-  }
-
-  const maxLayer = Math.max(...layerGroups.keys(), 0)
-  const sortedGroups = new Map<number, DagNode[]>()
-  const order = new Map<string, number>()
-
-  for (let l = 0; l <= maxLayer; l++) {
-    const group = [...(layerGroups.get(l) ?? [])]
-    group.sort((a, b) => {
-      const avgA = averageDepOrder(a, order, original)
-      const avgB = averageDepOrder(b, order, original)
-      return avgA - avgB || (original.get(a.id) ?? 0) - (original.get(b.id) ?? 0)
-    })
-    sortedGroups.set(l, group)
-    group.forEach((node, index) => order.set(node.id, index))
-  }
-
-  const maxGroupSize = Math.max(...[...sortedGroups.values()].map((g) => g.length), 1)
-  const minWorldWidth = maxGroupSize * CARD_W + (maxGroupSize - 1) * GAP_X + PAD_X * 2
-  const worldWidth = Math.max(containerWidth || 600, minWorldWidth)
-
-  const layerHeights: number[] = []
-  for (let l = 0; l <= maxLayer; l++) {
-    const group = sortedGroups.get(l) ?? []
-    const maxH = Math.max(...group.map((n) => estimateCardH(n.content)), MIN_CARD_H)
-    layerHeights.push(maxH)
-  }
-
-  const laid: LayoutNode[] = []
-  const byId = new Map<string, LayoutNode>()
-
-  let cy = PAD_Y
-  for (let l = 0; l <= maxLayer; l++) {
-    const group = sortedGroups.get(l) ?? []
-    const rowWidth = group.length * CARD_W + Math.max(0, group.length - 1) * GAP_X
-    const offsetX = (worldWidth - rowWidth) / 2
-
-    for (let i = 0; i < group.length; i++) {
-      const ln: LayoutNode = {
-        node: group[i],
-        layer: l,
-        index: i,
-        x: offsetX + i * (CARD_W + GAP_X),
-        y: cy,
-        h: estimateCardH(group[i].content),
-      }
-      laid.push(ln)
-      byId.set(group[i].id, ln)
-    }
-    cy += layerHeights[l] + GAP_Y
-  }
-
-  const edges: LayoutEdge[] = []
-  for (const ln of laid) {
-    for (const dep of ln.node.deps ?? []) {
-      const from = byId.get(dep)
-      if (from) edges.push({ from, to: ln })
-    }
-  }
-
-  const height = cy - GAP_Y + PAD_Y
-
-  return { laid, edges, width: worldWidth, height, cardW: CARD_W }
-}
-
-function averageDepOrder(node: DagNode, layerOrder: Map<string, number>, fallback: Map<string, number>) {
-  const deps = node.deps ?? []
-  if (deps.length === 0) return fallback.get(node.id) ?? 0
-  const values = deps.map((dep) => layerOrder.get(dep) ?? fallback.get(dep) ?? fallback.get(node.id) ?? 0)
-  return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
 function statusLabel(status: string, i18n?: I18n) {
@@ -282,7 +132,55 @@ export function DagGraph(props: {
   createEffect(() => {
     if (props.frozen || props.enableInspector === false || !inspectorNode()) closeNodeInspector()
   })
-  const layout = createMemo(() => computeLayout(nodes(), containerWidth()))
+
+  // Content wraps by glyph, not by character count: card text mixes CJK and
+  // Latin, so a single per-character width under-measures every line and the
+  // tail is clipped by the card's fixed height. Measure the rendered cards
+  // instead. Measurements are keyed by card width because wrapping depends on
+  // it, and offsetHeight is used because the stage is CSS-scaled.
+  const [measured, setMeasured] = createSignal<{ cardW: number; heights: Map<string, number> }>({
+    cardW: 0,
+    heights: new Map(),
+  })
+  const measureCard: CardHeight = (node, cardW) => {
+    const current = measured()
+    return current.cardW === cardW ? current.heights.get(node.id) : undefined
+  }
+  const layout = createMemo(() => computeLayout(nodes(), containerWidth(), measureCard))
+
+  let measureRaf: number | undefined
+  onCleanup(() => {
+    if (measureRaf !== undefined) cancelAnimationFrame(measureRaf)
+  })
+  createEffect(() => {
+    const l = layout()
+    if (!ref || containerWidth() === 0 || l.laid.length === 0) return
+    if (measureRaf !== undefined) cancelAnimationFrame(measureRaf)
+    measureRaf = requestAnimationFrame(() => {
+      measureRaf = undefined
+      const cards = [...(ref?.querySelectorAll<HTMLElement>('[data-slot="dag-graph-card"]') ?? [])]
+      const previous = cards.map((card) => card.style.height)
+      for (const card of cards) card.style.height = "auto"
+      const natural = cards.map((card) => card.offsetHeight)
+      cards.forEach((card, index) => (card.style.height = previous[index]))
+
+      const heights = new Map<string, number>()
+      let changed = false
+      cards.forEach((card, index) => {
+        const id = card.dataset.id
+        // A card inside a display:none ancestor reports 0; keep the estimate
+        // until it is laid out rather than collapsing it to the minimum.
+        if (!id || natural[index] <= 0) return
+        heights.set(id, Math.max(MIN_CARD_H, natural[index]))
+        const current = l.laid.find((item) => item.node.id === id)?.h ?? 0
+        if (Math.abs(current - Math.max(MIN_CARD_H, natural[index])) > 0.5) changed = true
+      })
+      if (heights.size === 0) return
+      if (!changed && measured().cardW === l.cardW) return
+      setMeasured({ cardW: l.cardW, heights })
+    })
+  })
+
   const layoutByID = createMemo(() => new Map(layout().laid.map((item) => [item.node.id, item])))
   const readySet = createMemo(() => new Set(props.ready ?? []))
   const counts = createMemo(() => statusCounts(nodes()))
@@ -326,7 +224,7 @@ export function DagGraph(props: {
     const target = laid.find((ln) => ln.node.id === focusId)
     if (!target || target.h === 0) return
     requestAnimationFrame(() => {
-      fitToNodes([target])
+      fitToNodes(focusTargets(laid, [target]))
     })
   })
 
@@ -339,9 +237,9 @@ export function DagGraph(props: {
     const running = laid.filter((node) => node.node.status === "running")
     const ready = laid.filter((node) => readySet().has(node.node.id))
     const pending = laid.filter((node) => node.node.status === "pending")
-    fitToNodes(
-      running.length > 0 ? running : ready.length > 0 ? ready : pending.length > 0 ? pending.slice(0, 3) : laid,
-    )
+    const seeds =
+      running.length > 0 ? running : ready.length > 0 ? ready : pending.length > 0 ? pending.slice(0, 3) : laid
+    fitToNodes(focusTargets(laid, seeds))
   }
 
   function fitToNodes(targets: LayoutNode[]) {

@@ -72,8 +72,15 @@ export namespace SessionLifecycle {
   }
 
   /**
-   * Clear the latch because the user took the session back: continuing it,
-   * abandoning it, or sending new input. Returns whether a latch was present.
+   * Clear the latch without touching the stopping turn or the rollout run.
+   *
+   * This is the low-level write, not the take-back entry point: a caller that
+   * resumes work must use `startNewTask` or `resume`, which drain the stopping
+   * turn first and settle the interrupted run. Use this directly only where the
+   * caller already owns that settlement — a domain releasing a pause it wrote
+   * itself, or abandoning work that is about to be cancelled anyway.
+   *
+   * Returns whether a latch was present.
    */
   export async function clear(sessionID: string): Promise<boolean> {
     const { Session } = await import(".")
@@ -87,6 +94,58 @@ export namespace SessionLifecycle {
     })
     log.info("session pause cleared", { sessionID })
     return true
+  }
+
+  /**
+   * The two ways a user takes a paused session back.
+   *
+   * Both start by draining the stopping turn, because clearing the latch while
+   * that turn still holds its lease would let its next iteration observe "not
+   * paused" and continue the very work the user stopped. They differ only in
+   * what happens to the interrupted rollout run, and that difference is the
+   * caller's decision, not an implementation detail: `resume` keeps appending
+   * to that run, while `startNewTask` deliberately leaves it closed because the
+   * new task root owns a fresh run.
+   */
+  export async function startNewTask(sessionID: string): Promise<boolean> {
+    const { SessionManager } = await import("./manager")
+    const { Session } = await import(".")
+    const session = await Session.get(sessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!session?.paused) return false
+    await SessionManager.waitForIdle(sessionID)
+    return clear(sessionID)
+  }
+
+  /**
+   * Resume the interrupted task: drain the stopping turn, reopen its rollout
+   * run, then clear the latch.
+   *
+   * Explicit continue and steering input both need these three steps in this
+   * order, so neither may keep a private copy. A caller that clears the latch
+   * alone leaves the run closed and the next turn cannot append to it.
+   */
+  export async function resume(sessionID: string): Promise<boolean> {
+    const { Session } = await import(".")
+    const { SessionManager } = await import("./manager")
+    const session = await Session.get(sessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (!session?.paused) return false
+    await SessionManager.waitForIdle(sessionID)
+    const { SessionHistory } = await import("./history")
+    const { SessionInbox } = await import("./inbox")
+    const { RolloutLedger } = await import("./rollout/ledger")
+    const { RolloutLifecycle } = await import("./rollout/lifecycle")
+    const rolledBack = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+    if (!rolledBack && !SessionManager.isRunning(sessionID)) {
+      const runID = await SessionInbox.latestRootID(sessionID)
+      if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
+    }
+    return clear(sessionID)
   }
 
   /** The latch as stored, or undefined when the session is not paused. */

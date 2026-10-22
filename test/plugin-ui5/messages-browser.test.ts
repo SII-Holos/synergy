@@ -474,6 +474,13 @@ describe("production conversation history", () => {
                 await new Promise((resolve) => setTimeout(resolve, 300))
             }
             socket.send(message)
+            // A checkpoint can satisfy the body before its queued HTTP read is dispatched.
+            if (
+              payload?.type === "message.part.summary" &&
+              payload.properties.summary.messageID === messageID &&
+              payload.properties.content?.kind === "checkpoint"
+            )
+              latestBodyDelivered.resolve()
           })
         })
         diagnostics = await openPluginPreviewPage({ ...preview, url: conversation.url }, page)

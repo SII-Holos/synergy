@@ -17,47 +17,78 @@ function isSafeUrl(value: string) {
   }
 }
 
+// Provenance: https://github.com/thetarnav/streaming-markdown
+// Local adaptation: coalesce adjacent renderer callbacks while retaining source spans and accepted text nodes.
 function createSafeRenderer(
   root: HTMLElement,
   motion: ReturnType<typeof createMarkdownStreamMotion>,
   source: ReturnType<typeof createMarkdownStreamSource>,
-): smd.Default_Renderer {
+): smd.Default_Renderer & { flush(): void } {
   const renderer = smd.default_renderer(root)
+  let pending: { node: HTMLElement; text: string[]; spans: smd.SourceSpan[]; length: number } | undefined
+  const flush = () => {
+    if (!pending) return
+    const { node, spans } = pending
+    const text = pending.text.join("")
+    pending = undefined
+    let start = 0
+    for (const part of motion.append(node, text)) {
+      let offset = 0
+      for (const segment of spans) {
+        const end = offset + segment.length
+        const from = Math.max(start, offset)
+        const to = Math.min(start + part.length, end)
+        if (from < to && segment.source >= 0)
+          source.append(part.node, {
+            source: segment.source + from - offset,
+            offset: part.offset + from - start,
+            length: to - from,
+          })
+        offset = end
+      }
+      start += part.length
+    }
+  }
   return {
     ...renderer,
+    flush,
     track_source: true,
     add_token(data, type, start) {
+      flush()
       renderer.add_token(data, type)
       const node = data.nodes[data.index]
       if (type === smd.RAW_URL) node?.setAttribute("data-resource-bare", "pending")
       if (node && start !== undefined && start >= 0) source.token(node, start)
     },
+    end_token(data) {
+      flush()
+      renderer.end_token(data)
+    },
     add_text(data, text, spans) {
       const node = data.nodes[data.index]
-      if (node?.nodeName === "IMG") {
+      if (pending?.node !== node) flush()
+      if (!node || !text) return
+      if (node.nodeName === "IMG") {
         node.setAttribute("alt", (node.getAttribute("alt") ?? "") + text)
         return
       }
-      if (!node) return
-      let start = 0
-      for (const part of motion.append(node, text)) {
-        let offset = 0
-        for (const segment of spans ?? []) {
-          const end = offset + segment.length
-          const from = Math.max(start, offset)
-          const to = Math.min(start + part.length, end)
-          if (from < to && segment.source >= 0)
-            source.append(part.node, {
-              source: segment.source + from - offset,
-              offset: part.offset + from - start,
-              length: to - from,
-            })
-          offset = end
-        }
-        start += part.length
+      pending ??= { node, text: [], spans: [], length: 0 }
+      pending.text.push(text)
+      pending.length += text.length
+      for (const span of spans ?? [{ source: -1, length: text.length }]) {
+        const previous = pending.spans.at(-1)
+        if (
+          previous &&
+          ((previous.source < 0 && span.source < 0) ||
+            (previous.source >= 0 && previous.source + previous.length === span.source))
+        )
+          previous.length += span.length
+        else pending.spans.push({ ...span })
       }
+      if (pending.length >= 32 * 1024) flush()
     },
     set_attr(data, type, value) {
+      flush()
       if (type === smd.HREF || type === smd.SRC) {
         const reference = ResourceReference.parse(value)
         if (type === smd.SRC) {
@@ -160,6 +191,7 @@ export function createMarkdownStreamController(root: HTMLElement): MarkdownStrea
         from = index + 1
       }
       links.write(delta.slice(from), offset - delta.length + from, from ? delta[from - 1] : previous)
+      renderer.flush()
       motion.play()
     },
     end() {
@@ -172,10 +204,11 @@ export function createMarkdownStreamController(root: HTMLElement): MarkdownStrea
       } catch {
         return
       } finally {
+        renderer.flush()
         motion.dispose()
       }
     },
-    layout: (document) => source.capture(document),
+    layout: (document) => source.capture(document, offset),
     sourceAt: (node, offset) => source.sourceAt(node, offset),
   }
 }

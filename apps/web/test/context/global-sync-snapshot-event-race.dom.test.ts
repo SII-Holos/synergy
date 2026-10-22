@@ -250,6 +250,8 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       )
       expect(api.questions["raced-session"]).toBeUndefined()
       for (const key of ["request-project", "request-other"]) {
+        expect(api.peekScopeState(key)).toBeUndefined()
+        api.ensureScopeState(key)
         await h.waitForRequest(key)
         h.complete(key, { scopeID: key, provider: { all: [] }, agent: [], config: {} })
         await h.waitComplete(api.ensureScopeState(key))

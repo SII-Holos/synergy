@@ -25,7 +25,9 @@ export function mergeProjectDrafts(target: ProjectDraft, source: ProjectDraft): 
         ? `note:${part.noteId}`
         : part.type === "session"
           ? `session:${part.scopeID}:${part.sessionId}`
-          : undefined
+          : part.type === "quote"
+            ? `quote:${part.id}`
+            : undefined
   const prompt: Prompt = []
   const seen = new Set<string>()
   let offset = 0

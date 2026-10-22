@@ -2,8 +2,8 @@ mock.module("@solidjs/router", () => ({
   useLocation: () => ({ pathname: "/" }),
 }))
 
-mock.module("../../src/plugin/text-action-surface", () => ({
-  PluginTextActionSurface: () => null,
+mock.module("../../src/components/text-selection/selection-toolbar", () => ({
+  SelectionToolbar: () => null,
 }))
 
 mock.module("@/locales/en/messages.po?lingui", () => ({ messages: {} }))

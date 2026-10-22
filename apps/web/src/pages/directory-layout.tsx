@@ -7,6 +7,7 @@ import { LocalProvider } from "@/context/local"
 import { FileProvider } from "@/context/file"
 import { ExecutionProvider } from "@/context/execution"
 import { BrowserCatalogProvider } from "@/components/workspace/browser/browser-catalog"
+import { DigitalTwinBackground } from "@/components/digital-twin/background"
 import { useGlobalSync } from "@/context/global-sync"
 import { createSessionDataRuntime } from "@/context/session-data-view"
 
@@ -25,6 +26,7 @@ export default function Layout(props: ParentProps) {
     <Show when={params.dir} keyed>
       <SDKProvider scopeKey={scopeKey()}>
         <SyncProvider>
+          <DigitalTwinBackground />
           <SessionDecisionProvider>
             {iife(() => {
               const sync = useSync()

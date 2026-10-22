@@ -11,7 +11,8 @@ const { I18nProvider } = await import("@lingui/solid")
 const pending: Array<{ signal?: AbortSignal; resolve(value: string): void }> = []
 const parse = (_text: string, signal?: AbortSignal) =>
   new Promise<string>((resolve) => pending.push({ signal, resolve }))
-mock.module("../../src/context/marked", () => ({ useMarked: () => ({ parse, parseInline: parse }) }))
+const parser = { parse, parseInline: parse }
+mock.module("../../src/context/marked", () => ({ useMarked: () => parser }))
 
 const { ToolObjectResult } = await import("../../src/components/tool-object-result")
 const { UserMarkdown } = await import("../../src/components/user-markdown")
@@ -153,4 +154,22 @@ test("replaced Markdown and disposal cancel rendering and reject late content", 
   pending[1]!.resolve("<pre>unmounted render</pre>")
   await new Promise((resolve) => setTimeout(resolve, 10))
   expect(root.childElementCount).toBe(0)
+  const retry = mount(() => createComponent(UserMarkdown, { text: "```js\nnext()\n```" }))
+  expect(retry.root.querySelector("pre")).toBeNull()
+  await until(() => pending.length, 3)
+  pending[2]!.resolve("<pre>fresh render</pre>")
+  await until(() => retry.root.querySelector("pre")?.textContent, "fresh render")
+})
+
+test("a warm user Markdown remount preserves parsed geometry before any asynchronous work", async () => {
+  const source = "# Retained user body\n\nFirst paragraph.\n\nSecond paragraph."
+  const first = mount(() => createComponent(UserMarkdown, { text: source }))
+  await until(() => first.root.querySelectorAll("p").length, 2)
+  first.dispose()
+  const warm = mount(() => createComponent(UserMarkdown, { text: source }))
+  expect(warm.root.querySelector("h1")?.textContent).toBe("Retained user body")
+  expect(warm.root.querySelectorAll("p")).toHaveLength(2)
+  const referenced = mount(() => createComponent(UserMarkdown, { text: source, references: [{ start: 2, end: 10 }] }))
+  await until(() => referenced.root.querySelectorAll("[data-user-reference]").length, 1)
+  expect(warm.root.querySelector("[data-user-reference]")).toBeNull()
 })

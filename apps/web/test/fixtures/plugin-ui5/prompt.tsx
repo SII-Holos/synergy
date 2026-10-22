@@ -29,6 +29,7 @@ function Editor() {
     uploadedAttachments: () => [],
     noteAttachments: () => [],
     sessionAttachments: () => [],
+    quoteAttachments: () => [],
     store,
     setStore,
     atOnInput() {},

@@ -7,6 +7,7 @@ import {
   DEFAULT_PROMPT,
   type NoteAttachmentPart,
   type Prompt,
+  type QuoteAttachmentPart,
   type SessionAttachmentPart,
   type UploadedAttachmentPart,
   isPromptEqual,
@@ -30,6 +31,7 @@ type PromptEditorInput = {
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
   sessionAttachments: Accessor<SessionAttachmentPart[]>
+  quoteAttachments: Accessor<QuoteAttachmentPart[]>
   store: PromptInputStore
   setStore: SetStoreFunction<PromptInputStore>
   atOnInput: (query: string) => void
@@ -202,7 +204,8 @@ export function usePromptEditor(input: PromptEditorInput) {
       !hasNonText &&
       attachments.length === 0 &&
       input.noteAttachments().length === 0 &&
-      input.sessionAttachments().length === 0
+      input.sessionAttachments().length === 0 &&
+      input.quoteAttachments().length === 0
 
     if (shouldReset) {
       input.setStore("popover", null)
@@ -241,7 +244,16 @@ export function usePromptEditor(input: PromptEditorInput) {
       input.setStore("savedPrompt", null)
     }
 
-    prompt.set([...rawParts, ...attachments, ...input.noteAttachments(), ...input.sessionAttachments()], cursorPosition)
+    prompt.set(
+      [
+        ...rawParts,
+        ...attachments,
+        ...input.noteAttachments(),
+        ...input.sessionAttachments(),
+        ...input.quoteAttachments(),
+      ],
+      cursorPosition,
+    )
     input.queueScroll()
   }
 

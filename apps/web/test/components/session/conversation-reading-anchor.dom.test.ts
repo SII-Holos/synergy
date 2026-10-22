@@ -12,6 +12,7 @@ type Fixture = {
   fold(): void
   image(): void
   replaceOwner(): void
+  replaceReadingLayout(): void
   latest(): void
   revisit(): { before: number; after: number; sameNode: boolean; restored: boolean }
   foreignAnchor(): boolean
@@ -71,6 +72,13 @@ beforeAll(async () => {
         const demand=document.createElement('div');demand.dataset.messageId='message-answer';demand.dataset.rowKind='load';replacement.before(demand);
         const restored=restoreConversationReadingPosition(viewport,JSON.parse(JSON.stringify(position)));
         return {before,after:marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top,sameNode:old===marker,restored}
+      },
+      replaceReadingLayout(){
+        const row=marker.parentElement, before=marker.getBoundingClientRect().top;
+        const replacement=marker.cloneNode(true);marker.replaceWith(replacement);marker=replacement;
+        marker.style.paddingTop="64px";
+        viewport.scrollTop+=marker.getBoundingClientRect().top+64-before;
+        marker.dispatchEvent(new Event("content-layout-restored",{bubbles:true}));
       },
       foreignAnchor(){const foreign=document.createElement("article");foreign.dataset.scrollAnchor="foreign";document.body.append(foreign);const anchor=captureConversationReadingAnchor(viewport,()=>true,foreign);foreign.remove();return anchor===undefined},
       offscreenAnchor(){
@@ -325,4 +333,17 @@ test("a serialized reading bookmark restores a newly mounted paragraph after pre
   expect(result.sameNode).toBe(false)
   expect(result.restored).toBe(true)
   expect(Math.abs(result.before - result.after)).toBeLessThan(1)
+})
+
+test("a nested reading restoration replaces the obsolete outer DOM anchor", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await frames()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.detach())
+  await frames()
+  const original = (await facts()).scroll
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.replaceReadingLayout())
+  await frames()
+  expect(Math.abs((await facts()).scroll - original - 64)).toBeLessThan(1)
+  expect((await facts()).userScrolled).toBe(true)
 })

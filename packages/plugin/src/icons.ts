@@ -77,6 +77,8 @@ export const SemanticIconToken = {
   "session.archive": "message-square-more",
   "session.context": "chart-pie",
   "session.taskDetails": "file-clock",
+  "execution.trajectory": "footprints",
+  "execution.details": "logs",
   "execution.elapsed": "timer-reset",
   "execution.tokens": "binary",
   "execution.cost": "circle-dollar-sign",
@@ -193,6 +195,7 @@ export const SemanticIconToken = {
   "prompt.blueprintStart": "circle-play",
   "prompt.blueprintEquip": "clipboard-check",
   "prompt.voice": "mic",
+  "prompt.quote": "message-square-quote",
 
   // Quick actions and runtime commands
   "command.undo": "undo-2",

@@ -4,6 +4,7 @@ import type {
   FileAttachmentPart,
   NoteAttachmentPart,
   Prompt,
+  QuoteAttachmentPart,
   SessionAttachmentPart,
   TextPart,
 } from "@/context/prompt"
@@ -41,6 +42,11 @@ export function createPromptPartID(): string {
 
 export function formatSessionReference(attachment: SessionAttachmentPart): string {
   return `<session-ref id="${attachment.sessionId}" scope-id="${attachment.scopeID}" title="${attachment.title || "Untitled"}" />`
+}
+
+export function formatQuoteContent(attachment: QuoteAttachmentPart): string {
+  const role = attachment.role ? ` role="${attachment.role}"` : ""
+  return `<quoted-text${role}>\n\n${attachment.text}\n\n</quoted-text>`
 }
 
 export function formatNoteContent(attachment: NoteAttachmentPart): string {

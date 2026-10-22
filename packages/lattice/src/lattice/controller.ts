@@ -1,4 +1,4 @@
-import { BlueprintLoopService, BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint"
+import { BlueprintLoopService, BlueprintLoopStore, LoopError } from "@ericsanchezok/synergy-blueprint/blueprint"
 import type { Info as BlueprintLoopInfo } from "@ericsanchezok/synergy-blueprint/blueprint/types"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { NoteDocument, NoteStore } from "@ericsanchezok/synergy-note"
@@ -495,7 +495,21 @@ export namespace LatticeController {
         if (blueprint.version !== effect.blueprintVersion || blueprint.digest !== effect.sourceDigest) {
           return returnToBlueprintReview(scopeID, run, blueprint)
         }
-        await BlueprintLoopService.start(scopeID, loop.id)
+        // The session is the single pause authority, so a pause it owns is not
+        // this Run's to answer. Deferring keeps that rule: the loop stays
+        // `armed` instead of claiming a run the drive gate refuses, and the
+        // next reconcile after the user continues starts it. Recording a Run
+        // pause here would be the second pause authority this design rejects.
+        try {
+          await BlueprintLoopService.start(scopeID, loop.id)
+        } catch (error) {
+          if (!LoopError.SessionPaused.isInstance(error)) throw error
+          log.warn("lattice BlueprintLoop start deferred by a session pause", {
+            runID: run.id,
+            sessionID: error.data.sessionID,
+          })
+          return run
+        }
       }
       run = await LatticeStore.updateByRunID(scopeID, run.id, (draft) => LatticeMachine.onLoopStarted(draft, loop.id))
       run = await reconcileLoopRecords(scopeID, run, coldStart)

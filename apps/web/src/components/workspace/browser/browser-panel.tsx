@@ -440,7 +440,6 @@ function BrowserPanelInner(props: {
                   ownerKey={ownerKey}
                   clientPresentation={props.clientPresentation}
                   onRetryNative={retryNative}
-                  recovering={recovering()}
                 />
               </Show>
             }

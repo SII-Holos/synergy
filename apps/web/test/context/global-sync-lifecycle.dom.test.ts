@@ -35,7 +35,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
     let inboxReady
     export const inboxArrived = new Promise(resolve=>inboxReady=resolve)
     let listener
-    export const emit = (key,seq)=>listener({name:key,details:{type:"session.status",epoch:"test-epoch",seq,properties:{sessionID:"fixture-session",status:{type:"idle"}}}})
+    export const emit = (key,seq,details={type:"session.status",properties:{sessionID:"fixture-session",status:{type:"idle"}}})=>listener({name:key,details:{epoch:"test-epoch",seq,...details}})
     const ok = data => Promise.resolve({data})
     export const seedStatuses = () => Promise.resolve({data:{"remote-runner":{type:"busy"},"remote-paused":{type:"paused",reason:"aborted",since:1}},response:{headers:{get:name=>name==="x-synergy-seq"?"0":name==="x-synergy-epoch"?"test-epoch":undefined}}})
     export function createSynergyClient(options) {
@@ -173,6 +173,9 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       scopeReconnectVersion(key: string): number
       scopeRecoveryPending(key: string): boolean
       sessionStatus: Record<string, { type?: string; reason?: string; since?: number }>
+      permissions: Record<string, { id: string }[]>
+      questions: Record<string, { id: string }[]>
+      cortex: { id: string; status: string }[]
       scope: { loadSessions(key: string): Promise<void>; loadAgenda(key: string): Promise<void> }
     }
     const fixture = (await import(pathToFileURL(path.join(directory, "dist/fixture.js")).href)) as {
@@ -184,7 +187,7 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
         optionalRequests: string[]
         requests: unknown[]
         modelRequests: Array<(value: unknown) => void>
-        emit(key: string, seq: number): void
+        emit(key: string, seq: number, details?: { type: string; properties: unknown }): void
         connect(): void
         setPreference(value: boolean): void
         selectHome(): void
@@ -227,6 +230,44 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       await waitForIndex("remote-runner")
       expect(api.sessionStatus["remote-runner"]).toEqual({ type: "busy" })
       expect(api.sessionStatus["remote-paused"]).toEqual({ type: "paused", reason: "aborted", since: 1 })
+      const cold = "unviewed-project"
+      h.emit(cold, 1, { type: "session.status", properties: { sessionID: "cold-session", status: { type: "busy" } } })
+      h.emit(cold, 2, { type: "permission.asked", properties: { id: "cold-permission", sessionID: "cold-session" } })
+      h.emit(cold, 3, { type: "question.asked", properties: { id: "cold-question", sessionID: "cold-session" } })
+      h.emit(cold, 4, {
+        type: "cortex.task.created",
+        properties: { task: { id: "cold-task", sessionID: "cold-session", status: "running" } },
+      })
+      h.emit(cold, 5, {
+        type: "session.updated",
+        properties: {
+          info: {
+            id: "cold-session",
+            scope: { id: cold },
+            time: { updated: 1 },
+            cortex: { taskID: "cold-task", status: "completed" },
+          },
+        },
+      })
+      h.emit(cold, 6, { type: "note.updated", properties: {} })
+      expect(api.peekScopeState(cold)).toBeUndefined()
+      expect(api.sessionStatus["cold-session"]).toEqual({ type: "busy" })
+      expect(api.permissions["cold-session"].map((item) => item.id)).toEqual(["cold-permission"])
+      expect(api.questions["cold-session"].map((item) => item.id)).toEqual(["cold-question"])
+      expect(api.cortex.find((item) => item.id === "cold-task")?.status).toBe("completed")
+      h.emit(cold, 7, {
+        type: "permission.replied",
+        properties: { requestID: "cold-permission", sessionID: "cold-session" },
+      })
+      h.emit(cold, 8, {
+        type: "question.replied",
+        properties: { requestID: "cold-question", sessionID: "cold-session" },
+      })
+      h.emit(cold, 9, { type: "session.status", properties: { sessionID: "cold-session", status: { type: "idle" } } })
+      expect(api.sessionStatus["cold-session"]).toBeUndefined()
+      expect(api.permissions["cold-session"] ?? []).toEqual([])
+      expect(api.questions["cold-session"] ?? []).toEqual([])
+      expect(api.peekScopeState(cold)).toBeUndefined()
       expect(api.peekScopeState("home")).toBeUndefined()
       expect(api.data.config.preferWorkBrief).toBe(false)
       h.setPreference(true)
@@ -462,6 +503,38 @@ test("Scope leases protect overlapping pages and reject evicted bootstrap result
       peerCache.release()
       expect(h.bodyLifetimes[0].aborted).toBe(true)
       home.release()
+      const gapScope = "background.cold-gap"
+      h.emit(gapScope, 1, { type: "permission.asked", properties: { id: "gap-permission", sessionID: "gap-session" } })
+      expect(api.peekScopeState(gapScope)).toBeUndefined()
+      const replayCount = h.replays.length
+      h.emit(gapScope, 3, {
+        type: "permission.replied",
+        properties: { requestID: "gap-permission", sessionID: "gap-session" },
+      })
+      expect(api.peekScopeState(gapScope)).toBeDefined()
+      expect(h.replays).toHaveLength(replayCount + 1)
+      h.replays.at(-1)!({
+        data: {
+          status: "ok",
+          epoch: "test-epoch",
+          seq: 3,
+          events: [
+            { epoch: "test-epoch", seq: 2, type: "note.updated", properties: {} },
+            {
+              epoch: "test-epoch",
+              seq: 3,
+              type: "permission.replied",
+              properties: { requestID: "gap-permission", sessionID: "gap-session" },
+            },
+          ],
+        },
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(api.permissions["gap-session"] ?? []).toEqual([])
+      const resetScope = "background.cold-reset"
+      h.emit(resetScope, 1, { type: "server.projection.reset", properties: {} })
+      expect(api.peekScopeState(resetScope)).toBeDefined()
+      await h.waitComplete(api.peekScopeState(resetScope)!)
     } finally {
       h.dispose()
     }

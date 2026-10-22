@@ -142,7 +142,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           store.partVersion[summary.id] === summary.content.version
             ? store.part[summary.messageID]?.find((part) => part.id === summary.id)
             : undefined,
-        read: async (summary) => {
+        read: async (summary, signal) => {
           const cached = store.part[summary.messageID]?.find((part) => part.id === summary.id)
           if (cached && store.partVersion[summary.id] === summary.content.version)
             return { part: cached, version: summary.content.version }
@@ -161,7 +161,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               if (!response.data) throw new Error("Missing conversation content")
               return response.data
             },
-            contentSignal,
+            AbortSignal.any([contentSignal, signal]),
           )
         },
         refresh: async (summary, signal) => {

@@ -46,9 +46,27 @@ export type ActivityDetailTarget =
   | (ToolActivityTarget & { kind: "tool" })
   | { kind: "agent-delivery" | "compaction"; sessionID: string; messageID: string }
 
+/** Why a reference cannot be rendered. Rendering decides on this before drawing
+ *  anything, so a missing or ignored target never flashes as a broken image. */
+export type ResourceAvailability =
+  | { state: "available" }
+  | {
+      state: "unavailable"
+      code: "ignored" | "missing" | "missing-asset" | "outside-workspace" | "unbound-workspace"
+      path?: string
+      reason: string
+    }
+
 export interface ResourceOpenController {
   present?(target: WorkbenchView.Target, options?: ResourceOpenOptions): Promise<ResourceOpenResult>
   resolveUrl?(reference: ResourceReference.Target, context?: ResourceReference.Context): string | undefined
+  /** Reports whether the target can still be served. A path excluded from the
+   *  workspace view (for example an ignored build directory) is unavailable even
+   *  while the bytes exist, because the reference can never render or reopen. */
+  inspectReference?(
+    reference: ResourceReference.Target,
+    context?: ResourceReference.Context,
+  ): Promise<ResourceAvailability>
   openActivityDetail?(target: ActivityDetailTarget): boolean
   isActivityDetailSelected?(target: ActivityDetailTarget): boolean
   openToolActivity?(target: ToolActivityTarget, part?: ToolPart): boolean

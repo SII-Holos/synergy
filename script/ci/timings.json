@@ -3297,7 +3297,6 @@
           "test/plugin/surface-access.test.ts",
           "test/plugin/surface-commands.test.ts",
           "test/plugin/surface-operations.test.ts",
-          "test/plugin/text-action-position.test.ts",
           "test/plugin/ui-assets.test.ts",
           "test/script/i18n-extract.test.ts",
           "test/testing/browser-crypto-contract.test.ts",

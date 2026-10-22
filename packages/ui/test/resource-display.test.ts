@@ -10,7 +10,7 @@ test("resource display keeps the original GitHub sample compact unless its targe
   expect(resourceDisplay(reference)).toMatchObject({
     label: "deepseek-harness / index.ts:289–327",
     source: "github.com",
-    icon: "github.main",
+    site: "github",
   })
   expect(resourceDisplay(reference).disambiguatedLabel).toBe(
     "deepseek-ai/deepseek-harness / blob/86a402200d95fecef4529d969836f1fe13c6cb0d/packages/compaction/compaction-basic/src/index.ts:289–327",

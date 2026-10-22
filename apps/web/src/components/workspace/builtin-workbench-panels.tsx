@@ -11,6 +11,7 @@ import { browserWorkbenchRoute, browserTabURL, type BrowserWorkbenchRoute } from
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { normalizeBrowserError } from "./browser/browser-error"
 import { useTerminal } from "@/context/terminal"
 import { workspaceFilePath } from "@/context/file/workspace"
@@ -209,7 +210,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       register({
         id: "trajectory",
         label: i18n._(E.trajectory),
-        icon: getSemanticIcon("performance.trace"),
+        icon: getSemanticIcon("execution.trajectory"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: true,
@@ -234,7 +235,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       register({
         id: "execution-detail",
         label: i18n._(P.executionDetail),
-        icon: getSemanticIcon("performance.trace"),
+        icon: getSemanticIcon("execution.details"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: true,
@@ -422,11 +423,11 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
             },
             {
               id: "copy",
-              label: i18n._({ id: "browser.tab.copyAddress", message: "Copy page address" }),
+              label: i18n._(B.copyAddress),
               disabled: !/^https?:/.test(url),
               run: () =>
                 run(async () => {
-                  if (!(await platform.clipboard?.writeText(url))) await navigator.clipboard.writeText(url)
+                  await copyTextToClipboard(url, { label: i18n._(B.copyAddress) })
                 }),
             },
             {

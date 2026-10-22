@@ -245,3 +245,53 @@ test("collected history occupies no row space and only current activity carries 
   expect(await current.evaluate((element) => getComputedStyle(element).transitionDuration)).toBe("0s")
   await page.emulateMedia({ reducedMotion: "no-preference" })
 })
+
+test("tool rows follow the host reading width instead of a fixed cap", async () => {
+  // The host sets --conversation-reading-max-width to fill the resized column.
+  // Tool rows hard-coding 54rem would form a second centered column and drift
+  // inward as the column grows, while summary and prose rows stay flush left.
+  const widths = [940, 1000, 1200, 1440]
+  for (const width of widths) {
+    await page.setViewportSize({ width: width + 100, height: 600 })
+    await page.setContent(`<style>
+      :root { --text-base: rgb(29 29 29); --text-weak: rgb(79 79 79); --icon-base: rgb(29 29 29);
+        --icon-weak-base: rgb(79 79 79); --font-family-sans: sans-serif; --font-weight-regular: 400;
+        --font-weight-medium: 500; --motion-duration-fast: 120ms; --motion-duration-base: 180ms;
+        --motion-ease-standard: ease; --radius-sm: 4px; }
+      * { box-sizing: border-box; } body { margin: 0; } p { margin: 0; }
+      .column { --conversation-reading-max-width: 100%; width: ${width}px; padding-inline: 40px; }
+      ${css}
+    </style><div class="column"><div data-slot="session-turn-timeline">
+      <div data-slot="session-turn-timeline-item" data-kind="activity-batch">
+        <div data-component="activity-batch">
+          <button data-slot="activity-batch-trigger"><span>Ran 4 commands</span></button>
+          <div data-component="activity-trace"><ol data-slot="activity-step-list">
+            <li data-slot="activity-step"><button type="button" data-slot="activity-step-trigger">
+              <span data-slot="activity-step-icon"><svg data-component="icon" width="16" height="16"></svg></span>
+              <span data-slot="activity-step-copy"><span data-slot="activity-step-title">Inspect the layout</span></span>
+            </button></li>
+          </ol></div>
+        </div>
+      </div>
+      <div data-slot="session-turn-timeline-item" data-kind="text"><p>Prose</p></div>
+    </div></div>`)
+
+    const offsets = await page.evaluate(() => {
+      const column = document.querySelector<HTMLElement>(".column")!.getBoundingClientRect()
+      const left = (selector: string) =>
+        Math.round(document.querySelector<HTMLElement>(selector)!.getBoundingClientRect().left - column.left)
+      return {
+        summary: left('[data-slot="activity-batch-trigger"]'),
+        tool: left('[data-slot="activity-step-trigger"]'),
+        prose: left('[data-kind="text"] p'),
+      }
+    })
+
+    expect({ width, summary: offsets.summary, prose: offsets.prose }).toEqual({
+      width,
+      summary: 40,
+      prose: 40,
+    })
+    expect({ width, tool: offsets.tool }).toEqual({ width, tool: 40 })
+  }
+})

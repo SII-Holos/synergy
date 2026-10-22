@@ -1778,10 +1778,6 @@ msgid "app.browser.empty.ready"
 msgstr "Browser ready"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.empty.waiting"
-msgstr "Waiting for the page surface."
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.error.bootstrapFailed"
 msgstr "Browser session could not be loaded"
 
@@ -1865,10 +1861,6 @@ msgstr "Recovering the native browser…"
 msgid "app.browser.native.recoveryFailed"
 msgstr "Native browser recovery failed"
 
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.native.recoveryHint"
-msgstr "Synergy is reconnecting to the browser. You can retry now."
-
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "Back"
@@ -1948,10 +1940,6 @@ msgstr "Remote browser text input"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.resume"
 msgstr "Resume page"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.resumeHint"
-msgstr "Resume to reload this address using its saved identity. Unsaved forms are not restored."
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
@@ -8302,6 +8290,10 @@ msgid "app.rawMessages.title"
 msgstr "Raw messages"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetMissing"
+msgstr "This attachment is no longer stored."
+
+#. js-lingui-explicit-id
 msgid "app.reference.assetSource"
 msgstr "Attachment"
 
@@ -8316,6 +8308,14 @@ msgstr "Choose the reference’s workspace"
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
 msgstr "Copy reference"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileIgnored"
+msgstr "This path is excluded from the workspace, so it cannot be opened."
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileMissing"
+msgstr "This file no longer exists."
 
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"
@@ -11100,7 +11100,7 @@ msgstr "URL"
 msgid "browser.summary.value-length"
 msgstr "Value length"
 
-#. js-lingui-explicit-id
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "browser.tab.copyAddress"
 msgstr "Copy page address"
 
@@ -12089,8 +12089,8 @@ msgid "diff.preview-truncated"
 msgstr "Preview truncated"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.composer.abstained"
-msgstr "No clear continuation yet."
+msgid "digitalTwin.composer.dismiss"
+msgstr "Dismiss prediction message"
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.composer.predict"
@@ -12105,16 +12105,40 @@ msgid "digitalTwin.composer.unavailable"
 msgstr "Prediction unavailable. Try again."
 
 #. js-lingui-explicit-id
+msgid "digitalTwin.reason.composing"
+msgstr "Available after text input ends"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.draft"
+msgstr "Clear the draft to predict the next input"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.mode"
+msgstr "Available in normal write mode"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.pending"
+msgstr "Finish attachments and pending items first"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.reply"
+msgstr "Available once a reply finishes cleanly"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.turn"
+msgstr "Available once this turn finishes"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.view"
+msgstr "Prediction is unavailable in this view"
+
+#. js-lingui-explicit-id
 msgid "digitalTwin.settings.automatic"
 msgstr "Automatic next-input prediction"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automaticHint"
-msgstr "Show a suggestion after a task finishes. Tab inserts it; you choose when to send."
-
-#. js-lingui-explicit-id
 msgid "digitalTwin.settings.description"
-msgstr "Suggest your next message using the conversation and your earlier writing."
+msgstr "A living model of how you think and write."
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.settings.follow"
@@ -12729,6 +12753,10 @@ msgid "execution.openSession"
 msgstr "Open subtask conversation"
 
 #. js-lingui-explicit-id
+msgid "execution.order"
+msgstr "Order"
+
+#. js-lingui-explicit-id
 msgid "execution.output"
 msgstr "Output"
 
@@ -12869,6 +12897,10 @@ msgid "execution.searchContent"
 msgstr "Search this entire content"
 
 #. js-lingui-explicit-id
+msgid "execution.searchShort"
+msgstr "Search records"
+
+#. js-lingui-explicit-id
 msgid "execution.sections"
 msgstr "Sections"
 
@@ -12919,10 +12951,6 @@ msgstr "Tool output"
 #. js-lingui-explicit-id
 msgid "execution.trajectory"
 msgstr "Execution trajectory"
-
-#. js-lingui-explicit-id
-msgid "execution.trajectory.short"
-msgstr "Trajectory"
 
 #. js-lingui-explicit-id
 msgid "execution.type"
@@ -13161,6 +13189,10 @@ msgid "message-part.part-render-error"
 msgstr "Couldn’t display this content:"
 
 #. ── Message-part chrome ────────────────────────────────────────────
+msgid "message-part.quote-label"
+msgstr "Quote"
+
+#. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.search-early-stop"
 msgstr "Search ended early"
 
@@ -13315,50 +13347,6 @@ msgstr "Archived project"
 #. js-lingui-explicit-id
 msgid "note.tag.remove"
 msgstr "Remove tag {tag}"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.back"
-msgstr "Back"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.close"
-msgstr "Close"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.copy"
-msgstr "Copy"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.cut"
-msgstr "Cut"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.failed"
-msgstr "Text action failed"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.loading"
-msgstr "Working…"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.menu"
-msgstr "Text actions"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.paste"
-msgstr "Paste"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.retry"
-msgstr "Retry"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "Select all"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.unavailable"
-msgstr "This editing action is unavailable."
 
 #. js-lingui-explicit-id
 msgid "project.entry.addFolder"
@@ -25546,6 +25534,38 @@ msgstr "Location unavailable"
 #. js-lingui-explicit-id
 msgid "task.location.useFiles"
 msgstr "Use these files"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.addToChat"
+msgstr "Add to chat"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.close"
+msgstr "Close"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copy"
+msgstr "Copy"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copyFailed"
+msgstr "Couldn't copy the selection."
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.failed"
+msgstr "Text action failed"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.loading"
+msgstr "Working…"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.retry"
+msgstr "Retry"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.toolbar"
+msgstr "Selection actions"
 
 #. js-lingui-explicit-id
 msgid "tool.computer.accessibility"

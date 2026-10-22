@@ -109,7 +109,8 @@
 }
 
 [data-component="markdown"] [data-reference-icon] [data-component="icon"],
-[data-component="markdown"] [data-reference-icon] [data-component="file-icon"] {
+[data-component="markdown"] [data-reference-icon] [data-component="file-icon"],
+[data-component="markdown"] [data-reference-icon] [data-component="site-icon"] {
   display: inline-flex;
   width: 1em;
   height: 1em;
@@ -142,6 +143,34 @@
 
 [data-component="markdown"] [data-resource-state="unavailable"] {
   text-decoration-style: dotted;
+}
+
+/* A reference whose target cannot be served states the path and the reason in
+   place, so the failure is visible instead of looking like a broken image or a
+   link that silently does nothing. */
+[data-component="markdown"] [data-slot="markdown-reference-unavailable"] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  margin: 0.75rem 0;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-weak-base);
+  border-inline-start-width: 2px;
+  border-radius: var(--radius-sm);
+  background-color: color-mix(in srgb, var(--surface-inset-base) 60%, transparent);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+[data-component="markdown"] [data-slot="markdown-reference-unavailable-path"] {
+  font-family: var(--font-family-mono);
+  font-feature-settings: var(--font-family-mono--font-feature-settings);
+  color: var(--text-weak);
+  overflow-wrap: anywhere;
+}
+
+[data-component="markdown"] [data-slot="markdown-reference-unavailable-reason"] {
+  color: var(--text-weaker);
 }
 
 [data-component="markdown"] ul,

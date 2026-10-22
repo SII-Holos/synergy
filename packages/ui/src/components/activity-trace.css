@@ -3,7 +3,7 @@
 [data-component="reasoning-summary"],
 [data-component="minimal-activity-summary"] {
   width: 100%;
-  max-width: min(54rem, 100%);
+  max-width: min(var(--conversation-reading-max-width, 54rem), 100%);
   margin-inline: auto;
   color: var(--text-weak);
   font-size: 14px;

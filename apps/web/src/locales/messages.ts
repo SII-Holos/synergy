@@ -124,11 +124,11 @@ export const browser = {
   developerTools: { id: "app.browser.developerTools", message: "Developer tools" },
   openExternal: { id: "app.browser.openExternal", message: "Open in default browser" },
   copyLink: { id: "app.browser.copyLink", message: "Copy link" },
+  copyAddress: { id: "browser.tab.copyAddress", message: "Copy page address" },
   importData: { id: "app.browser.importData", message: "Import browser data" },
   settings: { id: "app.browser.settings", message: "Browser settings" },
   newTab: { id: "browser.tabs.empty", message: "New tab" },
   ready: { id: "app.browser.empty.ready", message: "Browser ready" },
-  waitingForSurface: { id: "app.browser.empty.waiting", message: "Waiting for the page surface." },
   connecting: { id: "app.browser.connecting", message: "Connecting to Browser" },
   bootstrapFailed: { id: "app.browser.error.bootstrapFailed", message: "Browser session could not be loaded" },
   unavailable: { id: "app.browser.error.unavailable", message: "Browser unavailable" },
@@ -138,10 +138,6 @@ export const browser = {
   retry: { id: "app.browser.retry", message: "Retry" },
   resume: { id: "app.browser.resume", message: "Resume page" },
   suspended: { id: "app.browser.suspended", message: "Page suspended" },
-  resumeHint: {
-    id: "app.browser.resumeHint",
-    message: "Resume to reload this address using its saved identity. Unsaved forms are not restored.",
-  },
   nativeRecovering: {
     id: "app.browser.native.recovering",
     message: "Recovering the native browser…",
@@ -149,10 +145,6 @@ export const browser = {
   nativeRecoveryFailed: {
     id: "app.browser.native.recoveryFailed",
     message: "Native browser recovery failed",
-  },
-  nativeRecoveryHint: {
-    id: "app.browser.native.recoveryHint",
-    message: "Synergy is reconnecting to the browser. You can retry now.",
   },
   noPage: { id: "app.browser.empty.noPage", message: "Start browsing" },
   nextNavigation: { id: "app.browser.empty.nextNavigation", message: "Enter a URL or search in the address bar." },

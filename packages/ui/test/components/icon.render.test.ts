@@ -6,6 +6,7 @@ import { setupSolidDOM } from "../support/solid-dom"
 const closeDOM = await setupSolidDOM()
 afterAll(closeDOM)
 const { Icon } = await import("../../src/components/icon")
+const { SiteIcon } = await import("../../src/components/site-icon")
 const { registerIcon } = await import("../../src/plugin/icon-registry")
 const disposers: Array<() => void> = []
 afterEach(() => {
@@ -21,10 +22,12 @@ test("selected integration glyphs render with the host size and paint", () => {
       () => [
         createComponent(Icon, { name: "tabler-photo-edit", size: "small" }),
         createComponent(Icon, { name: "brand-notion", size: "large" }),
+        createComponent(SiteIcon, { name: "notion" }),
       ],
       root,
     ),
   )
+  expect(root.querySelector("[data-component=site-icon] use")?.getAttribute("href")).toEndWith("#notion")
   const [photo, notion] = root.querySelectorAll("[data-component=icon]")
   expect(photo?.getAttribute("data-size")).toBe("small")
   expect(photo?.querySelectorAll("path")).toHaveLength(5)

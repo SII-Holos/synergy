@@ -11,7 +11,7 @@ test("only fresh successful events auto-predict; stale and dismissed sources do 
     automatic: true,
   }
   const replies: Array<
-    (value: { proposalID: string; candidate: string | null; stamp: { rootID: string; assistantID: string } }) => void
+    (value: { proposalID: string; candidate: string; stamp: { rootID: string; assistantID: string } }) => void
   > = []
   const signals: AbortSignal[] = []
   const applied: string[] = []
@@ -64,7 +64,7 @@ test("completion waits for the matching synchronized anchor without replaying a 
     read: () => state,
     call: async (input) => {
       calls.push(input.expected.rootID)
-      return { proposalID: "p", candidate: null, stamp: input.expected }
+      return { proposalID: "p", candidate: "candidate", stamp: input.expected }
     },
     apply: () => {},
     clearFeedback: () => {},
@@ -80,4 +80,30 @@ test("completion waits for the matching synchronized anchor without replaying a 
   request.completed(state.anchor!)
   expect(calls).toHaveLength(1)
   request.dispose()
+})
+
+test("completion ownership is bounded and a late background result reaches only its mounted owner", async () => {
+  const { claimCompletion, registerComposer, composerMounted, saveSuggestion } =
+    await import("../../../src/components/digital-twin/presence")
+  const owner = { url: "https://fixture.invalid", scopeKey: "ownership", sessionID: "session" }
+  const received: string[] = []
+  const unregister = registerComposer(owner, (suggestion) => received.push(suggestion.text))
+  const peer = { ...owner, scopeKey: "another-scope" }
+  const releasePeer = registerComposer(peer, () => {
+    throw new Error("Cross-Scope suggestion")
+  })
+  try {
+    expect(composerMounted(owner)).toBe(true)
+    expect(claimCompletion(owner, "first", "reply")).toBe(true)
+    expect(claimCompletion(owner, "first", "reply")).toBe(false)
+    expect(claimCompletion(peer, "first", "reply")).toBe(true)
+    saveSuggestion(owner, { rootID: "first", assistantID: "reply", proposalID: "proposal", text: "Next input" })
+    expect(received).toEqual(["Next input"])
+    for (let index = 0; index < 512; index++) claimCompletion(owner, String(index), "reply")
+    expect(claimCompletion(owner, "first", "reply")).toBe(true)
+  } finally {
+    unregister()
+    releasePeer()
+  }
+  expect(composerMounted(owner)).toBe(false)
 })

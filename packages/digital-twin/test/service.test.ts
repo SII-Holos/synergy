@@ -94,7 +94,6 @@ test(
                   name: "predict_next_input",
                   input: {
                     candidate: "再检查一下 API 的异常路径",
-                    abstention: null,
                     grounding: ["current"],
                     targets: ["API"],
                   },

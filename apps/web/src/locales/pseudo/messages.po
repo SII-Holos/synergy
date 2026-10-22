@@ -1778,10 +1778,6 @@ msgid "app.browser.empty.ready"
 msgstr "⟦Browser ready⟧"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.empty.waiting"
-msgstr "⟦Waiting for the page surface.⟧"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.error.bootstrapFailed"
 msgstr "⟦Browser session could not be loaded⟧"
 
@@ -1865,10 +1861,6 @@ msgstr "⟦Recovering the native browser…⟧"
 msgid "app.browser.native.recoveryFailed"
 msgstr "⟦Native browser recovery failed⟧"
 
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.native.recoveryHint"
-msgstr "⟦Synergy is reconnecting to the browser. You can retry now.⟧"
-
 #. ── Address bar ──
 msgid "app.browser.nav.back"
 msgstr "⟦Back⟧"
@@ -1948,10 +1940,6 @@ msgstr "⟦Remote browser text input⟧"
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.resume"
 msgstr "⟦Resume page⟧"
-
-#. ── Browser ──────────────────────────────────────────────────────────────────
-msgid "app.browser.resumeHint"
-msgstr "⟦Resume to reload this address using its saved identity. Unsaved forms are not restored.⟧"
 
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.retry"
@@ -8302,6 +8290,10 @@ msgid "app.rawMessages.title"
 msgstr "⟦Raw messages⟧"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetMissing"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.reference.assetSource"
 msgstr ""
 
@@ -8315,6 +8307,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileIgnored"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileMissing"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -11100,7 +11100,7 @@ msgstr "⟦URL⟧"
 msgid "browser.summary.value-length"
 msgstr "⟦Value length⟧"
 
-#. js-lingui-explicit-id
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "browser.tab.copyAddress"
 msgstr "⟦Copy page address⟧"
 
@@ -12089,7 +12089,7 @@ msgid "diff.preview-truncated"
 msgstr "⟦Preview truncated⟧"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.composer.abstained"
+msgid "digitalTwin.composer.dismiss"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12105,11 +12105,35 @@ msgid "digitalTwin.composer.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automatic"
+msgid "digitalTwin.reason.composing"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automaticHint"
+msgid "digitalTwin.reason.draft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.mode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.reply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automatic"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12729,6 +12753,10 @@ msgid "execution.openSession"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.order"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.output"
 msgstr ""
 
@@ -12869,6 +12897,10 @@ msgid "execution.searchContent"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.searchShort"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.sections"
 msgstr ""
 
@@ -12918,10 +12950,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.trajectory"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "execution.trajectory.short"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13161,6 +13189,10 @@ msgid "message-part.part-render-error"
 msgstr "⟦Couldn’t display this content:⟧"
 
 #. ── Message-part chrome ────────────────────────────────────────────
+msgid "message-part.quote-label"
+msgstr ""
+
+#. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.search-early-stop"
 msgstr "⟦Search ended early⟧"
 
@@ -13315,50 +13347,6 @@ msgstr ""
 #. js-lingui-explicit-id
 msgid "note.tag.remove"
 msgstr ""
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.back"
-msgstr "⟦Back⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.close"
-msgstr "⟦Close⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.copy"
-msgstr "⟦Copy⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.cut"
-msgstr "⟦Cut⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.failed"
-msgstr "⟦Text action failed⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.loading"
-msgstr "⟦Working…⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.menu"
-msgstr "⟦Text actions⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.paste"
-msgstr "⟦Paste⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.retry"
-msgstr "⟦Retry⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.selectAll"
-msgstr "⟦Select all⟧"
-
-#. js-lingui-explicit-id
-msgid "plugin.textAction.unavailable"
-msgstr "⟦This editing action is unavailable.⟧"
 
 #. js-lingui-explicit-id
 msgid "project.entry.addFolder"
@@ -25546,6 +25534,38 @@ msgstr "⟦Location unavailable⟧"
 #. js-lingui-explicit-id
 msgid "task.location.useFiles"
 msgstr "⟦Use these files⟧"
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.addToChat"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.close"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copy"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.copyFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.failed"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.loading"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.retry"
+msgstr ""
+
+#. Runtime Lingui descriptors for the text-selection toolbar.
+msgid "textSelection.toolbar"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "tool.computer.accessibility"

@@ -12859,8 +12859,7 @@ export type DigitalTwinSourceStamp = {
 
 export type DigitalTwinPrediction = {
   proposalID: string
-  candidate: string | null
-  abstention: "insufficient-grounding" | "no-clear-continuation" | null
+  candidate: string
   stamp: DigitalTwinSourceStamp
 }
 
@@ -22588,80 +22587,6 @@ export type PartUpdateResponses = {
 
 export type PartUpdateResponse = PartUpdateResponses[keyof PartUpdateResponses]
 
-export type SessionPromptAsyncData = {
-  body?: {
-    experiment?: ExperimentFile
-    messageID?: string
-    model?: {
-      providerID: string
-      modelID: string
-    }
-    agent?: string
-    noReply?: boolean
-    metadata?: {
-      assistance?: InputAssistance
-      [key: string]: unknown | InputAssistance | undefined
-    }
-    summary?: {
-      title?: string
-    }
-    /**
-     * Per-prompt tool visibility toggle. Does not affect session permissions.
-     */
-    tools?: {
-      [key: string]: boolean
-    }
-    system?: string
-    variant?: string
-    thinking?: SessionThinkingSelection
-    parts: Array<TextPartInput | AttachmentPartInput>
-  }
-  path: {
-    /**
-     * Session ID
-     */
-    sessionID: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/session/{sessionID}/prompt_async"
-}
-
-export type SessionPromptAsyncErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Conflict
-   */
-  409: {
-    name: string
-    data: unknown
-  }
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type SessionPromptAsyncError = SessionPromptAsyncErrors[keyof SessionPromptAsyncErrors]
-
-export type SessionPromptAsyncResponses = {
-  /**
-   * Prompt accepted
-   */
-  204: void
-}
-
-export type SessionPromptAsyncResponse = SessionPromptAsyncResponses[keyof SessionPromptAsyncResponses]
-
 export type SessionCommandData = {
   body?: {
     experiment?: ExperimentFile
@@ -29431,7 +29356,7 @@ export type DigitalTwinPredictNextInputError =
 
 export type DigitalTwinPredictNextInputResponses = {
   /**
-   * One editable prediction or abstention
+   * One editable prediction
    */
   200: DigitalTwinPrediction
 }

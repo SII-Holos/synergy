@@ -329,6 +329,14 @@ export function VirtualConversationRows(
               ),
               // Completion can remove the active process before Virtua measures the returned tail.
               rows().findLastIndex((row) => !row.exiting && row.kind !== "load"),
+              // A retained footer cannot establish readiness for its preceding answer body.
+              rows().findLastIndex(
+                (row) =>
+                  !row.exiting &&
+                  row.kind === "body" &&
+                  row.message.role === "assistant" &&
+                  row.root.id === rows().at(-1)?.root.id,
+              ),
             ]
           : []),
       ]),

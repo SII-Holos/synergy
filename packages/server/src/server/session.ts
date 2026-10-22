@@ -1810,34 +1810,6 @@ export const SessionRoute = () =>
       },
     )
     .post(
-      "/:sessionID/prompt_async",
-      describeRoute({
-        summary: "Send async message",
-        description:
-          "Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.",
-        operationId: "session.prompt_async",
-        responses: {
-          204: {
-            description: "Prompt accepted",
-          },
-          ...errors(400, 404, 409),
-        },
-      }),
-      validator(
-        "param",
-        z.object({
-          sessionID: z.string().meta({ description: "Session ID" }),
-        }),
-      ),
-      validator("json", InvokeInput.omit({ sessionID: true })),
-      async (c) => {
-        const sessionID = c.req.valid("param").sessionID
-        const body = c.req.valid("json")
-        await submitInput({ ...body, sessionID })
-        return c.body(null, 204)
-      },
-    )
-    .post(
       "/:sessionID/command",
       describeRoute({
         summary: "Send command",

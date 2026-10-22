@@ -41,9 +41,11 @@ import {
   usePrompt,
   UploadedAttachmentPart,
   NoteAttachmentPart,
+  QuoteAttachmentPart,
   SessionAttachmentPart,
 } from "@/context/prompt"
 import { useLayout } from "@/context/layout"
+import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSessionTransition } from "@/context/session-transition"
@@ -87,7 +89,8 @@ import { SessionWorkContext } from "@/components/session/work-context"
 import { usePromptSubmit } from "@/components/prompt-input/submit"
 import { usePromptAttachments } from "@/components/prompt-input/attachments-hook"
 import { usePromptEditor } from "@/components/prompt-input/editor-hook"
-import { inlineLength, inlineText } from "@/components/prompt-input/content"
+import { createPromptPartID, inlineLength, inlineText } from "@/components/prompt-input/content"
+import { registerQuoteTarget } from "@/components/prompt-input/quote-target"
 import { resolvePromptSubmitIntent, shouldAllowPromptSubmit } from "@/components/prompt-input/submit-intent"
 import { createPendingAttachmentTracker } from "@/components/prompt-input/pending-attachments"
 import {
@@ -1488,8 +1491,41 @@ export function createPromptInputController(props: PromptInputProps) {
   const sessionAttachments = createMemo(
     () => prompt.current().filter((part) => part.type === "session") as SessionAttachmentPart[],
   )
+  const quoteAttachments = createMemo(
+    () => prompt.current().filter((part) => part.type === "quote") as QuoteAttachmentPart[],
+  )
   const hasAttachments = createMemo(
-    () => uploadedAttachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0,
+    () =>
+      uploadedAttachments().length > 0 ||
+      noteAttachments().length > 0 ||
+      sessionAttachments().length > 0 ||
+      quoteAttachments().length > 0,
+  )
+
+  const viewActive = useViewActivity()
+  onCleanup(
+    registerQuoteTarget({
+      // Retained session views stay mounted while hidden, so availability also
+      // follows the active view rather than registration order.
+      available: () => viewActive() && !isReadOnly() && prompt.ready(),
+      accept(input) {
+        const existing = quoteAttachments()
+        if (existing.some((part) => part.text === input.text && part.role === input.role)) return
+        prompt.set(
+          [
+            ...prompt.current(),
+            {
+              type: "quote",
+              id: createPromptPartID(),
+              text: input.text,
+              ...(input.role ? { role: input.role } : {}),
+            },
+          ],
+          prompt.cursor(),
+        )
+        queueScroll()
+      },
+    }),
   )
 
   const MAX_HISTORY = 100
@@ -1510,17 +1546,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }),
   )
 
-  const clonePromptParts = (prompt: Prompt): Prompt =>
-    sanitizePrompt(prompt).map((part) => {
-      if (part.type === "text") return { ...part }
-      if (part.type === "attachment") return { ...part }
-      if (part.type === "note") return { ...part }
-      if (part.type === "session") return { ...part }
-      return {
-        ...part,
-        selection: part.selection ? { ...part.selection } : undefined,
-      }
-    })
+  const clonePromptParts = (prompt: Prompt): Prompt => sanitizePrompt(prompt)
 
   const promptLength = (prompt: Prompt) => inlineLength(prompt)
 
@@ -1697,6 +1723,7 @@ export function createPromptInputController(props: PromptInputProps) {
     uploadedAttachments,
     noteAttachments,
     sessionAttachments,
+    quoteAttachments,
     store,
     setStore,
     atOnInput,
@@ -1852,7 +1879,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const addToHistory = (parts: Prompt, mode: "normal" | "shell") => {
     const text = inlineText(parts).trim()
     const hasAttachment = parts.some(
-      (part) => part.type === "attachment" || part.type === "note" || part.type === "session",
+      (part) => part.type === "attachment" || part.type === "note" || part.type === "session" || part.type === "quote",
     )
     if (!text && !hasAttachment) return
 
@@ -2092,6 +2119,7 @@ export function createPromptInputController(props: PromptInputProps) {
     uploadedAttachments,
     noteAttachments,
     sessionAttachments,
+    quoteAttachments,
     attachmentsUploading,
     attachmentsFailed,
     selectedControlProfile,
@@ -2296,6 +2324,7 @@ export function createPromptInputController(props: PromptInputProps) {
             uploads={uploadedAttachments}
             notes={noteAttachments}
             sessions={sessionAttachments}
+            quotes={quoteAttachments}
             pending={pendingUploads.pending}
             pendingFile={pendingUploads.file}
             retryAttachment={retryAttachment}

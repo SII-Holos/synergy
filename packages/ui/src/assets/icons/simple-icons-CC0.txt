@@ -1,0 +1,19 @@
+Site brand marks in ./site were vendored from Simple Icons 13.0.0.
+
+Provenance: https://github.com/simple-icons/simple-icons/tree/13.0.0
+Local adaptation: preserve upstream path geometry and adjust fills for the two theme surfaces as described below.
+License: CC0 1.0 Universal (public domain dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Each file keeps the upstream path geometry verbatim. One rule resolves the fill
+once, at vendoring time: the mark must clear 3.1:1 against both theme surfaces,
+because --surface-base is #FFFFFF in light and #242424 in dark and a single
+static fill is drawn on either. An official color already inside that range is
+used unchanged; a chromatic brand outside it has its HSL lightness moved just
+far enough to re-enter the range, which preserves the recognizable hue. Brands
+whose official mark is drawn in black or near-black are the exception: their
+identity is the silhouette, so they are pinned to currentColor and follow the
+surrounding text color rather than being recolored.
+
+Trademarks remain the property of their owners; these marks identify the
+referenced site only.

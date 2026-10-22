@@ -80,7 +80,7 @@ const glyphs: Record<ExecutionTrajectoryNode["kind"], SemanticIconTokenName> = {
 export function ExecutionPanelBody(
   props: WorkbenchPanelContentProps & {
     runID: string
-    scopeLabel: string
+    scopeLabel?: string
     onBack?: () => void
     onStateChange: (state: Record<string, unknown>) => void
     snapshot?: (nodeID: string) => ExecutionContextSnapshot | undefined
@@ -450,7 +450,8 @@ export function ExecutionPanelBody(
   )
   const toggle = (values: string[], value: string) =>
     values.includes(value) ? values.filter((item) => item !== value) : [...values, value]
-  const filterCount = () => types().length + states().length + Number(anomalies()) + Number(!!actor())
+  const filterCount = () =>
+    types().length + states().length + Number(anomalies()) + Number(!!actor() && actor() !== "all")
   const clear = () =>
     batch(() => {
       setActor("")
@@ -554,196 +555,186 @@ export function ExecutionPanelBody(
           </span>
         </Show>
         <h2>{_(E.recordsTitle)}</h2>
-        <span class="execution-records-scope" title={props.scopeLabel}>
-          {props.scopeLabel}
-        </span>
-        <button
-          type="button"
-          class="execution-icon-button"
-          aria-label={_(E.export)}
-          disabled={exporting()}
-          onClick={() => void exportTrajectory()}
-        >
-          <Icon name={getSemanticIcon("action.export")} size="small" />
-        </button>
+        <Show when={props.scopeLabel}>
+          <span class="execution-records-scope" title={props.scopeLabel}>
+            {props.scopeLabel}
+          </span>
+        </Show>
+        <div class="execution-filters">
+          <label class="execution-search">
+            <Icon name={getSemanticIcon("action.search")} size="small" />
+            <input
+              value={search()}
+              onInput={(event) => setSearch(event.currentTarget.value)}
+              placeholder={_(E.searchShort)}
+              aria-label={_(E.search)}
+            />
+          </label>
+          <Popover
+            title={_(E.filter)}
+            variant="menu"
+            class="execution-filter-popover"
+            placement="bottom-end"
+            open={filtersOpen()}
+            onOpenChange={setFiltersOpen}
+            triggerAs={(trigger) => (
+              <button
+                {...trigger}
+                type="button"
+                class="execution-icon-button"
+                aria-label={_(E.filter)}
+                aria-expanded={filtersOpen()}
+              >
+                <Icon name={getSemanticIcon("settings.general")} size="small" />
+                <Show when={filterCount()}>
+                  <span>{filterCount()}</span>
+                </Show>
+              </button>
+            )}
+          >
+            <div
+              class="execution-filter-options"
+              on:keydown={(event) => {
+                if (event.key !== "Escape") return
+                event.preventDefault()
+                event.stopPropagation()
+                setFiltersOpen(false)
+              }}
+              on:focusin={(event) => {
+                if (!(event.target instanceof HTMLElement)) return
+                const choice = event.target.closest<HTMLElement>('.execution-actor-choice, [data-component="checkbox"]')
+                const container = event.currentTarget.closest<HTMLElement>('[data-slot="popover-body"]')
+                if (!choice || !container) return
+                const row = choice.getBoundingClientRect()
+                const view = container.getBoundingClientRect()
+                if (row.top < view.top) container.scrollTop += row.top - view.top
+                else if (row.bottom > view.bottom) container.scrollTop += row.bottom - view.bottom
+              }}
+            >
+              <fieldset class="execution-actor-options">
+                <legend>{_(E.actor)}</legend>
+                <For
+                  each={[
+                    { id: "", title: _(E.own) },
+                    { id: "all", title: _(E.allTasks) },
+                    ...(summary()?.tasks.map((task) => ({ id: task.sessionID, title: task.title })) ?? []),
+                  ]}
+                >
+                  {(task) => (
+                    <label class="execution-actor-choice">
+                      <input
+                        type="radio"
+                        name={actorGroup}
+                        checked={actor() === task.id}
+                        onChange={() => setActor(task.id)}
+                      />
+                      <span>{task.title}</span>
+                    </label>
+                  )}
+                </For>
+              </fieldset>
+              <fieldset>
+                <legend>{_(E.type)}</legend>
+                <For each={kinds}>
+                  {(kind) => (
+                    <div class="execution-filter-choice">
+                      <Checkbox checked={types().includes(kind)} onChange={() => setTypes(toggle(types(), kind))}>
+                        {_(K[kind])}
+                      </Checkbox>
+                    </div>
+                  )}
+                </For>
+              </fieldset>
+              <fieldset>
+                <legend>{_(E.status)}</legend>
+                <For each={statuses}>
+                  {(status) => (
+                    <div class="execution-filter-choice">
+                      <Checkbox
+                        checked={states().includes(status)}
+                        onChange={() => setStates(toggle(states(), status))}
+                      >
+                        {_(E[status])}
+                      </Checkbox>
+                    </div>
+                  )}
+                </For>
+              </fieldset>
+              <div class="execution-filter-choice">
+                <Checkbox checked={anomalies()} onChange={() => setAnomalies(!anomalies())}>
+                  {_(E.anomalies)}
+                </Checkbox>
+              </div>
+              <button type="button" class="execution-inline-action" onClick={clear}>
+                {_(E.clear)}
+              </button>
+            </div>
+          </Popover>
+          <div class="execution-view-switch" role="group" aria-label={_(E.view)}>
+            <button type="button" aria-pressed={mode() === "process"} onClick={() => setMode("process")}>
+              {_(E.processView)}
+            </button>
+            <button type="button" aria-pressed={mode() === "records"} onClick={() => setMode("records")}>
+              {_(E.recordsView)}
+            </button>
+          </div>
+          <Show when={mode() === "records"}>
+            <div class="execution-view-switch" role="group" aria-label={_(E.order)}>
+              <For each={["time", "rounds", "calls"] as const}>
+                {(value) => (
+                  <button type="button" aria-pressed={view() === value} onClick={() => setView(value)}>
+                    {_(E[value])}
+                  </button>
+                )}
+              </For>
+            </div>
+          </Show>
+          <button
+            type="button"
+            class="execution-icon-button execution-records-export"
+            aria-label={_(E.export)}
+            disabled={exporting()}
+            onClick={() => void exportTrajectory()}
+          >
+            <Icon name={getSemanticIcon("action.export")} size="small" />
+          </button>
+        </div>
+        <Show when={filterCount()}>
+          <div class="execution-filter-chips">
+            <For each={types()}>
+              {(kind) => (
+                <button type="button" onClick={() => setTypes(types().filter((item) => item !== kind))}>
+                  {_(K[kind as keyof typeof K])} ×
+                </button>
+              )}
+            </For>
+            <For each={states()}>
+              {(status) => (
+                <button type="button" onClick={() => setStates(states().filter((item) => item !== status))}>
+                  {_(E[status as (typeof statuses)[number]])} ×
+                </button>
+              )}
+            </For>
+            <Show when={actor() && actor() !== "all"}>
+              <button type="button" onClick={() => setActor("")}>
+                {summary()?.tasks.find((task) => task.sessionID === actor())?.title} ×
+              </button>
+            </Show>
+            <Show when={anomalies()}>
+              <button type="button" onClick={() => setAnomalies(false)}>
+                {_(E.anomalies)} ×
+              </button>
+            </Show>
+          </div>
+        </Show>
       </header>
+      <Show when={exportError()}>
+        <p class="execution-feedback" role="alert">
+          {_(E.error)}
+        </p>
+      </Show>
       <div class="execution-workspace">
         <div class="execution-trajectory-pane">
-          <div class="execution-global">
-            <Show when={exportError()}>
-              <p class="execution-feedback" role="alert">
-                {_(E.error)}
-              </p>
-            </Show>
-            <div class="execution-filters">
-              <div class="execution-search-row">
-                <label class="execution-search">
-                  <Icon name={getSemanticIcon("action.search")} size="small" />
-                  <input
-                    value={search()}
-                    onInput={(event) => setSearch(event.currentTarget.value)}
-                    placeholder={_(E.search)}
-                    aria-label={_(E.search)}
-                  />
-                </label>
-                <Popover
-                  title={_(E.filter)}
-                  variant="menu"
-                  class="execution-filter-popover"
-                  placement="bottom-end"
-                  open={filtersOpen()}
-                  onOpenChange={setFiltersOpen}
-                  triggerAs={(trigger) => (
-                    <button
-                      {...trigger}
-                      type="button"
-                      class="execution-icon-button"
-                      aria-label={_(E.filter)}
-                      aria-expanded={filtersOpen()}
-                    >
-                      <Icon name={getSemanticIcon("settings.general")} size="small" />
-                      <Show when={filterCount()}>
-                        <span>{filterCount()}</span>
-                      </Show>
-                    </button>
-                  )}
-                >
-                  <div
-                    class="execution-filter-options"
-                    on:keydown={(event) => {
-                      if (event.key !== "Escape") return
-                      event.preventDefault()
-                      event.stopPropagation()
-                      setFiltersOpen(false)
-                    }}
-                    on:focusin={(event) => {
-                      if (!(event.target instanceof HTMLElement)) return
-                      const choice = event.target.closest<HTMLElement>(
-                        '.execution-actor-choice, [data-component="checkbox"]',
-                      )
-                      const container = event.currentTarget.closest<HTMLElement>('[data-slot="popover-body"]')
-                      if (!choice || !container) return
-                      const row = choice.getBoundingClientRect()
-                      const view = container.getBoundingClientRect()
-                      if (row.top < view.top) container.scrollTop += row.top - view.top
-                      else if (row.bottom > view.bottom) container.scrollTop += row.bottom - view.bottom
-                    }}
-                  >
-                    <fieldset class="execution-actor-options">
-                      <legend>{_(E.actor)}</legend>
-                      <For
-                        each={[
-                          { id: "", title: _(E.own) },
-                          { id: "all", title: _(E.allTasks) },
-                          ...(summary()?.tasks.map((task) => ({ id: task.sessionID, title: task.title })) ?? []),
-                        ]}
-                      >
-                        {(task) => (
-                          <label class="execution-actor-choice">
-                            <input
-                              type="radio"
-                              name={actorGroup}
-                              checked={actor() === task.id}
-                              onChange={() => setActor(task.id)}
-                            />
-                            <span>{task.title}</span>
-                          </label>
-                        )}
-                      </For>
-                    </fieldset>
-                    <fieldset>
-                      <legend>{_(E.type)}</legend>
-                      <For each={kinds}>
-                        {(kind) => (
-                          <div class="execution-filter-choice">
-                            <Checkbox checked={types().includes(kind)} onChange={() => setTypes(toggle(types(), kind))}>
-                              {_(K[kind])}
-                            </Checkbox>
-                          </div>
-                        )}
-                      </For>
-                    </fieldset>
-                    <fieldset>
-                      <legend>{_(E.status)}</legend>
-                      <For each={statuses}>
-                        {(status) => (
-                          <div class="execution-filter-choice">
-                            <Checkbox
-                              checked={states().includes(status)}
-                              onChange={() => setStates(toggle(states(), status))}
-                            >
-                              {_(E[status])}
-                            </Checkbox>
-                          </div>
-                        )}
-                      </For>
-                    </fieldset>
-                    <button type="button" class="execution-inline-action" onClick={clear}>
-                      {_(E.clear)}
-                    </button>
-                  </div>
-                </Popover>
-              </div>
-              <div class="execution-view-row">
-                <div class="execution-view-switch" role="group" aria-label={_(E.view)}>
-                  <button type="button" aria-pressed={mode() === "process"} onClick={() => setMode("process")}>
-                    {_(E.processView)}
-                  </button>
-                  <button type="button" aria-pressed={mode() === "records"} onClick={() => setMode("records")}>
-                    {_(E.recordsView)}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  class="execution-anomalies"
-                  aria-pressed={anomalies()}
-                  onClick={() => setAnomalies(!anomalies())}
-                >
-                  {_(E.anomalies)}
-                </button>
-              </div>
-              <Show when={filterCount()}>
-                <div class="execution-filter-chips">
-                  <For each={types()}>
-                    {(kind) => (
-                      <button type="button" onClick={() => setTypes(types().filter((item) => item !== kind))}>
-                        {_(K[kind as keyof typeof K])} ×
-                      </button>
-                    )}
-                  </For>
-                  <For each={states()}>
-                    {(status) => (
-                      <button type="button" onClick={() => setStates(states().filter((item) => item !== status))}>
-                        {_(E[status as (typeof statuses)[number]])} ×
-                      </button>
-                    )}
-                  </For>
-                  <Show when={actor()}>
-                    <button type="button" onClick={() => setActor("")}>
-                      {actor() === "all"
-                        ? _(E.allTasks)
-                        : summary()?.tasks.find((task) => task.sessionID === actor())?.title}{" "}
-                      ×
-                    </button>
-                  </Show>
-                </div>
-              </Show>
-              <Show when={mode() === "records"}>
-                <div class="execution-view-row execution-record-controls">
-                  <div class="execution-view-switch" role="group" aria-label={_(E.view)}>
-                    <For each={["time", "rounds", "calls"] as const}>
-                      {(value) => (
-                        <button type="button" aria-pressed={view() === value} onClick={() => setView(value)}>
-                          {_(E[value])}
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </div>
-              </Show>
-            </div>
-          </div>
-
           <Show when={trajectory.state.error}>
             <div class="execution-feedback" role="alert">
               {_(E.error)}{" "}
@@ -936,7 +927,7 @@ export function ExecutionPanelBody(
         </Show>
         <Show when={!selected()}>
           <section class="execution-inspector-placeholder">
-            <Icon name={getSemanticIcon("performance.trace")} size="large" />
+            <Icon name={getSemanticIcon("execution.trajectory")} size="large" />
             <h3>{_(E.chooseRecord)}</h3>
             <p>{_(E.chooseRecordHelp)}</p>
           </section>
@@ -948,7 +939,6 @@ export function ExecutionPanelBody(
 
 export function ExecutionTrajectoryWorkbenchContent(props: WorkbenchPanelContentProps) {
   const panels = useWorkbenchPanels()
-  const { _ } = useLingui()
   const value = () =>
     props.tab.state && typeof props.tab.state === "object" ? (props.tab.state as Record<string, unknown>) : {}
   return (
@@ -956,7 +946,6 @@ export function ExecutionTrajectoryWorkbenchContent(props: WorkbenchPanelContent
       {...props}
       tab={{ ...props.tab, state: { mode: "records", actor: "all", ...value() } }}
       runID={typeof value().runID === "string" ? (value().runID as string) : ""}
-      scopeLabel={_(E.allTasks)}
       onStateChange={(state) => panels.updateTab(props.tab.id, { state })}
     />
   )

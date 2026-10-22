@@ -7,7 +7,10 @@ import { ResourceReference } from "@ericsanchezok/synergy-util/resource-referenc
 import { observeMarkdownResources } from "./markdown-resources"
 import { enhanceMarkdown } from "./markdown"
 import { sanitizeHtml } from "./markdown-sanitize"
+import { createMarkdownCache } from "./markdown-cache"
 import type { UserMarkdownReference } from "./user-markdown-model"
+
+const caches = new WeakMap<ReturnType<typeof useMarked>, ReturnType<typeof createMarkdownCache>>()
 
 export function UserMarkdown(props: {
   text: string
@@ -16,6 +19,8 @@ export function UserMarkdown(props: {
   referenceContext?: ResourceReference.Context
 }) {
   const marked = useMarked()
+  const cache = caches.get(marked) ?? createMarkdownCache(4 * 1024 * 1024)
+  caches.set(marked, cache)
   const resourceOpen = useResourceOpen()
   const inheritedContext = useReferenceContext()
   const context = () => props.referenceContext ?? inheritedContext() ?? { state: "unresolved" as const }
@@ -24,21 +29,24 @@ export function UserMarkdown(props: {
   let pending: AbortController | undefined
   onCleanup(() => pending?.abort())
   const key = createMemo(() => JSON.stringify([props.text, props.references ?? []]))
-  const [rendered] = createResource(key, async (current) => {
+  const [rendered] = createResource(key, (current) => {
     pending?.abort()
+    const cached = cache.get(current)
+    if (cached) return { key: current, html: cached.html }
     const controller = new AbortController()
     pending = controller
     const text = props.text,
       references = props.references ?? []
-    const { renderUserMarkdown } = await import("./user-markdown-model")
-    return {
-      key: current,
-      html: sanitizeHtml(
+    return (async () => {
+      const { renderUserMarkdown } = await import("./user-markdown-model")
+      const html = sanitizeHtml(
         await renderUserMarkdown(text, references, async (raw, inline) =>
           String(await (inline ? marked.parseInline(raw, controller.signal) : marked.parse(raw, controller.signal))),
         ),
-      ),
-    }
+      )
+      if (!controller.signal.aborted) cache.set(current, { hash: "", html })
+      return { key: current, html }
+    })()
   })
   createEffect(() => {
     const value = rendered.error ? undefined : rendered()

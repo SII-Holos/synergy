@@ -1,5 +1,13 @@
 import { beforeEach, expect, test } from "bun:test"
-import { page, url, frames, errors } from "../../support/conversation-process"
+import {
+  page,
+  url,
+  frames,
+  errors,
+  browser,
+  fixtureServer,
+  observeResizeErrors,
+} from "../../support/conversation-process"
 import { testOptions } from "../../../script/test-options"
 
 beforeEach(async () => {
@@ -54,13 +62,13 @@ for (const ended of [false, true]) {
     `background message backlog returns with stable ${ended ? "collected history" : "latest tools"} before summary page validation finishes`,
     async () => {
       const cdp = await page.context().newCDPSession(page)
-      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
       await page.goto(`${url}?resident&scrolling&motion&content=background`)
       await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
       await page.evaluate(() => window.__conversationProcess.latest())
       await page.waitForFunction(
         () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
       )
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
       const result = await page.evaluate(async (ended) => {
         const fixture = window.__conversationProcess
         const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
@@ -129,50 +137,54 @@ for (const ended of [false, true]) {
 }
 
 for (const completionFrame of [0, 1, 16]) {
-  test(`a returned live backlog remains readable when it completes at frame ${completionFrame}`, async () => {
-    const cdp = await page.context().newCDPSession(page)
-    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
-    await page.goto(`${url}?resident&scrolling&motion&content=background`)
-    await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
-    await page.evaluate(() => window.__conversationProcess.latest())
-    await page.waitForFunction(
-      () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
-    )
-    const result = await page.evaluate(async (completionFrame) => {
-      const fixture = window.__conversationProcess
-      const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
-      const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
-      const before = fixture.contentStats()
-      fixture.select("peer")
-      await settle()
-      fixture.backlog(24, false)
-      await settle()
-      const hidden = fixture.contentStats()
-      fixture.select("session")
-      const samples = []
-      for (let frame = 0; frame < 96; frame++) {
-        if (frame === completionFrame) fixture.background(true, false)
+  test(
+    `a returned live backlog remains readable when it completes at frame ${completionFrame}`,
+    async () => {
+      const cdp = await page.context().newCDPSession(page)
+      await page.goto(`${url}?resident&scrolling&motion&content=background`)
+      await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+      await page.evaluate(() => window.__conversationProcess.latest())
+      await page.waitForFunction(
+        () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+      )
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
+      const result = await page.evaluate(async (completionFrame) => {
+        const fixture = window.__conversationProcess
+        const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+        const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+        const before = fixture.contentStats()
+        fixture.select("peer")
         await settle()
-        const bounds = viewport.getBoundingClientRect()
-        samples.push({
-          rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
-            const rect = row.getBoundingClientRect()
-            return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
-          }).length,
-          gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
-        })
-      }
-      return { before, hidden, samples, answer: viewport.textContent?.includes("Background answer.") }
-    }, completionFrame)
-    expect(result.hidden).toEqual(result.before)
-    expect(
-      result.samples.every((sample) => sample.rows > 0),
-      JSON.stringify(result.samples.slice(0, 24)),
-    ).toBe(true)
-    expect(result.samples.every((sample) => Math.abs(sample.gap) <= 2)).toBe(true)
-    expect(result.answer).toBe(true)
-    expect(errors).toEqual([])
-  }, 30000)
+        fixture.backlog(24, false)
+        await settle()
+        const hidden = fixture.contentStats()
+        fixture.select("session")
+        const samples = []
+        for (let frame = 0; frame < 96; frame++) {
+          if (frame === completionFrame) fixture.background(true, false)
+          await settle()
+          const bounds = viewport.getBoundingClientRect()
+          samples.push({
+            rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
+              const rect = row.getBoundingClientRect()
+              return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
+            }).length,
+            gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+          })
+        }
+        return { before, hidden, samples, answer: viewport.textContent?.includes("Background answer.") }
+      }, completionFrame)
+      expect(result.hidden).toEqual(result.before)
+      expect(
+        result.samples.every((sample) => sample.rows > 0),
+        JSON.stringify(result.samples.slice(0, 24)),
+      ).toBe(true)
+      expect(result.samples.every((sample) => Math.abs(sample.gap) <= 2)).toBe(true)
+      expect(result.answer).toBe(true)
+      expect(errors).toEqual([])
+    },
+    testOptions.isolatedTimeoutMs,
+  )
 }
 
 for (const ended of [false, true]) {
@@ -346,91 +358,148 @@ test("background completion applies automatic process collection without replayi
 for (const ended of [false, true]) {
   for (const delayed of [false, true]) {
     for (const reading of [false, true]) {
-      test(`${delayed ? "delayed" : "cached"} background ${ended ? "completion" : "generation"} preserves ${reading ? "history reading" : "latest following"} on return`, async () => {
-        await page.goto(`${url}?resident&scrolling&motion&content=background`)
-        await page.waitForSelector("[data-scroller] [data-display-row]")
-        await page.evaluate(() => {
-          window.__conversationProcess.latest()
-        })
-        await frames()
-        await page.waitForFunction(() => document.querySelector("[data-follow-motion]")?.getAnimations().length === 0)
-        await page.waitForFunction(() => !document.querySelector("[data-markdown-pending]"))
-        await frames()
-        if (reading) {
-          await page.locator("[data-scroller]").evaluate((el) => {
-            el.dispatchEvent(new WheelEvent("wheel", { deltaY: -200 }))
-            el.scrollTop = 100
-            el.dispatchEvent(new Event("scroll"))
-          })
-          await page.waitForFunction(() => {
-            if (document.querySelector("[data-markdown-pending]")) return false
-            const rows = [...document.querySelectorAll<HTMLElement>("[data-scroller] [data-display-row]")]
-              .filter((el) => !el.closest('[data-component="process-window"]'))
-              .map((el) => el.getBoundingClientRect())
-              .filter((rect) => rect.height > 0)
-              .sort((a, b) => a.top - b.top)
-            return rows.every((rect, i) => i === 0 || rect.top >= rows[i - 1].bottom - 1)
-          })
-          await frames()
-        }
-        const result = await page.evaluate(
-          async ({ ended, reading, delayed }) => {
-            const fixture = window.__conversationProcess
-            const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
-            const surface = viewport.querySelector<HTMLElement>("[data-follow-motion]")!
-            const bounds = viewport.getBoundingClientRect()
-            const anchor = [...viewport.querySelectorAll<HTMLElement>("[data-display-row] p")].find((el) => {
-              const rect = el.getBoundingClientRect()
-              return rect.top >= bounds.top && rect.bottom <= bounds.bottom
-            })!
-            const before = anchor.getBoundingClientRect().top
-            const readsBefore = fixture.contentStats()
-            fixture.select("peer")
-            for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame)
-            fixture.background(ended, delayed)
-            for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame)
-            const hiddenAnchor = anchor.isConnected
-            const hiddenReads = fixture.contentStats()
-            fixture.select("session")
-            const samples = []
-            for (let i = 0; i < 36; i++) {
-              await new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
-              if (i === 8 && delayed) fixture.contentFinish("background-answer")
-              const transform = getComputedStyle(surface).transform
-              samples.push({
-                frame: i,
-                hydrated: viewport.dataset.hydrated,
-                pending: viewport.querySelectorAll("[data-content-pending], [data-markdown-pending]").length,
-                offset: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42,
-                gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
-                drift: reading ? anchor.getBoundingClientRect().top - before : 0,
-                retained: viewport === document.querySelector("[data-scroller]") && (!reading || anchor.isConnected),
-                visible: viewport.checkVisibility() && getComputedStyle(surface).opacity === "1",
+      for (const entry of (ended && delayed ? ["index.mjs", "index.jsx"] : ["index.mjs"]) as (
+        "index.mjs" | "index.jsx"
+      )[]) {
+        test(`${delayed ? "delayed" : "cached"} background ${ended ? "completion" : "generation"} preserves ${reading ? "history reading" : "latest following"} on return (${entry})`, async () => {
+          const alternate = entry === "index.jsx" ? await fixtureServer(entry) : undefined
+          const target = alternate ? await browser.newPage() : page
+          if (alternate) {
+            await observeResizeErrors(target)
+            target.on("pageerror", (error) => errors.push(error.message))
+            const cdp = await target.context().newCDPSession(target)
+            await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 })
+          }
+          try {
+            await target.goto(`${alternate?.url ?? url}?resident&scrolling&motion&content=background`)
+            await target.waitForSelector("[data-scroller] [data-display-row]")
+            await target.evaluate(() => {
+              window.__conversationProcess.latest()
+            })
+            await target.evaluate(async () => {
+              for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame)
+            })
+            await target.waitForFunction(
+              () => document.querySelector("[data-follow-motion]")?.getAnimations().length === 0,
+            )
+            await target.waitForFunction(() => !document.querySelector("[data-markdown-pending]"))
+            await target.evaluate(async () => {
+              for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame)
+            })
+            if (reading) {
+              await target.locator("[data-scroller]").evaluate((el) => {
+                el.dispatchEvent(new WheelEvent("wheel", { deltaY: -200 }))
+                el.scrollTop = 100
+                el.dispatchEvent(new Event("scroll"))
               })
+              await target.waitForFunction(() => {
+                if (document.querySelector("[data-markdown-pending]")) return false
+                const rows = [...document.querySelectorAll<HTMLElement>("[data-scroller] [data-display-row]")]
+                  .filter((el) => !el.closest('[data-component="process-window"]'))
+                  .map((el) => el.getBoundingClientRect())
+                  .filter((rect) => rect.height > 0)
+                  .sort((a, b) => a.top - b.top)
+                return rows.every((rect, i) => i === 0 || rect.top >= rows[i - 1].bottom - 1)
+              })
+              await frames(target)
             }
-            return {
-              samples,
-              hiddenAnchor,
-              readsBefore,
-              hiddenReads,
-              readsAfter: fixture.contentStats(),
-              answer: viewport.textContent?.includes("Background answer."),
+            const result = await target.evaluate(
+              async ({ ended, reading, delayed }) => {
+                const fixture = window.__conversationProcess
+                const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+                const surface = viewport.querySelector<HTMLElement>("[data-follow-motion]")!
+                const bounds = viewport.getBoundingClientRect()
+                const anchor = [...viewport.querySelectorAll<HTMLElement>("[data-display-row] p")].find((el) => {
+                  const rect = el.getBoundingClientRect()
+                  return rect.top >= bounds.top && rect.bottom <= bounds.bottom
+                })!
+                const before = anchor.getBoundingClientRect().top
+                const readsBefore = fixture.contentStats()
+                fixture.select("peer")
+                for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame)
+                fixture.background(ended, delayed)
+                for (let i = 0; i < 3; i++) await new Promise(requestAnimationFrame)
+                const hiddenAnchor = anchor.isConnected
+                const hiddenReads = fixture.contentStats()
+                fixture.select("session")
+                const samples = []
+                const probe = document.createElement("div")
+                probe.style.cssText =
+                  "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
+                document.body.append(probe)
+                let onLayout: (() => void) | undefined
+                const observer = new ResizeObserver(() => {
+                  const ready = onLayout
+                  onLayout = undefined
+                  ready?.()
+                })
+                observer.observe(probe)
+                try {
+                  for (let i = 0; i < 36; i++) {
+                    await new Promise<void>((resolve) =>
+                      requestAnimationFrame(() => {
+                        onLayout = resolve
+                        probe.style.width = `${2 - (i % 2)}px`
+                      }),
+                    )
+                    if (i === 8 && delayed) fixture.contentFinish("background-answer")
+                    const transform = getComputedStyle(surface).transform
+                    samples.push({
+                      frame: i,
+                      hydrated: viewport.dataset.hydrated,
+                      pending: viewport.querySelectorAll("[data-content-pending], [data-markdown-pending]").length,
+                      offset: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42,
+                      gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+                      drift: reading ? anchor.getBoundingClientRect().top - before : 0,
+                      retained:
+                        viewport === document.querySelector("[data-scroller]") && (!reading || anchor.isConnected),
+                      visible: viewport.checkVisibility() && getComputedStyle(surface).opacity === "1",
+                    })
+                  }
+                } finally {
+                  observer.disconnect()
+                  probe.remove()
+                }
+                return {
+                  samples,
+                  hiddenAnchor,
+                  readsBefore,
+                  hiddenReads,
+                  readsAfter: fixture.contentStats(),
+                  answer: viewport.textContent?.includes("Background answer."),
+                }
+              },
+              { ended, reading, delayed },
+            )
+            expect(result.hiddenReads).toEqual(result.readsBefore)
+            for (const [id, count] of Object.entries(result.readsBefore)) expect(result.readsAfter[id], id).toBe(count)
+            expect(result.hiddenAnchor).toBe(true)
+            expect(result.samples.filter((sample) => !sample.retained || !sample.visible)).toEqual([])
+            expect(
+              result.samples.filter((sample) => Math.abs(sample.offset) > 1),
+              JSON.stringify(result.samples),
+            ).toEqual([])
+            if (reading) expect(Math.max(...result.samples.map((s) => Math.abs(s.drift)))).toBeLessThanOrEqual(1)
+            else {
+              expect(
+                Math.max(...result.samples.map((s) => Math.abs(s.gap))),
+                JSON.stringify(result.samples),
+              ).toBeLessThanOrEqual(2)
+              expect(result.answer).toBe(true)
+              if (delayed) {
+                expect(result.samples.slice(0, 8).every((sample) => sample.hydrated === "false")).toBe(true)
+                expect(result.readsAfter["background-answer"]).toBe(1)
+              }
             }
-          },
-          { ended, reading, delayed },
-        )
-        expect(result.hiddenReads).toEqual(result.readsBefore)
-        for (const [id, count] of Object.entries(result.readsBefore)) expect(result.readsAfter[id], id).toBe(count)
-        expect(result.hiddenAnchor).toBe(true)
-        expect(result.samples.filter((sample) => !sample.retained || !sample.visible)).toEqual([])
-        expect(result.samples.filter((sample) => Math.abs(sample.offset) > 1)).toEqual([])
-        if (reading) expect(Math.max(...result.samples.map((s) => Math.abs(s.drift)))).toBeLessThanOrEqual(1)
-        else {
-          expect(Math.max(...result.samples.map((s) => Math.abs(s.gap)))).toBeLessThanOrEqual(2)
-          expect(result.answer).toBe(true)
-        }
-        expect(errors).toEqual([])
-      }, 30000)
+            expect(errors).toEqual([])
+          } finally {
+            if (alternate) {
+              await target.close()
+              await alternate.close()
+            }
+          }
+        }, 30000)
+      }
     }
   }
 }

@@ -262,6 +262,7 @@ export function McpPanel(props: {
                             <button
                               type="button"
                               class="settings-mcp-summary"
+                              data-settings-surface="plain"
                               data-mcp-builtin={builtin.name}
                               aria-expanded={expanded()}
                               aria-label={_({

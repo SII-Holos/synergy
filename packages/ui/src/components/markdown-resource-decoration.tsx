@@ -10,7 +10,6 @@ import { resourceDisplay } from "./resource-display"
 export function decorateMarkdownResource(element: HTMLElement, reference: ResourceReference.Target) {
   const owner = getOwner()
   const display = resourceDisplay(reference)
-  if (display.icon) element.dataset.resourceIcon = display.icon
   if (
     element.getAttribute("data-resource-bare") === "true" &&
     reference.kind === "url" &&

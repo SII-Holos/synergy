@@ -101,7 +101,6 @@ export namespace DigitalTwin {
         return {
           proposalID: crypto.randomUUID(),
           candidate: result.prediction.candidate,
-          abstention: result.prediction.abstention,
           stamp: { ...stamp, model: selectedModel },
         }
       })().finally(() => {

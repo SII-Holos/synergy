@@ -15,7 +15,7 @@ import { usePluginHost } from "./host"
 import { SelectionExtensionOutlet } from "./registries/selection-extension-registry"
 import { getMessageSlots, subscribeMessageSlots } from "./registries/message-slot-registry"
 import { useLocation } from "@solidjs/router"
-import { PluginTextActionSurface } from "./text-action-surface"
+import { SelectionToolbar } from "@/components/text-selection/selection-toolbar"
 
 setExternalComposerSlotLookup((slot) =>
   getComposerSlotsByName(slot).map((entry) => ({
@@ -112,7 +112,7 @@ export function PluginTextInteractionBridge() {
   return (
     <>
       <SelectionExtensionOutlet mountKey={location.pathname} />
-      <PluginTextActionSurface />
+      <SelectionToolbar />
     </>
   )
 }

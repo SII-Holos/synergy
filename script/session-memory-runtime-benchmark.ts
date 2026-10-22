@@ -433,7 +433,7 @@ try {
       isolatedTemporaryRuntime: true,
       loopbackOnly: true,
       provider: "deterministic-local-openai-compatible",
-      nativePaths: ["session.prompt_async", "task", "task_output", "cortex completion notification"],
+      nativePaths: ["session.input", "task", "task_output", "cortex completion notification"],
       sideEffectingTools: `mapped to ${PAYLOAD_TOOL}`,
       preserves: ["call count", "input bytes", "output bytes", "error status", "message order"],
     },
@@ -1113,7 +1113,7 @@ async function createSession(baseUrl: string, directory: string, title: string, 
   })
 }
 
-async function promptAsync(
+async function enqueueInput(
   baseUrl: string,
   directory: string,
   sessionID: string,
@@ -1121,7 +1121,7 @@ async function promptAsync(
   text: string,
   agent: string = PrimaryAgentIdentity.names.general,
 ) {
-  const response = await scopedRequest(baseUrl, directory, `/session/${encodeURIComponent(sessionID)}/prompt_async`, {
+  const response = await scopedRequest(baseUrl, directory, `/session/${encodeURIComponent(sessionID)}/input`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -1132,7 +1132,7 @@ async function promptAsync(
     }),
   })
   if (!response.ok)
-    throw new Error(`Async prompt failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`)
+    throw new Error(`Input enqueue failed with HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`)
 }
 
 async function replayTrajectory(input: {
@@ -1158,7 +1158,7 @@ async function replayTrajectory(input: {
   const replayStartedAt = Date.now()
   const marker = `${TRAJECTORY_MARKER}${input.replica}:${rootFixture.session}`
 
-  await promptAsync(
+  await enqueueInput(
     input.baseUrl,
     input.directory,
     root.id,
@@ -1170,7 +1170,7 @@ async function replayTrajectory(input: {
     if (manualTurns.length !== 2) throw new Error(`Expected two manual root turns, received ${manualTurns.length}`)
     const followUp = manualTurns[1]
     await sleepUntil(replayStartedAt + scaleTime(followUp.user.startOffsetMs))
-    await promptAsync(
+    await enqueueInput(
       input.baseUrl,
       input.directory,
       root.id,
@@ -1221,7 +1221,7 @@ async function replayPrimaryTurn(input: {
   )
   input.onCreated(root.id)
   const marker = `${TRAJECTORY_MARKER}${input.replica}:${rootFixture.session}:t${fixtureTurnIndex}`
-  await promptAsync(
+  await enqueueInput(
     input.baseUrl,
     input.directory,
     root.id,

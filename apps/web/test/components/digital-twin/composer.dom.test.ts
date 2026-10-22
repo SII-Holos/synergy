@@ -16,10 +16,13 @@ type Control = {
   complete(): void
   editSource(): void
   metadata(): void
+  touch(): void
   running(value: boolean): void
+  composer(value: boolean): void
+  stored(): unknown[]
   dismiss(): void
   accept(): Promise<boolean>
-  resolve(index: number, candidate?: string | null): void
+  resolve(index: number, candidate?: string): void
   reject(index: number): void
   requests(): boolean[]
   ghost(): string | undefined
@@ -51,6 +54,7 @@ beforeAll(async () => {
     export const [connection,setConnection]=createSignal("http://same-server.test")
     export const [model,setModel]=createSignal("model")
     export const [running,setRunning]=createSignal(false)
+    export const [composerShown,setComposerShown]=createSignal(true)
     export const [config,setConfig]=createStore({digitalTwin:{automatic:true}})
     const listeners=new Map(), requests=[]
     export const events={on(type,handler){const entries=listeners.get(type)||new Set();entries.add(handler);listeners.set(type,entries);return ()=>entries.delete(handler)}}
@@ -60,9 +64,12 @@ beforeAll(async () => {
       digitalTwin:{predictNextInput:({digitalTwinInput},options)=>new Promise((resolve,reject)=>requests.push({input:digitalTwinInput,signal:options.signal,resolve,reject}))}
     }}
     export const useSDK=()=>sdk
-    export const useSync=()=>({data:{config}})
+    export const useSync=()=>({data:{config,session:[{id:session()}]}})
+    export const useGlobalSDK=()=>({drafts:{hasDraftSession:()=>false}})
     export const useViewActivity=()=>active
     export const controls={capability:value=>setSelection(value==="unknown"?undefined:{features:value==="selected"?["digital-twin"]:[]}),active:setActive,session:setSession,scope:setScope,connection:setConnection,model:setModel,running:setRunning,
+      composer:setComposerShown,
+      stored:()=>Object.keys(localStorage).filter(key=>key.endsWith(":digital-twin")).map(key=>JSON.parse(localStorage.getItem(key))),
       automatic:value=>setConfig("digitalTwin","automatic",value),
       complete:()=>emit("session.root.completed",{sessionID:session(),rootID:"root",assistantID:"reply"}),
       editSource:()=>emit("message.part.summary",{summary:{sessionID:session()}}),
@@ -84,17 +91,18 @@ beforeAll(async () => {
     import {Icon} from "@ericsanchezok/synergy-ui/icon"
     import {getSemanticIcon} from "@ericsanchezok/synergy-ui/semantic-icon"
     import {DigitalTwinComposer} from "@/components/digital-twin/composer"
+    import {DigitalTwinBackground} from "@/components/digital-twin/background"
     import {DigitalTwinSettings} from "@/components/digital-twin/settings"
     import {ComposerDocumentController} from "@/components/prompt-input/composer-document"
     import {DefaultComposer} from "@/plugin/default-composer"
     import {ComposerPresentation,bindComposerPresentation} from "@/components/prompt-input/composer-presentation"
-    import {sdk,session,model,running,controls,setConfig} from "./services"
+    import {sdk,session,model,running,composerShown,controls,setConfig} from "./services"
     import "@ericsanchezok/synergy-ui/styles"
     import "@/index.css"
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     const [text,setText]=createSignal(""),[settings,setSettings]=createSignal({automatic:true,model:""})
     const controller=new ComposerDocumentController({read:()=>({sessionId:session(),text:text(),selection:{start:0,end:0},mode:"normal"}),applyEdits:edits=>{for(const edit of edits)setText(value=>value.slice(0,edit.range.start)+edit.text+value.slice(edit.range.end))}})
-    window.twinFixture={...controls,composing:value=>controller.setComposing(value),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion()}
+    window.twinFixture={...controls,composing:value=>controller.setComposing(value),touch:()=>controller.changed(),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion()}
     const messages=()=>[{id:"root",sessionID:session(),role:"user",isRoot:true,time:{created:1}},{id:"reply",sessionID:session(),role:"assistant",rootID:"root",time:{created:2,completed:3},finish:"stop"}]
     const [completionRevision,setCompletionRevision]=createSignal(0)
     controller.subscribe(()=>setCompletionRevision(value=>value+1))
@@ -104,12 +112,13 @@ beforeAll(async () => {
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
     },render:part=>part==="toolbar"?<div class="prompt-input-toolbar flex justify-end"><div class="prompt-input-toolbar-actions flex items-center gap-1.5">
-      <Show when={sdk.capabilities.has("digital-twin")}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()}/></Show>
+      <Show when={sdk.capabilities.has("digital-twin")&&composerShown()}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()}/></Show>
       <button type="button" aria-label="Microphone" class="prompt-input-toolbar-icon-button flex items-center justify-center"><Icon name={getSemanticIcon("prompt.voice")} size="small"/></button>
     </div></div>:null}
     bindComposerPresentation(input,{state:new ComposerPresentation(),preview:()=>({text:text(),references:[]})})
     function Contents(){return <>
       <DigitalTwinSettings value={settings()} models={[{providerId:"fixture",providerName:"Fixture",modelId:"large",modelName:"Large"}]} change={value=>{setSettings(value);setConfig("digitalTwin","automatic",value.automatic)}}/>
+      <DigitalTwinBackground/>
       <DefaultComposer context={{input}}/>
       <textarea aria-label="Draft" value={text()} onInput={event=>{setText(event.currentTarget.value);controller.changed()}}/>
     </>}
@@ -121,7 +130,7 @@ beforeAll(async () => {
     styled: true,
     localized: true,
     aliases: [
-      ...["sdk", "sync", "view-residency"].map((name) => ({
+      ...["sdk", "sync", "view-residency", "global-sdk"].map((name) => ({
         find: new RegExp("^@/context/" + name + "$"),
         replacement: path.join(directory, "services.ts"),
       })),
@@ -348,44 +357,61 @@ test("handled suggestions and suggestions superseded by new work do not return a
   }
 })
 
-test("prediction feedback expires without input and a retry receives its own reading time", async () => {
+test("prediction feedback stays visible until dismissed, and a draft edit clears it", async () => {
   const page = await browser.newPage()
   page.setDefaultTimeout(4000)
   page.on("pageerror", (error) => errors.push(error.message))
   try {
     await page.goto(fixture.url)
     const button = page.getByRole("button", { name: "Predict next input", exact: true })
-    const status = page.getByRole("status").filter({ hasText: /No clear continuation yet|Prediction unavailable/ })
+    const status = page.getByRole("status").filter({ hasText: "Prediction unavailable" })
     const draft = page.getByRole("textbox", { name: "Draft" })
     await button.click()
+    await page.evaluate(() => window.twinFixture.reject(0))
+    expect(await status.innerText()).toBe("Prediction unavailable. Try again.")
+    // A notice that disappears on a timer is indistinguishable from a button
+    // that does nothing, so it now waits for the user.
     await page.clock.install()
-    await page.evaluate(() => window.twinFixture.resolve(0, null))
-    expect(await status.innerText()).toBe("No clear continuation yet.")
-    await page.clock.runFor(3000)
+    await page.clock.runFor(60_000)
     expect(await status.isVisible()).toBe(true)
-    await page.clock.runFor(1100)
-    expect(await status.count()).toBe(0)
     expect(await draft.inputValue()).toBe("")
     expect(await button.isEnabled()).toBe(true)
+    await page.getByRole("button", { name: "Dismiss prediction message", exact: true }).click()
+    expect(await status.count()).toBe(0)
 
     await button.click()
     await page.evaluate(() => window.twinFixture.reject(1))
     expect(await status.innerText()).toBe("Prediction unavailable. Try again.")
-    await page.clock.runFor(3000)
-    await button.click()
-    expect(await status.count()).toBe(0)
-    await page.evaluate(() => window.twinFixture.resolve(2, null))
-    await page.clock.runFor(1100)
-    expect(await status.innerText()).toBe("No clear continuation yet.")
-    await page.clock.runFor(3000)
-    expect(await status.count()).toBe(0)
-
-    await button.click()
-    await page.evaluate(() => window.twinFixture.resolve(3, null))
-    expect(await status.isVisible()).toBe(true)
     await draft.fill("自己的草稿")
     expect(await status.count()).toBe(0)
     expect(await draft.inputValue()).toBe("自己的草稿")
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
+
+test("a manual prediction survives the caret moving out of the editor", async () => {
+  const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url)
+    const button = page.getByRole("button", { name: "Predict next input", exact: true })
+    await button.waitFor()
+    await page.evaluate(() => window.twinFixture.touch())
+    await button.click()
+    // Every click focuses the editor, which bumps the composer revision. That
+    // must not invalidate the request it just started: an answer the server had
+    // already produced used to be discarded here, with no suggestion and no
+    // failure — the reported symptom.
+    await page.evaluate(() => window.twinFixture.touch())
+    await page.evaluate(() => window.twinFixture.touch())
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(1)
+    expect(await page.evaluate(() => window.twinFixture.requests()[0])).toBe(false)
+    expect(await page.getByText("再检查一下 API 的边界", { exact: true }).isVisible()).toBe(true)
     expect(errors).toEqual([])
   } finally {
     await page.close()
@@ -528,3 +554,88 @@ test("an unconfigured composer predicts only after an explicit request", async (
     await page.close()
   }
 })
+
+test("automatic prediction still runs for a Session the user is not viewing", async () => {
+  const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url)
+    const button = page.getByRole("button", { name: "Predict next input", exact: true })
+    await button.waitFor()
+    // Leaving a Session unmounts its composer, so nothing inside it can notice the
+    // turn that finishes while the user is elsewhere. The Scope-level predictor
+    // has to cover exactly that turn and leave the suggestion where that composer
+    // will read it when it mounts again.
+    await page.evaluate(() => window.twinFixture.composer(false))
+    expect(await button.count()).toBe(0)
+    await page.evaluate(() => window.twinFixture.complete())
+    await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => window.twinFixture.stored().length === 1)
+    const [record] = await page.evaluate(() => window.twinFixture.stored())
+    expect(record).toMatchObject({
+      version: 1,
+      suggestion: { rootID: "root", assistantID: "reply", text: "再检查一下 API 的边界" },
+    })
+    await page.evaluate(() => window.twinFixture.composer(true))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await page.getByText("再检查一下 API 的边界", { exact: true }).isVisible()).toBe(true)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
+
+test("a background prediction reaches a composer mounted before its response", async () => {
+  const page = await browser.newPage()
+  try {
+    await page.goto(fixture.url)
+    await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.twinFixture.composer(false)
+      window.twinFixture.complete()
+    })
+    await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+    await page.evaluate(() => window.twinFixture.composer(true))
+    await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost(), undefined, { timeout: 2000 })
+    expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([false])
+  } finally {
+    await page.close()
+  }
+})
+
+test.each(["setting", "capability", "connection"] as const)(
+  "background prediction rejects obsolete %s results",
+  async (change) => {
+    const page = await browser.newPage()
+    try {
+      await page.goto(fixture.url)
+      await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+      await page.evaluate(() => {
+        window.twinFixture.composer(false)
+        window.twinFixture.complete()
+      })
+      await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+      await page.evaluate((change) => {
+        if (change === "setting") window.twinFixture.automatic(false)
+        if (change === "capability") window.twinFixture.capability("unknown")
+        if (change === "connection") window.twinFixture.connection("http://another-server.test")
+      }, change)
+      expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([true])
+      await page.evaluate(() => window.twinFixture.resolve(0))
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+      expect(await page.evaluate(() => window.twinFixture.stored())).toEqual([])
+      if (change === "connection") {
+        await page.evaluate(() => window.twinFixture.complete())
+        await page.waitForFunction(() => window.twinFixture.requests().length === 2)
+        await page.evaluate(() => window.twinFixture.resolve(1))
+        await page.waitForFunction(() => window.twinFixture.stored().length === 1)
+      }
+    } finally {
+      await page.close()
+    }
+  },
+)
