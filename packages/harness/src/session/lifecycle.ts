@@ -68,8 +68,15 @@ export namespace SessionLifecycle {
   }
 
   /**
-   * Clear the latch because the user took the session back: continuing it,
-   * abandoning it, or sending new input. Returns whether a latch was present.
+   * Clear the latch without touching the stopping turn or the rollout run.
+   *
+   * This is the low-level write, not the take-back entry point: a caller that
+   * resumes work must use `startNewTask` or `resume`, which drain the stopping
+   * turn first and settle the interrupted run. Use this directly only where the
+   * caller already owns that settlement — a domain releasing a pause it wrote
+   * itself, or abandoning work that is about to be cancelled anyway.
+   *
+   * Returns whether a latch was present.
    */
   export async function clear(sessionID: string): Promise<boolean> {
     const { Session } = await import(".")
