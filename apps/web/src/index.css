@@ -1915,11 +1915,24 @@ a {
   height: 40px;
   width: 3px;
   border-radius: 2px;
-  background: var(--border-base);
+  background: var(--border-strong-base);
+  opacity: 0;
 }
 .conversation-column-resize-handle:hover::after,
+.conversation-column-resize-handle:active::after,
 .conversation-column-resize-handle:focus-visible::after {
-  background: var(--border-strong-base);
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .conversation-column-resize-handle::after {
+    transition: opacity 150ms ease-out;
+  }
+}
+/* A hover-less pointer can never reveal the grip, so it stays visible. */
+@media (hover: none) {
+  .conversation-column-resize-handle::after {
+    opacity: 1;
+  }
 }
 @media (max-width: 767px) {
   .conversation-column-resize {
