@@ -799,8 +799,6 @@ import type {
   SessionPartPageResponses,
   SessionPartPagesErrors,
   SessionPartPagesResponses,
-  SessionPromptAsyncErrors,
-  SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
   SessionRetryRequestErrors,
@@ -5171,77 +5169,6 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/message/{messageID}",
       ...options,
       ...params,
-    })
-  }
-
-  /**
-   * Send async message
-   *
-   * Create and send a new message to a session asynchronously, starting the session if needed and returning immediately.
-   */
-  public promptAsync<ThrowOnError extends boolean = false>(
-    parameters: {
-      sessionID: string
-      directory?: string
-      scopeID?: string
-      experiment?: ExperimentFile
-      messageID?: string
-      model?: {
-        providerID: string
-        modelID: string
-      }
-      agent?: string
-      noReply?: boolean
-      metadata?: {
-        assistance?: InputAssistance
-        [key: string]: unknown | InputAssistance | undefined
-      }
-      summary?: {
-        title?: string
-      }
-      tools?: {
-        [key: string]: boolean
-      }
-      system?: string
-      variant?: string
-      thinking?: SessionThinkingSelection
-      parts?: Array<TextPartInput | AttachmentPartInput>
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "path", key: "sessionID" },
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "experiment" },
-            { in: "body", key: "messageID" },
-            { in: "body", key: "model" },
-            { in: "body", key: "agent" },
-            { in: "body", key: "noReply" },
-            { in: "body", key: "metadata" },
-            { in: "body", key: "summary" },
-            { in: "body", key: "tools" },
-            { in: "body", key: "system" },
-            { in: "body", key: "variant" },
-            { in: "body", key: "thinking" },
-            { in: "body", key: "parts" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<SessionPromptAsyncResponses, SessionPromptAsyncErrors, ThrowOnError>({
-      url: "/session/{sessionID}/prompt_async",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
     })
   }
 

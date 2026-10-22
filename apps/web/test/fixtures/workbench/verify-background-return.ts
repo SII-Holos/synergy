@@ -194,7 +194,7 @@ try {
       }, session.id)
       const route = `${url.origin}/aG9tZQ/session/`
       await page.goto(route + session.id)
-      await client.session.promptAsync(
+      await client.session.input(
         {
           scopeID: "home",
           sessionID: session.id,

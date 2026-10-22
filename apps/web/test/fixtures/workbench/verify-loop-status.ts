@@ -384,7 +384,7 @@ try {
         )
         await page.locator("[data-component=loop-status-entry][data-stage=bound]").waitFor()
         await capture("lightloop-" + outcome + "-01-bound")
-        await client.session.promptAsync(
+        await client.session.input(
           {
             sessionID: session.id,
             scopeID: "home",

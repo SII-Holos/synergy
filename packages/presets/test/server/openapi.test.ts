@@ -280,7 +280,7 @@ describe("OpenAPI spec generation", () => {
         expect(spec.components?.schemas?.ProviderListResponse).toBeDefined()
         expect(spec.components?.schemas?.Provider).toBeDefined()
         expect(spec.components?.schemas?.Model).toBeDefined()
-        expect(spec.paths["/session/{sessionID}/prompt_async"]?.post?.operationId).toBe("session.prompt_async")
+        expect(spec.paths["/session/{sessionID}/input"]?.post?.operationId).toBe("session.input")
       }
     })
   })

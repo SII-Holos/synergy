@@ -922,26 +922,11 @@ export namespace Cortex {
       }
 
       await updateDagNode(terminalTask)
-      // Detached summary/title work for the child session writes through the
-      // worktree snapshot; settle it before the managed directory is removed
-      // or the summary's git diff races the cleanup into a failed diff state.
-      try {
-        await LoopJob.settleDetached(task.sessionID)
-      } catch (error) {
-        log.warn("child detached work failed to settle before worktree cleanup", { taskID: task.id, error })
-      }
-      await cleanupChildWorktree(terminalTask)
-
-      if (deliverySettled) {
-        const settled = await record(() =>
-          Session.update(task.sessionID, (draft) => {
-            if (draft.cortex) draft.cortex.settledAt = Date.now()
-          }),
-        )
-        const parent = await RolloutLifecycle.parent(settled)
-        if (parent?.owner.kind === "session" && parent.runID)
-          await RolloutLifecycle.reconcile(parent.owner.sessionID, parent.runID)
-      }
+      await settleDelegation({
+        sessionID: terminalTask.sessionID,
+        taskID: terminalTask.id,
+        delivered: deliverySettled,
+      })
 
       if (waiters?.size) {
         for (const waiter of waiters) {
@@ -1034,6 +1019,7 @@ export namespace Cortex {
         taskID: string
         parentMessageID: string
         deliveryNotifiedAt?: number
+        settledAt?: number
         parent: Session.Info
       }>
     >()
@@ -1052,6 +1038,7 @@ export namespace Cortex {
           taskID: delegation.taskID,
           parentMessageID: delegation.parentMessageID,
           deliveryNotifiedAt: delegation.deliveryNotifiedAt,
+          settledAt: delegation.settledAt,
           parent,
         })
         silentTasksByParent.set(parent.id, candidates)
@@ -1064,26 +1051,29 @@ export namespace Cortex {
           (item) => item.deliveryKey === deliveryKey,
         )
         if (pending) await SessionDrive.request(delegation.parentSessionID, "cortex-completion-recovery")
-        continue
-      }
-
-      await notifyParentSession({
-        id: delegation.taskID,
-        sessionID: session.id,
-        parentSessionID: delegation.parentSessionID,
-        description: delegation.description,
-        parentMessageID: delegation.parentMessageID,
-        status: delegation.status,
-        startedAt: delegation.startedAt,
-        completedAt: delegation.completedAt,
-        error: delegation.error,
-      }).catch((error) => {
-        log.error("failed to reconcile parent notification", {
-          taskID: delegation.taskID,
+      } else {
+        const delivered = await notifyParentSession({
+          id: delegation.taskID,
+          sessionID: session.id,
           parentSessionID: delegation.parentSessionID,
-          error,
+          description: delegation.description,
+          parentMessageID: delegation.parentMessageID,
+          status: delegation.status,
+          startedAt: delegation.startedAt,
+          completedAt: delegation.completedAt,
+          error: delegation.error,
+        }).catch((error) => {
+          log.error("failed to reconcile parent notification", {
+            taskID: delegation.taskID,
+            parentSessionID: delegation.parentSessionID,
+            error,
+          })
+          return false
         })
-      })
+        if (!delivered) continue
+      }
+      if (!delegation.settledAt)
+        await settleDelegation({ sessionID: session.id, taskID: delegation.taskID, delivered: true })
     }
 
     const { ContinuationKernel } = await import("../session/continuation-kernel")
@@ -1101,27 +1091,34 @@ export namespace Cortex {
         .filter((candidate) => candidate.deliveryNotifiedAt === undefined)
         .map(({ sessionID, taskID }) => ({ sessionID, taskID }))
 
-      await ScopeContext.provide({
+      const driven = await ScopeContext.provide({
         scope: parent.scope,
         fn: async () => {
           if (undelivered.length > 0) {
-            await requestSilentParentDrive({
+            return requestSilentParentDrive({
               parentSessionID: parent.id,
               tasks: undelivered,
               reason: "cortex-completion-recovery",
             })
-            return
           }
           if (await SessionInbox.hasRunnableItem(parent.id)) {
             await SessionDrive.request(parent.id, "cortex-completion-recovery")
           }
+          return true
         },
       }).catch((error) => {
         log.error("failed to drive parent session after silent task recovery", {
           parentSessionID: parent.id,
           error,
         })
+        return false
       })
+
+      if (!driven) continue
+      for (const candidate of current) {
+        if (candidate.settledAt) continue
+        await settleDelegation({ sessionID: candidate.sessionID, taskID: candidate.taskID, delivered: true })
+      }
     }
   }
 
@@ -1156,7 +1153,7 @@ export namespace Cortex {
     startedAt: number
     completedAt?: number
     error?: string
-  }): Promise<void> {
+  }): Promise<boolean> {
     const statusText =
       task.status === "error"
         ? "FAILED"
@@ -1178,8 +1175,8 @@ export namespace Cortex {
     const deliveryKey = parentNotificationKey(task.id)
     using _ = await Lock.write(parentNotificationLock(task.id))
     const session = await Session.get(task.sessionID).catch(() => undefined)
-    if (!session?.cortex || session.cortex.taskID !== task.id) return
-    if (session.cortex.notifyParentOnComplete !== true) return
+    if (!session?.cortex || session.cortex.taskID !== task.id) return false
+    if (session.cortex.notifyParentOnComplete !== true) return false
     const parentSession = await Session.get(task.parentSessionID).catch(() => undefined)
     const parentChannel = parentSession?.endpoint?.kind === "channel" ? parentSession.endpoint.channel : undefined
     const parentMessage = await MessageV2.get({
@@ -1221,6 +1218,7 @@ export namespace Cortex {
 
     const pending = await SessionInbox.getStored(task.parentSessionID, delivery.itemID).catch(() => undefined)
     if (pending) await SessionDrive.request(task.parentSessionID, "cortex-completion")
+    return true
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
@@ -1732,7 +1730,35 @@ export namespace Cortex {
     CortexConcurrency.reset()
   }
 
-  async function cleanupChildWorktree(task: CortexTypes.Task) {
-    await CortexWorkspace.cleanup({ sessionID: task.sessionID, taskID: task.id })
+  /**
+   * Declare a terminal delegation finished with its parent.
+   *
+   * Settlement is the last of three steps and cannot be reordered: release the
+   * child's detached work, release its managed worktree, and only then record
+   * `settledAt` and reconcile the parent run. A parent run stays open while any
+   * owning child is unsettled, so writing `settledAt` before the notification
+   * lands would close that run against an inbox that has not received it yet.
+   *
+   * A restart settles delegations it finds already terminal, which is the same
+   * work the live terminal path performs. Both therefore call this instead of
+   * keeping private copies; `delivered` carries the only difference between
+   * them, because recovery may have to deliver the notification first.
+   */
+  async function settleDelegation(input: { sessionID: string; taskID: string; delivered: boolean }): Promise<void> {
+    try {
+      await LoopJob.settleDetached(input.sessionID)
+    } catch (error) {
+      log.warn("child detached work failed to settle before worktree cleanup", { taskID: input.taskID, error })
+    }
+    await CortexWorkspace.cleanup({ sessionID: input.sessionID, taskID: input.taskID })
+    if (!input.delivered) return
+    const settled = await record(() =>
+      Session.update(input.sessionID, (draft) => {
+        if (draft.cortex) draft.cortex.settledAt = Date.now()
+      }),
+    )
+    const parent = await RolloutLifecycle.parent(settled)
+    if (parent?.owner.kind === "session" && parent.runID)
+      await RolloutLifecycle.reconcile(parent.owner.sessionID, parent.runID)
   }
 }

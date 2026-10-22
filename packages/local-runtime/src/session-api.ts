@@ -91,8 +91,8 @@ export async function submitInput(input: InvokeInput): Promise<SessionInbox.Inpu
     )
     runID = rootID
     if (!idleNoReply) {
-      if (newTask) await SessionLifecycle.clear(input.sessionID)
-      else await takeSessionBack(input.sessionID)
+      if (newTask) await SessionLifecycle.startNewTask(input.sessionID)
+      else await SessionLifecycle.resume(input.sessionID)
     }
   }
   if (idleNoReply) SessionManager.scheduleWake(item.sessionID, "durable-no-reply-input")
@@ -119,8 +119,8 @@ export async function retryInput(input: { sessionID: string; itemID: string }): 
     using control = await Lock.write(`session-control:${input.sessionID}`)
     if (await SessionLifecycle.snapshot(input.sessionID)) await SessionManager.waitForIdle(input.sessionID)
     item = await SessionInbox.rearm(input)
-    if (item.mode === "task") await SessionLifecycle.clear(input.sessionID)
-    else await takeSessionBack(input.sessionID)
+    if (item.mode === "task") await SessionLifecycle.startNewTask(input.sessionID)
+    else await SessionLifecycle.resume(input.sessionID)
   }
   scheduleInput(item, "user-input-retry")
   return item
@@ -130,17 +130,6 @@ export async function restoreInput(input: { sessionID: string; itemID: string })
   using control = await Lock.write(`session-control:${input.sessionID}`)
   const result = await SessionInbox.restore(input)
   if (result.restored && result.item.status !== "failed") scheduleInput(result.item, "user-input-restored")
-}
-
-async function takeSessionBack(sessionID: string): Promise<void> {
-  const session = await Session.get(sessionID)
-  if (session.paused) await SessionManager.waitForIdle(sessionID)
-  const rolledBack = session.paused && (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
-  if (session.paused && !rolledBack && !SessionManager.isRunning(sessionID)) {
-    const runID = await SessionInbox.latestRootID(sessionID)
-    if (runID) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), runID)
-  }
-  await SessionLifecycle.clear(sessionID)
 }
 
 export async function createSession(
@@ -274,7 +263,7 @@ export async function submitCommand(input: Parameters<typeof SessionInvoke.comma
 /**
  * Resume a session that stopped mid-work, from its breakpoint.
  *
- * The take-back is the shared `takeSessionBack` step. Continue is additionally
+ * The take-back is the shared `SessionLifecycle.resume` step. Continue is additionally
  * forced when the session really is holding an interrupted breakpoint: the
  * shared continuation gate requires a *terminal* assistant on the latest
  * reply-required root, while an interrupted turn is deliberately non-terminal,
@@ -293,7 +282,7 @@ export async function continueSession(sessionID: string): Promise<boolean> {
   {
     using control = await Lock.write(`session-control:${sessionID}`)
     await SessionExecutionOwners.assertResume(await Session.get(sessionID))
-    await takeSessionBack(sessionID)
+    await SessionLifecycle.resume(sessionID)
     const messages = await SessionHistory.modelMessages({ sessionID })
     interrupted = SessionProgress.pendingReply(messages)
   }
