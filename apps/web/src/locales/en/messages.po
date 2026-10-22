@@ -11100,7 +11100,7 @@ msgstr "URL"
 msgid "browser.summary.value-length"
 msgstr "Value length"
 
-#. js-lingui-explicit-id
+#. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "browser.tab.copyAddress"
 msgstr "Copy page address"
 

@@ -124,6 +124,7 @@ export const browser = {
   developerTools: { id: "app.browser.developerTools", message: "Developer tools" },
   openExternal: { id: "app.browser.openExternal", message: "Open in default browser" },
   copyLink: { id: "app.browser.copyLink", message: "Copy link" },
+  copyAddress: { id: "browser.tab.copyAddress", message: "Copy page address" },
   importData: { id: "app.browser.importData", message: "Import browser data" },
   settings: { id: "app.browser.settings", message: "Browser settings" },
   newTab: { id: "browser.tabs.empty", message: "New tab" },
