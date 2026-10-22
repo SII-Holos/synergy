@@ -401,9 +401,7 @@ for (const ended of [false, true]) {
                   .sort((a, b) => a.top - b.top)
                 return rows.every((rect, i) => i === 0 || rect.top >= rows[i - 1].bottom - 1)
               })
-              await target.evaluate(async () => {
-                for (let frame = 0; frame < 4; frame++) await new Promise(requestAnimationFrame)
-              })
+              await frames(target)
             }
             const result = await target.evaluate(
               async ({ ended, reading, delayed }) => {
