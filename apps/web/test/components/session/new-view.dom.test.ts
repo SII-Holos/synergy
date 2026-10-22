@@ -189,7 +189,10 @@ test("plain greeting stays reachable in light and dark narrow and short viewport
       for (const action of await actions.all()) {
         const actionBounds = await action.boundingBox()
         expect(actionBounds).not.toBeNull()
-        expect(actionBounds!.height).toBeGreaterThanOrEqual(36)
+        // The greeting row is the only project and file entry point on a new
+        // task, so narrow layouts must clear the touch floor; the desktop row
+        // keeps its original 36-pixel height.
+        expect(actionBounds!.height).toBeGreaterThanOrEqual(viewport.width < 768 ? 44 : 36)
         expect(actionBounds!.x).toBeGreaterThanOrEqual(0)
         expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(viewport.width)
         expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(viewport.height)
