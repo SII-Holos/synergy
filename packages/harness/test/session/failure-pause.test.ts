@@ -129,6 +129,9 @@ test("terminal provider errors pause interactive sessions", () =>
         expect(SessionManager.isRunning(session.id)).toBe(false)
         const paused = await SessionLifecycle.snapshot(session.id)
         expect(paused).toMatchObject({ reason: "failed", description: failure })
+        const previous = messages.find((message) => message.info.role === "user")!
+        const next = { ...previous, info: { ...previous.info, id: "new-root", rootID: "new-root" } }
+        expect(SessionInvoke.selectResultMessage([...messages, next])).toBeUndefined()
       },
     }),
   ))

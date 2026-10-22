@@ -53,7 +53,7 @@ test("each block is durable while progress is bounded by time and bytes", () =>
     const start = await f.revision()
     const block = new TextEncoder().encode("data: {}\n\n")
     for (let i = 0; i < 40; i++) await f.chunk(block)
-    expect(await f.revision()).toBe(start)
+    expect(await f.revision()).toBe(start + 1)
     const durable = await RolloutArtifact.get(f.owner, f.initial.response!.id)
     expect(durable.bytes).toBe(block.length * 40)
     const chunks = []
@@ -61,9 +61,9 @@ test("each block is durable while progress is bounded by time and bytes", () =>
     expect(Buffer.concat(chunks)).toEqual(Buffer.concat(Array.from({ length: 40 }, () => block)))
     f.advance(1000)
     await f.chunk(block)
-    expect(await f.revision()).toBe(start + 1)
-    for (let i = 0; i < 4; i++) await f.chunk(new Uint8Array(256 * 1024))
     expect(await f.revision()).toBe(start + 2)
+    for (let i = 0; i < 4; i++) await f.chunk(new Uint8Array(256 * 1024))
+    expect(await f.revision()).toBe(start + 3)
     await f.recorder.finish()
   }))
 
@@ -73,14 +73,15 @@ test("recovery finds committed bytes newer than the progress journal", () =>
     const start = await f.revision()
     const bytes = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"retained"}}]}\n\n')
     await f.chunk(bytes)
-    expect(await f.revision()).toBe(start)
+    await f.chunk(bytes)
+    expect(await f.revision()).toBe(start + 1)
     await RolloutRecovery.owner(f.owner)
     const attempt = (await RolloutSnapshot.read(f.owner)).attempts[0]!
     expect(attempt.status).toBe("interrupted")
-    expect(attempt.response?.bytes).toBe(bytes.length)
+    expect(attempt.response?.bytes).toBe(bytes.length * 2)
     const chunks = []
     for await (const chunk of RolloutArtifact.read(f.owner, attempt.response!)) chunks.push(chunk)
-    expect(Buffer.concat(chunks)).toEqual(Buffer.from(bytes))
+    expect(Buffer.concat(chunks)).toEqual(Buffer.concat([bytes, bytes]))
   }))
 
 test.each(["completed", "cancelled", "failed"] as const)("%s flushes final usage and pending progress", (status) =>
@@ -93,7 +94,7 @@ test.each(["completed", "cancelled", "failed"] as const)("%s flushes final usage
         'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":7,"total_tokens":17}}\n\n',
       ),
     )
-    expect(await f.revision()).toBe(start + 1)
+    expect(await f.revision()).toBe(start + 2)
     await f.recorder.emit({
       type: "body-end",
       attemptID: f.attemptID,

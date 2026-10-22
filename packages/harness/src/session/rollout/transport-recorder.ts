@@ -94,6 +94,7 @@ export namespace RolloutTransportRecorder {
           await writer.append(event.data)
           attempt.progressBytes += event.data.byteLength
           if (
+            (event.data.byteLength > 0 && !attempt.value[event.channel]?.bytes) ||
             now() - attempt.progressAt >= 1000 ||
             attempt.progressBytes >= 1024 * 1024 ||
             attempt.usage?.hasFinalUsage()

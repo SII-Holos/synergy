@@ -116,7 +116,7 @@ export namespace SessionDrive {
 
   /** Whether the pause latch forbids automatic driving of this session. */
   async function isPaused(sessionID: string): Promise<boolean> {
-    const session = await SessionManager.getSession(sessionID).catch(() => undefined)
+    const session = await SessionManager.getSession(sessionID)
     return SessionLifecycle.blocksDrive(session)
   }
 }

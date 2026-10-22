@@ -7,7 +7,6 @@ const themeContext = await Bun.file(new URL("../../../packages/ui/src/theme/cont
 const globalSync = await Bun.file(new URL("../src/context/global-sync.tsx", import.meta.url)).text()
 const css = await Bun.file(new URL("../src/index.css", import.meta.url)).text()
 const defaultSession = await Bun.file(new URL("../src/plugin/default-session.tsx", import.meta.url)).text()
-const sessionPage = await Bun.file(new URL("../src/pages/session.tsx", import.meta.url)).text()
 const desktopThemeSync = await Bun.file(
   new URL("../src/components/app-shell/desktop-theme-sync.tsx", import.meta.url),
 ).text()
@@ -121,15 +120,12 @@ describe("app boot shell", () => {
     expect(themeContext).not.toContain("const savedScheme = getSavedColorScheme()")
   })
 
-  test("uses theme-backed workbench backgrounds for full-app and session loading fallbacks", () => {
+  test("uses theme-backed backgrounds for full-app loading and the workbench frame", () => {
     const loadingClass =
       "synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak"
 
     expect(app).toContain(`class="${loadingClass}"`)
     expect(globalSync).toContain(`class="${loadingClass}"`)
-    expect(sessionPage).toContain(
-      'class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger"',
-    )
     expect(defaultSession).toContain(
       'class="synergy-workbench-canvas relative bg-background-stronger size-full overflow-hidden flex flex-col"',
     )

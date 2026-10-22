@@ -8,7 +8,7 @@ Transport blocks repeat attempt journal and Usage updates even when only byte co
 
 ## Decision
 
-Every admitted transport block still commits its artifact manifest before delivery. The recorder publishes attempt and Usage progress on the next block after one second, after one MiB, or when final provider usage is available. Response metadata, body completion, cancellation, failure and interruption retain immediate publication. Recovery resolves the artifact identity against its durable manifest, including bytes committed after the last progress event. This changes publication cadence without changing stored formats or running historical conversion.
+Every admitted transport block still commits its artifact manifest before delivery. The recorder publishes attempt and Usage progress on the first nonempty block of each channel, then on the next block after one second, after one MiB, or when final provider usage is available. Response metadata, body completion, cancellation, failure and interruption retain immediate publication. Recovery resolves the artifact identity against its durable manifest, including bytes committed after the last progress event. This changes publication cadence without changing stored formats or running historical conversion.
 
 Cursor ranges remain bounded by 50 ms and 128 Scopes. An unsequenced frame does not participate in replay ordering and does not flush that Scope's pending range. A sequenced visible frame still receives its preceding cursor first; noncontiguous ranges and epoch changes remain distinct.
 

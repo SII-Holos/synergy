@@ -1058,6 +1058,7 @@ test("bottom resize starts at the top edge and grows when dragged upward", async
   await openSurfaces()
   const root = page.locator(".workbench-surface--bottom")
   const handle = root.getByRole("separator")
+  await handle.click({ trial: true })
   const box = (await handle.boundingBox())!
   const before = (await root.boundingBox())!
   expect(Math.abs(box.y - before.y)).toBeLessThan(6)

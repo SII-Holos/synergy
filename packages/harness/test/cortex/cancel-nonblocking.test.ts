@@ -15,7 +15,12 @@ function reset() {
 
 describe("Cortex non-blocking cancel", () => {
   beforeEach(() => runtime.run(reset))
-  afterEach(() => runtime.run(reset))
+  afterEach(() =>
+    runtime.run(async () => {
+      await Cortex.drain()
+      reset()
+    }),
+  )
 
   test.each([
     { operation: "cancel", count: 1 },
@@ -90,7 +95,7 @@ describe("Cortex non-blocking cancel", () => {
             clearTimeout(timer)
             release.resolve()
             await Promise.allSettled(invocations)
-            await new Promise<void>((resolve) => setImmediate(resolve))
+            await Cortex.drain()
             invoke.mockRestore()
           }
         },

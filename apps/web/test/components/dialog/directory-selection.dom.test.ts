@@ -132,11 +132,10 @@ test("explicit choices survive navigation without selecting any ancestors", asyn
 test("folder selection and keyboard navigation are independent", async () => {
   await open()
   const checkbox = page.getByRole("checkbox", { name: "Select folder: Projects", exact: true })
-  await checkbox.focus()
-  await page.keyboard.press("Space")
+  await checkbox.press("Space")
   expect(await checkbox.isChecked()).toBe(true)
   expect((await facts()).requests).toEqual(["/fixture"])
-  await page.keyboard.press("Space")
+  await checkbox.press("Space")
   await page.getByRole("button", { name: "Projects", exact: true }).focus()
   await page.keyboard.press("ArrowRight")
   await page.getByRole("button", { name: "des-intelli", exact: true }).waitFor()

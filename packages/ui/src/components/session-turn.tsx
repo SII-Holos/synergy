@@ -1434,9 +1434,7 @@ export function SessionTurn(
       ? { type: "busy" as const, activity: props.submission.activity }
       : view.statusFor(props.sessionID),
   )
-  const showCurrentActivity = createMemo(
-    () => sessionStatus()?.type !== "retry" && shouldShowCurrentActivity({ working: working(), hasError: !!error() }),
-  )
+  const showCurrentActivity = createMemo(() => shouldShowCurrentActivity({ working: working(), hasError: !!error() }))
   const foregroundOutcome = () => {
     const status = props.executionState?.status
     return status === "completed" || status === "failed" ? status : undefined
@@ -1951,7 +1949,6 @@ export function SessionTurn(
                       <SessionRecovery
                         sessionID={props.sessionID}
                         rootID={props.rootMessage.rootID ?? props.rootMessage.id}
-                        messageID={recoveryMessage()?.id}
                         providerID={recoveryMessage()?.providerID}
                         current={isLastUserMessage()}
                         status={sessionStatus()}

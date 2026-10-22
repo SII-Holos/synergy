@@ -10,6 +10,53 @@ import { TransactionalStore } from "../../src/storage/transactional-store"
 import { SegmentedBackup } from "../../src/storage/segmented-backup"
 import { SessionCompat } from "../../src/session/compat-import"
 
+test("preparation admission observes the locator in its enclosing transaction", () =>
+  runtime.run(() =>
+    Storage.transaction(async () => {
+      const sessionID = crypto.randomUUID()
+      const key = StorageCompat.locatorKey(sessionID)
+      await Storage.write(key, { sessionID, scopeID: "scope", status: "pending" })
+      await expect(SessionCompat.requireImported(sessionID)).rejects.toThrow(
+        "Import the deferred Session before opening a business transaction",
+      )
+      await Storage.write(key, { sessionID, scopeID: "scope", status: "imported" })
+      expect(await SessionCompat.requireImported(sessionID)).toMatchObject({ sessionID, status: "imported" })
+    }),
+  ))
+
+test("slow storage admission does not classify ready Sessions as historical preparation", () =>
+  runtime.run(async () => {
+    const store = Storage.current().store
+    const imported = { sessionID: crypto.randomUUID(), scopeID: "scope", status: "imported" as const }
+    const fresh = crypto.randomUUID()
+    await StorageCompat.writeLocator(store, imported)
+    const acquired = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const reader = store.snapshot(async () => {
+      acquired.resolve()
+      await release.promise
+    })
+    await acquired.promise
+    const results = Promise.allSettled([
+      SessionCompat.requireImported(fresh),
+      SessionCompat.requireImported(imported.sessionID),
+    ])
+    try {
+      await Bun.sleep(1600)
+    } finally {
+      release.resolve()
+      await reader
+    }
+    try {
+      expect(await results).toEqual([
+        { status: "fulfilled", value: { sessionID: fresh, scopeID: "", status: "imported" } },
+        { status: "fulfilled", value: imported },
+      ])
+    } finally {
+      await SessionCompat.drain()
+    }
+  }))
+
 for (const category of ["retryable", "integrity"] as const) {
   test(`an active retry supersedes its previous ${category} failure until it settles`, () =>
     runtime.run(async () => {

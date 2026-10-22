@@ -1,5 +1,6 @@
 import { useViewActivity } from "@/context/view-residency"
 import { ConversationPresentation } from "@/components/session/conversation-presentation"
+import { ConversationLoadingPlaceholder } from "@/components/session/conversation-loading-placeholder"
 import { useFileRestore } from "@/components/session/file-restore-dialog-loader"
 import { isSessionSubmissionContentReady } from "@/components/session/session-transition-handoff"
 import { submissionPartPage } from "@/context/session-submission-view"
@@ -41,7 +42,6 @@ import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
 import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -2361,7 +2361,7 @@ function SessionPageContent() {
           onWorkspaceTransition={startWorkspaceTransition}
           sessionTransitionPending={sessionTransitionPending}
         />
-        <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
+        <div class="relative flex-1 min-h-0 min-w-0 overflow-hidden">
           <Switch>
             <Match
               when={
@@ -2393,20 +2393,20 @@ function SessionPageContent() {
                 <Match
                   when={conversationLoadView().type === "loading" || conversationLoadView().type === "delayed-loading"}
                 >
-                  <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
-                    <Spinner class="size-10 text-text-weak" />
-                    <span class="text-sm text-text-weak">{i18n._(AP.sessionLoading.id)}</span>
-                    <Show when={conversationLoadView().type === "delayed-loading"}>
-                      <button
-                        type="button"
-                        class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
-                        onClick={() => void refreshConversation()}
-                      >
-                        <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                        <span>{i18n._(AP.sessionRetry.id)}</span>
-                      </button>
-                    </Show>
-                  </div>
+                  <ConversationLoadingPlaceholder
+                    action={
+                      conversationLoadView().type === "delayed-loading" ? (
+                        <button
+                          type="button"
+                          class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-text-weak transition-colors hover:bg-background-base hover:text-text-base"
+                          onClick={() => void refreshConversation()}
+                        >
+                          <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                          <span>{i18n._(AP.sessionRetry.id)}</span>
+                        </button>
+                      ) : undefined
+                    }
+                  />
                 </Match>
                 <Match when={conversationLoadView().type === "initial-error"}>
                   <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">

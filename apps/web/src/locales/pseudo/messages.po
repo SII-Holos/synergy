@@ -16922,12 +16922,16 @@ msgstr ""
 msgid "session.activity.responding"
 msgstr ""
 
-#. js-lingui-explicit-id
+#. Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
 msgid "session.activity.retry"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.activity.retryingInput"
+msgstr ""
+
+#. Only local backoff owns a deadline; provider admission and the in-flight attempt own a wait.
+msgid "session.activity.retryProvider"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27087,15 +27091,7 @@ msgstr "⟦Generation failed⟧"
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
 
-#. js-lingui-explicit-id
-msgid "ui.recovery.connecting"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.countdown"
-msgstr ""
-
-#. js-lingui-explicit-id
+#. countdown always belongs to a numbered attempt.
 msgid "ui.recovery.countdownAttempt"
 msgstr ""
 
@@ -27104,15 +27100,7 @@ msgid "ui.recovery.failed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "ui.recovery.provider"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "ui.recovery.reconnect"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.retry"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27125,10 +27113,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.recovery.starting"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "ui.recovery.waitingResponse"
 msgstr ""
 
 #. js-lingui-explicit-id

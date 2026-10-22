@@ -3,11 +3,10 @@ import type { JSX } from "solid-js"
 import { Show, batch, createSignal, onCleanup, useContext } from "solid-js"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { AP } from "@/app-i18n"
 import type { PluginConversationViewport } from "@ericsanchezok/synergy-plugin"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { SessionPromptDockAnchor } from "./workbench-chrome"
+import { ConversationLoadingPlaceholder } from "./conversation-loading-placeholder"
 import "./conversation-viewport.css"
 import { useViewActivity } from "@/context/view-residency"
 
@@ -79,10 +78,7 @@ export function ConversationViewport(props: {
   return (
     <div ref={setContainer} class="relative w-full h-full min-w-0">
       <Show when={props.ready === false}>
-        <div class="absolute inset-0 flex flex-col items-center justify-center gap-3" role="status">
-          <Spinner class="size-10 text-text-weak" />
-          <span class="text-sm text-text-weak">{_(AP.sessionLoading)}</span>
-        </div>
+        <ConversationLoadingPlaceholder />
       </Show>
       <Show when={props.overlay}>{props.overlay}</Show>
       <Show when={props.hasUnseenLatest || (props.scrolledUp && hasContentBelow())}>

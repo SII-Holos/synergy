@@ -593,6 +593,7 @@ test("dashboard request inspection returns to the same scope, selection, focus a
   const scroll = await page.locator(".context-dashboard").evaluate((element) => element.scrollTop)
   await open.click()
   await page.locator(".execution-request-summary").waitFor()
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Back to trajectory")
   expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Back to trajectory")
   expect(
     await page.evaluate(

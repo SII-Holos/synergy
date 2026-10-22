@@ -360,6 +360,7 @@ export namespace ExecutionService {
             scopeID: session.scope.id,
             sessionID: session.id,
           })),
+          signal,
         ),
     )
     const nodes: ExecutionSchema.Node[] = []

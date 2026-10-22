@@ -453,6 +453,15 @@ test("prompt selects the default, submits edited and empty values, cancels separ
   await page.getByRole("button", { name: "Open prompt" }).click()
   const input = page.getByRole("textbox", { name: "Response", exact: true })
   await input.waitFor()
+  await page.waitForFunction(() => {
+    const input = document.activeElement
+    return (
+      input instanceof HTMLInputElement &&
+      input.value === "Default draft" &&
+      input.selectionStart === 0 &&
+      input.selectionEnd === input.value.length
+    )
+  })
   expect(
     await input.evaluate((node) => {
       const input = node as HTMLInputElement
