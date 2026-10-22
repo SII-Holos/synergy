@@ -366,6 +366,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
               <button
                 type="button"
                 class="settings-archive-control-label flex items-center gap-2 text-left text-text-base disabled:cursor-not-allowed disabled:opacity-50"
+                data-settings-surface="plain"
                 disabled={items().length === 0 || busy()}
                 onClick={toggleSelectVisible}
               >
@@ -433,6 +434,7 @@ export function ArchivedSessionsPanel(props: { popoverLayer?: HTMLElement }) {
                           <button
                             type="button"
                             class="mt-0.5 shrink-0"
+                            data-settings-surface="plain"
                             aria-label={`${selected() ? _(deselectLabel) : _(selectLabel)} ${item.title || _(untitledSessionLabel)}`}
                             disabled={busy()}
                             onClick={() => toggleSelected(item)}
