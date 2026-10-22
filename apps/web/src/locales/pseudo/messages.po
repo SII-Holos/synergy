@@ -14559,6 +14559,10 @@ msgid "prompt.long.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr ""
 

@@ -14559,6 +14559,10 @@ msgid "prompt.long.expand"
 msgstr "Expand editor"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr "Drag up or down to resize the editor"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr "Markdown formatting"
 

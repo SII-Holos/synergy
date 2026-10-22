@@ -14559,6 +14559,10 @@ msgid "prompt.long.expand"
 msgstr "展开编辑器"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr "向上或向下拖动可调整编辑器大小"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr "Markdown 格式"
 

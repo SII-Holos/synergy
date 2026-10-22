@@ -185,9 +185,6 @@ function ScopeListView(props: {
   const { _ } = useLingui()
   const dialog = useDialog()
   const { pickProjectDirectories } = useProjectDirectoryPicker()
-  // Derived strings must be produced inside the reactive accessor; building them
-  // once at mount pins the mount-time locale and the row stops following a
-  // locale switch while the rest of the drawer updates.
   const accountLabels = (): AccountIdentityLabels => ({
     product: _({ id: "brand.workbench.synergy", message: "Synergy workspace" }),
     holosAccount: _({ id: "sidebar.account.holos", message: "HOLOS account" }),
@@ -201,6 +198,9 @@ function ScopeListView(props: {
     disabled: _(sidebar.disabled),
     unavailable: _(sidebar.notAvailable),
   })
+  // Derived strings are produced inside the reactive accessor; building them
+  // once at mount pins the mount-time locale and the row stops following a
+  // locale switch while the rest of the drawer updates.
   const account = () =>
     resolveAccountIdentity({
       hasHolos: globalSDK.capabilities.has("holos"),

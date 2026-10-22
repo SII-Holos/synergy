@@ -1572,10 +1572,6 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const [holosStatusOpen, setHolosStatusOpen] = createSignal(false)
 
   const hasHolos = () => props.globalSDK.capabilities.has("holos")
-  // Translation runs inside the reactive accessor rather than at mount: the
-  // labels are derived strings, so a locale switch must recompute them or the
-  // account row keeps the previous language while the rest of the surface
-  // updates.
   const accountLabels = (): AccountIdentityLabels => ({
     product: _({ id: "brand.workbench.synergy", message: "Synergy workspace" }),
     holosAccount: _({ id: "sidebar.account.holos", message: "HOLOS account" }),
@@ -1589,8 +1585,10 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
     disabled: _(sidebar.disabled),
     unavailable: _(sidebar.notAvailable),
   })
-  // The name, description and connection tone come from the shared derivation so
-  // this surface and the mobile drawer cannot disagree about the same identity.
+  // The name, description and tone come from the shared derivation so this
+  // surface and the mobile drawer cannot disagree about one identity, and the
+  // labels are translated inside the accessor rather than at mount so a locale
+  // switch recomputes the account row with the rest of the surface.
   const account = () =>
     resolveAccountIdentity({
       hasHolos: hasHolos(),
