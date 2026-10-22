@@ -443,6 +443,37 @@ test("settings actions, inputs and choices share the borderless menu surface wit
   }
 })
 
+test("entity card rows keep their card surface while ordinary settings actions keep the inset fill", async () => {
+  for (const theme of ["light", "dark"]) {
+    await page.goto(url + "?theme=" + theme)
+    await page.mouse.move(0, 0)
+    await page.getByRole("button", { name: "MCP page", exact: true }).click()
+    const card = page.locator(".settings-mcp-card").first()
+    const summary = card.locator(".settings-mcp-summary").first()
+    const resting = await summary.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return { background: style.backgroundColor, border: style.borderTopWidth, shadow: style.boxShadow }
+    })
+    expect(resting).toEqual({ background: "rgba(0, 0, 0, 0)", border: "0px", shadow: "none" })
+    const action = page.getByRole("button", { name: "Add server", exact: true })
+    expect(await action.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)")
+
+    const builtin = page.locator(".settings-mcp-card").last().locator(".settings-mcp-summary").first()
+    expect(await builtin.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+
+    await page.getByRole("button", { name: "Models page", exact: true }).click()
+    const info = page.locator(".settings-model-info-button").first()
+    expect(await info.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    const infoHandle = await info.elementHandle()
+    await info.hover()
+    await page.waitForFunction(
+      (element) => getComputedStyle(element!).backgroundColor !== "rgba(0, 0, 0, 0)",
+      infoHandle,
+    )
+    expect(errors).toEqual([])
+  }
+})
+
 test("wide and narrow settings selectors keep the value leading and the chevron trailing", async () => {
   for (const width of [1280, 375, 320]) {
     await page.setViewportSize({ width, height: 800 })

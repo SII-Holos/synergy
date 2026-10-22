@@ -77,6 +77,8 @@ export const SemanticIconToken = {
   "session.archive": "message-square-more",
   "session.context": "chart-pie",
   "session.taskDetails": "file-clock",
+  "execution.trajectory": "footprints",
+  "execution.details": "logs",
   "execution.elapsed": "timer-reset",
   "execution.tokens": "binary",
   "execution.cost": "circle-dollar-sign",

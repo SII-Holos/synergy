@@ -144,6 +144,7 @@ export function ModelRoleRow(props: {
               ref={detailsTrigger}
               type="button"
               class="settings-model-info-button"
+              data-settings-surface="plain"
               aria-label={_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
             >
               <Icon name={getSemanticIcon("action.info")} size="small" />

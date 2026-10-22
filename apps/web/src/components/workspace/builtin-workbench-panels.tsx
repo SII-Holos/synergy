@@ -210,7 +210,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       register({
         id: "trajectory",
         label: i18n._(E.trajectory),
-        icon: getSemanticIcon("performance.trace"),
+        icon: getSemanticIcon("execution.trajectory"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: true,
@@ -235,7 +235,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       register({
         id: "execution-detail",
         label: i18n._(P.executionDetail),
-        icon: getSemanticIcon("performance.trace"),
+        icon: getSemanticIcon("execution.details"),
         surface: "side",
         cardinality: "singleton",
         requiresSession: true,

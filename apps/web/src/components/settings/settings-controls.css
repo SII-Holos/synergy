@@ -1,6 +1,13 @@
 :is(.settings-panel-frame, .settings-control-scope) {
   :is(button, [data-component="button"], [data-component="icon-button"], .provider-auth-link):not(
-    :where(nav *, .settings-panel-navigation *, [role="option"], [role^="menuitem"], [data-slot="list-item"])
+    :where(
+      nav *,
+      .settings-panel-navigation *,
+      [role="option"],
+      [role^="menuitem"],
+      [data-slot="list-item"],
+      [data-settings-surface="plain"]
+    )
   ) {
     border: 0;
     box-shadow: none;

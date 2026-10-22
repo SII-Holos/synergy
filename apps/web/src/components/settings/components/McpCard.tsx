@@ -58,6 +58,7 @@ export function McpCard(props: {
         <button
           type="button"
           class="settings-mcp-summary"
+          data-settings-surface="plain"
           data-mcp-entry-index={props.index}
           aria-label={_({
             id: "settings.mcp.card.configure.named",

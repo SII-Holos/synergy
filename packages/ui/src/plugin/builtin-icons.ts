@@ -74,6 +74,7 @@ const builtinIconNames = [
   "columns-2",
   "wrap-text",
   "folders",
+  "footprints",
   "message-square-text",
   "timer-reset",
   "binary",

@@ -122,6 +122,13 @@ describe("semantic icons", () => {
     expect(getSemanticIcon("window.restore")).toBe("minimize-2")
   })
 
+  test("execution trajectory, execution details and task details stay visually distinct", () => {
+    const glyphs = ["execution.trajectory", "execution.details", "session.context"].map((token) =>
+      getSemanticIcon(token as Parameters<typeof getSemanticIcon>[0]),
+    )
+    expect(new Set(glyphs).size).toBe(glyphs.length)
+  })
+
   test("semantic tokens do not reuse Lucide glyphs for different meanings", () => {
     const grouped = new Map<string, string[]>()
     for (const [token, icon] of Object.entries(SemanticIconToken)) {

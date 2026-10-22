@@ -39,12 +39,11 @@ function Details(props: { sessionID: string; hasCanonicalRoot?: boolean; inboxFr
         <Tooltip value={_(E.trajectory)} placement="bottom">
           <button
             type="button"
-            class="stb-selector-btn execution-trajectory-trigger"
+            class="stb-icon-btn execution-trajectory-trigger"
             aria-label={_(E.trajectory)}
             onClick={() => void execution.openTrajectory()}
           >
-            <Icon name={getSemanticIcon("performance.trace")} size="small" />
-            <span class="hidden md:inline">{_({ id: "execution.trajectory.short", message: "Trajectory" })}</span>
+            <Icon name={getSemanticIcon("execution.trajectory")} size="small" />
           </button>
         </Tooltip>
       </Show>
