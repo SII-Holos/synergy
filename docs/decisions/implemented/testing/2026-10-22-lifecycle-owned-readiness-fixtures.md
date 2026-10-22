@@ -8,7 +8,7 @@ Concurrent CI work exposed fixtures that confused elapsed host time with the beh
 
 ## Decision
 
-The healthy heartbeat test advances its logical clock through four real ping/pong exchanges; the silent-tunnel test retains real deadline expiry. Fault-injection observation starts after the recorded native Agent stage begins, with early-exit detection and the existing response deadline. Preparation retains its own bounded lifecycle. The Cortex cancellation fixture registers the production Session runtime so closing its Runtime drains task work and clears retention timers.
+The healthy heartbeat test advances its logical clock through four real ping/pong exchanges; the silent-tunnel test retains real deadline expiry. Fault-injection observation and the compaction fixture's execution deadline start after the recorded native Agent stage begins, with early-exit detection and their existing deadlines. Preparation retains its own bounded lifecycle. The compaction fixture still cancels and drains its owned CLI on timeout. The Cortex cancellation fixture registers the production Session runtime so closing its Runtime drains task work and clears retention timers.
 
 ## Alternatives considered
 
