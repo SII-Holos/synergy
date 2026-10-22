@@ -38,12 +38,14 @@ import { resolveSessionVisualState } from "@/components/sidebar/session-visual-s
 import { resolveAccountIdentity, type AccountIdentityLabels } from "@/components/holos/account-identity"
 import { useHolos } from "@/context/holos"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
+import { useNewTaskNavigation } from "@/components/session/welcome/context"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { MobileDrawerDialog } from "./mobile-drawer-dialog"
 
 export function MobileDrawer(props: { onSearchOpen: () => void }) {
   const layout = useLayout()
   const navigate = useNavigate()
+  const newTask = useNewTaskNavigation(navigate)
   const params = useParams()
   const notification = useNotification()
   const theme = useTheme()
@@ -60,6 +62,14 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
 
   function navigateAndClose(path: string) {
     navigate(path)
+    close()
+  }
+
+  // The desktop sidebar starts a task through `newTask`, which also rotates the
+  // welcome scene. Navigating to the same route alone would leave a phone user
+  // on an unchanged new-task screen with no feedback for the tap.
+  function startNewTask(scopeKey: string) {
+    newTask(base64Encode(scopeKey))
     close()
   }
 
@@ -112,7 +122,7 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
                 currentDir={currentDir()}
                 onSelectScope={setDrilldown}
                 onNavigateHome={() => navigateAndClose(`/${base64Encode("home")}/session`)}
-                onNewSession={() => navigateAndClose(`/${base64Encode("home")}/session`)}
+                onNewSession={() => startNewTask("home")}
                 onClose={close}
               />
             }
@@ -127,7 +137,7 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
                   const scopeKey = session.scope.type === "home" ? "home" : session.scope.id!
                   navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
                 }}
-                onNewSession={() => navigateAndClose(`/${base64Encode(scope().id)}/session`)}
+                onNewSession={() => startNewTask(scope().id)}
                 onClose={close}
               />
             )}
