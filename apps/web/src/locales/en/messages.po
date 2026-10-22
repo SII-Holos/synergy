@@ -14968,6 +14968,13 @@ msgstr "Describe a task, or type / for commands"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr "Describe a task"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.placeholder.techStack"
 msgstr "What is the tech stack of this project?"
 
@@ -27252,6 +27259,10 @@ msgid "welcome.blocks.help"
 msgstr "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop."
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr "Drag sideways to move, tap to rotate, and swipe down to drop. A held drag keeps moving."
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr "Falling blocks"
 
@@ -27264,12 +27275,20 @@ msgid "welcome.blocks.ready"
 msgstr "Click to play · ↑ rotate · Space drop"
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr "Tap to play · Slide to move"
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr "{score} points · {lines} lines"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
 msgstr "Click to continue"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
+msgstr "Tap to continue"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
@@ -27288,12 +27307,20 @@ msgid "welcome.common.statusControl"
 msgstr "Click to play or pause. Escape pauses; R restarts."
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr "Tap to play or pause."
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr "From a spark to something real. What will you create?"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
 msgstr "Bring your ideas to life."
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
+msgstr "Play continues when you move focus away."
 
 #. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
@@ -27314,6 +27341,10 @@ msgstr "Aircraft playfield"
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
 msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair."
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
+msgstr "Drag to steer and touch to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair."
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -27344,6 +27375,10 @@ msgid "welcome.flight.ready"
 msgstr "Move to steer · Click to fly"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr "Drag to steer · Tap to fly"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr "Full health · +{points}"
 
@@ -27372,6 +27407,10 @@ msgid "welcome.slingshot.help"
 msgstr "Pull the courier back and release to topple the guards. Break supports to bring down the structure. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr "Drag the courier back and release to topple the guards. Break supports to bring down the structure."
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr "Try again"
 
@@ -27382,6 +27421,10 @@ msgstr "Pixel slingshot"
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
 msgstr "Level {level} · Pull back and release · {shots} shots"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
+msgstr "Level {level} · Drag back and release · {shots} shots"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
@@ -27400,12 +27443,20 @@ msgid "welcome.stack.help"
 msgstr "Click or press Space to stack the moving floor. Line up the edges."
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr "Tap to stack the moving floor. Line up the edges."
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr "Tiny tower"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
 msgstr "Click to drop"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
+msgstr "Tap to drop"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.result"

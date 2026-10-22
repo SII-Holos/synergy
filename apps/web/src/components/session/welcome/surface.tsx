@@ -17,6 +17,13 @@ export function GameSurface(props: {
   const { i18n } = useLocale()
   const helpID = createUniqueId()
   const releaseInput = () => props.onReleaseInput?.()
+  const statusControlHelp = () =>
+    props.scene.coarsePointer()
+      ? i18n._({ id: "welcome.common.statusControlTouch", message: "Tap to play or pause." })
+      : i18n._({
+          id: "welcome.common.statusControl",
+          message: "Click to play or pause. Escape pauses; R restarts.",
+        })
   onMount(() => {
     if (!props.onReleaseInput) return
     window.addEventListener("blur", releaseInput)
@@ -28,7 +35,7 @@ export function GameSurface(props: {
         class="welcome-game-status"
         type="button"
         aria-describedby={helpID}
-        aria-label={`${props.name} · ${props.status}. ${i18n._({ id: "welcome.common.statusControl", message: "Click to play or pause. Escape pauses; R restarts." })}`}
+        aria-label={`${props.name} · ${props.status}. ${statusControlHelp()}`}
         onClick={(event) => {
           if (props.scene.active() && props.playing) props.scene.pause()
           else {
@@ -47,10 +54,12 @@ export function GameSurface(props: {
       </button>
       <span id={helpID} class="sr-only">
         {props.help}{" "}
-        {i18n._({
-          id: "welcome.common.keyboardHelp",
-          message: "Escape pauses. R restarts. Play continues when you move focus away.",
-        })}
+        {props.scene.coarsePointer()
+          ? i18n._({ id: "welcome.common.touchHelp", message: "Play continues when you move focus away." })
+          : i18n._({
+              id: "welcome.common.keyboardHelp",
+              message: "Escape pauses. R restarts. Play continues when you move focus away.",
+            })}
       </span>
       <div
         class="welcome-game-space"

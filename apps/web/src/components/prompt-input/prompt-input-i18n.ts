@@ -224,6 +224,7 @@ export const PI = {
   // prompt-input.tsx — editor placeholders
   placeholderShell: { id: "prompt.placeholder.shell", message: "Enter shell command..." },
   placeholderPlan: { id: "prompt.placeholder.plan", message: "Plan your approach..." },
+  placeholderTaskCompact: { id: "prompt.placeholder.taskCompact", message: "Describe a task" },
   placeholderExampleGlobal: { id: "prompt.placeholder.exampleGlobal", message: 'Ask me anything… "{example}"' },
   placeholderExampleProject: { id: "prompt.placeholder.exampleProject", message: 'Ask anything… "{example}"' },
   placeholderAskGlobal: { id: "prompt.placeholder.askGlobal", message: "Ask me anything..." },

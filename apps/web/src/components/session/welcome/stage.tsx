@@ -5,6 +5,7 @@ import { createMediaQuery } from "@solid-primitives/media"
 import { useLocale } from "@/context/locale"
 import type { WelcomeMemory, WelcomeSceneDefinition } from "./types"
 import { AmbientField } from "./ambient"
+import { createCoarsePointer } from "./pointer"
 import "./style.css"
 
 export function WelcomeHeading() {
@@ -30,6 +31,7 @@ export function WelcomeStage(props: {
 }) {
   const { i18n } = useLocale()
   const reducedMotion = createMediaQuery("(prefers-reduced-motion: reduce)")
+  const coarsePointer = createCoarsePointer()
   const [paused, setPaused] = createSignal(reducedMotion())
   const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
   const [intersecting, setIntersecting] = createSignal(true)
@@ -152,6 +154,7 @@ export function WelcomeStage(props: {
                 seed={props.seed}
                 active={gameActive}
                 reducedMotion={reducedMotion}
+                coarsePointer={coarsePointer}
                 memory={props.memory}
                 interact={interact}
                 pause={() => setPaused(true)}

@@ -31,8 +31,14 @@ export default function StackScene(props: WelcomeSceneProps) {
         message: "{height} floors · Play again",
         values: { height: state().height },
       })
-    if (!props.active()) return i18n._({ id: "welcome.common.continue", message: "Click to continue" })
-    if (state().phase === "ready") return i18n._({ id: "welcome.stack.ready", message: "Click to drop" })
+    if (!props.active())
+      return props.coarsePointer()
+        ? i18n._({ id: "welcome.common.continueTouch", message: "Tap to continue" })
+        : i18n._({ id: "welcome.common.continue", message: "Click to continue" })
+    if (state().phase === "ready")
+      return props.coarsePointer()
+        ? i18n._({ id: "welcome.stack.readyTouch", message: "Tap to drop" })
+        : i18n._({ id: "welcome.stack.ready", message: "Click to drop" })
     return `${state().height}${state().combo > 1 ? ` · ×${state().combo}` : ""}${state().height > 0 && state().height % 12 === 0 ? " · ★" : ""}`
   }
   function block(
@@ -145,10 +151,17 @@ export default function StackScene(props: WelcomeSceneProps) {
         playing={state().phase === "playing"}
         onAction={act}
         onReset={reset}
-        help={i18n._({
-          id: "welcome.stack.help",
-          message: "Click or press Space to stack the moving floor. Line up the edges.",
-        })}
+        help={
+          props.coarsePointer()
+            ? i18n._({
+                id: "welcome.stack.helpTouch",
+                message: "Tap to stack the moving floor. Line up the edges.",
+              })
+            : i18n._({
+                id: "welcome.stack.help",
+                message: "Click or press Space to stack the moving floor. Line up the edges.",
+              })
+        }
         onKey={(e) => {
           if (e.key === " " || e.key === "Enter") {
             e.preventDefault()

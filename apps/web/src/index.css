@@ -1744,7 +1744,10 @@ a {
   }
 
   .session-prompt-dock.safe-bottom {
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    /* Keyboards that resize the layout viewport leave `safe-area-inset-bottom`
+       unchanged, so the home indicator gap would remain above the keyboard.
+       VirtualKeyboard exposes the overlap instead; take whichever is larger. */
+    padding-bottom: calc(12px + max(env(safe-area-inset-bottom, 0px), env(keyboard-inset-height, 0px)));
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {

@@ -2666,6 +2666,7 @@ export function createPromptInputController(props: PromptInputProps) {
         if (prompt.dirty()) return
         if (store.mode === "shell") return i18n._(PI.placeholderShell)
         if (planActive()) return i18n._(PI.placeholderPlan)
+        if (!layout.isDesktop()) return i18n._(PI.placeholderTaskCompact)
         return i18n._({ id: "prompt.placeholder.task", message: "Describe a task, or type / for commands" })
       },
     },

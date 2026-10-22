@@ -14968,6 +14968,13 @@ msgstr "⟦Describe a task, or type / for commands⟧"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.placeholder.techStack"
 msgstr "⟦What is the tech stack of this project?⟧"
 
@@ -27252,6 +27259,10 @@ msgid "welcome.blocks.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr ""
 
@@ -27264,11 +27275,19 @@ msgid "welcome.blocks.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27288,11 +27307,19 @@ msgid "welcome.common.statusControl"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27313,6 +27340,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27344,6 +27375,10 @@ msgid "welcome.flight.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr ""
 
@@ -27372,6 +27407,10 @@ msgid "welcome.slingshot.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr ""
 
@@ -27381,6 +27420,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27400,11 +27443,19 @@ msgid "welcome.stack.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
