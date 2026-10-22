@@ -203,6 +203,7 @@ export const PI = {
   abandonDone: { id: "prompt.control.abandonDone", message: "Execution abandoned" },
   abandonFailed: { id: "prompt.control.abandonFailed", message: "Failed to abandon the session" },
   selectAgent: { id: "prompt.selectAgent", message: "Select agent" },
+  composerControls: { id: "prompt.composerControls", message: "Composer options" },
   externalAgentBlocked: {
     id: "prompt.externalAgentBlocked",
     message: "Create a new session to use this external agent",

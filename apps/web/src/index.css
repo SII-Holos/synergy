@@ -1934,3 +1934,83 @@ a {
 .conversation-column-resize-handle:focus-visible {
   background: transparent;
 }
+
+/* The chips row is a layout wrapper only: on desktop it must not alter the
+   existing context line, so it participates as if absent. Narrow layouts turn
+   the same slot into one horizontally scrollable line so agent, permission and
+   workflow chips stay reachable without a second toolbar row. */
+.composer-chips-row {
+  display: contents;
+}
+
+@media (max-width: 767px) {
+  .composer-chips-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .composer-chips-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .composer-chips-row > .session-work-context {
+    flex: none;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .mobile-composer-chips {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .mobile-composer-chips .prompt-input-toolbar-button {
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Without this the toolbar wraps into two rows at 343px: the main group and
+     the action group each exceeded the line. Keeping one row is what makes the
+     card short enough to leave the conversation readable. */
+  .synergy-workbench-canvas .prompt-input-toolbar,
+  .synergy-workbench-canvas .prompt-input-toolbar-main {
+    flex-wrap: nowrap;
+  }
+
+  .synergy-workbench-canvas .prompt-input-toolbar {
+    padding: 2px 8px 6px;
+  }
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  /* A 24px drag grip is not a reliable touch target, and the corner control
+     already resizes the same editor. Dropping the grip on touch keeps one
+     sizing action per surface instead of two competing ones. */
+  .composer-resize-controls {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  /* Two rows of chrome above the editor already cost 44px; the remaining
+     padding is what kept the card past its height budget at 375px. */
+  .synergy-workbench-canvas .prompt-input-shell {
+    padding-top: 2px;
+  }
+
+  .synergy-workbench-canvas .prompt-input-toolbar {
+    padding: 0 8px 4px;
+  }
+}
