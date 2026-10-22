@@ -10,7 +10,7 @@ Cortex collections retain the same bounded `TaskSummary` in list, bootstrap and 
 
 Live Agent resource-presentation requests share the existing connection but are not canonical state events, tool-result effects or replayable history. Workbench owns their target-client selection and execution receipts; see [Workbench presentation](workbench-presentation.md).
 
-A retained latest transcript returning to the foreground keeps its last renderable row mounted until hydration settles, including when a running process completes during that return. History reading and explicit location anchors retain their existing ownership.
+A retained latest transcript returning to the foreground keeps its last renderable row and latest answer body mounted until hydration settles, including when a running process completes during that return. A footer cannot establish readiness for the pending answer before it. User Markdown reuses completed sanitized HTML synchronously across virtual remounts, keyed by full text and reference ranges within its parser owner. The existing byte-budgeted LRU bounds each owner to 4 MiB; cancelled renders never populate it. Warm messages therefore keep their parsed geometry instead of shrinking to plain text while being parsed again. History reading, inner process reading and explicit location anchors retain their existing measurement and position ownership.
 
 ## Connection Model
 
