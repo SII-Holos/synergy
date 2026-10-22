@@ -3,7 +3,7 @@ import { PassThrough, Writable } from "node:stream"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import type { ProcessHandle } from "../process/handle"
-import type { WorkspaceProtocol } from "../workspace/protocol"
+import { WorkspaceProtocol } from "../workspace/protocol"
 import { WorkspaceMounts } from "../workspace/mount"
 import { Environment } from "."
 import { EnvironmentExecution } from "./execution"
@@ -21,6 +21,7 @@ export namespace EnvironmentProcess {
       stage: z.string(),
       message: z.string(),
       failure: WorkspaceErrors.Failure.optional(),
+      checkpointFailures: z.array(WorkspaceProtocol.CheckpointFailure).optional(),
     }),
   )
   export interface Input {
@@ -108,7 +109,7 @@ export namespace EnvironmentProcess {
         await EnvironmentExecution.stdin(input.id, input.scopeID, bytes.subarray(offset, offset + 65_536))
       if (end) await EnvironmentExecution.stdin(input.id, input.scopeID, new Uint8Array(), true)
     }
-    function fail(reason: unknown) {
+    function fail(reason: unknown, checkpointFailures?: EnvironmentExecution.Info["checkpointFailures"]) {
       if (finished) return
       const error = new Error({
         id: input.id,
@@ -116,6 +117,7 @@ export namespace EnvironmentProcess {
         stage,
         message: reason instanceof globalThis.Error ? reason.message : String(reason),
         failure: WorkspaceErrors.failure(reason),
+        checkpointFailures,
       })
       finished = true
       input.signal?.removeEventListener("abort", abort)
@@ -176,7 +178,7 @@ export namespace EnvironmentProcess {
         }
         if (terminal && cursor >= info.status!.cursor) {
           stage = "saving"
-          await EnvironmentExecution.complete(input.id, input.scopeID)
+          const result = await EnvironmentExecution.complete(input.id, input.scopeID)
           if (info.status!.error)
             throw info.status!.failure
               ? WorkspaceErrors.restore(info.status!.failure)
@@ -202,6 +204,10 @@ export namespace EnvironmentProcess {
                 }),
             ),
           )
+          if (result.checkpointFailures?.length) {
+            fail(WorkspaceErrors.restore(result.checkpointFailures[0].failure), result.checkpointFailures)
+            return
+          }
           finished = true
           input.signal?.removeEventListener("abort", abort)
           child.emit("close", child.exitCode, child.signalCode)

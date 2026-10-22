@@ -203,14 +203,14 @@ export namespace UsageMigration {
         }),
       )
       if (tools)
-        for await (const partRow of Storage.records({
+        for await (const partRow of Storage.records<{ type?: unknown }>({
           kind: "part",
           scopeID: owner.scopeID,
           sessionID: owner.sessionID,
           messageID: message.id,
         })) {
-          const part = MessageV2.Part.parse(upgradeAccessRecord(partRow.key, partRow.value))
-          if (part.type !== "tool") continue
+          if (partRow.value?.type !== "tool") continue
+          const part = MessageV2.ToolPart.parse(upgradeAccessRecord(partRow.key, partRow.value))
           const finished =
             part.state.status === "completed" || part.state.status === "error" ? part.state.time : undefined
           const started = "time" in part.state ? part.state.time.start : message.time.created

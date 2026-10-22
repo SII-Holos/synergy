@@ -65,7 +65,18 @@ describe("resolveSessionVisualState", () => {
   test("shows the retry glyph for retrying sessions", () => {
     const visual = resolveSessionVisualState({
       entry: entry(),
-      status: { type: "retry", attempt: 2, message: "upstream unavailable", next: 1_000 },
+      status: {
+        type: "retry",
+        rootID: "retry-root",
+        messageID: "retry-message",
+        phase: "waiting",
+        error: "rate limited",
+        startedAt: 0,
+        canRetry: true,
+        attempt: 2,
+        message: "upstream unavailable",
+        next: 1_000,
+      },
     })
 
     expect(visual.icon).toBe(getSemanticIcon("session.retry"))

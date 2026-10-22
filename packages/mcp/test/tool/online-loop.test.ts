@@ -55,6 +55,7 @@ test("deterministic model boundary auto-expands online, executes once and retain
     source: "builtin",
     requiresWorkspace: false,
     inputSchema: schema,
+    display: { icon: "telescope" },
     tool: {
       description: definitions.find((tool) => tool.name === "search_papers")!.description,
       inputSchema: jsonSchema(schema),
@@ -285,7 +286,7 @@ test("deterministic model boundary auto-expands online, executes once and retain
                 status: "completed",
                 input: args,
                 output,
-                metadata: expect.objectContaining({ autoExpanded: true }),
+                metadata: expect.objectContaining({ autoExpanded: true, display: { icon: "telescope" } }),
               }),
             }),
           ])

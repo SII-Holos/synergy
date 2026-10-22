@@ -67,6 +67,7 @@ import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { DialogConnectProvider, DialogSelectModel } from "@/components/dialog"
 import { useCommand } from "@/context/command"
 import { useNavigate } from "@solidjs/router"
 import { useLocation, useParams } from "@/context/session-route"
@@ -194,6 +195,7 @@ function SessionPageData() {
   const data = useData()
   const params = useParams()
   const sdk = useSDK()
+  const dialog = useDialog()
   const transitions = useSessionTransition()
   const submission = () => transitions.get(params.id ?? draftTransitionKey(sdk.url, sdk.scopeKey))?.draft
   const preparation = useSessionPreparation()
@@ -207,6 +209,18 @@ function SessionPageData() {
       serverUrl={data.serverUrl}
       onPermissionRespond={data.respondToPermission}
       onNavigateToSession={data.navigateToSession}
+      onSessionRecovery={async (action) => {
+        if (action.kind === "retry") {
+          await sdk.client.session.retryRequest(
+            { sessionID: action.sessionID, messageID: action.messageID },
+            { throwOnError: true },
+          )
+        } else if (action.kind === "authenticate") {
+          dialog.show(() => <DialogConnectProvider provider={action.providerID} />)
+        } else {
+          dialog.show(() => <DialogSelectModel />)
+        }
+      }}
     >
       <SessionPageContent />
     </DataProvider>
@@ -2358,8 +2372,8 @@ function SessionPageContent() {
               <SessionConversation
                 context={conversation}
                 onAdmitted={admittedConversation}
-                onHydrated={(id) => {
-                  if (id === conversationSessionID()) setHydratedConversation(id)
+                onHydrationChange={(id, ready) => {
+                  if (id === conversationSessionID()) setHydratedConversation(ready ? id : undefined)
                 }}
                 initialScrollSettled={() =>
                   !!submissionDraft()?.message ||
@@ -2608,7 +2622,7 @@ function SessionPageContent() {
           layout={sessionLayout}
           workbench={workbenchService}
           views={views}
-          fallback={() => <DefaultSession context={{ layout: sessionLayout }} />}
+          fallback={() => <DefaultSession context={{ layout: sessionLayout }} column={layout.conversation} />}
         />
       </SessionDecisionHost>
     </>

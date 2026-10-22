@@ -1,6 +1,7 @@
 import { SecretDetection } from "@ericsanchezok/synergy-secret-detection"
 import { SecretDetectorSource } from "./detector-source"
 import { SecretVault } from "./vault"
+import { createHash } from "node:crypto"
 
 export namespace SecretMask {
   const MASKABLE_KEYS = new Set([
@@ -57,16 +58,34 @@ export namespace SecretMask {
     signal?: AbortSignal,
   ): Promise<string> {
     if (!text) return text
-    const result = await SecretDetection.detect(
-      SecretDetectorSource.get(),
-      { text, source: source.kind === "heuristic" ? source.context : "credential_file", signal },
-      { timeoutMs: 5000 },
-    )
-    if (!result.complete) throw new SecretDetection.Error("incomplete")
-    const values = result.findings.map((finding) => text.slice(finding.start, finding.end))
+    return (await captureAndApplyMany([text], source, signal))[0]!
+  }
+
+  export async function captureAndApplyMany(texts: string[], source: SecretVault.Source, signal?: AbortSignal) {
+    const values = (
+      await Promise.all(
+        texts.map(async (text) => {
+          if (!text) return []
+          const result = await SecretDetection.detect(
+            SecretDetectorSource.get(),
+            { text, source: source.kind === "heuristic" ? source.context : "credential_file", signal },
+            { timeoutMs: 5000 },
+          )
+          if (!result.complete) throw new SecretDetection.Error("incomplete")
+          return result.findings.map((finding) => text.slice(finding.start, finding.end))
+        }),
+      )
+    ).flat()
     if (values.some((value) => value.length < 8)) throw new SecretDetection.Error("invalid_result")
     const index = await SecretVault.registerMany(values, source)
-    return replaceAll(text, index)
+    return texts.map((text) => replaceAll(text, index))
+  }
+
+  export async function revision() {
+    const entries = await SecretVault.list()
+    return createHash("sha256")
+      .update(JSON.stringify(entries.map(({ id, fingerprint }) => [id, fingerprint.sha256]).sort()))
+      .digest("hex")
   }
 
   /**

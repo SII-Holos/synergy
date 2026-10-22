@@ -42,7 +42,21 @@ function entry(): NavEntry {
 const STATUSES: Array<{ label: string; status: SessionStatus | undefined }> = [
   { label: "idle", status: { type: "idle" } },
   { label: "busy", status: { type: "busy" } },
-  { label: "retry", status: { type: "retry", attempt: 1, message: "rate limited", next: 1_000 } },
+  {
+    label: "retry",
+    status: {
+      type: "retry",
+      rootID: "retry-root",
+      messageID: "retry-message",
+      phase: "waiting",
+      error: "rate limited",
+      startedAt: 0,
+      canRetry: true,
+      attempt: 1,
+      message: "rate limited",
+      next: 1_000,
+    },
+  },
   { label: "paused", status: { type: "paused", reason: "interrupted", since: 1 } },
   { label: "missing", status: undefined },
 ]

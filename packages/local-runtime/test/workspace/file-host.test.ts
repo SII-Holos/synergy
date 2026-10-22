@@ -5,6 +5,8 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { NativeWorkspaceFiles } from "../../src/workspace/file-host"
 import { WorkspaceCoordinator } from "../../src/workspace/coordinator"
 import { WorkspaceTree } from "@ericsanchezok/synergy-harness/workspace/tree"
+import { WorkspaceErrors } from "@ericsanchezok/synergy-harness/workspace/errors"
+import { createHash } from "node:crypto"
 
 test("detaching an unavailable directory mount releases only its receipt and still honors active ownership", async () => {
   await using tmp = await tmpdir()
@@ -24,6 +26,9 @@ test("detaching an unavailable directory mount releases only its receipt and sti
     await fs.mkdir(root)
     await Bun.write(path.join(root, "file"), "replacement")
     await expect(host.inspect(reference)).rejects.toThrow("changed")
+    await expect(
+      host.checkpoint({ id: "completed-execution", mount: reference, executionID: "execution" }),
+    ).rejects.toBeInstanceOf(WorkspaceErrors.DirectoryIdentityChangedError)
     await expect(host.read({ mount: reference, path: "file", maximumBytes: 100 })).rejects.toThrow("changed")
     await expect(host.detach({ ...reference, generation: 2 })).rejects.toThrow("changed")
     const held = await coordinator.acquire({
@@ -75,8 +80,43 @@ test("detaching a replaced materialized mount cannot delete the replacement dire
     await fs.rename(mount.path, mount.path + "-previous")
     await fs.mkdir(mount.path)
     await Bun.write(path.join(mount.path, "file"), "replacement")
+    await expect(host.checkpoint({ id: "materialized-checkpoint", mount })).rejects.not.toBeInstanceOf(
+      WorkspaceErrors.DirectoryIdentityChangedError,
+    )
     await expect(host.detach(mount)).rejects.toThrow("changed")
     expect(await Bun.file(path.join(mount.path, "file")).text()).toBe("replacement")
+  } finally {
+    await host.close()
+  }
+})
+
+test("incomparable directory identities do not authorize terminal checkpoint failure", async () => {
+  await using tmp = await tmpdir()
+  const root = path.join(tmp.path, "workspace")
+  await fs.mkdir(root)
+  const directory = path.join(tmp.path, "receipts")
+  const host = new NativeWorkspaceFiles({
+    directory,
+    materializationRoot: path.join(tmp.path, "views"),
+    coordinator: new WorkspaceCoordinator({ directory: path.join(tmp.path, "claims") }),
+  })
+  const reference = { id: "mount", workspaceID: "workspace", generation: 1 }
+  try {
+    const mount = await host.mount({ ...reference, readOnly: false, source: { kind: "directory", path: root } })
+    const filename = path.join(directory, "mounts", createHash("sha256").update(reference.id).digest("hex"))
+    const receipt = await Bun.file(filename).json()
+    for (const physicalID of [
+      "unverified",
+      mount.physicalID.startsWith("volume-v1:") ? "1:1:1" : "volume-v1:missing-volume:1:1",
+    ]) {
+      await Bun.write(filename, JSON.stringify({ ...receipt, mount: { ...receipt.mount, physicalID } }))
+      await expect(host.checkpoint({ id: "checkpoint", mount: reference })).rejects.toThrow(
+        "Workspace directory changed",
+      )
+      await expect(host.checkpoint({ id: "checkpoint", mount: reference })).rejects.not.toBeInstanceOf(
+        WorkspaceErrors.DirectoryIdentityChangedError,
+      )
+    }
   } finally {
     await host.close()
   }

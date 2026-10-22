@@ -71,53 +71,61 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
     async retain(scopeID, sessionID, root, repository, signal) {
       signal?.throwIfAborted()
       if (await read(scopeID, sessionID, root)) return
-      const prefix = key(scopeID, sessionID, root)
-      await temporary(scopeID, async (directory) => {
-        const target = path.join(directory, "store.git")
-        await SnapshotStore.initializeBareRepository(target)
-        await using catalog = await SnapshotTransfer.Catalog.create(target, signal)
-        await catalog.import(repository, { roots: [root], requiredTrees: [root], signal })
-        const packDirectory = path.join(target, "objects", "pack")
-        const files = (await fs.readdir(packDirectory)).filter((file) => /^pack-[a-f0-9]{40}\.pack$/.test(file)).sort()
-        if (!files.length) throw new Error("Durable snapshot capture produced no pack")
-        const manifest: z.infer<typeof Manifest> = { version: 1, root, packs: [] }
-        const prepared: Storage.PreparedBinary[] = []
-        let size = 0
-        try {
-          for (const [packIndex, name] of files.entries()) {
-            const pack = { chunks: [] as z.infer<typeof Chunk>[] }
-            manifest.packs.push(pack)
-            const file = await fs.open(path.join(packDirectory, name), "r")
+      await withFileLock(
+        { directory: SnapshotLease.directory(), key: `snapshot-content:${scopeID}:${sessionID}:${root}`, signal },
+        async () => {
+          if (await read(scopeID, sessionID, root)) return
+          const prefix = key(scopeID, sessionID, root)
+          await temporary(scopeID, async (directory) => {
+            const target = path.join(directory, "store.git")
+            await SnapshotStore.initializeBareRepository(target)
+            await using catalog = await SnapshotTransfer.Catalog.create(target, signal)
+            await catalog.import(repository, { roots: [root], requiredTrees: [root], signal })
+            const packDirectory = path.join(target, "objects", "pack")
+            const files = (await fs.readdir(packDirectory))
+              .filter((file) => /^pack-[a-f0-9]{40}\.pack$/.test(file))
+              .sort()
+            if (!files.length) throw new Error("Durable snapshot capture produced no pack")
+            const manifest: z.infer<typeof Manifest> = { version: 1, root, packs: [] }
+            const prepared: Storage.PreparedBinary[] = []
+            let size = 0
             try {
-              const buffer = Buffer.allocUnsafe(chunkBytes)
-              for (;;) {
-                signal?.throwIfAborted()
-                const { bytesRead } = await file.read(buffer, 0, chunkBytes, null)
-                if (!bytesRead) break
-                size += bytesRead
-                if (size > maxBytes) throw new Error("Snapshot content exceeds storage byte limit")
-                const bytes = buffer.subarray(0, bytesRead)
-                const id = String(pack.chunks.length)
-                prepared.push(await Storage.prepareBinary([...prefix, "packs", String(packIndex), id], bytes))
-                pack.chunks.push({ bytes: bytesRead, sha256: createHash("sha256").update(bytes).digest("hex") })
+              for (const [packIndex, name] of files.entries()) {
+                const pack = { chunks: [] as z.infer<typeof Chunk>[] }
+                manifest.packs.push(pack)
+                const file = await fs.open(path.join(packDirectory, name), "r")
+                try {
+                  const buffer = Buffer.allocUnsafe(chunkBytes)
+                  for (;;) {
+                    signal?.throwIfAborted()
+                    const { bytesRead } = await file.read(buffer, 0, chunkBytes, null)
+                    if (!bytesRead) break
+                    size += bytesRead
+                    if (size > maxBytes) throw new Error("Snapshot content exceeds storage byte limit")
+                    const bytes = buffer.subarray(0, bytesRead)
+                    const id = String(pack.chunks.length)
+                    prepared.push(await Storage.prepareBinary([...prefix, "packs", String(packIndex), id], bytes))
+                    pack.chunks.push({ bytes: bytesRead, sha256: createHash("sha256").update(bytes).digest("hex") })
+                  }
+                } finally {
+                  await file.close()
+                }
               }
+              Manifest.parse(manifest)
+              signal?.throwIfAborted()
+              await Storage.transaction(async () => {
+                if ((await SnapshotStore.owner(scopeID, sessionID))?.backend === "deleted")
+                  throw new Error("Snapshot owner was deleted during publication")
+                if (await read(scopeID, sessionID, root)) return
+                for (const item of prepared) await Storage.publishPreparedBinary(item)
+                await Storage.write([...prefix, "manifest"], manifest)
+              })
             } finally {
-              await file.close()
+              for (const item of prepared) item[Symbol.dispose]()
             }
-          }
-          Manifest.parse(manifest)
-          signal?.throwIfAborted()
-          await Storage.transaction(async () => {
-            if ((await SnapshotStore.owner(scopeID, sessionID))?.backend === "deleted")
-              throw new Error("Snapshot owner was deleted during publication")
-            if (await read(scopeID, sessionID, root)) return
-            for (const item of prepared) await Storage.publishPreparedBinary(item)
-            await Storage.write([...prefix, "manifest"], manifest)
           })
-        } finally {
-          for (const item of prepared) item[Symbol.dispose]()
-        }
-      })
+        },
+      )
     },
     async restore(scopeID, sessionID, roots, repository, signal) {
       signal?.throwIfAborted()
@@ -173,9 +181,15 @@ export function storedSnapshots(options: { maxBytes?: number } = {}): SnapshotSt
               }
               if ((await SnapshotGit.checked(repository, ["cat-file", "-t", root], { signal })) !== "tree")
                 throw new Error("Durable snapshot root is not a tree")
-              await SnapshotGit.checked(repository, ["update-ref", SnapshotStore.reference(sessionID, root), root], {
+              await SnapshotStore.withReferences(
+                scopeID,
+                sessionID,
+                () =>
+                  SnapshotGit.checked(repository, ["update-ref", SnapshotStore.reference(sessionID, root), root], {
+                    signal,
+                  }),
                 signal,
-              })
+              )
             })
           }
           return new Set(manifests.keys())

@@ -3,7 +3,7 @@ import { useLingui } from "@lingui/solid"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
+import type { CortexTaskSummary } from "@ericsanchezok/synergy-sdk/client"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
@@ -19,7 +19,7 @@ import "./subagent-dock.css"
 const HOLD_MS = 2000
 const RING_LENGTH = 2 * Math.PI * 19
 
-function SubagentAvatar(props: { task: CortexTask; suppressed?: boolean }) {
+function SubagentAvatar(props: { task: CortexTaskSummary; suppressed?: boolean }) {
   const view = useSessionDataView()
   const sdk = useSDK()
   const openSession = useNavigateToSession()

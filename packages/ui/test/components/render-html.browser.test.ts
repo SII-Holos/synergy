@@ -143,7 +143,9 @@ test("keeps the inline visual and one source attachment through mode switches an
     expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
     const attachments = page.locator('[data-component="attachment-card"]')
     expect(await attachments.count()).toBe(1)
-    expect(await attachments.innerText()).toContain("visual.synergy.json")
+    const filename = attachments.locator('[data-slot="attachment-card-filename"]')
+    expect(await filename.textContent()).toBe("visual.synergy.json")
+    expect(await filename.getAttribute("title")).toBe("visual.synergy.json")
   }
 })
 

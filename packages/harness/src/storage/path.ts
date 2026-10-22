@@ -51,6 +51,13 @@ export namespace StoragePath {
     "display_part",
     messageID,
   ]
+  export const sessionDisplayPartsState = (scopeID: string, sessionID: string, messageID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "display_parts_state",
+    messageID,
+  ]
   export const sessionDisplayPart = (scopeID: string, sessionID: string, messageID: string, partID: string) => [
     ...sessionDisplayParts(scopeID, sessionID, messageID),
     partID,
@@ -299,6 +306,13 @@ export namespace StoragePath {
     partID as string,
   ]
 
+  export const partContent = (part: string[]) => [...part, "content"]
+  export const partContentChunk = (part: string[], generation: string, sequence: number) => [
+    ...partContent(part),
+    generation,
+    String(sequence),
+  ]
+
   export const permission = (scopeID: ScopeID) => ["permissions", scopeID as string]
   export const permissionRules = () => ["permission-rules"]
 
@@ -495,6 +509,14 @@ export namespace StoragePath {
   export const statsWatermark = () => ["stats", "watermark"]
   export const statsSnapshot = () => ["stats", "snapshot"]
   export const librarySnapshot = () => ["library", "stats", "snapshot"]
+  export const digitalTwinSession = (scopeID: string, sessionID: string) => [
+    "sessions",
+    scopeID,
+    sessionID,
+    "digital_twin",
+    "projection",
+  ]
+  export const digitalTwinCursor = () => ["digital_twin", "cursor"]
   /** Per-session digest: stats/digests/{sessionID} */
   export const statsDigestsRoot = () => ["stats", "digests"]
   export const statsDigest = (sessionID: SessionID) => ["stats", "digests", sessionID as string]

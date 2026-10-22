@@ -4,6 +4,7 @@ import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { createProjectionContent } from "./projection-content"
 import { ContentInterests } from "./event-projection"
+import { createProjectionCursors } from "./projection-cursors"
 
 export const VIEW_FRAME_LIMIT = 64 * 1024
 export const ViewInterest = z.object({
@@ -34,7 +35,10 @@ export type ViewProjectionContribution = {
   ): Promise<{ project(event: ViewEvent): void; dispose(): void }>
 }
 const omitted = (type: string) =>
-  type === "execution.updated" || type === "rollout.updated" || type.startsWith("usage.")
+  type === "execution.updated" ||
+  type === "rollout.updated" ||
+  type === "lsp.client.diagnostics" ||
+  type.startsWith("usage.")
 export function viewCursor(event: ViewEvent): ViewEvent | null {
   const { epoch, seq } = event.payload
   return epoch !== undefined && seq !== undefined
@@ -57,21 +61,34 @@ function bounded(event: ViewEvent): ViewEvent {
   }
 }
 export function projectViewReplay(events: ViewEvent["payload"][], contributions: ViewProjectionContribution[] = []) {
-  return events.flatMap((payload) => {
-    if (omitted(payload.type) || contributions.some((item) => item.eventType === payload.type))
-      return viewCursor({ scopeID: null, payload })?.payload ?? []
+  const result: ViewEvent["payload"][] = []
+  const cursors = createProjectionCursors(
+    (event) => result.push(event.payload),
+    () => () => {},
+  )
+  for (const payload of events) {
+    if (omitted(payload.type) || contributions.some((item) => item.eventType === payload.type)) {
+      const cursor = viewCursor({ scopeID: null, payload })
+      if (cursor) cursors.project(cursor)
+      continue
+    }
     const projected =
       payload.type === "message.part.updated"
         ? {
             ...payload,
             type: "message.part.summary",
-            properties: { summary: MessageV2.summarizePart(payload.properties.part as MessageV2.Part) },
+            properties: {
+              summary: payload.properties.summary ?? MessageV2.summarizePart(payload.properties.part as MessageV2.Part),
+            },
           }
         : payload.type === "message.updated"
           ? { ...payload, properties: SessionHistory.summarizeMessage(payload.properties.info as MessageV2.Info) }
           : payload
-    return bounded({ scopeID: null, payload: projected }).payload
-  })
+    const frame = cursors.project(bounded({ scopeID: null, payload: projected }))
+    if (frame) result.push(frame.payload)
+  }
+  cursors.flush()
+  return result
 }
 type PartInterest = z.infer<typeof ContentInterests>["parts"][number]
 type Stream = {
@@ -94,10 +111,15 @@ const identity = (part: Omit<PartInterest, "generation">) =>
   JSON.stringify([part.scopeID, part.sessionID, part.messageID, part.partID])
 
 export function createViewProjection(
-  send: (event: ViewEvent) => void,
+  output: (event: ViewEvent) => void,
   contributions: ViewProjectionContribution[] = [],
   contentCheckpoints = createProjectionContent(),
 ) {
+  const cursors = createProjectionCursors(output)
+  const send = (event: ViewEvent) => {
+    const frame = cursors.project(event)
+    if (frame) output(frame)
+  }
   const parts = new Map<string, Subscription>()
   const details = new Map<
     string,
@@ -131,6 +153,7 @@ export function createViewProjection(
       parts.set(key, subscription)
     }
     const delta = event.payload.properties.delta
+    const observed = event.payload.properties.summary as MessageV2.PartSummary | undefined
     const stream = subscription?.stream
     const append =
       event.payload.streaming && typeof delta === "string" && (part.type === "text" || part.type === "reasoning")
@@ -153,10 +176,11 @@ export function createViewProjection(
       summary = {
         ...stream.summary,
         preview: part.text.slice(0, 256),
-        render: true,
+        render: observed?.render ?? true,
+        reasoningKey: observed?.reasoningKey ?? stream.summary.reasoningKey,
         content: {
           version: `stream:${stream.id}:${stream.revision}`,
-          bytes: stream.summary.content.bytes + Buffer.byteLength(delta),
+          bytes: observed?.content.bytes ?? stream.summary.content.bytes + Buffer.byteLength(delta),
         },
       }
       content = { kind: "append", streamID: stream.id, revision: stream.revision, offset: stream.offset, delta }
@@ -164,7 +188,7 @@ export function createViewProjection(
       stream.summary = summary
       stream.hash.update(delta, "utf16le")
     } else {
-      summary = MessageV2.summarizePart(part)
+      summary = observed ?? MessageV2.summarizePart(part)
       if (subscription?.ready) {
         if (part.type === "text" || part.type === "reasoning") {
           const hash = textHash(part.text)
@@ -269,7 +293,11 @@ export function createViewProjection(
     return bounded(event)
   }
   return {
-    project,
+    project(event: ViewEvent) {
+      if (disposed) return null
+      const frame = project(event)
+      return frame ? cursors.project(frame) : null
+    },
     async interests(
       input: z.infer<typeof ViewInterests>,
       read: (interest: PartInterest) => Promise<{ part: MessageV2.Part; epoch: string; seq: number }>,
@@ -373,6 +401,7 @@ export function createViewProjection(
     },
     dispose() {
       disposed = true
+      cursors.dispose()
       for (const detail of details.values()) {
         detail.controller.abort()
         detail.value?.dispose()

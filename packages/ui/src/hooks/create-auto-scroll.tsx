@@ -41,6 +41,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
   let smoothForce = false
   let navigating = false
   const motion = createScrollMotion(() => options.motionTarget?.())
+  createEffect(
+    on(
+      () => options.motionTarget?.(),
+      () => motion.cancel(),
+    ),
+  )
 
   const [store, setStore] = createStore({
     contentRef: undefined as HTMLElement | undefined,

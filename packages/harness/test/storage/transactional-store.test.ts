@@ -1,7 +1,9 @@
-import { afterAll, describe, expect, test } from "bun:test"
+import { afterAll, describe, expect, spyOn, test } from "bun:test"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
+import { Database } from "bun:sqlite"
+import { initializeSqliteEngine } from "../../src/storage/sqlite-engine"
 import { TransactionalStore } from "../../src/storage/transactional-store"
 
 import { storageTestBackends } from "../support/storage-backends"
@@ -92,6 +94,14 @@ for (const backend of storageTestBackends()) {
         ),
       ).rejects.toMatchObject({ name: "StorageConflictError" })
       expect(await store.scan(["rollback-batch"])).toEqual([])
+      await expect(
+        store.transaction((tx) => tx.insertHistorical([...first.slice(0, -1), "0002"], {}, 1)),
+      ).rejects.toMatchObject({ name: "StorageConflictError" })
+      await expect(
+        store.transaction((tx) => tx.rewriteEncodings([{ key: first, value: {}, expected: { event: 2 } }])),
+      ).rejects.toMatchObject({
+        name: "StorageConflictError",
+      })
     })
 
     test("propagates asynchronous transaction rejection", async () => {
@@ -102,6 +112,40 @@ for (const backend of storageTestBackends()) {
           throw new Error("transaction aborted")
         }),
       ).rejects.toThrow("transaction aborted")
+    })
+
+    test("encoding batches retain revisions, reject changed evidence and seek only their keys", async () => {
+      const store = await open()
+      const entries = Array.from({ length: 128 }, (_, index) => ({
+        key: ["encoding", String(index)],
+        value: { value: index },
+        expected: { value: index },
+      }))
+      await store.transaction((tx) => tx.writeMany(entries))
+      await store.transaction(async (tx) => {
+        using query = spyOn(tx.raw, "query")
+        await tx.rewriteEncodings(entries.map((entry) => ({ ...entry, value: { encoded: entry.value.value } })))
+        if (backend === "sqlite") {
+          const update = query.mock.calls.find(([sql]) => sql.startsWith("UPDATE storage_records"))!
+          initializeSqliteEngine()
+          const db = new Database(store.sqliteFilename!, { readonly: true })
+          const statement = db.prepare<{ detail: string }, import("bun:sqlite").SQLQueryBindings[]>(
+            "EXPLAIN QUERY PLAN " + update[0],
+          )
+          try {
+            const plan = statement.all(...(update[1] ?? []))
+            expect(plan.some((row) => row.detail.includes("key_id=?"))).toBe(true)
+          } finally {
+            statement.finalize()
+            db.close()
+          }
+        }
+        expect((await tx.versioned(entries[0].key)).revision).toBe(1n)
+      })
+      await expect(store.transaction((tx) => tx.rewriteEncodings(entries))).rejects.toMatchObject({
+        name: "StorageConflictError",
+      })
+      expect(await store.read(entries.at(-1)!.key)).toEqual({ encoded: 127 })
     })
 
     test("bulk writes split large encoded records and keep the checkpoint atomic", async () => {

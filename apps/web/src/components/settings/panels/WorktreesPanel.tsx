@@ -85,7 +85,7 @@ export function WorktreesPanel() {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const [loading, setLoading] = createSignal(false)
   const [failureCount, setFailureCount] = createSignal(0)
   const [busyID, setBusyID] = createSignal<string | undefined>()

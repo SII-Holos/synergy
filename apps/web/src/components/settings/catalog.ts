@@ -1,3 +1,4 @@
+import { twinCopy } from "../digital-twin/copy"
 import { settingsFieldCopy } from "./settings-field-copy"
 import { MODEL_ROLES } from "./types"
 import type { MessageDescriptor } from "@lingui/core"
@@ -24,6 +25,7 @@ export type SettingsGroup = string
 export const BUILTIN_SETTINGS_IDS = [
   "account",
   "personalize",
+  "digital-twin",
   "general",
   "browser",
   "models",
@@ -92,6 +94,15 @@ const SEARCH_TERMS_COMMENT =
   "Settings search aliases. The vertical bars separate aliases; preserve them in translation."
 
 const BUILTIN_SETTINGS_COPY = {
+  "digital-twin": {
+    label: twinCopy.title,
+    description: twinCopy.description,
+    searchTerms: {
+      id: "settings.catalog.digitalTwin.searchTerms",
+      message: "prediction | next input | writing | digital twin",
+    },
+    rowLabels: [twinCopy.automatic, twinCopy.model],
+  },
   account: {
     label: { id: "settings.catalog.account.label", message: "Account" },
     description: {
@@ -606,6 +617,7 @@ const BUILTIN_SETTINGS_COPY = {
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("account", "personal", 30, "settings.account", ["holos"]),
   section("personalize", "personal", 20, "settings.personalize"),
+  section("digital-twin", "personal", 30, "digital-twin.main", ["digital-twin"]),
   section("general", "personal", 10, "settings.general", ["general"]),
   section("browser", "personal", 15, "browser.main"),
   section("models", "core", 20, "settings.models", ["models"]),

@@ -102,7 +102,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { resolveBossWorkflowMenuState, resolveLatticeWorkflowMenuState } from "@/components/prompt-input/workflow-menu"
 import {
   blueprintRequestErrorMessage,
-  isTerminalBlueprintLoopStatus,
+  resolveBlueprintLoopState,
   resolveBlueprintSlotDisplay,
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
@@ -115,8 +115,8 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
-import { LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
-import { resolveLoopDisplay, resolveLoopHistoryHint } from "./loop-status"
+import { BlueprintDraftEntry, LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
+import { resolveLoopDisplay } from "./loop-status"
 import { createLoopStatusResource } from "./loop-status-resource"
 import { resolveLightLoopActivity } from "./light-loop-control"
 import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
@@ -128,14 +128,7 @@ import { VoiceDictationButton } from "./use-voice-dictation"
 import { collectDictationContext } from "./voice-dictation-core"
 import { classifySessionActivity, isWorkingStatus } from "@/utils/session-status"
 
-function sanitizePromptHistory(value: unknown) {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return value
-  const entries = (value as { entries?: unknown }).entries
-  return {
-    ...value,
-    entries: Array.isArray(entries) ? entries.map(sanitizePrompt) : [],
-  }
-}
+import { sanitizePromptHistory, type PromptHistoryEntry } from "./history"
 
 function WorkflowChip(props: {
   label: string
@@ -202,6 +195,10 @@ const DraftAttachmentPreview = lazy(() =>
   import("@/components/attachment-workbench/draft-preview").then((module) => ({
     default: module.DraftAttachmentPreview,
   })),
+)
+
+const DigitalTwinComposer = lazy(() =>
+  import("../digital-twin/composer").then((module) => ({ default: module.DigitalTwinComposer })),
 )
 
 export function createPromptInputController(props: PromptInputProps) {
@@ -290,18 +287,10 @@ export function createPromptInputController(props: PromptInputProps) {
   const storedLightLoop = createMemo(() =>
     params.id ? backendLightLoopActive() || pendingLightLoop() : pendingLightLoop(),
   )
-  const blueprintModeLocked = createMemo(() => !!availableLocalLoop() || !!blueprintBinding()?.loopID)
-  const lightLoopActive = createMemo(
-    () => capabilities.has("light-loop") && !blueprintModeLocked() && storedLightLoop(),
-  )
   const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
     return backendLightLoopActive() && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
-  const storedPlan = createMemo(
-    () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
-  )
-  const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
   const bossActive = createMemo(
     () => capabilities.has("boss") && (params.id ? activeWorkflow()?.kind === "boss" : !!pendingBoss()),
   )
@@ -335,23 +324,15 @@ export function createPromptInputController(props: PromptInputProps) {
     undefined,
     { equals: (a, b) => a?.sessionID === b?.sessionID && a?.scopeID === b?.scopeID },
   )
-  const loopHistory = createMemo(() => resolveLoopHistoryHint(view().messagesFor(params.id ?? "")), undefined, {
-    equals: (a, b) => a?.blueprintID === b?.blueprintID && a?.light === b?.light && a?.lightReview === b?.lightReview,
-  })
   const loopStatus = createLoopStatusResource({
     client: sdk.client,
     owner: loopOwner,
     loopID: () => blueprintBinding()?.loopID,
-    lightActive: backendLightLoopActive,
-    lightInstructions: lightLoopInstructions,
-    history: loopHistory,
     reconnect: globalSync.reconnectVersion,
     selection: capabilities.current,
     hasFeature: capabilities.has,
     getBlueprint: async (id, scopeID, signal) =>
       (await sdk.client.blueprint.loop.get({ id, scopeID }, { signal })).data,
-    getTerminal: async (id, scopeID, signal) =>
-      (await sdk.client.workflow.session.getLightloopTerminal({ id, scopeID }, { signal })).data,
   })
   const sessionLoop = loopStatus.blueprint
   createEffect(
@@ -389,12 +370,21 @@ export function createPromptInputController(props: PromptInputProps) {
   /** The BlueprintLoop actually bound to this session, or undefined when there
    *  is none or it already reached a terminal state — cancelling a finished loop
    *  is not what "stop" means, and the store rejects that transition. */
-  const boundLoopID = createMemo(() => {
-    const loopID = params.id ? blueprintBinding()?.loopID : undefined
-    if (!loopID) return undefined
-    const loop = sessionLoop()
-    return loop?.id === loopID && isTerminalBlueprintLoopStatus(loop.status) ? undefined : loopID
-  })
+  const boundLoopID = createMemo(
+    () =>
+      resolveBlueprintLoopState({
+        loop: sessionLoop(),
+        activeLoopID: params.id ? blueprintBinding()?.loopID : undefined,
+      }).activeLoopID,
+  )
+  const blueprintModeLocked = createMemo(() => !!availableLocalLoop() || !!boundLoopID())
+  const lightLoopActive = createMemo(
+    () => capabilities.has("light-loop") && !blueprintModeLocked() && storedLightLoop(),
+  )
+  const storedPlan = createMemo(
+    () => capabilities.has("blueprint") && (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()),
+  )
+  const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
 
   const abortController = createAbortRequestController({
     request: () => abortSession(params.id),
@@ -527,14 +517,10 @@ export function createPromptInputController(props: PromptInputProps) {
   })
   const loopDisplay = createMemo(() =>
     resolveLoopDisplay({
-      localBlueprint: availableLocalLoop(),
       blueprint: sessionLoop(),
       blueprintBinding: blueprintBinding(),
       blueprintUnavailable: loopStatus.blueprintUnavailable(),
       workflow: activeWorkflow(),
-      lightPending: capabilities.has("light-loop") && pendingLightLoop(),
-      lightTerminal: loopStatus.terminal(),
-      awaitingTerminal: loopStatus.awaitingTerminal(),
       status: status(),
     }),
   )
@@ -554,40 +540,50 @@ export function createPromptInputController(props: PromptInputProps) {
     const action = { owner },
       sessionID = params.id,
       scopeID = sessionScopeID(),
+      loopID = boundLoopID(),
       slot = availableLocalLoop()
     setLoopAction(action)
     try {
       if (value.kind === "lightloop" && activeWorkflow()?.kind === "lightloop" && sessionID)
         await sdk.client.workflow.session.cancelLightloop({ id: sessionID, scopeID }, { throwOnError: true })
-      else if (value.kind === "blueprint") {
-        if (boundLoopID() && (!slot || (slot.type === "loop" && slot.loopID === boundLoopID())))
-          await abandonSession(sessionID)
-        else if (slot?.type === "loop")
-          await sdk.client.blueprint.loop.cancel({ id: slot.loopID, scopeID }, { throwOnError: true })
-      }
+      else if (value.kind === "blueprint" && loopID) await abandonSession(sessionID)
       if (sessionKey() !== owner) return
-      if (localArmedLoop() === slot) setLocalArmedLoop(null)
-      if (value.kind === "lightloop" && value.pending) setPendingLightLoop(false)
+      if (slot?.type === "loop" && slot.loopID === loopID && localArmedLoop() === slot) setLocalArmedLoop(null)
     } catch (error) {
       if (sessionKey() === owner) reportControlError(error)
     } finally {
       if (loopAction() === action) setLoopAction(undefined)
     }
   }
+  const [loopDetails, setLoopDetails] = createSignal<{ id: string; owner: string; loopID?: string }>()
+  createEffect(() => {
+    const details = loopDetails()
+    if (details && (!loopDisplay() || sessionKey() !== details.owner || boundLoopID() !== details.loopID)) {
+      workflowDialog.close(details.id)
+    }
+  })
+  onCleanup(() => {
+    const details = untrack(loopDetails)
+    if (details) workflowDialog.close(details.id)
+  })
   const openLoopStatus = () => {
     const owner = sessionKey()
-    workflowDialog.show(() => (
-      <LoopStatusDialog
-        value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
-        onReviewer={() => {
-          const reviewer = loopDisplay()?.reviewerSessionID
-          if (sessionKey() === owner && reviewer) {
-            workflowDialog.close()
-            navigate(`/${params.dir}/session/${reviewer}`)
-          }
-        }}
-      />
-    ))
+    const id = workflowDialog.show(
+      () => (
+        <LoopStatusDialog
+          value={() => (sessionKey() === owner ? loopDisplay() : undefined)}
+          onReviewer={() => {
+            const reviewer = loopDisplay()?.reviewerSessionID
+            if (sessionKey() === owner && reviewer) {
+              if (id) workflowDialog.close(id)
+              navigate(`/${params.dir}/session/${reviewer}`)
+            }
+          }}
+        />
+      ),
+      () => setLoopDetails(undefined),
+    )
+    if (id) setLoopDetails({ id, owner, loopID: boundLoopID() })
   }
   const armedWorkflowKind = createMemo<"plan" | "lightloop" | "lattice" | "boss" | "extension" | undefined>(() => {
     const workflow = activeWorkflow()?.kind
@@ -1500,7 +1496,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const [history, setHistory] = persisted(
     { ...Persist.global("prompt-history", ["prompt-history.v1"]), migrate: sanitizePromptHistory },
     createStore<{
-      entries: Prompt[]
+      entries: PromptHistoryEntry[]
     }>({
       entries: [],
     }),
@@ -1508,7 +1504,7 @@ export function createPromptInputController(props: PromptInputProps) {
   const [shellHistory, setShellHistory] = persisted(
     { ...Persist.global("prompt-history-shell", ["prompt-history-shell.v1"]), migrate: sanitizePromptHistory },
     createStore<{
-      entries: Prompt[]
+      entries: PromptHistoryEntry[]
     }>({
       entries: [],
     }),
@@ -1528,10 +1524,11 @@ export function createPromptInputController(props: PromptInputProps) {
 
   const promptLength = (prompt: Prompt) => inlineLength(prompt)
 
-  const applyHistoryPrompt = (p: Prompt, position: "start" | "end") => {
-    const length = position === "start" ? 0 : promptLength(p)
+  const applyHistoryPrompt = (entry: PromptHistoryEntry, position: "start" | "end") => {
+    const length = position === "start" ? 0 : promptLength(entry.prompt)
     setStore("applyingHistory", true)
-    prompt.set(p, length)
+    prompt.set(entry.prompt, length)
+    prompt.setAssistance(entry.assistance)
     requestAnimationFrame(() => {
       editorRef?.focus()
       setCursorPosition(editorRef, length)
@@ -1718,6 +1715,7 @@ export function createPromptInputController(props: PromptInputProps) {
     }),
     applyEdits: editor.applyDocumentEdits,
     isEditableRange: editor.isEditableRange,
+    assistance: { read: prompt.assistance, write: prompt.setAssistance },
   })
   const [composerVersion, setComposerVersion] = createSignal(0)
   const unsubscribeComposer = composerDocument.subscribe(() => setComposerVersion((value) => value + 1))
@@ -1851,18 +1849,23 @@ export function createPromptInputController(props: PromptInputProps) {
     pendingUploads,
   })
 
-  const addToHistory = (prompt: Prompt, mode: "normal" | "shell") => {
-    const text = inlineText(prompt).trim()
-    const hasAttachment = prompt.some(
+  const addToHistory = (parts: Prompt, mode: "normal" | "shell") => {
+    const text = inlineText(parts).trim()
+    const hasAttachment = parts.some(
       (part) => part.type === "attachment" || part.type === "note" || part.type === "session",
     )
     if (!text && !hasAttachment) return
 
-    const entry = clonePromptParts(prompt)
+    const entry = { prompt: clonePromptParts(parts), assistance: prompt.assistance() }
     const currentHistory = mode === "shell" ? shellHistory : history
     const setCurrentHistory = mode === "shell" ? setShellHistory : setHistory
     const lastEntry = currentHistory.entries[0]
-    if (lastEntry && isPromptEqual(lastEntry, entry)) return
+    if (
+      lastEntry &&
+      isPromptEqual(lastEntry.prompt, entry.prompt) &&
+      JSON.stringify(lastEntry.assistance) === JSON.stringify(entry.assistance)
+    )
+      return
 
     setCurrentHistory("entries", (entries) => [entry, ...entries].slice(0, MAX_HISTORY))
   }
@@ -1874,7 +1877,7 @@ export function createPromptInputController(props: PromptInputProps) {
     if (direction === "up") {
       if (entries.length === 0) return false
       if (current === -1) {
-        setStore("savedPrompt", clonePromptParts(prompt.current()))
+        setStore("savedPrompt", { prompt: clonePromptParts(prompt.current()), assistance: prompt.assistance() })
         setStore("historyIndex", 0)
         applyHistoryPrompt(entries[0], "start")
         return true
@@ -1902,7 +1905,7 @@ export function createPromptInputController(props: PromptInputProps) {
         setStore("savedPrompt", null)
         return true
       }
-      applyHistoryPrompt(DEFAULT_PROMPT, "end")
+      applyHistoryPrompt({ prompt: DEFAULT_PROMPT }, "end")
       return true
     }
 
@@ -1919,14 +1922,11 @@ export function createPromptInputController(props: PromptInputProps) {
     const completion = activeCompletion()
     if (event.key === "Tab" && completion && !store.popover) {
       event.preventDefault()
-      void composerDocument.applyEdits({
-        revision: completion.revision,
-        edits: [{ range: { start: completion.position, end: completion.position }, text: completion.text }],
-      })
+      void composerDocument.acceptCompletion()
       return
     }
     if (event.key === "Escape" && completion) {
-      composerDocument.selectionChanged()
+      composerDocument.dismissCompletion()
       event.preventDefault()
       return
     }
@@ -2506,6 +2506,25 @@ export function createPromptInputController(props: PromptInputProps) {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
+            <Show when={capabilities.has("digital-twin")}>
+              <Suspense>
+                <DigitalTwinComposer
+                  controller={composerDocument}
+                  focusEditor={() => editorRef?.focus()}
+                  sessionID={params.id}
+                  parentID={info()?.parentID}
+                  messages={view().messagesFor(params.id ?? "")}
+                  status={status()}
+                  blocked={
+                    isReadOnly() ||
+                    hasAttachments() ||
+                    attachmentsUploading() ||
+                    view().inboxFor(params.id ?? "").length > 0
+                  }
+                  modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
+                />
+              </Suspense>
+            </Show>
             <Show when={capabilities.has("media")}>
               <VoiceDictationButton
                 getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
@@ -2755,19 +2774,24 @@ export function createPromptInputController(props: PromptInputProps) {
     bindComposerPresentation(composerInput, {
       state: presentation,
       status: () => (
-        <Show when={loopDisplay()}>
-          {(value) => (
-            <LoopStatusEntry
-              value={value()}
-              pending={loopAction()?.owner === sessionKey()}
-              onOpen={openLoopStatus}
-              onEdit={openLightLoopDialog}
-              onNote={openLoopNote}
-              onRemove={() => void cancelDisplayedLoop()}
-              onRetry={loopStatus.retry}
-            />
-          )}
-        </Show>
+        <>
+          <Show when={!loopDisplay() && availableLocalLoop()}>
+            {(slot) => <BlueprintDraftEntry value={slot()} onRemove={() => setLocalArmedLoop(null)} />}
+          </Show>
+          <Show when={loopDisplay()}>
+            {(value) => (
+              <LoopStatusEntry
+                value={value()}
+                pending={loopAction()?.owner === sessionKey()}
+                onOpen={openLoopStatus}
+                onEdit={openLightLoopDialog}
+                onNote={openLoopNote}
+                onRemove={() => void cancelDisplayedLoop()}
+                onRetry={loopStatus.retry}
+              />
+            )}
+          </Show>
+        </>
       ),
       hasAttachments: () => hasAttachments() || attachmentsUploading(),
       preview() {

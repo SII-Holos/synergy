@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { beforeEach, describe, expect, mock, test } from "bun:test"
 
 const registrations = new Map<string, (props: Record<string, any>) => unknown>()
@@ -19,6 +20,7 @@ mock.module("@lingui/solid", () => ({
 }))
 
 mock.module("solid-js", () => ({
+  createSignal,
   createMemo: (fn: () => unknown) => fn,
   Fragment: (props: { children?: unknown }) => props.children ?? null,
   Show: (props: any) => {

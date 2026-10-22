@@ -16,6 +16,17 @@ export function isTerminalBlueprintLoopStatus(status?: string | null) {
   return !!status && TERMINAL_BLUEPRINT_LOOP_STATUSES.has(status)
 }
 
+export function resolveBlueprintLoopState<Loop extends Pick<BlueprintLoopInfo, "id">>(input: {
+  loop?: Loop | null
+  activeLoopID?: string | null
+}) {
+  const activeLoopID = input.activeLoopID || undefined
+  return {
+    activeLoopID,
+    loop: activeLoopID && input.loop?.id === activeLoopID ? input.loop : undefined,
+  }
+}
+
 export function resolveBlueprintSlotDisplay(input: {
   localSlot?: BlueprintSlot | null
   sessionLoop?: DisplayLoop | null
@@ -32,11 +43,10 @@ export function resolveBlueprintSlotDisplay(input: {
     }
   }
 
-  const loop = input.sessionLoop
-  if (!loop) return null
+  const state = resolveBlueprintLoopState({ loop: input.sessionLoop, activeLoopID: input.activeLoopID })
+  const loop = state.loop
+  if (!state.activeLoopID || !loop) return null
   if (!blueprintLoopFeatureAvailable(loop, hasFeature)) return null
-  if (!input.activeLoopID || loop.id !== input.activeLoopID) return null
-  if (isTerminalBlueprintLoopStatus(loop.status)) return null
 
   return {
     slot: {

@@ -6,6 +6,8 @@ Text-only sessionless callers use `AgentCall.text()` without creating a durable 
 
 For every sessionless call:
 
+When consuming a completed conversation, pass native `ModelMessage` content through `AgentCall` and measure it with the shared prompt budgeter. Preserve media and tool-call/result pairs; do not stringify the conversation into user text or count encoded media as language tokens. Strip source-provider continuation metadata from independent operations, quote historical system instructions as data, and use the same projection in offline evaluation. Verify binary media, opaque reasoning, real text overflow and source immutability.
+
 1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
 2. Call `AgentCall.text()` with the Agent name, messages, explicit retry/timeout/input/output bounds, caller signal, and only a domain-owned fallback model when required. It owns Agent/model resolution, an empty serializable tool catalog, bounded collection, combined cancellation, Agent worker admission, and stream disposal.
 3. Keep prompt construction, fallback choice, retry count, structured parsing, persistence, and error mapping in the owning domain.
@@ -14,10 +16,15 @@ For every sessionless call:
 6. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
 7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
    `AgentCall` returns native output-tool arguments after decoding the common intent facade. Do not add presentation fields to business schemas or strip arbitrary unknown fields to accept them. Test both flat inputs and an enveloped native schema with a field named `workBrief`.
+
+   When the selected model's reasoning mode does not support forced tool choice, use `outputTool.force: false` with an explicit instruction to call the schema-only output tool. Preserve the selected model and reasoning configuration, and still require exactly one valid output call. Constrain evidence IDs in the schema itself; free-form strings plus a hidden exact-ID validator produce avoidable failures.
+
 8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.
 9. Treat any `MessageV2.User.variant` on a reused source or root envelope as durable root-execution metadata. A `small: true` sessionless call must neither validate nor apply it; the call uses `ProviderTransform.smallOptions()` for its target model.
 
 Asynchronous derived work must carry the identity of its persisted source task, not resolve whichever task happens to be latest when the queue runs. Keep root-only prompt and model overrides out of attribution-only envelopes. Propagate `RolloutRecordingError` through optional-result fallback paths so the owning task stops and retains its failed recording state. Pass the original root ID to recording-error cancellation; a delayed auxiliary failure must not cancel a newer root in the same session.
+
+Persist operation source metadata in the ordinary immutable request after secret masking. A transient user envelope alone does not retain that attribution; verify the recorded artifact, including calls that do not create a Session.
 
 Keep historical prompt material separate from execution ownership. For work retriggered by a current turn, capture that turn's root at scheduling and use it for `AgentCall` attribution even when the prompt describes an earlier message. For title recovery, exercise the real `AgentCall` and Rollout ledger with a failed first attempt, a completed first run, and a later triggering root; replacing `AgentCall.text` with a successful mock cannot verify terminal-run admission. Historical work without a current owning turn follows the explicit operation rule in [Retries and accounting](retries-accounting.md#ownership-and-accounting).
 
@@ -46,3 +53,5 @@ Use `Cortex.launch()` for new child-agent work. Cortex owns:
 Do not manually combine `Session.create()` and `SessionInvoke.invoke()` for ordinary delegation. Existing specialized flows such as `look_at` and Chronicler predate or bypass parts of the Cortex contract; treat them as cases to justify or converge when touched, not templates for new child work.
 
 Use Cortex for decisions that must be independently auditable. Choose task visibility from the product contract: make reviewers visible when users should inspect their progress through ordinary task surfaces, and use hidden visibility only when the review is strictly internal implementation work. Do not replace a reviewer task with a sessionless classifier merely because both call a model.
+
+For legacy text reused in derived inference, `SecretMask.apply` only replaces already registered values. Use `SecretMask.captureAndApplyMany` for a batch: finish detection across all selected text before masking or deciding positive-example eligibility. Per-string parallel or sequential masking can leave earlier bare occurrences exposed when a later string identifies them. Keep credential patterns in `secret-detection`, retain incomplete/error semantics, and fence derived statistics with `SecretMask.revision()` so credential changes withdraw stale projections before lazy rebuilding. Do not add feature-local secret regexes.

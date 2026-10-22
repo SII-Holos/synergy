@@ -95,7 +95,7 @@ function rowDescription(entry: SecretEntryLike, description: (d: MessageDescript
 
 export function SecretsPanel() {
   const { _ } = useLingui()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const globalSDK = useGlobalSDK()
   const [entries, { refetch }] = createResource(async () => {
     const response = await globalSDK.client.secrets.list(undefined, { throwOnError: true })

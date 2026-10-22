@@ -12,6 +12,8 @@ import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import { workspaceLocation } from "@/components/top-bar/workspace-location"
 import { SessionInbox } from "@/components/session/session-inbox"
 import { SessionAgendaWakeIndicator } from "@/components/session/wake-indicator"
+import { useExecution } from "@/context/execution"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { TaskDetailsPopover } from "./popover"
 import { E } from "./i18n"
 
@@ -25,31 +27,48 @@ export function SessionTaskDetails(props: { hasCanonicalRoot?: boolean; inboxFro
 }
 
 function Details(props: { sessionID: string; hasCanonicalRoot?: boolean; inboxFrozen?: boolean }) {
+  const execution = useExecution()
+  const { _ } = useLingui()
   const sdk = useSDK()
   const sync = useSync()
   const view = useSessionDataView()
   const globalSDK = useGlobalSDK()
   return (
-    <TaskDetailsPopover
-      inboxCount={view().inboxFor(props.sessionID).length}
-      inbox={(active, history) => (
-        <SessionInbox
-          sessionID={props.sessionID}
-          sdk={sdk}
-          sync={sync}
-          active={active()}
-          compact={!history()}
-          hasCanonicalRoot={props.hasCanonicalRoot}
-          freezeHint={props.inboxFrozen}
-        />
-      )}
-      context={(active) => <TaskResources sessionID={props.sessionID} active={active()} />}
-      agenda={(active, close) => (
-        <Show when={globalSDK.capabilities.has("agenda")}>
-          <SessionAgendaWakeIndicator sessionID={props.sessionID} active={active()} onDetailOpened={close} />
-        </Show>
-      )}
-    />
+    <>
+      <Show when={execution.available()}>
+        <Tooltip value={_(E.trajectory)} placement="bottom">
+          <button
+            type="button"
+            class="stb-selector-btn execution-trajectory-trigger"
+            aria-label={_(E.trajectory)}
+            onClick={() => void execution.openTrajectory()}
+          >
+            <Icon name={getSemanticIcon("performance.trace")} size="small" />
+            <span class="hidden md:inline">{_({ id: "execution.trajectory.short", message: "Trajectory" })}</span>
+          </button>
+        </Tooltip>
+      </Show>
+      <TaskDetailsPopover
+        inboxCount={view().inboxFor(props.sessionID).length}
+        inbox={(active, history) => (
+          <SessionInbox
+            sessionID={props.sessionID}
+            sdk={sdk}
+            sync={sync}
+            active={active()}
+            compact={!history()}
+            hasCanonicalRoot={props.hasCanonicalRoot}
+            freezeHint={props.inboxFrozen}
+          />
+        )}
+        context={(active) => <TaskResources sessionID={props.sessionID} active={active()} />}
+        agenda={(active, close) => (
+          <Show when={globalSDK.capabilities.has("agenda")}>
+            <SessionAgendaWakeIndicator sessionID={props.sessionID} active={active()} onDetailOpened={close} />
+          </Show>
+        )}
+      />
+    </>
   )
 }
 

@@ -26,12 +26,17 @@ export namespace EnvironmentExecution {
       state: z.enum(["submitted", "running", "cancel_requested", "unknown", "exited", "unsaved", "saved", "completed"]),
       status: ExecutionProtocol.Status.optional(),
       saved: z.record(z.string(), JsonValue).optional(),
+      checkpointFailures: z.array(WorkspaceProtocol.CheckpointFailure).optional(),
       outputCursor: z.number().int().nonnegative(),
       createdAt: z.number(),
       updatedAt: z.number(),
     })
     .meta({ ref: "EnvironmentExecutionInfo" })
   export type Info = z.infer<typeof Info>
+  export type Checkpoint = (info: Info) => Promise<{
+    saved: NonNullable<Info["saved"]>
+    checkpointFailures?: Info["checkpointFailures"]
+  }>
   const pending = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const finishing = RuntimeContext.state(() => new Map<string, Promise<Info>>())
   const connections = RuntimeContext.state(() => new Map<string, Promise<Executor>>())
@@ -203,7 +208,7 @@ export namespace EnvironmentExecution {
   export async function complete(
     id: string,
     scopeID: string,
-    checkpoint: (info: Info) => Promise<NonNullable<Info["saved"]>> = WorkspaceMounts.checkpointExecution,
+    checkpoint: Checkpoint = WorkspaceMounts.checkpointExecution,
   ): Promise<Info> {
     const key = JSON.stringify([scopeID, id])
     const current = finishing().get(key)
@@ -217,7 +222,7 @@ export namespace EnvironmentExecution {
     }
   }
 
-  async function finish(id: string, scopeID: string, checkpoint: (info: Info) => Promise<NonNullable<Info["saved"]>>) {
+  async function finish(id: string, scopeID: string, checkpoint: Checkpoint) {
     let info = await get(id, scopeID)
     if (info.state === "completed") return info
     if (
@@ -233,8 +238,8 @@ export namespace EnvironmentExecution {
     if (info.state !== "saved") {
       try {
         await captureOutput(info, executor)
-        const saved = await checkpoint(info)
-        info = await update(info, { state: "saved", saved })
+        const result = await checkpoint(info)
+        info = await update(info, { state: "saved", ...result })
       } catch (error) {
         await update(info, { state: "unsaved" })
         throw error

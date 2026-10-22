@@ -13,6 +13,7 @@ import { ExecutionService } from "../../src/execution/service"
 import { ExecutionSchema } from "../../src/execution/schema"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { reconcileContextUsage } from "@ericsanchezok/synergy-harness/context"
+import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/rollout"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -248,6 +249,8 @@ test("context history pages only main conversation requests and reads bounded so
         created.push(next)
       }
       const base = "/session/" + session.id + "/execution/context/"
+      using current = spyOn(RolloutSnapshot, "current")
+      using replay = spyOn(RolloutSnapshot, "read")
       const response = await app.request(base + "history?limit=2")
       expect(response.status).toBe(200)
       const page = await response.json()
@@ -260,10 +263,37 @@ test("context history pages only main conversation requests and reads bounded so
       )
       expect(page.items[0].usage).toBeNull()
       expect(page.items[0].inputTokens).toBe(12)
+      const appended = await RolloutLedger.beginCall({
+        owner: call.owner,
+        runID: rootID,
+        purpose: "general",
+        usageRole: "conversation",
+        model: call.model,
+        request: {},
+      })
       const older = await (
         await app.request(base + "history?limit=2&cursor=" + encodeURIComponent(page.nextCursor))
       ).json()
       expect(older.items.map((item: { callID: string }) => item.callID)).toEqual([created[0].id])
+      expect(older.total).toBe(4)
+      const latest = await (await app.request(base + "history?limit=1")).json()
+      expect(latest.items[0]).toMatchObject({ callID: appended.id, requestNumber: 4, roundNumber: 1 })
+      const other = await RolloutLedger.beginCall({
+        owner: call.owner,
+        runID: "other-round",
+        purpose: "general",
+        usageRole: "conversation",
+        model: call.model,
+        request: {},
+      })
+      const scoped = await (await app.request(base + "history?runID=other-round")).json()
+      expect(scoped.total).toBe(1)
+      expect(scoped.items[0]).toMatchObject({ callID: other.id, requestNumber: 5, roundNumber: 2 })
+      expect((await app.request(base + "snapshots/" + created[0].id + "?runID=other-round")).status).toBe(404)
+      expect((await app.request(base + "history?runID=missing")).status).toBe(404)
+      expect(
+        (await app.request(base + "history?runID=other-round&cursor=" + encodeURIComponent(page.nextCursor))).status,
+      ).toBe(400)
       const items = await (
         await app.request(base + "snapshots/" + created[0].id + "/items?category=userMessages")
       ).json()
@@ -274,6 +304,8 @@ test("context history pages only main conversation requests and reads bounded so
       expect((await app.request(base + "snapshots/" + call.id)).status).toBe(404)
       expect((await app.request(base + "history?limit=501")).status).toBe(400)
       expect((await app.request(base + "snapshots/" + created[0].id + "/items?version=wrong")).status).toBe(400)
+      expect(current).not.toHaveBeenCalled()
+      expect(replay).not.toHaveBeenCalled()
     }),
   ))
 

@@ -1,12 +1,13 @@
 import { RuntimeContext } from "../lifecycle/context"
 import fs from "node:fs/promises"
 import path from "node:path"
+import { createHash } from "node:crypto"
 import { PackedBackup } from "./packed-backup"
 import { SegmentedBackup } from "./segmented-backup"
 import { SessionStaging } from "../session/staging"
 import { SessionCompat } from "../session/compat-import"
 import { Global } from "../global"
-import { ensureMigrations } from "../migration"
+import { ensureMigrations, runMigrations } from "../migration"
 import { ServerProcessLock } from "../util/server-process-lock"
 import { Storage } from "./storage"
 import { StorageBootstrap } from "./bootstrap"
@@ -20,10 +21,105 @@ import { z } from "zod"
 import { StorageRetention } from "./retention"
 import { ObservabilityConfig } from "../observability/config"
 import { Config } from "../config/config"
+import { RolloutJournalMaintenance } from "../session/rollout/journal-maintenance"
+import { StoragePortable } from "./portable"
 
 const exclusive = new WeakSet<object>()
 
 export namespace StorageMaintenance {
+  function assertExclusive() {
+    if (!exclusive.has(Storage.current().store))
+      throw new StorageIntegrityError("Rollout compaction requires an exclusive maintenance window")
+  }
+  export const rolloutStatus = () => RolloutJournalMaintenance.status()
+  export async function prepareRolloutBackup() {
+    assertExclusive()
+    const store = Storage.current().store
+    const directory = path.join(Storage.current().artifactDirectory, "storage", "backups")
+    const state = await RolloutJournalMaintenance.status()
+    if (state.backup) {
+      const filename = path.join(directory, state.backup.file)
+      if (
+        path.basename(state.backup.file) !== state.backup.file ||
+        (await fs.stat(filename)).size !== state.backup.bytes
+      )
+        throw new StorageIntegrityError("Rollout maintenance backup is missing or changed")
+      const hash = createHash("sha256")
+      for await (const bytes of Bun.file(filename).stream()) {
+        UpgradeWork.signal()?.throwIfAborted()
+        hash.update(bytes)
+      }
+      if (hash.digest("hex") !== state.backup.sha256)
+        throw new StorageIntegrityError("Rollout maintenance backup checksum mismatch")
+      return
+    }
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 })
+    const capacity = await fs.statfs(directory)
+    const estimate = store.sqliteFilename
+      ? (await fs.stat(store.sqliteFilename)).size +
+        (await fs.stat(store.sqliteFilename + "-wal").catch(() => ({ size: 0 }))).size
+      : Number(
+          (
+            await store.snapshot((tx) =>
+              tx.raw.query<{ bytes: number }>("SELECT pg_database_size(current_database()) AS bytes"),
+            )
+          )[0].bytes,
+        ) * 2
+    if (capacity.bavail * capacity.bsize < estimate + 1024 ** 3)
+      throw new StorageIntegrityError("Insufficient free space for the Rollout backup and maintenance reserve")
+    const file = `rollout-${crypto.randomUUID()}.${store.sqliteFilename ? "sqlite" : "ndjson"}`
+    const temporary = path.join(directory, file + ".partial")
+    try {
+      UpgradeWork.signal()?.throwIfAborted()
+      if (store.sqliteFilename) await store.backupSqlite(temporary)
+      else await StoragePortable.exportFile(store, temporary)
+      const handle = await fs.open(temporary, "r+")
+      try {
+        await handle.chmod(0o600)
+        await handle.sync()
+      } finally {
+        await handle.close()
+      }
+      const hash = createHash("sha256")
+      for await (const bytes of Bun.file(temporary).stream()) {
+        UpgradeWork.signal()?.throwIfAborted()
+        hash.update(bytes)
+      }
+      const bytes = (await fs.stat(temporary)).size
+      await fs.rename(temporary, path.join(directory, file))
+      if (process.platform !== "win32") {
+        const parent = await fs.open(directory, "r")
+        try {
+          await parent.sync()
+        } finally {
+          await parent.close()
+        }
+      }
+      await RolloutJournalMaintenance.backup({ file, bytes, sha256: hash.digest("hex") })
+    } catch (error) {
+      await fs.rm(temporary, { force: true })
+      throw error
+    }
+  }
+  export async function compactRollout(options: { apply?: boolean; signal?: AbortSignal } = {}) {
+    assertExclusive()
+    return Storage.withMigrationRecords(() =>
+      UpgradeWork.run({ background: false, signal: options.signal }, async () => {
+        if (!options.apply) return RolloutJournalMaintenance.inspect(options.signal)
+        const result = await runMigrations({
+          targetDomain: "rollout-journal",
+          maintenance: true,
+          output: "silent",
+          signal: options.signal,
+        })
+        if (result.failed)
+          throw new StorageIntegrityError("Rollout compaction failed; its last committed batch is resumable")
+        const status = await rolloutStatus()
+        if (status.phase !== "completed") throw new StorageIntegrityError("Rollout compaction migration is unavailable")
+        return status
+      }),
+    )
+  }
   export function observe<T>(
     operation: () => Promise<T>,
     reporter: (event: StorageMaintenanceEvent) => void,

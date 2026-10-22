@@ -40,7 +40,7 @@ export type PromptInputMode = "normal" | "shell"
 export type PromptInputStore = {
   popover: PromptPopoverMode
   historyIndex: number
-  savedPrompt: import("@/context/prompt").Prompt | null
+  savedPrompt: import("./history").PromptHistoryEntry | null
   dragging: boolean
   mode: PromptInputMode
   applyingHistory: boolean

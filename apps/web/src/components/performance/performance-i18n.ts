@@ -219,7 +219,7 @@ export const P = {
   chartCpu: { id: "app.performance.chart.cpu.title", message: "CPU and event loop" },
   chartCpuDesc: {
     id: "app.performance.chart.cpu.desc",
-    message: "CPU average percent and event-loop p95 latency from runtime timeline buckets",
+    message: "Process CPU average (100% = one CPU core; may exceed 100%) and event-loop p95 latency",
   },
   chartMemory: { id: "app.performance.chart.memory.title", message: "Memory" },
   chartMemoryDesc: {

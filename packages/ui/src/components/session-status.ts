@@ -210,6 +210,16 @@ export function computeStatusFromPart(part: PartType | undefined, i18n?: I18n): 
       const desc = isEdit ? TOOL_GEN_EDIT_DESC : TOOL_GEN_DEFAULT_DESC
       return resolveMsg(i18n, desc)
     }
+    const input = part.state.input
+    if (
+      part.tool === "blueprint_loop_stop" &&
+      typeof input === "object" &&
+      input !== null &&
+      "action" in input &&
+      input.action === "pause"
+    ) {
+      return resolveMsg(i18n, defineDescriptor("session-status.pausing-session", "Pausing session"))
+    }
     const desc = TOOL_DESC[part.tool]
     if (!desc) return undefined
     return resolveMsg(i18n, desc)
@@ -306,7 +316,10 @@ export function sessionActivityLabel(
       return resolveMsg(i18n, defineDescriptor("session.activity.parallelTools", "Calling tools · {count} active"), {
         count: activity.tool.count,
       })
-    const tool = activity.tool?.id && TOOL_TITLE_DESC[activity.tool.id]
+    const tool =
+      activity.tool?.id === "blueprint_loop_stop"
+        ? defineDescriptor("session.activity.blueprintAction", "Blueprint action")
+        : activity.tool?.id && TOOL_TITLE_DESC[activity.tool.id]
     if (tool)
       return resolveMsg(i18n, defineDescriptor("session.activity.tool", "Calling tool · {action}"), {
         action: resolveMsg(i18n, tool),

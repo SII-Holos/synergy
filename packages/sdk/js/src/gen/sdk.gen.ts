@@ -202,6 +202,9 @@ import type {
   CortexListResponses,
   CortexOutputErrors,
   CortexOutputResponses,
+  DigitalTwinInput,
+  DigitalTwinPredictNextInputErrors,
+  DigitalTwinPredictNextInputResponses,
   EnvironmentActivityErrors,
   EnvironmentActivityResponses,
   EnvironmentCancelExecutionErrors,
@@ -340,6 +343,7 @@ import type {
   HolosVerifyResponses,
   HostConnectionPeersErrors,
   HostConnectionPeersResponses,
+  InputAssistance,
   LatticeRunApproveErrors,
   LatticeRunApproveResponses,
   LatticeRunCancelErrors,
@@ -560,6 +564,9 @@ import type {
   ProviderConnectionCustomInput,
   ProviderConnectionRemoveErrors,
   ProviderConnectionRemoveResponses,
+  ProviderConnectionTestErrors,
+  ProviderConnectionTestInput,
+  ProviderConnectionTestResponses,
   ProviderConnectionUpdateErrors,
   ProviderConnectionUpdateInput,
   ProviderConnectionUpdateResponses,
@@ -796,6 +803,8 @@ import type {
   SessionPromptAsyncResponses,
   SessionPromptErrors,
   SessionPromptResponses,
+  SessionRetryRequestErrors,
+  SessionRetryRequestResponses,
   SessionRollbackAckErrors,
   SessionRollbackAckInput,
   SessionRollbackAckResponses,
@@ -4153,6 +4162,42 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Retry a model request
+   *
+   * Wake a waiting request or resume the latest retryable failure through the existing task Inbox. Server cooldowns and a shared recovery probe remain authoritative. Stale or duplicate requests report handled false.
+   */
+  public retryRequest<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      messageID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "messageID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<SessionRetryRequestResponses, SessionRetryRequestErrors, ThrowOnError>(
+      {
+        url: "/session/{sessionID}/message/{messageID}/retry",
+        ...options,
+        ...params,
+      },
+    )
+  }
+
+  /**
    * Continue a paused session
    *
    * Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.
@@ -4401,7 +4446,8 @@ export class Session extends HeyApiClient {
       agent?: string
       noReply?: boolean
       metadata?: {
-        [key: string]: unknown
+        assistance?: InputAssistance
+        [key: string]: unknown | InputAssistance | undefined
       }
       summary?: {
         title?: string
@@ -4654,7 +4700,8 @@ export class Session extends HeyApiClient {
       agent?: string
       noReply?: boolean
       metadata?: {
-        [key: string]: unknown
+        assistance?: InputAssistance
+        [key: string]: unknown | InputAssistance | undefined
       }
       summary?: {
         title?: string
@@ -5146,7 +5193,8 @@ export class Session extends HeyApiClient {
       agent?: string
       noReply?: boolean
       metadata?: {
-        [key: string]: unknown
+        assistance?: InputAssistance
+        [key: string]: unknown | InputAssistance | undefined
       }
       summary?: {
         title?: string
@@ -8803,6 +8851,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -8855,6 +8904,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -8914,6 +8964,7 @@ export class Domain extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -9174,6 +9225,7 @@ export class Config extends HeyApiClient {
         | "channels"
         | "holos"
         | "github"
+        | "digital-twin"
         | "email"
         | "plugins"
         | "mcp"
@@ -9195,6 +9247,7 @@ export class Config extends HeyApiClient {
             | "channels"
             | "holos"
             | "github"
+            | "digital-twin"
             | "email"
             | "plugins"
             | "mcp"
@@ -10912,13 +10965,15 @@ export class Cortex extends HeyApiClient {
   /**
    * Get Cortex task
    *
-   * Get a specific background task by ID
+   * Get a background task, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
       taskID: string
       directory?: string
       scopeID?: string
+      parentSessionID?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -10930,6 +10985,8 @@ export class Cortex extends HeyApiClient {
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "parentSessionID" },
+            { in: "query", key: "sessionID" },
           ],
         },
       ],
@@ -10944,13 +11001,15 @@ export class Cortex extends HeyApiClient {
   /**
    * Get task output
    *
-   * Get the output of a completed background task
+   * Get task output, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.
    */
   public output<ThrowOnError extends boolean = false>(
     parameters: {
       taskID: string
       directory?: string
       scopeID?: string
+      parentSessionID?: string
+      sessionID?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -10962,6 +11021,8 @@ export class Cortex extends HeyApiClient {
             { in: "path", key: "taskID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "parentSessionID" },
+            { in: "query", key: "sessionID" },
           ],
         },
       ],
@@ -11039,6 +11100,47 @@ export class Command extends HeyApiClient {
 }
 
 export class Connection extends HeyApiClient {
+  /**
+   * Test a saved provider connection with one short model request
+   */
+  public test<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+      providerConnectionTestInput?: ProviderConnectionTestInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "providerConnectionTestInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderConnectionTestResponses,
+      ProviderConnectionTestErrors,
+      ThrowOnError
+    >({
+      url: "/provider/connections/{providerID}/test",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
   /**
    * Create provider account connection
    *
@@ -14507,6 +14609,47 @@ export class Lattice extends HeyApiClient {
   run = new Run({ client: this.client })
 }
 
+export class DigitalTwin extends HeyApiClient {
+  /**
+   * Predict the next user input
+   */
+  public predictNextInput<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      digitalTwinInput?: DigitalTwinInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "digitalTwinInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      DigitalTwinPredictNextInputResponses,
+      DigitalTwinPredictNextInputErrors,
+      ThrowOnError
+    >({
+      url: "/digital-twin/predict-next-input",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Asset extends HeyApiClient {
   /**
    * Upload asset
@@ -17252,6 +17395,8 @@ export class SynergyClient extends HeyApiClient {
   boss = new Boss({ client: this.client })
 
   lattice = new Lattice({ client: this.client })
+
+  digitalTwin = new DigitalTwin({ client: this.client })
 
   asset = new Asset({ client: this.client })
 

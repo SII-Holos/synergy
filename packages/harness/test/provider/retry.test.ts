@@ -190,13 +190,13 @@ test(
   }),
 )
 
-test(
-  "the real SDK retries raw DNS failures inside the caller's retry budget",
-  runtime.bind(async () => {
+test.each(["ETIMEOUT", "ENOTFOUND"])(
+  "the real SDK retries raw DNS %s failures inside the caller's retry budget",
+  runtime.bind(async (code) => {
     let calls = 0
     const events = await run(async () => {
       if (++calls === 1)
-        throw Object.assign(new TypeError("getaddrinfo ETIMEOUT provider.invalid"), { code: "ETIMEOUT" })
+        throw Object.assign(new TypeError(`getaddrinfo ${code} provider.invalid`), { code, syscall: "getaddrinfo" })
       return success()
     }, 1)
     expect(calls).toBe(2)
@@ -205,13 +205,13 @@ test(
   10000,
 )
 
-test(
-  "normal session calls leave retry ownership with the processor",
-  runtime.bind(async () => {
+test.each(["ETIMEOUT", "ENOTFOUND"])(
+  "normal session %s calls leave retry ownership with the processor",
+  runtime.bind(async (code) => {
     let calls = 0
     const events = await run(async () => {
       calls++
-      throw Object.assign(new TypeError("getaddrinfo ETIMEOUT provider.invalid"), { code: "ETIMEOUT" })
+      throw Object.assign(new TypeError(`getaddrinfo ${code} provider.invalid`), { code, syscall: "getaddrinfo" })
     }, 0)
     expect(calls).toBe(1)
     expect(events.some((event) => event.type === "error")).toBe(true)

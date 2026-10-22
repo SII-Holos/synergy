@@ -3,7 +3,6 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Diagnostics } from "@ericsanchezok/synergy-harness/observability/diagnostics"
 import { ObservabilityIssues } from "@ericsanchezok/synergy-harness/observability/issues"
-import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
 import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionMessageCache } from "@ericsanchezok/synergy-harness/session/message-cache"
@@ -127,12 +126,22 @@ export namespace PerformanceDashboard {
       ? await ObservabilityStore.queryMetricHighlights({ ...filter, names: [...new Set(highlightNames)] })
       : []
     const count = (name: string) => counts.filter((row) => row.name === name).reduce((sum, row) => sum + row.count, 0)
-    const resourceRows = ObservabilityStore.resourceSince(since, { limit: 50_000 })
-    const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
-    const resources = serverResourceRows.at(-1)
+    const serverFilter = { role: "server", until, limit: 1 } as const
+    const resources = ObservabilityStore.resourceSince(since, { ...serverFilter, newestFirst: true })[0]
+    const serverBaseline = ObservabilityStore.resourceSince(since, serverFilter)[0]
     const currentChildRows = resources
-      ? resourceRows.filter((row) => row.time === resources.time && row.process_role?.startsWith("tool"))
+      ? ObservabilityStore.resourceSince(resources.time, {
+          role: "tool",
+          until: resources.time + 1,
+          limit: 50_000,
+        })
       : []
+    const [serverResources, childResources] = await Promise.all([
+      ObservabilityStore.resourceSummary({ since, until, role: "server" }),
+      resources
+        ? ObservabilityStore.resourceSummary({ since: resources.time, until: resources.time + 1, role: "tool" })
+        : undefined,
+    ])
     const childProcesses = rankChildProcesses(currentChildRows)
     const issueCounts = ObservabilityStore.countIssues({ status: "open", scopeID: input.scopeID, since })
     const issues = ObservabilityIssues.list({
@@ -191,8 +200,7 @@ export namespace PerformanceDashboard {
     const criticalIssueCount = issueCounts.critical
     const score = Math.max(0, 100 - criticalIssueCount * 40 - issueCounts.error * 20 - issueCounts.warning * 8)
     const status = criticalIssueCount > 0 ? "critical" : issueCounts.total > 0 ? "degraded" : "healthy"
-    const serverBaseline = serverResourceRows.at(0)
-    const serverPeakBytes = Math.max(0, ...serverResourceRows.map((row) => row.memory_rss_bytes ?? 0))
+    const serverPeakBytes = serverResources?.peakRssBytes ?? undefined
     const currentServerBytes = resources?.memory_rss_bytes ?? undefined
     const serverBaselineBytes = serverBaseline?.memory_rss_bytes ?? undefined
     const latestMetric = (name: string) => metrics.find((row) => row.name === name)?.value
@@ -202,7 +210,7 @@ export namespace PerformanceDashboard {
         processCount: 1,
         measuredProcessCount: currentServerBytes === undefined ? 0 : 1,
         currentBytes: currentServerBytes,
-        peakBytes: serverPeakBytes || currentServerBytes,
+        peakBytes: serverPeakBytes ?? currentServerBytes,
         baselineBytes: serverBaselineBytes,
         retainedBytes:
           currentServerBytes === undefined || serverBaselineBytes === undefined
@@ -293,18 +301,13 @@ export namespace PerformanceDashboard {
         externalBytes: resources?.memory_external_bytes ?? undefined,
         arrayBuffersBytes: resources?.memory_array_buffers_bytes ?? undefined,
         cpuUtilizationRatio: resources?.cpu_utilization_ratio ?? undefined,
-        eventLoopLagP95Ms: ObservabilityMetrics.percentile(
-          serverResourceRows.map((row) => row.event_loop_lag_ms ?? 0),
-          95,
-        ),
+        eventLoopLagP95Ms: serverResources?.eventLoopLagP95Ms ?? undefined,
         appReadBytes: resources?.app_read_bytes ?? undefined,
         appWrittenBytes: resources?.app_written_bytes ?? undefined,
         appReadOps: resources?.app_read_ops ?? undefined,
         appWriteOps: resources?.app_write_ops ?? undefined,
-        childProcessCount: currentChildRows.length,
-        measuredChildProcessCount: currentChildRows.filter(
-          (row) => row.memory_rss_bytes !== undefined && row.memory_rss_bytes !== null,
-        ).length,
+        childProcessCount: childResources?.count ?? 0,
+        measuredChildProcessCount: childResources?.measuredCount ?? 0,
         serviceMemory:
           resources?.service_memory_source && resources.service_memory_completeness
             ? {
@@ -317,7 +320,7 @@ export namespace PerformanceDashboard {
                 completeness: resources.service_memory_completeness,
               }
             : undefined,
-        childProcessRssBytes: currentChildRows.reduce((sum, row) => sum + (row.memory_rss_bytes ?? 0), 0),
+        childProcessRssBytes: childResources?.rssBytes ?? 0,
         owners,
       },
       sessions: {

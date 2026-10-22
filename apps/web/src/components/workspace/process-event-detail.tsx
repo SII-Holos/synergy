@@ -1,7 +1,7 @@
 import { createMemo, createResource, onCleanup, Show, Switch, Match } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
-import type { SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
+import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import { requestErrorMessage } from "@/utils/error"
@@ -74,7 +74,7 @@ export function ProcessEventDetailWorkbenchContent(
         )
       const message = result.data.info
       let output: ProcessTaskOutput | undefined
-      let cortex: SessionCortexDelegation | undefined
+      let cortex: CortexTask | undefined
       if (
         target.kind === "agent-delivery" &&
         message.role === "user" &&
@@ -82,14 +82,22 @@ export function ProcessEventDetailWorkbenchContent(
         message.origin.taskID &&
         message.origin.sessionID
       ) {
-        const child = await sdk.client.session
-          .get({ sessionID: message.origin.sessionID }, { signal: current.signal, throwOnError: true })
+        const child = await sdk.client.cortex
+          .get(
+            {
+              taskID: message.origin.taskID,
+              parentSessionID: target.sessionID,
+              sessionID: message.origin.sessionID,
+            },
+            { signal: current.signal, throwOnError: true },
+          )
           .catch(() => undefined)
         if (
-          child?.data?.cortex?.taskID === message.origin.taskID &&
-          child.data.cortex.parentSessionID === target.sessionID
+          child?.data?.id === message.origin.taskID &&
+          child.data.sessionID === message.origin.sessionID &&
+          child.data.parentSessionID === target.sessionID
         ) {
-          cortex = child.data.cortex
+          cortex = child.data
           output = processTaskOutput(cortex.output)
         }
       }

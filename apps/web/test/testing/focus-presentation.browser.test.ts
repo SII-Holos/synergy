@@ -39,12 +39,27 @@ beforeAll(async () => {
     import {Switch} from "@ericsanchezok/synergy-ui/switch"
     import {RadioGroup} from "@ericsanchezok/synergy-ui/radio-group"
     import {MenuField} from "@ericsanchezok/synergy-ui/menu-field"
+    import {ResizeHandle} from "@ericsanchezok/synergy-ui/resize-handle"
     import ${JSON.stringify(path.join(root, "apps/web/src/index.css"))}
+    import ${JSON.stringify(path.join(root, "apps/web/src/components/sidebar/sidebar.css"))}
+    import ${JSON.stringify(path.join(root, "apps/web/src/components/workspace/workbench-surface.css"))}
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     function App(){
       const [choice,setChoice]=createSignal("one")
+      const [navigation,setNavigation]=createSignal(160),[workbench,setWorkbench]=createSignal(180)
       return <main class="synergy-workbench-canvas" style="padding:24px;display:grid;gap:16px;max-width:720px">
         <button id="start">Start</button>
+        <div data-case="separators" style="display:flex;height:120px;min-width:0">
+          <div class="sb-root sb-expanded" style={{width:navigation()+"px"}}>
+            Navigation
+            <ResizeHandle direction="horizontal" aria-label="Resize navigation" size={navigation()} min={100} max={300} onResize={setNavigation}/>
+          </div>
+          <div style="flex:1;min-width:0">Conversation</div>
+          <div class="workbench-surface workbench-surface--side workbench-surface--open" style={{width:workbench()+"px"}}>
+            <ResizeHandle direction="horizontal" edge="start" aria-label="Resize workbench" size={workbench()} min={100} max={300} onResize={setWorkbench}/>
+            <aside class="workbench-surface-panel">Workbench</aside>
+          </div>
+        </div>
         <div data-case="native"><button>Native button</button><a href="#target">Link</a><select aria-label="Native select"><option>One</option><option>Two</option></select><textarea aria-label="Native textarea"/><input aria-label="Native date" type="date"/><input aria-label="Native range" type="range"/><details><summary>Details</summary>Body</details></div>
         <div data-case="buttons"><Button variant="primary">Primary</Button><Button variant="secondary">Secondary</Button><Button variant="ghost">Ghost</Button><IconButton icon="plus" aria-label="Add"/></div>
         <div data-case="text"><TextField label="Shared input"/><TextField label="Multiline" multiline/><TextField label="Invalid input" validationState="invalid" error="Required"/></div>
@@ -155,6 +170,63 @@ for (const engine of [chromium]) {
   }, 30_000)
 
   for (const scheme of ["light", "dark"] as const) {
+    test(`${engine.name()} ${scheme}: pane separators share one visible hairline without shrinking drag or keyboard targets`, async () => {
+      const browser = await engine.launch({ headless: true })
+      browsers.push(browser)
+      const page = await browser.newPage({ colorScheme: scheme, reducedMotion: "reduce" })
+      page.setDefaultTimeout(5000)
+      await page.goto(fixture.url)
+      await page.locator("#start").waitFor()
+      for (const [name, direction] of [
+        ["Resize navigation", 1],
+        ["Resize workbench", -1],
+      ] as const) {
+        const handle = page.getByRole("separator", { name, exact: true })
+        await handle.hover({ position: { x: 6, y: 40 } })
+        await page.waitForFunction(
+          (name) => getComputedStyle(document.querySelector(`[aria-label="${name}"]`)!, "::after").opacity === "1",
+          name,
+        )
+        const line = await handle.evaluate((element) => {
+          const bounds = element.getBoundingClientRect()
+          const parent = element.parentElement!.getBoundingClientRect()
+          const style = getComputedStyle(element, "::after")
+          const width = Number.parseFloat(style.width)
+          const left = bounds.left + Number.parseFloat(style.left) + new DOMMatrixReadOnly(style.transform).m41
+          return {
+            width,
+            visible: Math.max(0, Math.min(parent.right, left + width) - Math.max(parent.left, left)),
+            target: bounds.width,
+            color: style.backgroundColor,
+          }
+        })
+        expect(line.width).toBe(1)
+        expect(line.visible).toBe(1)
+        expect(line.target).toBe(8)
+        expect(line.color).not.toBe("rgba(0, 0, 0, 0)")
+        const start = Number(await handle.getAttribute("aria-valuenow"))
+        const bounds = (await handle.boundingBox())!
+        await page.mouse.move(bounds.x + 6, bounds.y + 40)
+        await page.mouse.down()
+        await page.mouse.move(bounds.x + 30, bounds.y + 40)
+        await page.mouse.up()
+        expect(Number(await handle.getAttribute("aria-valuenow"))).toBe(start + 24 * direction)
+        await page.locator("#start").focus()
+        await page.keyboard.press("Tab")
+        await handle.focus()
+        expect(await handle.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+        await handle.press("ArrowRight")
+        expect(Number(await handle.getAttribute("aria-valuenow"))).toBe(start + 32 * direction)
+        await handle.press("Home")
+        expect(await handle.getAttribute("aria-valuenow")).toBe("100")
+        await handle.press("End")
+        expect(await handle.getAttribute("aria-valuenow")).toBe("300")
+        expect(await handle.evaluate((element) => element.parentElement!.getBoundingClientRect().width)).toBe(300)
+        await handle.press("Home")
+      }
+      await page.close()
+    }, 30_000)
+
     test(`${engine.name()} ${scheme}: structural focus preserves surfaces while actions retain their cue`, async () => {
       const browser = await engine.launch({ headless: true })
       browsers.push(browser)

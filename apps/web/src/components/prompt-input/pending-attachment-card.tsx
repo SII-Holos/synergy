@@ -1,8 +1,9 @@
 import { Show, createEffect, createSignal, onCleanup } from "solid-js"
-import { attachmentKind, formatAttachmentSize } from "@ericsanchezok/synergy-ui/attachment-card"
+import { formatAttachmentSize } from "@ericsanchezok/synergy-ui/attachment-card"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import type { PendingPromptAttachment } from "./pending-attachments"
 
 export function PendingAttachmentCard(props: {
@@ -32,9 +33,8 @@ export function PendingAttachmentCard(props: {
   })
   const metaLabel = () => {
     return [
-      attachmentKind({ mime: props.entry.mime }),
-      formatAttachmentSize(props.entry.size),
       failed() ? props.failedLabel : uploading() ? props.uploadingLabel : props.uploadedLabel,
+      formatAttachmentSize(props.entry.size),
     ]
       .filter(Boolean)
       .join(" · ")
@@ -49,8 +49,10 @@ export function PendingAttachmentCard(props: {
         data-compact="draft"
         data-disabled="true"
         data-upload-state={props.entry.status}
+        role="group"
         aria-busy={uploading()}
-        aria-label={image() ? `${props.entry.filename} · ${metaLabel()}` : undefined}
+        aria-label={`${props.entry.filename} · ${metaLabel()}`}
+        aria-description={failed() ? props.entry.error : undefined}
       >
         <span data-slot="attachment-card-preview">
           <Show
@@ -88,20 +90,27 @@ export function PendingAttachmentCard(props: {
                 </Show>
               }
             >
-              {metaLabel()}
+              {failed() ? props.failedLabel : metaLabel()}
             </Show>
           </span>
-          <Show when={failed()}>
-            <Show when={!image()}>
-              <span class="prompt-attachment-error" title={props.entry.error}>
-                {props.entry.error}
-              </span>
-            </Show>
+          <Show when={failed() && image()}>
             <button type="button" data-slot="attachment-retry" onClick={() => props.onRetry(props.entry.id)}>
               {props.retryLabel}
             </button>
           </Show>
         </span>
+        <Show when={failed() && !image()}>
+          <Tooltip value={props.entry.error || props.failedLabel}>
+            <button
+              type="button"
+              data-slot="attachment-retry"
+              aria-label={props.retryLabel}
+              onClick={() => props.onRetry(props.entry.id)}
+            >
+              {props.retryLabel}
+            </button>
+          </Tooltip>
+        </Show>
       </div>
       <button
         type="button"

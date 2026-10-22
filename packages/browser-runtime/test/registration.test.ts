@@ -3,6 +3,7 @@ import { registerBrowser, disposeBrowser } from "../src/register"
 import { BrowserRuntime } from "../src/runtime"
 import { BrowserStorage } from "../src/storage"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
+import { ToolExposure } from "@ericsanchezok/synergy-harness/tool/exposure"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./support/runtime"
@@ -17,6 +18,14 @@ test("Browser registration creates suspended owner state and disposes without la
     registerBrowser()
     expect(MigrationRegistry.list().has("browser")).toBe(true)
     expect(ToolRegistry.toolProviderIDs().filter((id) => id === "browser")).toHaveLength(1)
+    expect(ToolExposure.groups().find((group) => group.id === "browser")?.tools).not.toContain("browser_view")
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        expect(await ToolRegistry.find("browser_view")).toBeUndefined()
+        expect(await ToolRegistry.find("browser_navigation")).toBeDefined()
+      },
+    })
     const stored = await ScopeContext.provide({ scope: Scope.home(), fn: () => Session.create({}) })
     const owner = {
       mode: "session" as const,

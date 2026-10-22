@@ -9,12 +9,10 @@
 // alone (session ids are globally unique) and live in the global store, which
 // no eviction path touches.
 //
-// The snapshot merge follows the same post-stamp discipline as the Scope
-// buckets: a snapshot response is stamped before its fields are read, so only
-// keys with an event write after that stamp may override it. The key space is
-// flat because session ids are globally unique. Permission and question reads
-// and their sequencing stamps are Scope-local, so their callers use a tracker
-// per Scope and adopt only that Scope's index slice.
+// Scope snapshots compare each status key's own epoch/sequence. The global
+// status snapshot spans unrelated Scope clocks, so it instead preserves writes
+// observed after that request started. Permission and question reads remain
+// Scope-local and their callers use a tracker per Scope.
 
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk"
 import type { EventWriteStamp } from "./scope-snapshot-merge"
@@ -57,15 +55,24 @@ export function flattenBuckets<T>(buckets: Record<string, T[] | undefined>): T[]
  */
 export class GlobalRuntimeWriteTracker {
   private epoch: string | undefined
-  private readonly status = new Map<string, number>()
+  private readonly status = new Map<string, { stamp?: EventWriteStamp; revision: number }>()
+  private statusRevision = 0
   private readonly permission = new Map<string, number>()
   private readonly question = new Map<string, number>()
   private readonly cortex = new Map<string, number>()
   private cortexReplaceSeq: number | undefined
 
-  statusWrite(stamp: EventWriteStamp, sessionID: string) {
-    this.syncEpoch(stamp)
-    this.status.set(sessionID, stamp.seq)
+  statusWrite(stamp: EventWriteStamp | undefined, sessionID: string) {
+    this.status.set(sessionID, { stamp, revision: ++this.statusRevision })
+  }
+
+  scopeStatusWrite(sessionID: string) {
+    // Snapshot adoption changes local state without replacing its event watermark.
+    this.statusWrite(this.status.get(sessionID)?.stamp, sessionID)
+  }
+
+  captureStatusSnapshot() {
+    return this.statusRevision
   }
 
   permissionWrite(stamp: EventWriteStamp, requestID: string) {
@@ -90,20 +97,19 @@ export class GlobalRuntimeWriteTracker {
   }
 
   /**
-   * Snapshot overlaid with status keys whose last event write postdates the
-   * snapshot stamp. `undefined` means the snapshot is authoritative for every
-   * key — including the idle sessions it omits, whose local entries the caller's
-   * reconcile then drops.
+   * A global snapshot's Home watermark cannot order project events. Preserve
+   * writes observed since request start, including idle deletions, regardless
+   * of Scope. Earlier local state still converges to the snapshot.
    */
   mergeStatus(
-    version: EventWriteStamp | undefined,
+    requestRevision: number,
     snapshot: SessionStatusIndex,
     local: SessionStatusIndex,
   ): SessionStatusIndex | undefined {
-    const postStamp = this.postStampKeys(version, this.status)
-    if (!postStamp) return undefined
-    const merged: SessionStatusIndex = { ...snapshot }
-    for (const sessionID of postStamp) {
+    let merged: SessionStatusIndex | undefined
+    for (const [sessionID, write] of this.status) {
+      if (write.revision <= requestRevision) continue
+      merged ??= { ...snapshot }
       const value = local[sessionID]
       if (value === undefined) delete merged[sessionID]
       else merged[sessionID] = value
@@ -134,15 +140,18 @@ export class GlobalRuntimeWriteTracker {
     snapshot: SessionStatusIndex,
     scopeSessionIDs: Iterable<string>,
   ): ScopeStatusSnapshotAdoption {
-    const postStamp = this.postStampKeys(version, this.status)
+    const postStamp = new Set<string>()
+    for (const [sessionID, write] of this.status) {
+      if (version && write.stamp?.epoch === version.epoch && write.stamp.seq > version.seq) postStamp.add(sessionID)
+    }
     const adopt: SessionStatusIndex = {}
     for (const [sessionID, status] of Object.entries(snapshot)) {
-      if (postStamp?.has(sessionID)) continue
+      if (postStamp.has(sessionID)) continue
       adopt[sessionID] = status
     }
     const drop: string[] = []
     for (const sessionID of scopeSessionIDs) {
-      if (snapshot[sessionID] !== undefined || postStamp?.has(sessionID)) continue
+      if (snapshot[sessionID] !== undefined || postStamp.has(sessionID)) continue
       drop.push(sessionID)
     }
     return { adopt, drop }
@@ -216,7 +225,6 @@ export class GlobalRuntimeWriteTracker {
   private syncEpoch(stamp: EventWriteStamp) {
     if (this.epoch === stamp.epoch) return
     this.epoch = stamp.epoch
-    this.status.clear()
     this.permission.clear()
     this.question.clear()
     this.cortex.clear()

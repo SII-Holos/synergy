@@ -198,6 +198,7 @@ describe("performance chart model", () => {
           points: [
             { time: 1000, value: null, sampleCount: 0 },
             { time: 2000, value: 0.42, sampleCount: 1 },
+            { time: 3000, value: 2.5, sampleCount: 1 },
           ],
         },
         {
@@ -212,10 +213,12 @@ describe("performance chart model", () => {
         },
       ]),
     )
-    expect(points.map((point) => point.timestamp)).toEqual([1000, 2000])
+    expect(points.map((point) => point.timestamp)).toEqual([1000, 2000, 3000])
     expect(points[0].cpu).toBeUndefined()
     expect(points[0].eventLoopLag).toBe(8)
     expect(points[1].cpu).toBe(42)
+    expect(points[2].cpu).toBe(250)
+    expect(formatMetricValue(2.5, "ratio")).toBe("250%")
   })
 
   test("timeline memory bytes convert to MB without losing sparse gaps", () => {

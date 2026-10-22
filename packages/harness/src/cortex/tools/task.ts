@@ -251,8 +251,14 @@ Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the
           })
         })
 
-        const completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S, ctx.abort)
-        unsub()
+        const finishWaiting = ctx.execution?.waiting("child")
+        let completed: CortexTypes.Task | undefined
+        try {
+          completed = await Cortex.waitFor(task.id, SYNC_TIMEOUT_S, ctx.abort)
+        } finally {
+          finishWaiting?.()
+          unsub()
+        }
 
         if (!completed || completed.status === "running") {
           const summary = Object.values(parts).sort((a, b) => a.id.localeCompare(b.id))

@@ -22,6 +22,7 @@ let memoryFailure = false
 let detailReads = 0
 let removedMemory = false
 let multipleMemories = false
+let multipleExperiences = false
 let holdMemory: Promise<void> | undefined
 const memory = {
   id: "memory",
@@ -66,6 +67,21 @@ beforeAll(async () => {
   )
   await Bun.write(path.join(directory, "markdown.tsx"), "export const Markdown = props => <div>{props.text}</div>")
   await Bun.write(
+    path.join(directory, "sdk.ts"),
+    `import {createSynergyClient} from "@ericsanchezok/synergy-sdk/client";
+     export const useGlobalSDK = () => ({url: location.origin + "/api", client: createSynergyClient({baseUrl: location.origin + "/api", throwOnError: true})})`,
+  )
+  await Bun.write(
+    path.join(directory, "sync.ts"),
+    `export const useGlobalSync = () => ({data: {scope: [{id: "scope-source", name: "Example project"}]}, ensureScopeState: () => [{session: [], scopeID: "scope-source"}]})`,
+  )
+  await Bun.write(path.join(directory, "platform.ts"), "export const usePlatform = () => ({platform: 'web', fetch})")
+  await Bun.write(
+    path.join(directory, "mobile-close.ts"),
+    "export const useWorkspaceMobileHeaderClose = () => () => {}",
+  )
+  await Bun.write(path.join(directory, "usage.tsx"), "export const StatsSection = () => <div>Usage statistics</div>")
+  await Bun.write(
     path.join(directory, "main.tsx"),
     `
     import {render} from "solid-js/web"
@@ -78,9 +94,11 @@ beforeAll(async () => {
     import {RankList} from "/@fs/${source}/components/stats/rank-list.tsx"
     import {MODEL_METRICS} from "/@fs/${source}/components/stats/model.ts"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
-    import {ExperienceCard} from "/@fs/${source}/components/library/experience-view.tsx"
+    import {ExperienceCard, ExperienceView} from "/@fs/${source}/components/library/experience-view.tsx"
+    import {LibraryPanel} from "/@fs/${source}/components/library/library-panel.tsx"
+    import {SkillView} from "/@fs/${source}/components/library/skill-view.tsx"
     import {MemoryView, MemoryCard} from "/@fs/${source}/components/library/memory-view.tsx"
-    import {LibraryHome} from "/@fs/${source}/components/library/home-view.tsx"
+    import {LibrarySearch} from "/@fs/${source}/components/library/home-view.tsx"
     import {CalendarGrid} from "/@fs/${source}/components/agenda/calendar.tsx"
     import {messages as en} from "/@fs/${source}/locales/en/messages.po"
     import "@ericsanchezok/synergy-ui/styles"
@@ -90,15 +108,18 @@ beforeAll(async () => {
     const i18n=setupI18n({locale: "en", messages: {en}})
     const sdk={client:createSynergyClient({baseUrl: location.origin + "/api",throwOnError:true})}
     function Fixture() {
+      if (new URLSearchParams(location.search).has("experiences")) return <div style={{height: "100vh"}}><AppPanel.Root><AppPanel.Content><AppPanel.Body class="library-body"><div class="library-stage"><ExperienceView sdk={sdk} search="" isSearching={false} setSearchError={()=>{}} refetchStats={()=>{}} currentScopeID={undefined} currentSessionID={undefined} scopeLabel={() => "Example project"}/></div></AppPanel.Body></AppPanel.Content></AppPanel.Root></div>
+      if (new URLSearchParams(location.search).has("panel")) return <LibraryPanel />
+      if (new URLSearchParams(location.search).has("skills")) return <AppPanel.Root><AppPanel.Content><AppPanel.Body><div class="library-stage"><SkillView sdk={sdk} search="" /></div></AppPanel.Body></AppPanel.Content></AppPanel.Root>
       if (new URLSearchParams(location.search).has("remove")) return <AppPanel.Root><AppPanel.Content><input aria-label="Search library"/><MemoryView sdk={sdk} search="" isSearching={false} setSearchError={()=>{}} refetchStats={()=>{}}/></AppPanel.Content></AppPanel.Root>
 
-      if (new URLSearchParams(location.search).has("preview")) return <ExperienceCard item={{...${JSON.stringify(experience)},intent:"First useful paragraph\\n\\nFurther context to read in the summary",rewardStatus:"evaluated",reward:0}} expanded={false} searching={false} selecting={false} selected={false} detailError={false} expandedSections={new Set()} onRetry={() => {}} onToggle={() => {}} onToggleSection={() => {}} />
+       if (new URLSearchParams(location.search).has("preview")) return <ExperienceCard sourceScopeName="Example project" item={{...${JSON.stringify(experience)},intent:"A single-line intent",scriptPreview:"Inspect records and verify the source references.",rewardStatus:"evaluated",reward:0}} expanded={false} searching={false} selecting={false} selected={false} detailError={false} expandedSections={new Set()} onRetry={() => {}} onToggle={() => {}} onToggleSection={() => {}} />
       if (new URLSearchParams(location.search).has("rank")) return <RankList title="Models" description="Model usage" metrics={MODEL_METRICS} rows={[{id:"model",label:"Example model",primary:"embedding",values:{messages:3,tokens:3,cost:0}}]} defaultMetric="messages" />
       if (new URLSearchParams(location.search).has("typography")) return <AppPanel.Root><AppPanel.Content><AppPanel.Header><AppPanel.HeaderRow><AppPanel.Title>Library</AppPanel.Title></AppPanel.HeaderRow><AppPanel.Subtitle>Supporting information</AppPanel.Subtitle></AppPanel.Header><AppPanel.Body><p>Reading content</p></AppPanel.Body></AppPanel.Content></AppPanel.Root>
       const [selected,setSelected]=createSignal(false)
       const [memorySelected,setMemorySelected]=createSignal(false)
-      const [query,setQuery]=createSignal("")
-      const [nav,setNav]=createSignal("home")
+      const [query,setQuery]=createSignal("focus")
+      const [nav,setNav]=createSignal("stats")
       const [calendar,setCalendar]=createSignal(false)
       const [mode,setMode]=createSignal("week")
       const [opened,setOpened]=createSignal("")
@@ -108,7 +129,7 @@ beforeAll(async () => {
         <section aria-label="Memory selection"><MemoryCard item={${JSON.stringify(memory)}} expanded={false} searching={false} selecting={true} selected={memorySelected()} onToggle={() => setMemorySelected(value => !value)} /></section>
       </>
       return <><button onClick={() => setCalendar(value => !value)}>Toggle calendar</button>
-      <Show when={calendar()} fallback={<><div class="library-header-controls library-header-home"><AppPanel.Tabs label="Library views" items={[{id:"home",label:"Home"},{id:"memory",label:"Memories 100"},{id:"experience",label:"Experiences 120"},{id:"skill",label:"Skills"},{id:"stats",label:"Statistics"}]} active={nav()} onChange={setNav} /><div class="library-search-field"><input aria-label="Search library" style={{"flex":"1", "width":"100%"}} value={query()} onInput={event => setQuery(event.currentTarget.value)} /></div></div><Suspense fallback={<span>Waiting for all sources</span>}><LibraryHome sdk={sdk} search={query()} onBrowse={(view, name) => setOpened(view+":"+name)} registerSync={() => {}} /></Suspense></>}>
+      <Show when={calendar()} fallback={<><div class="library-header-controls"><AppPanel.Tabs label="Library views" items={[{id:"stats",label:"Statistics"},{id:"memory",label:"Memories 100"},{id:"experience",label:"Experiences 120"},{id:"skill",label:"Skills"}]} active={nav()} onChange={setNav} /><div class="library-search-field"><input aria-label="Search library" style={{"flex":"1", "width":"100%"}} value={query()} onInput={event => setQuery(event.currentTarget.value)} /></div></div><Suspense fallback={<span>Waiting for all sources</span>}><LibrarySearch sdk={sdk} search={query()} onBrowse={(view, name) => setOpened(view+":"+name)} registerSync={() => {}} /></Suspense></>}>
         <CalendarGrid viewMode={mode()} onViewModeChange={setMode} anchor={anchor()} onAnchorChange={setAnchor} events={[{id:"event", itemId:"item", title:"Keyboard event", status:"active", time:new Date(2026,8,25,10).getTime(), triggerType:"at"}]} onEventClick={event => setOpened(event.title)} />
       </Show><output>{opened()}</output></>
     }
@@ -122,6 +143,11 @@ beforeAll(async () => {
     plugins: [solidPlugin(), tailwindcss(), ...lingui()],
     resolve: {
       alias: [
+        { find: "@/context/global-sdk", replacement: path.join(directory, "sdk.ts") },
+        { find: "@/context/global-sync", replacement: path.join(directory, "sync.ts") },
+        { find: "@/context/platform", replacement: path.join(directory, "platform.ts") },
+        { find: "@/components/workspace/mobile-header-close", replacement: path.join(directory, "mobile-close.ts") },
+        { find: "@/components/stats/stats-section", replacement: path.join(directory, "usage.tsx") },
         { find: "@/context/locale", replacement: path.join(directory, "locale.ts") },
         { find: "@ericsanchezok/synergy-ui/markdown", replacement: path.join(directory, "markdown.tsx") },
         { find: "@", replacement: source },
@@ -156,9 +182,24 @@ beforeAll(async () => {
           : { ...experience, script: "", raw: "Original source", metadata: "{}" },
       })
     }
-    if (pathname === "/api/library/experience/page")
-      return route.fulfill({ json: { items: [experience], total: 1, limit: 20, offset: 0, hasMore: false } })
+    if (pathname === "/api/library/experience/page") {
+      const items = multipleExperiences
+        ? Array.from({ length: 3 }, (_, index) => ({
+            ...experience,
+            id: `entry-${index}`,
+            intent: `Experience ${index + 1}`,
+            rewardStatus: "pending",
+            scriptPreview: index === 2 ? null : "Inspect stored evidence and verify the resulting behavior.",
+          }))
+        : [experience]
+      return route.fulfill({ json: { items, total: items.length, limit: 20, offset: 0, hasMore: false } })
+    }
     if (pathname === "/api/library/experience/search") return route.fulfill({ json: [experience] })
+    if (pathname === "/api/library/stats") {
+      return new URL(route.request().url()).searchParams.has("recompute")
+        ? route.fulfill({ status: 503, json: { message: "Statistics offline" } })
+        : route.fulfill({ json: { memory: { count: 1 }, experience: { count: 1 }, dbSizeBytes: 0 } })
+    }
     if (pathname === "/api/library" || pathname === "/api/library/search") {
       await holdMemory
     }
@@ -175,9 +216,39 @@ beforeAll(async () => {
     if (pathname === "/api/skill")
       return route.fulfill({
         json: {
-          items: [{ name: "frontend-check", description: "Check focus recovery" }],
+          items: [
+            {
+              name: "frontend-check",
+              description: "Check focus recovery",
+              location: "/fixture/skills/frontend-check/SKILL.md",
+              scope: "global",
+              source: "synergy",
+              invocation: { user: true, model: true },
+              compatibility: { level: "native", warnings: [], unsupported: [] },
+              diagnostics: [],
+            },
+          ],
           sources: [],
-          diagnostics: [],
+          diagnostics: [
+            {
+              code: "skill.candidate_shadowed",
+              severity: "warning",
+              name: "duplicate",
+              source: "synergy",
+              path: "/fixture/duplicate/SKILL.md",
+              reason: {},
+              message: "A higher-priority source is active",
+            },
+            {
+              code: "skill.manifest_invalid",
+              severity: "error",
+              name: "broken",
+              source: "synergy",
+              path: "/fixture/broken/SKILL.md",
+              reason: {},
+              message: "Invalid manifest",
+            },
+          ],
         },
       })
     return route.fulfill({ status: 404, json: { message: "unexpected fixture request" } })
@@ -265,13 +336,13 @@ test("unified search isolates one failed category and its retry retains other re
 test("page tabs expose selection and support arrow and End navigation", async () => {
   await page.goto(url)
   const tabs = page.getByRole("tablist", { name: "Library views" })
-  const home = tabs.getByRole("tab", { name: "Home", exact: true })
+  const home = tabs.getByRole("tab", { name: "Statistics", exact: true })
   expect((await page.locator(".app-panel-tabs").boundingBox())!.height).toBeLessThanOrEqual(40)
   await home.focus()
   await home.press("ArrowRight")
   expect(await tabs.getByRole("tab", { name: "Memories 100" }).getAttribute("aria-selected")).toBe("true")
   await page.keyboard.press("End")
-  expect(await tabs.getByRole("tab", { name: "Statistics" }).getAttribute("aria-selected")).toBe("true")
+  expect(await tabs.getByRole("tab", { name: "Skills", exact: true }).getAttribute("aria-selected")).toBe("true")
   expect(await tabs.getByRole("tab").evaluateAll((elements) => elements.filter((el) => el.tabIndex === 0).length)).toBe(
     1,
   )
@@ -338,10 +409,81 @@ for (const category of ["Experience", "Memory"]) {
   })
 }
 
-test("experience preview separates its first paragraph from the remaining context", async () => {
+test("experience cards expose stored trajectory and source without a duplicate view action", async () => {
   await page.goto(`${url}?preview`)
-  expect(await page.locator(".app-panel-row-title").first().textContent()).toBe("First useful paragraph")
-  expect(await page.locator(".library-experience-summary").textContent()).toBe("Further context to read in the summary")
+  expect(await page.locator(".app-panel-row-title").first().textContent()).toBe("A single-line intent")
+  expect(await page.locator(".library-experience-summary").textContent()).toBe(
+    "Inspect records and verify the source references.",
+  )
+  expect(await page.getByText("Example project", { exact: true }).isVisible()).toBe(true)
+  expect(await page.getByRole("button", { name: "View experience", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button").count()).toBe(1)
+})
+
+test("Library opens on Statistics with four tabs and retains grouped search without an Overview page", async () => {
+  memoryFailure = false
+  await page.goto(`${url}?panel`)
+  const tabs = page.getByRole("tablist", { name: "Library views" })
+  await tabs.getByRole("tab", { name: "Memories 1", exact: true }).waitFor()
+  expect(await tabs.getByRole("tab").allTextContents()).toEqual(["Statistics", "Memories 1", "Experiences 1", "Skills"])
+  expect(await tabs.getByRole("tab", { name: "Statistics", exact: true }).getAttribute("aria-selected")).toBe("true")
+  await page.getByRole("textbox", { name: "Search library" }).fill("focus")
+  await page.getByRole("button", { name: /frontend-check/ }).waitFor()
+  expect(await page.getByRole("heading", { name: "Experiences", exact: true }).isVisible()).toBe(true)
+  await page.getByRole("button", { name: "Clear search", exact: true }).click()
+  expect(await tabs.getByRole("tab", { name: "Statistics", exact: true }).getAttribute("aria-selected")).toBe("true")
+  expect(await page.getByText("Recently updated", { exact: true }).count()).toBe(0)
+})
+
+test("ordinary skill notices follow the list while actual load failures stay before it", async () => {
+  await page.goto(`${url}?skills`)
+  const card = page.getByRole("button", { name: "Open details for frontend-check", exact: true })
+  await card.waitFor()
+  const notices = page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: "Sources and compatibility" }) })
+  await notices.waitFor()
+  expect(await notices.getAttribute("open")).toBeNull()
+  const cardBox = (await card.boundingBox())!
+  expect((await notices.boundingBox())!.y).toBeGreaterThan(cardBox.y + cardBox.height)
+  const failed = page.getByText("1 skill failed to load", { exact: true })
+  expect((await failed.boundingBox())!.y).toBeLessThan(cardBox.y)
+  await notices.locator("summary").press("Enter")
+  expect(await notices.getByText("A higher-priority source is active", { exact: true }).isVisible()).toBe(true)
+  expect(await card.textContent()).not.toContain("/fixture/")
+  await card.press("Enter")
+  expect(
+    await page.getByRole("dialog").getByText("/fixture/skills/frontend-check/SKILL.md", { exact: true }).isVisible(),
+  ).toBe(true)
+})
+
+test("experience rows reflow from paired cards to one column without losing selection or overflowing", async () => {
+  multipleExperiences = true
+  try {
+    await page.goto(`${url}?experiences`)
+    const cards = page.locator(".library-experience-card")
+    await cards.nth(2).waitFor()
+    const first = (await cards.nth(0).boundingBox())!
+    const second = (await cards.nth(1).boundingBox())!
+    expect(Math.abs(first.y - second.y)).toBeLessThan(1)
+    expect(second.x).toBeGreaterThan(first.x + first.width)
+    await page.getByRole("button", { name: "Select", exact: true }).click()
+    await cards.nth(0).getByRole("button").press("Space")
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.waitForFunction(() => {
+      const cards = document.querySelectorAll(".library-experience-card")
+      return cards[1].getBoundingClientRect().top > cards[0].getBoundingClientRect().bottom
+    })
+    const narrowFirst = (await cards.nth(0).boundingBox())!
+    const narrowSecond = (await cards.nth(1).boundingBox())!
+    expect(Math.abs(narrowFirst.x - narrowSecond.x)).toBeLessThan(1)
+    expect(await cards.nth(0).getByRole("button").getAttribute("aria-pressed")).toBe("true")
+    expect(await cards.nth(2).locator(".library-experience-summary").count()).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  } finally {
+    multipleExperiences = false
+    await page.setViewportSize({ width: 1000, height: 800 })
+  }
 })
 
 test("deleting a memory confirms separately and restores the neighboring item or search", async () => {

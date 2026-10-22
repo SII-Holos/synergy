@@ -67,6 +67,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   session_control: d("tool.title.control-session", "Manage session"),
   session_status: d("tool.title.session-status", "View session status"),
   session_compact: d("tool.title.compact-session", "Compact Session"),
+  session_pause: d("tool.title.pause-session", "Pause session"),
   session_abort: d("tool.title.abort-session", "Abort Session"),
   session_answer_question: d("tool.title.answer-question", "Answer Question"),
   session_dismiss_question: d("tool.title.dismiss-question", "Dismiss Question"),
@@ -140,6 +141,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   worktree_archive: d("tool.title.archive-worktree", "Archive isolated workspace"),
   worktree_list: d("tool.title.worktrees", "View isolated workspaces"),
   agent_config: d("tool.title.agent-config", "Manage agents"),
+  workbench_view: d("tool.title.workbench-view", "Manage resource views"),
 
   // Render
   render: d("tool.title.render", "Render content"),

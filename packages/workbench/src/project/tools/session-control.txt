@@ -6,6 +6,8 @@ The `target` parameter identifies which session to control:
 
 ## Actions
 
+Abort and pending-input replies work while the target session is running. Compaction and worktree actions require an idle target.
+
 ### `create` — Create a standalone primary session
 Creates a normal top-level session in the sidebar. `target` is not used. Optional parameters:
 - `title`: session title
@@ -24,7 +26,7 @@ Returns the session's current runtime status, pending questions, and pending per
 Forces the target session to compact its conversation history. Useful when a child session is approaching context limits.
 
 ### `abort` — Abort execution
-Stops any ongoing processing in the target session. Use when a delegated agent is stuck or doing the wrong thing.
+Stops any ongoing processing in the target session. Use when a delegated agent is stuck or doing the wrong thing. The target can be the calling session itself; this also interrupts the calling turn, so do not rely on a successful tool result or a follow-up response from it.
 
 ### `worktree_enter` — Create, enter, or switch the target session's worktree
 Uses `worktreeTarget` as an existing worktree name/ID/branch/path when it matches; otherwise creates a new worktree using `worktreeTarget` as the name. Omit `worktreeTarget` to create a uniquely named worktree. Use `baseRef`, `baseRevision`, and `force` as needed.

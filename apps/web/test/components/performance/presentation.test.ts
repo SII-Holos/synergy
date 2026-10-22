@@ -20,5 +20,13 @@ test("known performance issue categories use translatable names and preserve unk
     id: "app.performance.issue.storageFailed",
     message: "Storage operation failed",
   })
+  expect(issueTitle({ code: "PERF_TOOL_SLOW_EXECUTION", title: "Slow tool.execute" })).toEqual({
+    id: "app.performance.issue.slowTool",
+    message: "Slow tool execution",
+  })
+  expect(issueTitle({ code: "PERF_TOOL_STALLED", title: "Tool execution stalled" })).toEqual({
+    id: "app.performance.issue.stalledTool",
+    message: "Tool execution stalled",
+  })
   expect(issueTitle({ code: "CUSTOM_DIAGNOSTIC", title: "Publisher diagnostic" })).toBe("Publisher diagnostic")
 })

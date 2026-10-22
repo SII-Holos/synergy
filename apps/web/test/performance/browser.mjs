@@ -75,7 +75,9 @@ try {
   await page.waitForSelector("[data-conversation-viewport]", { timeout: 120000 })
   await page.waitForFunction(
     () =>
-      [...document.querySelectorAll('[data-component="text-part"]')].some((e) => e.getBoundingClientRect().height > 0),
+      [...document.querySelectorAll('[data-component="text-part"]')].some(
+        (e) => e.checkVisibility({ visibilityProperty: true }) && !e.closest('[inert], [aria-hidden="true"]'),
+      ),
     { timeout: 120000 },
   )
   await page.screenshot({ path: path.join(home, "initial.png") })
@@ -96,7 +98,10 @@ try {
         ({ route, index }) =>
           location.pathname === route &&
           [...document.querySelectorAll('[data-component="text-part"]')].some(
-            (e) => e.getBoundingClientRect().height > 0 && e.textContent?.includes(`Fixture ${index} message`),
+            (e) =>
+              e.checkVisibility({ visibilityProperty: true }) &&
+              !e.closest('[inert], [aria-hidden="true"]') &&
+              e.textContent?.includes(`Fixture ${index} message`),
           ),
         { route: target.route, index: Number(target.title.split(" ").at(-1)) },
         { timeout: 120000 },
@@ -134,7 +139,10 @@ try {
   await page.waitForFunction(
     () =>
       [...document.querySelectorAll('[data-component="text-part"]')].some(
-        (e) => e.getBoundingClientRect().height > 0 && e.textContent?.includes("chunk 299:"),
+        (e) =>
+          e.checkVisibility({ visibilityProperty: true }) &&
+          !e.closest('[inert], [aria-hidden="true"]') &&
+          e.textContent?.includes("chunk 299:"),
       ),
     void 0,
     { timeout: 1e4 },
@@ -144,7 +152,10 @@ try {
     if (index) await nav(manifest.sessions[index])
     await page.waitForFunction(() =>
       [...document.querySelectorAll('[data-component="text-part"]')].some(
-        (element) => element.getBoundingClientRect().height > 0 && element.textContent?.includes("chunk 299:"),
+        (element) =>
+          element.checkVisibility({ visibilityProperty: true }) &&
+          !element.closest('[inert], [aria-hidden="true"]') &&
+          element.textContent?.includes("chunk 299:"),
       ),
     )
     const read = new Set()
@@ -167,6 +178,12 @@ try {
       throw Error(`Rendered stream differs from the complete fixture: session ${index}, ${chunks.length} chunks`)
     streamValidation.push({ session: index, chunks: chunks.length, ordered: true, windows: windows + 1 })
   }
+  await settleWarmup()
+  await page.locator('[data-conversation-viewport][data-ready="true"]:visible').waitFor()
+  const prompt = page.locator('[data-component="prompt-input"]:visible')
+  await prompt.fill("Verified editable after concurrent streams")
+  if ((await prompt.inputValue().catch(() => prompt.innerText())) !== "Verified editable after concurrent streams")
+    throw Error("Composer did not retain its draft")
   const performance = await page.evaluate(() => window.__perf),
     visible = await page.locator('[data-component="text-part"]:visible').allTextContents(),
     report = {
@@ -192,6 +209,7 @@ try {
       visibleCharacters: visible.join("").length,
       residents: await page.locator("[data-session-resident]").count(),
       streamValidation,
+      composerEditable: true,
     }
   await Bun.write(path.join(home, "report.json"), JSON.stringify(report, null, 2))
   await page.screenshot({ path: path.join(home, "final.png") })

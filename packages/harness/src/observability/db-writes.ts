@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite"
 import { ObservabilitySchema } from "./schema"
+import type { TelemetryProtocol } from "./telemetry-protocol"
 
 export namespace ObservabilityDbWrites {
   export function insertMetric(conn: Database, metric: ObservabilitySchema.Metric) {
@@ -154,11 +155,32 @@ export namespace ObservabilityDbWrites {
   }
 
   export function insertIssue(conn: Database, issue: ObservabilitySchema.Issue) {
+    const owner = ObservabilitySchema.ConditionOwner.safeParse(issue.evidence.owner)
+    if (
+      issue.status === "open" &&
+      owner.success &&
+      issue.fingerprint ===
+        ObservabilitySchema.conditionFingerprint({ scopeID: issue.scopeID, owner: owner.data, code: issue.code })
+    ) {
+      conn
+        .query(
+          `UPDATE obs_issues SET status = 'suppressed', evidence_json = json_patch(evidence_json, ?)
+           WHERE fingerprint = ? AND status = 'open' AND issue_id <> ?`,
+        )
+        .run(
+          JSON.stringify({
+            suppressionReason: "condition_episode_superseded_without_persisted_recovery",
+            supersededByIssueId: issue.issueId,
+          }),
+          issue.fingerprint,
+          issue.issueId,
+        )
+    }
     conn
       .query(
         `INSERT INTO obs_issues (issue_id,time,iso,severity,status,code,title,message,recommendation,module,correlation_id,trace_id,span_id,scope_id,session_id,message_id,call_id,rid,evidence_json,first_seen_time,last_seen_time,occurrence_count,fingerprint,redaction_json)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24)
-         ON CONFLICT(fingerprint) WHERE status = 'open' DO UPDATE SET last_seen_time=excluded.last_seen_time, occurrence_count=obs_issues.occurrence_count+1, evidence_json=excluded.evidence_json, redaction_json=excluded.redaction_json`,
+         ON CONFLICT(fingerprint) WHERE status = 'open' DO UPDATE SET severity=excluded.severity,title=excluded.title,message=excluded.message,recommendation=excluded.recommendation,correlation_id=excluded.correlation_id,trace_id=excluded.trace_id,span_id=excluded.span_id,scope_id=excluded.scope_id,session_id=excluded.session_id,message_id=excluded.message_id,call_id=excluded.call_id,rid=excluded.rid,last_seen_time=excluded.last_seen_time,occurrence_count=obs_issues.occurrence_count+excluded.occurrence_count,evidence_json=excluded.evidence_json,redaction_json=excluded.redaction_json`,
       )
       .run(
         issue.issueId,
@@ -186,6 +208,14 @@ export namespace ObservabilityDbWrites {
         issue.fingerprint,
         JSON.stringify(issue.redaction),
       )
+  }
+
+  export function updateIssueStatus(conn: Database, update: TelemetryProtocol.IssueStatusUpdate) {
+    conn
+      .query(
+        "UPDATE obs_issues SET status = ?, evidence_json = json_patch(evidence_json, ?) WHERE fingerprint = ? AND status = 'open'",
+      )
+      .run(update.status, JSON.stringify(update.evidence), update.fingerprint)
   }
 
   export function insertBrowserBatch(

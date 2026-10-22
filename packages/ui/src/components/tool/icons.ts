@@ -1,0 +1,245 @@
+import { toolIconSources } from "@ericsanchezok/synergy-util/tool-display"
+import { PluginToolId } from "@ericsanchezok/synergy-util/plugin-ids"
+import { hasIcon } from "../../plugin/icon-registry"
+import "../../plugin/builtin-icons"
+import type { IconSource } from "../icon"
+import { classifySemanticCategory, type SemanticCategory } from "@ericsanchezok/synergy-util/activity"
+import { getSemanticIcon } from "../semantic-icon"
+
+const toolIcons: Record<string, string> = {
+  bash: "square-terminal",
+  process: "monitor-cog",
+  read: "book-open-text",
+  view_file: "book-open-text",
+  write: "file-plus-2",
+  save_file: "file-plus-2",
+  edit: "file-pen-line",
+  revise_file: "file-pen-line",
+  multiedit: "file-pen-line",
+  apply_patch: "file-diff",
+  patch: "file-diff",
+  resolve_conflicts: "git-merge-conflict",
+  file_search: "file-search-corner",
+  glob: "file-search-corner",
+  scan_files: "text-search",
+  grep: "text-search",
+  list: "folder-open",
+  parse_code: "file-code",
+  ast_grep: "file-code",
+  read_tool_output: "logs",
+  view_image: "image",
+  look_at: "scan-eye",
+  scan_document: "file-scan",
+  openai_image_gen: "image-plus",
+  openai_image_edit: "tabler-photo-edit",
+  render: "app-window",
+  webfetch: "earth",
+  search_tools: "list-filter-plus",
+  expand_tools: "package-open",
+  skill: getSemanticIcon("settings.skills"),
+  mcp__anysearch__search: "orbit",
+  mcp__anysearch__batch_search: "orbit",
+  mcp__anysearch__extract: "orbit",
+  mcp__anysearch__get_sub_domains: "orbit",
+  mcp__scholight__search_papers: "telescope",
+  mcp__scholight__extract_url: "telescope",
+  "context7_query-docs": "book-text",
+  "context7_resolve-library-id": "book-text",
+  memory_search: getSemanticIcon("memory.main"),
+  memory_get: getSemanticIcon("memory.main"),
+  memory_write: getSemanticIcon("memory.main"),
+  memory_edit: getSemanticIcon("memory.main"),
+  note_list: getSemanticIcon("notes.main"),
+  note_read: getSemanticIcon("notes.main"),
+  note_search: getSemanticIcon("notes.main"),
+  note_write: getSemanticIcon("notes.main"),
+  note_edit: getSemanticIcon("notes.main"),
+  note_archive: getSemanticIcon("notes.archive"),
+  note_delete: "book-x",
+  blueprint_loop_stop: "clipboard-check",
+  blueprint_loop_approve: "stamp",
+  blueprint_loop_reject: "clipboard-minus",
+  loop_stop: "flag",
+  light_loop_approve: "circle-check-big",
+  light_loop_reject: "undo-dot",
+  task: getSemanticIcon("cortex.main"),
+  task_list: getSemanticIcon("cortex.main"),
+  task_output: getSemanticIcon("cortex.main"),
+  task_cancel: "list-x",
+  dagread: getSemanticIcon("dag.main"),
+  dagwrite: getSemanticIcon("dag.main"),
+  dagpatch: getSemanticIcon("dag.main"),
+  pathway_read: getSemanticIcon("prompt.lattice"),
+  pathway_write: getSemanticIcon("prompt.lattice"),
+  lattice_submit: getSemanticIcon("prompt.lattice"),
+  todoread: "list-todo",
+  todowrite: "list-todo",
+  session_read: "message-square-text",
+  session_list: "message-square-text",
+  session_search: "message-square-quote",
+  session_send: "message-square-share",
+  session_control: "circle-gauge",
+  scope_list: "folder-root",
+  boss_spawn: getSemanticIcon("prompt.boss"),
+  boss_assign: getSemanticIcon("prompt.boss"),
+  boss_report: getSemanticIcon("prompt.boss"),
+  boss_status: getSemanticIcon("prompt.boss"),
+  boss_cancel: getSemanticIcon("prompt.boss"),
+  boss_project: getSemanticIcon("prompt.boss"),
+  channel_push: getSemanticIcon("channels.main"),
+  response_card: getSemanticIcon("channels.main"),
+  channel_reaction_only: getSemanticIcon("channels.main"),
+  email_send: getSemanticIcon("email.main"),
+  email_read: getSemanticIcon("email.main"),
+  clarus_submit_task_result: "send",
+  clarus_extend_task: "timer-reset",
+  agent_config: getSemanticIcon("agent.identity"),
+  runtime_reload: "repeat-2",
+  agenda_schedule: "calendar-clock",
+  agenda_watch: "alarm-clock-check",
+  agenda_list: "calendar-days",
+  agenda_update: "calendar-cog",
+  agenda_cancel: "calendar-x",
+  agenda_trigger: "calendar-arrow-up",
+  agenda_logs: "calendar-check",
+  browser_navigation: getSemanticIcon("browser.main"),
+  browser_snapshot: "binoculars",
+  browser_action: "mouse-pointer-click",
+  browser_wait: "hourglass",
+  browser_read: "text-select",
+  browser_inspect: "square-dashed-mouse-pointer",
+  browser_screenshot: "camera",
+  browser_eval: "file-braces",
+  browser_console: "file-terminal",
+  browser_network: "arrow-left-right",
+  browser_performance: "chart-no-axes-column-increasing",
+  browser_audit: "shield-question-mark",
+  browser_emulate: "tablet-smartphone",
+  browser_dialog: "gallery-vertical-end",
+  browser_upload: "file-up",
+  browser_downloads: "file-down",
+  browser_clipboard: "clipboard-copy",
+  browser_assets: "boxes",
+  browser_annotate: "message-square-diff",
+  browser_view: "panel-right-open",
+  workbench_view: "workbench-view",
+  computer_apps: getSemanticIcon("computer.main"),
+  computer_observe: "monitor-dot",
+  computer_action: "mouse",
+  profile_get: getSemanticIcon("settings.account"),
+  profile_update: getSemanticIcon("settings.account"),
+  inspire_models: getSemanticIcon("settings.models"),
+  speak: getSemanticIcon("settings.voice"),
+  github_deliver_fix: getSemanticIcon("github.main"),
+  question: getSemanticIcon("settings.questions"),
+  lsp: getSemanticIcon("lsp.main"),
+  worktree_enter: getSemanticIcon("workspace.worktree"),
+  worktree_leave: getSemanticIcon("workspace.worktree"),
+  worktree_archive: getSemanticIcon("workspace.worktree"),
+  worktree_list: getSemanticIcon("workspace.worktree"),
+  inspire_status: "satellite",
+  inspire_config: "cloud-cog",
+  inspire_login: "log-in",
+  inspire_images: "container",
+  inspire_image_push: "container",
+  inspire_submit: "gpu",
+  inspire_submit_hpc: "gpu",
+  inspire_jobs: "rows-3",
+  inspire_job_detail: "rows-3",
+  inspire_stop: "server-off",
+  inspire_logs: "file-clock",
+  inspire_metrics: "chart-column-increasing",
+  inspire_inference: "server-plus",
+  inspire_notebook: "notebook-pen",
+  research_init: "flask-conical",
+  research_state: "sigma",
+  research_idea: "sparkles",
+  research_plan: "map",
+  research_experiment: "microscope",
+  research_claim: "file-question-mark",
+  research_exhibit: "file-chart-column",
+  research_paper: "file-stack",
+  research_submission: "file-input",
+  research_wiki: "book-template",
+  research_timeline: "chart-gantt",
+}
+
+const categoryTools: Record<SemanticCategory, string> = {
+  "file-read": "read",
+  "file-write": "write",
+  shell: "bash",
+  search: "scan_files",
+  web: "webfetch",
+  browser: "browser_navigation",
+  memory: "memory_search",
+  note: "note_read",
+  blueprint: "blueprint",
+  task: "task",
+  dag: "dagread",
+  schedule: "agenda_schedule",
+  session: "session_read",
+  "session-control": "session_control",
+  network: "mcp",
+  analyze: "look_at",
+  config: "runtime_reload",
+  communication: "email_send",
+  skill: "skill",
+  research: "research_init",
+  generic: "unknown",
+}
+
+export function isBlueprintToolKind(input: Record<string, unknown> = {}, metadata: Record<string, unknown> = {}) {
+  if ((metadata.kind || input.kind) === "blueprint") return true
+  const kinds = metadata.kinds
+  return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
+}
+
+export function getToolIcon(
+  tool: string,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
+): IconSource {
+  const fallback = builtinToolIcon(tool, input, metadata)
+  const display = metadata.display
+  if (!display || typeof display !== "object" || !("icon" in display)) return fallback
+  const declared = display.icon
+  if (typeof declared === "string") {
+    const plugin = PluginToolId.parse(tool)
+    const scoped = plugin ? `${plugin.pluginId}:${declared}` : undefined
+    if (scoped && hasIcon(scoped)) return scoped
+    return hasIcon(declared) ? declared : fallback
+  }
+  const sources = toolIconSources(declared)
+  return sources.length ? { sources, fallback } : fallback
+}
+
+function builtinToolIcon(
+  tool: string,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
+): string {
+  if (
+    ["note_list", "note_read", "note_search", "note_write", "note_edit"].includes(tool) &&
+    isBlueprintToolKind(input, metadata)
+  )
+    return getSemanticIcon("blueprint.main")
+  if (tool === "session_control") {
+    if (input.action === "compact") return getSemanticIcon("settings.compaction")
+    if (input.action === "abort") return "circle-stop"
+    if (input.action === "question_reply" || input.action === "question_reject")
+      return getSemanticIcon("settings.questions")
+    if (input.action === "permission_reply")
+      return input.reply === "reject" ? "shield-x" : getSemanticIcon("settings.permissions")
+  }
+  if (Object.hasOwn(toolIcons, tool)) return toolIcons[tool]!
+  if (PluginToolId.is(tool)) return getSemanticIcon("plugins.main")
+  if (tool.startsWith("mcp__notion__")) return "brand-notion"
+  if (tool.startsWith("mcp__")) return getSemanticIcon("mcp.main")
+  return getCategoryIcon(classifySemanticCategory(tool, input))
+}
+
+export function getCategoryIcon(category: SemanticCategory): string {
+  if (category === "blueprint") return getSemanticIcon("blueprint.main")
+  if (category === "network") return getSemanticIcon("mcp.main")
+  return toolIcons[categoryTools[category]] ?? "wrench"
+}

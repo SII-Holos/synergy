@@ -305,6 +305,63 @@ describe.serial("performance observability store", () => {
       expect(controlPlane?.measuredProcessCount).toBe(1)
     }))
 
+  test("resource summaries cover the full server window and keep children in the latest server frame", () =>
+    runtime.run(async () => {
+      const now = Date.now()
+      using clock = spyOn(Date, "now").mockReturnValue(now)
+      const start = now - 50_012
+      const db = ObservabilityStore.initializeForMigration()
+      db.transaction(() => {
+        db.query(
+          `WITH RECURSIVE frames(frame) AS (SELECT 0 UNION ALL SELECT frame + 1 FROM frames WHERE frame < 50002)
+          INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,memory_rss_bytes,cpu_utilization_ratio,event_loop_lag_ms)
+          SELECT 'server-' || frame, ? + frame, '', 'process', 'server',
+            CASE WHEN frame = 50001 THEN 900 WHEN frame = 50002 THEN 300 ELSE 100 END,
+            2.5, CASE WHEN frame > 25000 THEN 100 ELSE 0 END FROM frames`,
+        ).run(start)
+        db.query(
+          `WITH RECURSIVE frames(frame) AS (SELECT 0 UNION ALL SELECT frame + 1 FROM frames WHERE frame < 50001)
+          INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,process_id,memory_rss_bytes)
+          SELECT 'tool-' || frame, ? + frame, '', 'process', 'tool', 'previous-child', 5000 FROM frames`,
+        ).run(start - 50_002)
+        db.query(
+          `WITH RECURSIVE children(child) AS (SELECT 1 UNION ALL SELECT child + 1 FROM children WHERE child < 7)
+          INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,process_id,memory_rss_bytes)
+          SELECT 'child-' || child, ?, '', 'process', 'tool', 'child-' || child,
+            CASE WHEN child = 7 THEN NULL ELSE child END FROM children`,
+        ).run(start + 50_002)
+        db.query(
+          `INSERT INTO obs_resource_samples(sample_id,time,iso,source,process_role,process_id,memory_rss_bytes)
+          VALUES ('old', ?, '', 'process', 'server', NULL, 10000),
+            ('future', ?, '', 'process', 'server', NULL, 20000),
+            ('unmatched-child', ?, '', 'process', 'tool', 'unmatched-child', 30000)`,
+        ).run(now - 120_000, now + 1, now - 5)
+      })()
+
+      const summary = await PerformanceDashboard.summary({ windowMs: 120_000, scopeID: "resource-window" })
+      expect(summary.resources).toMatchObject({
+        rssBytes: 300,
+        cpuUtilizationRatio: 2.5,
+        eventLoopLagP95Ms: 100,
+        childProcessCount: 7,
+        measuredChildProcessCount: 6,
+        childProcessRssBytes: 21,
+      })
+      expect(summary.resources.owners.find((owner) => owner.owner === "control_plane")).toMatchObject({
+        currentBytes: 300,
+        peakBytes: 900,
+        baselineBytes: 100,
+        retainedBytes: 200,
+      })
+      expect(summary.top.childProcesses.map((row) => row.processId)).toEqual([
+        "child-6",
+        "child-5",
+        "child-4",
+        "child-3",
+        "child-2",
+      ])
+    }))
+
   test("trace detail projects observability events without raw event data", () =>
     runtime.run(async () => {
       const traceId = "perf_trace_safe_projection"
@@ -424,6 +481,37 @@ describe.serial("performance observability store", () => {
       await expect(
         PerformanceTimeline.get({ metric: ["storage.queue.depth", "storage.not.a.metric"] }),
       ).rejects.toThrow("Timeline metric is not allowed")
+    }))
+
+  test("timeline exposes first-content clocks without replacing the legacy first-delta series", () =>
+    runtime.run(async () => {
+      const values = [
+        ["llm.stream.first_token", 5, "ms"],
+        ["llm.stream.first_content", 20, "ms"],
+        ["llm.stream.first_visible_text", 30, "ms"],
+        ["llm.stream.first_content.unavailable", 1, "count"],
+        ["llm.stream.first_visible_text.unavailable", 1, "count"],
+      ] as const
+      for (const [name, value, unit] of values) {
+        ObservabilityMetrics.record({ name, value, unit, module: "llm", sessionID: "session_content_clocks" })
+      }
+      ObservabilityStore.flush()
+      const timeline = await PerformanceTimeline.get({
+        metric: values.map(([name]) => name),
+        from: new Date(Date.now() - 60_000).toISOString(),
+        to: new Date(Date.now() + 1000).toISOString(),
+        bucketMs: 2000,
+        sessionID: "session_content_clocks",
+      })
+      expect(timeline.series).toHaveLength(values.length)
+      for (const [index, [name, value, unit]] of values.entries()) {
+        const series = timeline.series[index]
+        expect(series).toMatchObject({ name, unit, sampleCount: 1, stat: unit === "count" ? "sum" : "p95" })
+        expect(series.points.filter((point) => point.value !== null).map((point) => point.value)).toEqual([value])
+      }
+      expect(timeline.series[0].label).toContain("stream-open")
+      expect(timeline.series[1].label).toContain("dispatch")
+      expect(timeline.series[2].label).toContain("dispatch")
     }))
 
   test("coalesces repeated issue events while preserving occurrence counts", () =>

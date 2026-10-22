@@ -37,6 +37,11 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   if (!cfg || !setName) return undefined
   if (params.initialized() && params.initializedForSet === setName) return undefined
 
+  params.setSettings("digitalTwin", {
+    automatic: cfg.digitalTwin?.automatic === true,
+    model: cfg.digitalTwin?.model ? `${cfg.digitalTwin.model.providerID}/${cfg.digitalTwin.model.modelID}` : "",
+  })
+
   params.setSettings("general", {
     colorScheme: params.colorScheme(),
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,

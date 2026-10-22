@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { describe, expect, mock, test } from "bun:test"
 import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descriptors"
 
@@ -22,7 +23,7 @@ mock.module("@lingui/solid", () => ({
     _: (descriptor: { id: string; message?: string }) => descriptor.message ?? descriptor.id,
   }),
 }))
-mock.module("solid-js", () => ({ Show: () => null }))
+mock.module("solid-js", () => ({ createSignal, Show: () => null }))
 mock.module("../../../../src/components/basic-tool", () => ({
   BasicTool: (props: { trigger: Record<string, unknown> }) => {
     capturedTrigger = props.trigger
@@ -51,7 +52,7 @@ describe("registered channel_reaction_only renderer", () => {
 
     expect(registeredName).toBe("channel_reaction_only")
     expect(trigger()).toEqual({
-      icon: "message-square-more",
+      icon: "message-circle",
       title: TOOL_TITLE_DESC.channel_reaction_only,
       subtitle: "SILENT",
     })
@@ -65,7 +66,7 @@ describe("registered channel_reaction_only renderer", () => {
       tool: "channel_reaction_only",
     })
 
-    expect(trigger()?.["icon"]).toBe("message-square-more")
+    expect(trigger()?.["icon"]).toBe("message-circle")
     expect(trigger()?.["title"]).toBe(TOOL_TITLE_DESC.channel_reaction_only)
     expect(trigger()?.["subtitle"]).toBeUndefined()
   })

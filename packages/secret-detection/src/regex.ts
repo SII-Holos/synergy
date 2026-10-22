@@ -3,10 +3,13 @@ import { SecretPatterns } from "./patterns.js"
 
 export const RegexDetector: SecretDetection.Detector = {
   id: "standalone-regex",
-  version: "1",
+  version: "2",
   async detect({ text, signal }) {
     signal?.throwIfAborted()
-    const found: SecretDetection.Finding[] = []
+    const found: SecretDetection.Finding[] = SecretPatterns.oauthCodes(text).map((span) => ({
+      ...span,
+      kind: "authorization_code",
+    }))
     for (const pattern of SecretPatterns.standalone) {
       for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags))) {
         found.push({ start: match.index, end: match.index + match[0].length, kind: "token" })

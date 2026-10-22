@@ -1,5 +1,6 @@
 // Provenance: https://nodejs.org/docs/latest-v22.x/api/errors.html#common-system-errors
 // https://github.com/nodejs/undici/blob/v6.21.3/docs/docs/api/Errors.md
+// https://nodejs.org/docs/latest-v22.x/api/dns.html#dnslookuphostname-options-callback
 // Local adaptation: classify bounded error graphs across runtimes; callers own replay safety and retry budgets.
 const TRANSIENT_CODES = new Set([
   "CONNECTIONREFUSED",
@@ -7,6 +8,7 @@ const TRANSIENT_CODES = new Set([
   "FAILEDTOOPENSOCKET",
   "ETIMEOUT",
   "ETIMEDOUT",
+  "ENOTFOUND",
   "EAI_AGAIN",
   "ESERVFAIL",
   "ECONNRESET",
@@ -22,7 +24,6 @@ const TRANSIENT_CODES = new Set([
   "UND_ERR_SOCKET",
 ])
 const PERMANENT_CODES = new Set([
-  "ENOTFOUND",
   "ENONAME",
   "EAI_NONAME",
   "ENODATA",

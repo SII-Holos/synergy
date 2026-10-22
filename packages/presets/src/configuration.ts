@@ -16,6 +16,7 @@ import { registerConfig as registerLibraryConfig } from "@ericsanchezok/synergy-
 import { registerConfig as registerPluginConfig } from "@ericsanchezok/synergy-plugin-host/config-schema"
 import { registerConfig as registerMediaConfig } from "@ericsanchezok/synergy-media/config-schema"
 import { registerConfig as registerWorkbenchConfig } from "@ericsanchezok/synergy-workbench/config-schema"
+import { registerConfig as registerDigitalTwinConfig } from "@ericsanchezok/synergy-digital-twin/config-schema"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 export function registerFullConfiguration() {
   registerLocalConfig()
@@ -24,6 +25,7 @@ export function registerFullConfiguration() {
   registerFormatterConfig()
   registerLspConfig()
   registerLibraryConfig()
+  registerDigitalTwinConfig()
   registerPluginConfig()
   registerMediaConfig()
   registerWorkbenchConfig()

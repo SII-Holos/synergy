@@ -5,6 +5,39 @@ import { excludingQueueWait } from "./queue"
 
 const STORAGE_DURATION_SAMPLE_RATE = 0.02
 
+export function recordStorageWrite(key: string[], bytes: number, maintenance = false) {
+  const category =
+    maintenance || key[0].startsWith("storage_") || key[0] === "meta"
+      ? "maintenance"
+      : key[0].startsWith("usage")
+        ? "usage"
+        : key[0].startsWith("event_")
+          ? "outbox"
+          : key.includes("messages")
+            ? "message"
+            : key.includes("rollout")
+              ? key.includes("runs") && !key.includes("attempts")
+                ? "lifecycle"
+                : "rollout-progress"
+              : "other"
+  for (const [name, value, unit] of [
+    ["storage.record.write", 1, "count"],
+    ["storage.record.encoded_bytes", bytes, "bytes"],
+  ] as const)
+    ObservabilityMetrics.record({ name, value, unit, module: "storage", labels: { category }, sampleRate: 1 })
+}
+
+export function recordStorageTransaction(backend: "sqlite" | "postgres", outcome: "committed" | "failed") {
+  ObservabilityMetrics.record({
+    name: "storage.transaction.count",
+    value: 1,
+    unit: "count",
+    module: "storage",
+    labels: { backend, outcome },
+    sampleRate: 1,
+  })
+}
+
 /**
  * The single measurement source for authoritative-store work.
  *

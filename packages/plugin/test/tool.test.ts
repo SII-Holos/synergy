@@ -25,14 +25,18 @@ describe("tool()", () => {
     const definition = tool({
       description: "Inspect",
       exposure,
-      display: { kind: "media-generation", media: { type: "image", aspectRatio: "1:1" } },
+      display: { icon: "logo", kind: "media-generation", media: { type: "image", aspectRatio: "1:1" } },
       args: {},
       async execute(): Promise<string | ToolResult> {
         return { title: "Done", output: "ok", metadata: { display: { kind: "media-generation" } } }
       },
     })
     expect(definition.exposure).toEqual(exposure)
-    expect(definition.display).toEqual({ kind: "media-generation", media: { type: "image", aspectRatio: "1:1" } })
+    expect(definition.display).toEqual({
+      icon: "logo",
+      kind: "media-generation",
+      media: { type: "image", aspectRatio: "1:1" },
+    })
   })
 
   test("exposes the bundled Zod for plugin-side schema reuse", () => {

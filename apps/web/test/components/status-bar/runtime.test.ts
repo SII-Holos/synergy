@@ -23,6 +23,12 @@ describe("status bar runtime state", () => {
     const i18n = mockI18n()
     const status: SessionStatus = {
       type: "retry",
+      rootID: "retry-root",
+      messageID: "retry-message",
+      phase: "waiting",
+      error: "rate limited",
+      startedAt: 0,
+      canRetry: true,
       attempt: 3,
       message: "Provider rate limit exceeded",
       next: Date.now() + 10_000,
@@ -42,6 +48,12 @@ describe("status bar runtime state", () => {
     const i18n = mockI18n()
     const status: SessionStatus = {
       type: "retry",
+      rootID: "retry-root",
+      messageID: "retry-message",
+      phase: "waiting",
+      error: "rate limited",
+      startedAt: 0,
+      canRetry: true,
       attempt: 1,
       message: "Provider unavailable",
       next: Date.now() + 10_000,
@@ -174,7 +186,18 @@ describe("status bar runtime state", () => {
       undefined,
       { type: "idle" },
       { type: "busy", description: "running tool" },
-      { type: "retry", attempt: 2, message: "Provider unavailable", next: 1_000 },
+      {
+        type: "retry",
+        rootID: "retry-root",
+        messageID: "retry-message",
+        phase: "waiting",
+        error: "rate limited",
+        startedAt: 0,
+        canRetry: true,
+        attempt: 2,
+        message: "Provider unavailable",
+        next: 1_000,
+      },
       { type: "paused", reason: "interrupted", description: "Stopped mid-work", since: 1 },
     ]
 

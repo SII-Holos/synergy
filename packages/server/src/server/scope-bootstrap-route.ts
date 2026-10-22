@@ -41,7 +41,7 @@ export const ScopeBootstrapResponse = z
     command: Command.Summary.array().optional(),
     sessionStatus: z.record(z.string(), Session.StatusInfo).optional(),
     sessions: BootstrapSessions.optional(),
-    cortex: CortexTypes.Task.array().optional(),
+    cortex: CortexTypes.TaskSummary.array().optional(),
     _errors: z.record(z.string(), BootstrapFieldError).optional(),
   })
   .meta({ ref: "ScopeBootstrapResponse" })
@@ -248,7 +248,7 @@ export function createScopeBootstrapRoute(contributions: BootstrapContributions 
           ),
           optional(
             "cortex",
-            Cortex.then((manager) => manager.listVisible()),
+            Cortex.then((manager) => manager.listVisibleSummaries()),
           ),
           ...Object.entries(contributions).flatMap(([name, contribution]) =>
             contribution.projectOnly && !scope.local ? [] : [optional(name, contribution.load())],

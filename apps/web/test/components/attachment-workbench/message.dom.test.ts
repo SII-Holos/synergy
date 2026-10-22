@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, type Browser, type Locator, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 import type { ResourceOpenController } from "@ericsanchezok/synergy-ui/context/resource-open"
 
@@ -42,6 +42,95 @@ async function visit(query = "") {
     .catch((error) => {
       throw new Error(`${errors.join("\n")}\n${error}`)
     })
+}
+
+async function surface(target: Locator) {
+  return target.evaluate(async (element) => {
+    await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+    const style = getComputedStyle(element)
+    return {
+      background: style.backgroundColor,
+      image: style.backgroundImage,
+      border: style.borderColor,
+      shadow: style.boxShadow,
+    }
+  })
+}
+
+for (const width of [375, 1000]) {
+  test(`read-only message bubbles stay visually unchanged on hover at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 800 })
+    for (const theme of ["light", "dark"]) {
+      await visit()
+      await page.evaluate(
+        (theme) => (window as unknown as { fixture: { theme(mode: string): void } }).fixture.theme(theme),
+        theme,
+      )
+      await page.mouse.move(0, 0)
+      const bubble = page.locator('[data-slot="user-message-text"]')
+      const before = await surface(bubble)
+      const bounds = await bubble.boundingBox()
+      await bubble.hover()
+      expect(await surface(bubble)).toEqual(before)
+      expect(await bubble.boundingBox()).toEqual(bounds)
+      expect(await bubble.evaluate((element) => getComputedStyle(element).cursor)).not.toBe("pointer")
+      await bubble.getByText("Inspect this image", { exact: true }).click({ clickCount: 3 })
+      expect(await page.evaluate(() => window.getSelection()?.toString())).toContain("Inspect")
+      expect(await surface(bubble)).toEqual(before)
+      const copy = page.getByRole("button", { name: "Copy message", exact: true })
+      await page.mouse.move(0, 0)
+      const copyBefore = await surface(copy)
+      await copy.hover()
+      expect(await surface(copy)).not.toEqual(copyBefore)
+      expect(await surface(bubble)).toEqual(before)
+      await page.getByRole("button", { name: "View source", exact: true }).click()
+      expect(await page.getByRole("button", { name: "Markdown", exact: true }).getAttribute("aria-pressed")).toBe(
+        "true",
+      )
+      expect(await surface(bubble)).toEqual(before)
+      expect(errors).toEqual([])
+    }
+  })
+
+  test(`collapsed message fading stays static while its own expand button remains interactive at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 800 })
+    for (const theme of ["light", "dark"]) {
+      await visit()
+      await page.evaluate((theme) => {
+        const fixture = (window as unknown as { fixture: { theme(mode: string): void; long(): void } }).fixture
+        fixture.theme(theme)
+        fixture.long()
+      }, theme)
+      const bubble = page.locator('[data-slot="user-message-text"]')
+      const expand = page.getByRole("button", { name: "Show more", exact: true })
+      await expand.waitFor()
+      await page.mouse.move(0, 0)
+      const before = await surface(bubble)
+      const fade = page.locator('[data-slot="user-message-fade"]')
+      const fadeBefore = await surface(fade)
+      const expandBefore = await surface(expand)
+      await bubble.hover({ position: { x: 12, y: 12 } })
+      expect(await surface(bubble)).toEqual(before)
+      expect(await surface(fade)).toEqual(fadeBefore)
+      expect(await surface(expand)).toEqual(expandBefore)
+      await page.mouse.move(0, 0)
+      await expand.focus()
+      expect(await expand.evaluate((element) => element === document.activeElement)).toBe(true)
+      expect(await surface(bubble)).toEqual(before)
+      expect(await surface(fade)).toEqual(fadeBefore)
+      const focused = await surface(expand)
+      await expand.hover()
+      expect(await surface(expand)).not.toEqual(focused)
+      expect(await surface(bubble)).toEqual(before)
+      await page.keyboard.press("Enter")
+      expect(await bubble.getAttribute("data-collapsed")).toBeNull()
+      const collapse = page.getByRole("button", { name: "Show less", exact: true })
+      await collapse.focus()
+      await page.keyboard.press("Space")
+      expect(await bubble.getAttribute("data-collapsed")).toBe("")
+      expect(errors).toEqual([])
+    }
+  })
 }
 
 test("an invalid structured path keeps its error feedback even when it cannot be copied", async () => {

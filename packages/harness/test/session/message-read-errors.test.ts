@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -62,6 +63,62 @@ async function withMessages(backend: "sqlite" | "postgres", fn: (fixture: Fixtur
 
 for (const backend of storageTestBackends()) {
   describe(`newest message reads (${backend})`, () => {
+    test("initializing absent message order state reports missing rather than a storage error", () =>
+      withMessages(
+        backend,
+        async ({ sessionID }) => {
+          const statuses: unknown[] = []
+          await ObservabilityMetrics.withForwarder(
+            (metric) => {
+              if (
+                metric.name === "storage.operation.duration" &&
+                metric.labels?.operation === "read" &&
+                metric.labels?.keyPrefix === "session_message_order_v1"
+              )
+                statuses.push(metric.labels.status)
+            },
+            () =>
+              Session.updateMessage({
+                id: Identifier.ascending("message"),
+                sessionID,
+                role: "user",
+                agent: "history-fixture",
+                model: { providerID: "fixture", modelID: "fixture" },
+                time: { created: 1000 },
+              }),
+          )
+          expect(statuses).toEqual(["missing"])
+        },
+        0,
+      ))
+
+    test("message order initialization preserves an unavailable storage error", () =>
+      withMessages(
+        backend,
+        async ({ scopeID, sessionID }) => {
+          const target = StoragePath.sessionMessageOrderState(scopeID, sessionID)
+          const fault = new StorageUnavailableError("Synthetic order state read failure")
+          const read = Storage.read
+          using stateRead = spyOn(Storage, "read").mockImplementation(
+            async <T>(key: string[], options?: { silentNotFound?: boolean }) => {
+              if (JSON.stringify(key) === JSON.stringify(target)) throw fault
+              return read<T>(key, options)
+            },
+          )
+          await expect(
+            Session.updateMessage({
+              id: Identifier.ascending("message"),
+              sessionID,
+              role: "user",
+              agent: "history-fixture",
+              model: { providerID: "fixture", modelID: "fixture" },
+              time: { created: 1000 },
+            }),
+          ).rejects.toBe(fault)
+        },
+        0,
+      ))
+
     for (const { label, offset } of [
       { label: "first message", offset: 0 },
       { label: "later individual message", offset: 2 },

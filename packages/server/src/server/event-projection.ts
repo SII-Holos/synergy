@@ -18,7 +18,7 @@ export const ContentInterests = z.object({
 type Interest = z.infer<typeof Interest>
 type Payload = {
   type: string
-  properties: { part?: MessageV2.Part; info?: MessageV2.Info; delta?: string }
+  properties: { part?: MessageV2.Part; info?: MessageV2.Info; delta?: string; summary?: MessageV2.PartSummary }
   epoch?: string
   seq?: number
   streaming?: boolean
@@ -62,7 +62,7 @@ export function projectReplayEvent(
     return {
       ...payload,
       type: "message.part.summary",
-      properties: { summary: MessageV2.summarizePart(payload.properties.part) },
+      properties: { summary: payload.properties.summary ?? MessageV2.summarizePart(payload.properties.part) },
     }
   if (payload.type === "message.updated" && payload.properties.info) {
     const header = summarizeMessage(payload.properties.info)
@@ -77,7 +77,6 @@ export function createEventProjection(send: (event: Projected) => void) {
   let disposed = false
   const project = (event: Event, prepared?: MessageV2.PartSummary): Projected => {
     const part = event.payload.properties.part!
-    const summary = prepared ?? MessageV2.summarizePart(part)
     const key = identity({
       scopeID: event.scopeID!,
       sessionID: part.sessionID,
@@ -85,6 +84,7 @@ export function createEventProjection(send: (event: Projected) => void) {
       partID: part.id,
       generation: 0,
     })
+    const summary = prepared ?? event.payload.properties.summary ?? MessageV2.summarizePart(part)
     let subscription = subscriptions.get(key)
     if (
       !subscription &&

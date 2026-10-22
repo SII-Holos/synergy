@@ -38,7 +38,7 @@ for (const workspace of ["project", "none", "missing", "missing-inbox"] as const
             choices: [{ index: 0, message: { role: "assistant", content: "Done" }, finish_reason: "stop" }],
             usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
           })
-        if (workspace === "none") expect(body.tools?.some((tool) => tool.function.name === "read")).toBe(false)
+        if (workspace === "none") expect((body.tools ?? []).some((tool) => tool.function.name === "read")).toBe(false)
         const tool = !body.messages.some((message) => message.role === "tool")
         const delta = tool
           ? {

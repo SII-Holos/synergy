@@ -9,7 +9,12 @@ type Fixture = {
   features(features: string[] | undefined): void
   required(features: string[]): void
   event(kind: "agent-delivery" | "compaction", messageID?: string): void
-  child(taskID: string, value: string, mode?: "summary" | "final_response" | "structured"): void
+  child(
+    taskID: string,
+    value: string,
+    mode?: "summary" | "final_response" | "structured",
+    identity?: { parentSessionID?: string; sessionID?: string },
+  ): void
   resolveEvent(index: number, text: string, state?: "running" | "committed" | "failed", mechanical?: boolean): void
   refreshEvent(): void
   rejectEvent(index: number): void
@@ -39,7 +44,14 @@ type Fixture = {
     toolError?: string,
   ): void
   close(): void
-  facts(): { requests: number; aborted: boolean[]; resultUnmounts: number; copied: string }
+  facts(): {
+    requests: number
+    aborted: boolean[]
+    resultUnmounts: number
+    copied: string
+    taskRequests: Array<{ taskID: string; parentSessionID?: string; sessionID?: string }>
+    sessionReads: number
+  }
 }
 let server: PreviewServer
 let browser: Browser
@@ -67,6 +79,8 @@ beforeAll(async () => {
     const [open,setOpen]=createSignal(true)
     const [selection,setSelection]=createSignal({features:["note","blueprint","media"]})
     const requests=[]
+    const taskRequests=[]
+    let sessionReads=0
     let activityListener
     let resultUnmounts=0
     let copied=""
@@ -77,7 +91,7 @@ beforeAll(async () => {
       features:features=>setSelection(features ? {features} : undefined),
       required:requiredFeatures=>setState({...state(),requiredFeatures}),
       event(kind,messageID="event"){setState({...owner,kind,messageID})},
-      child(taskID,value,mode="final_response"){child={taskID,parentSessionID:owner.sessionID,status:"completed",startedAt:1,completedAt:146001,output:{mode,value}}},
+      child(taskID,value,mode="final_response",identity={}){child={taskID,sessionID:"child",parentSessionID:owner.sessionID,status:"completed",startedAt:1,completedAt:146001,output:{mode,value},...identity}},
       resolveEvent(index,text,status="committed",mechanical=false){
         const request=requests[index]
         const info={id:request.messageID,sessionID:request.sessionID,role:request.kind==="compaction"?"assistant":"user",time:{created:1,completed:status==="running"?undefined:2},metadata:request.kind==="compaction"?{compactionAttempt:{state:status}}:undefined,origin:request.kind==="agent-delivery"?{type:"cortex",sessionID:"child",taskID:"ctx_original",label:"Evidence review"}:undefined,error:status==="failed"?{name:"UnknownError",data:{message:text}}:undefined}
@@ -93,11 +107,11 @@ beforeAll(async () => {
       fail(index,error){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"read",state:{status:"error",input:{filePath:"/fixture.txt"},error,time:{start:1,end:2}}}}})},
       patch(index){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"apply_patch",state:{status:"error",input:{patch:"retained patch"},metadata:{outcome:"unresolved",sections:[{source:"source.ts",state:"unknown",operations:[{phase:"write",state:"unknown"}]}]},error:"Patch outcome unconfirmed",time:{start:1,end:2}}}}})},
       resolveCommand(index,process,text,toolError){const request=requests[index];request.resolve({data:{evidenceMissing:false,text,process,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"bash",workBrief:"Check the foreground wait command.",activityEvidence:{kind:"command"},state:{status:toolError?"error":"completed",input:{command:'printf waiting && sleep 90'},error:toolError,output:toolError?undefined:text,time:{start:1,end:33401}}}}})},
-      close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied}}
+      close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied,taskRequests,sessionReads}}
     }
     export {h}
     export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
-    export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{session:{message:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,kind:state().kind,signal:options.signal,resolve,reject})),get:async()=>({data:{cortex:child}}),toolActivity:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,partID:state().partID,signal:options.signal,resolve,reject}))}}})
+    export const useSDK=()=>({get url(){return owner.server},get scopeKey(){return owner.scope},event:{on(type,listener){activityListener=listener;return()=>{activityListener=undefined}}},client:{cortex:{get:async(target)=>{taskRequests.push(target);return {data:{...child,id:child.taskID}}}},session:{message:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,kind:state().kind,signal:options.signal,resolve,reject})),get:async()=>{sessionReads++;const {output,...summary}=child;return {data:{id:"child",parentID:owner.sessionID,cortex:summary}}},toolActivity:async(target,options)=>new Promise((resolve,reject)=>requests.push({...target,partID:state().partID,signal:options.signal,resolve,reject}))}}})
     export const useParams=()=>({get id(){return owner.sessionID}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>eventLive()?[eventLive()]:[],partsFor:()=>[]})
     export const useData=()=>({navigateToSession(){}})
@@ -215,27 +229,36 @@ test("process detail failures remain local, preserve accepted evidence and allow
   expect(errors).toEqual([])
 }, 30000)
 
-test("agent notices read the exact task result and never substitute a reused child task", async () => {
-  for (const task of ["ctx_original", "ctx_later"]) {
+test("agent notices read full authorized tasks after Session projection and reject mismatched identity", async () => {
+  for (const candidate of [
+    { taskID: "ctx_original", identity: {}, accepted: true },
+    { taskID: "ctx_later", identity: {}, accepted: false },
+    { taskID: "ctx_original", identity: { parentSessionID: "another-parent" }, accepted: false },
+    { taskID: "ctx_original", identity: { sessionID: "imported-child" }, accepted: false },
+  ]) {
     await page.goto(base)
     await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
-    await page.evaluate((task) => {
+    await page.evaluate((candidate) => {
       const fixture = (window as unknown as { fixture: Fixture }).fixture
       fixture.event("agent-delivery")
-      fixture.child(task, "Full original child result")
-    }, task)
+      fixture.child(candidate.taskID, "Full original child result", "final_response", candidate.identity)
+    }, candidate)
     await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
     await page.evaluate(() =>
       (window as unknown as { fixture: Fixture }).fixture.resolveEvent(1, "Original notification"),
     )
     await page
-      .getByText(task === "ctx_original" ? "Full original child result" : "Original notification", { exact: true })
+      .getByText(candidate.accepted ? "Full original child result" : "Original notification", { exact: true })
       .waitFor()
     expect(
       await page
-        .getByText(task === "ctx_original" ? "Original notification" : "Full original child result", { exact: true })
+        .getByText(candidate.accepted ? "Original notification" : "Full original child result", { exact: true })
         .count(),
     ).toBe(0)
+    expect((await inspect()).taskRequests).toEqual([
+      { taskID: "ctx_original", parentSessionID: "session", sessionID: "child" },
+    ])
+    expect((await inspect()).sessionReads).toBe(0)
   }
   expect(errors).toEqual([])
 }, 30000)

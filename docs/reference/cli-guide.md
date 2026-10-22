@@ -250,6 +250,8 @@ The built-in Browser uses Desktop's bundled Electron engine and local backend. C
 
 ## Diagnostics and Maintenance
 
+`synergy data storage compact-rollout` inspects retained journal encodings under an exclusive maintenance lock. `--apply` creates a consistent backup and resumes the registered historical compaction migration. Stop the target instance through its ordinary lifecycle before maintenance; use a copied Home for acceptance. `data storage status` includes the compaction cursor and backup receipt. Compression reduces encoded records and leaves database pages available for reuse; it does not shrink the database file or delete its backup automatically. `data storage reclaim` drains outstanding format reclamation, and `prune` owns evidence retention. Backups remain retained until explicitly removed after verification.
+
 | Command                    | Purpose                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------ |
 | `synergy doctor`           | Run installation and runtime health checks                                                 |

@@ -7,6 +7,7 @@ import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "./index"
 import { ContinuationKernel } from "@ericsanchezok/synergy-harness/session/continuation-kernel"
 import { ReviewToolRecovery } from "@ericsanchezok/synergy-harness/session/review-tool-recovery"
 import { BlueprintLoopSources } from "./source"
+import { BLUEPRINT_PAUSE_GUIDANCE } from "./prompt"
 
 const BLUEPRINT_APPROVE_TOOL = "blueprint_loop_approve"
 const BLUEPRINT_REJECT_TOOL = "blueprint_loop_reject"
@@ -197,7 +198,7 @@ function continuationProposal(loop: BlueprintLoopInfo): ContinuationKernel.Inbox
 }
 
 function continuationText(loop: BlueprintLoopInfo): string {
-  return `Continue Blueprint ${loop.noteID} toward its full outcome. Use the durable Blueprint context, not just the latest subtask. If all required work is delivered and verified, call blueprint_loop_stop with evidence in summary, then end the turn.`
+  return `Continue Blueprint ${loop.noteID} toward its full outcome. Use the durable Blueprint context, not just the latest subtask. If all required work is delivered and verified, call blueprint_loop_stop with evidence in summary, then end the turn. ${BLUEPRINT_PAUSE_GUIDANCE}`
 }
 
 export namespace BlueprintContinuation {

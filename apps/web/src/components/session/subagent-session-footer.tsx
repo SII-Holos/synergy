@@ -1,5 +1,7 @@
-import { Show, createMemo, createEffect, onCleanup, untrack } from "solid-js"
+import { Show, createMemo, createEffect, createSignal, onCleanup, untrack } from "solid-js"
 import { useSessionDataView } from "@/context/session-data-view"
+import { useSDK } from "@/context/sdk"
+import { useViewActivity } from "@/context/view-residency"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
@@ -10,6 +12,7 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
 import { sharedSecondTick } from "./second-tick"
+import { processTaskOutput } from "../workspace/process-task-output"
 
 const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
 
@@ -48,36 +51,97 @@ function cleanPreview(input?: string): string | undefined {
   return preview.length > 120 ? `${preview.slice(0, 117)}...` : preview
 }
 
-function outputPreview(output?: SessionCortexDelegation["output"]): string | undefined {
-  if (!output) return undefined
-  if (output.mode === "structured") return JSON.stringify(output.value, null, 2)
-  return output.value
-}
-
 export function SubagentSessionFooter(props: {
-  cortex: SessionCortexDelegation
+  cortex: Pick<
+    SessionCortexDelegation,
+    | "taskID"
+    | "parentSessionID"
+    | "agent"
+    | "description"
+    | "status"
+    | "startedAt"
+    | "completedAt"
+    | "model"
+    | "visibility"
+  >
   sessionID: string
   parentSessionID?: string
 }) {
   const view = useSessionDataView()
+  const sdk = useSDK()
+  const active = useViewActivity()
   const navigateToSession = useNavigateToSession()
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
-  const preview = createMemo(() => cleanPreview(props.cortex.error ?? outputPreview(props.cortex.output)))
+  const [preview, setPreview] = createSignal<string>()
+  const previewRequest = createMemo(() => {
+    const cortex = props.cortex
+    if (
+      !active() ||
+      !props.sessionID ||
+      !cortex.taskID ||
+      !props.parentSessionID ||
+      props.parentSessionID !== cortex.parentSessionID ||
+      props.sessionID === cortex.parentSessionID ||
+      cortex.visibility === "hidden" ||
+      cortex.status === "queued" ||
+      cortex.status === "running"
+    )
+      return
+    return JSON.stringify([
+      sdk.url,
+      sdk.scopeKey,
+      props.sessionID,
+      cortex.taskID,
+      cortex.parentSessionID,
+      cortex.status,
+      cortex.startedAt,
+      cortex.completedAt,
+    ])
+  })
+  createEffect(() => {
+    const identity = previewRequest()
+    setPreview(undefined)
+    if (!identity) return
+    const controller = new AbortController()
+    const parameters = untrack(() => ({
+      taskID: props.cortex.taskID,
+      parentSessionID: props.cortex.parentSessionID,
+      sessionID: props.sessionID,
+    }))
+    onCleanup(() => controller.abort())
+    void sdk.client.cortex
+      .get(parameters, { signal: controller.signal, throwOnError: true })
+      .then(({ data }) => {
+        if (
+          controller.signal.aborted ||
+          previewRequest() !== identity ||
+          data?.id !== parameters.taskID ||
+          data.parentSessionID !== parameters.parentSessionID ||
+          data.sessionID !== parameters.sessionID ||
+          data.visibility === "hidden" ||
+          data.status === "queued" ||
+          data.status === "running"
+        )
+          return
+        setPreview(cleanPreview(data.error ?? processTaskOutput(data.output)?.text))
+      })
+      .catch(() => undefined)
+  })
   const sessionStatus = createMemo<SessionStatus | undefined>(() => view().statusFor(props.sessionID))
   const secondTick = sharedSecondTick()
   // The running clock subscribes to the shared 1 Hz source, which pauses
   // while the document is hidden; non-running footers freeze at completedAt.
   createEffect(() => {
-    if (props.cortex.status !== "running") return
+    if (!active() || props.cortex.status !== "running") return
     const unsubscribe = secondTick.subscribe()
     onCleanup(unsubscribe)
   })
 
   const duration = createMemo(() => {
-    secondTick.read()
+    if (active() && props.cortex.status === "running") secondTick.read()
     return formatDuration(props.cortex.startedAt, props.cortex.completedAt)
   })
   const modelLabel = createMemo(() => {
@@ -148,7 +212,9 @@ export function SubagentSessionFooter(props: {
           </div>
           <div class="mt-0.5 truncate text-12-regular text-text-weak">{props.cortex.description}</div>
           <Show when={preview()}>
-            <div class="mt-0.5 truncate text-11-regular text-text-subtle">{preview()}</div>
+            <div data-slot="subagent-result-preview" class="mt-0.5 truncate text-11-regular text-text-subtle">
+              {preview()}
+            </div>
           </Show>
         </div>
 

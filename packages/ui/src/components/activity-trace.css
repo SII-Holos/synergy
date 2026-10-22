@@ -190,7 +190,6 @@
     white-space: nowrap;
   }
 
-  [data-component="attachment-gallery"],
   [data-slot="activity-specialized-detail"] {
     margin: 6px 0 0 26px;
   }

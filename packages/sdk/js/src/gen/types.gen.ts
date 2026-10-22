@@ -178,7 +178,7 @@ export type WorktreeInventoryEntry = {
         type: "external"
       }
   bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  lifecycle?: "active" | "detached" | "gc_candidate" | "released" | "deleted"
   createdAt?: number
   updatedAt?: number
   lastUsedAt?: number
@@ -245,7 +245,7 @@ export type Worktree = {
         type: "external"
       }
   bindings?: Array<string>
-  lifecycle?: "active" | "detached" | "gc_candidate" | "deleted"
+  lifecycle?: "active" | "detached" | "gc_candidate" | "released" | "deleted"
   createdAt?: number
   updatedAt?: number
   lastUsedAt?: number
@@ -1928,6 +1928,9 @@ export type TelemetryResourceSample = {
   cpu?: {
     userMicros?: number
     systemMicros?: number
+    /**
+     * Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1
+     */
     utilizationRatio?: number
   }
   memory?: {
@@ -2155,6 +2158,9 @@ export type PerfDashboardSummary = {
     heapTotalBytes?: number
     externalBytes?: number
     arrayBuffersBytes?: number
+    /**
+     * Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1
+     */
     cpuUtilizationRatio?: number
     eventLoopLagP95Ms?: number
     appReadBytes?: number
@@ -3192,10 +3198,16 @@ export type SessionStatus =
       type: "idle"
     }
   | {
-      type: "retry"
+      rootID: string
+      messageID: string
+      phase: "waiting" | "waiting_provider" | "connecting"
       attempt: number
       message: string
-      next: number
+      error: string
+      startedAt: number
+      next?: number
+      canRetry: boolean
+      type: "retry"
     }
   | {
       type: "busy"
@@ -3474,6 +3486,9 @@ export type SessionCortexDelegation = {
   parentSessionID: string
   parentMessageID: string
   description: string
+  prompt?: string
+  category?: string
+  dagNodeId?: string
   agent: string
   executionRole?: "primary" | "delegated_subagent"
   startedAt: number
@@ -3544,10 +3559,16 @@ export type SessionWorkingInfo =
       activity?: SessionActivity
     }
   | {
-      status: "retry"
+      rootID: string
+      messageID: string
+      phase: "waiting" | "waiting_provider" | "connecting"
       attempt: number
       message: string
-      next: number
+      error: string
+      startedAt: number
+      next?: number
+      canRetry: boolean
+      status: "retry"
     }
   | {
       status: "paused"
@@ -4198,6 +4219,12 @@ export type WorkspaceInfo = {
       [key: string]: unknown
     }
   }
+  recovery?: {
+    provider: string
+    spec: {
+      [key: string]: unknown
+    }
+  }
   content?: {
     revision: number
     manifest: string | null
@@ -4219,7 +4246,7 @@ export type WorkspaceInfo = {
     [key: string]: unknown
   }
   sharedWritableWorkspaceIDs: Array<string>
-  lifecycle: "active" | "deleting" | "deleted"
+  lifecycle: "active" | "deleting" | "released" | "deleted"
   createdAt: number
   updatedAt: number
   [key: string]:
@@ -4232,6 +4259,12 @@ export type WorkspaceInfo = {
         path: string | null
         physicalID?: string
         generation: number
+      }
+    | {
+        provider: string
+        spec: {
+          [key: string]: unknown
+        }
       }
     | {
         provider: string
@@ -4262,6 +4295,7 @@ export type WorkspaceInfo = {
     | Array<string>
     | "active"
     | "deleting"
+    | "released"
     | "deleted"
     | number
     | undefined
@@ -4970,7 +5004,7 @@ export type SkillsConfig = {
 
 export type WorktreeConfig = {
   /**
-   * Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones
+   * Soft limit for materialized managed worktrees; only archived or unreferenced, finished, clean worktrees can be released and restored on demand
    */
   maxManaged?: number
   /**
@@ -5667,6 +5701,23 @@ export type GithubWatchConfig = {
 export type GithubConfig = {
   identitySync?: GithubIdentitySyncConfig
   watch?: GithubWatchConfig
+}
+
+/**
+ * Next-input prediction: automatic defaults to false; model defaults to the current Session model
+ */
+export type DigitalTwinSettings = {
+  /**
+   * Automatically predict the next input after a completed task (default: false)
+   */
+  automatic?: boolean
+  /**
+   * Prediction model; null or absent follows the current Session
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  } | null
 }
 
 /**
@@ -7061,6 +7112,7 @@ export type Config = {
     url?: string
   }
   github?: GithubConfig
+  digitalTwin?: DigitalTwinSettings
   email?: EmailConfig
   /**
    * External agent configurations (e.g. codex, claude-code)
@@ -7211,13 +7263,12 @@ export type CommandSummary = {
   hints: Array<string>
 }
 
-export type CortexTask = {
+export type CortexTaskSummary = {
   id: string
   sessionID: string
   parentSessionID: string
   parentMessageID: string
   description: string
-  prompt: string
   agent: string
   model?: {
     providerID: string
@@ -7229,63 +7280,13 @@ export type CortexTask = {
   status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
   startedAt: number
   completedAt?: number
-  error?: string
   launchFailure?: boolean
   progress?: {
     toolCalls: number
     lastTool?: string
     lastToolStatus?: string
-    lastTitle?: string
-    lastPartId?: string
     lastUpdate: number
-    lastMessage?: string
-    recentTools?: Array<{
-      id: string
-      tool: string
-      status: string
-      title?: string
-      updatedAt: number
-    }>
   }
-  notifyParentOnComplete?: boolean
-  visibility?: "visible" | "hidden"
-  tools?: {
-    [key: string]: boolean
-  }
-  outputConfig?:
-    | {
-        mode?: "summary"
-      }
-    | {
-        mode: "final_response"
-      }
-    | {
-        mode: "structured"
-        schema: {
-          [key: string]: unknown
-        }
-        maxRepairTurns?: 0 | 1 | 2 | 3
-      }
-  output?:
-    | {
-        mode: "summary"
-        value: string
-      }
-    | {
-        mode: "final_response"
-        value: string
-      }
-    | {
-        mode: "structured"
-        value: unknown
-      }
-  owner?: {
-    pluginId: string
-    pluginGeneration: string
-    scopeId: string
-    correlationId: string
-  }
-  timeoutMs?: number
   usage?: {
     inputTokens: number
     outputTokens: number
@@ -7293,7 +7294,6 @@ export type CortexTask = {
     cacheReadTokens: number
     cacheWriteTokens: number
     cost: number
-    accounting?: RolloutAccountingSummary
   }
 }
 
@@ -7387,7 +7387,7 @@ export type ScopeBootstrapResponse = {
     [key: string]: SessionStatus
   }
   sessions?: ScopeBootstrapSessions
-  cortex?: Array<CortexTask>
+  cortex?: Array<CortexTaskSummary>
   _errors?: {
     [key: string]: ScopeBootstrapFieldError
   }
@@ -7480,6 +7480,7 @@ export type ConfigDomainSummary = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7540,6 +7541,7 @@ export type ConfigExportResult = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7600,6 +7602,7 @@ export type ConfigDomainImportDomainPlan = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7657,6 +7660,7 @@ export type ConfigDomainImportPlanInput = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -7744,6 +7748,7 @@ export type ConfigImportRevisionConflictError = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -7779,6 +7784,7 @@ export type ConfigDomainImportApplyInput = {
     | "channels"
     | "holos"
     | "github"
+    | "digital-twin"
     | "email"
     | "plugins"
     | "mcp"
@@ -10216,6 +10222,17 @@ export type ExperimentFile = {
   runtime?: ExperimentRuntime
 }
 
+export type InputAssistance = {
+  version: 1
+  proposals: Array<{
+    producer: string
+    proposalID: string
+    generatedFingerprint: string
+    acceptedFingerprint: string
+  }>
+  submittedFingerprint?: string
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -10336,7 +10353,8 @@ export type UserMessage = {
   thinking?: SessionThinkingSelection
   origin?: OriginUser
   metadata?: {
-    [key: string]: unknown
+    assistance?: InputAssistance
+    [key: string]: unknown | InputAssistance | undefined
   }
 }
 
@@ -11156,6 +11174,92 @@ export type CortexConcurrencyStatus = {
   queued: number
 }
 
+export type CortexTask = {
+  id: string
+  sessionID: string
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  prompt: string
+  agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  executionRole?: "primary" | "delegated_subagent"
+  category?: string
+  dagNodeId?: string
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  startedAt: number
+  completedAt?: number
+  error?: string
+  launchFailure?: boolean
+  progress?: {
+    toolCalls: number
+    lastTool?: string
+    lastToolStatus?: string
+    lastTitle?: string
+    lastPartId?: string
+    lastUpdate: number
+    lastMessage?: string
+    recentTools?: Array<{
+      id: string
+      tool: string
+      status: string
+      title?: string
+      updatedAt: number
+    }>
+  }
+  notifyParentOnComplete?: boolean
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+    accounting?: RolloutAccountingSummary
+  }
+}
+
 export type ProviderDirectoryModel = {
   providerID: string
   model: Model
@@ -11171,6 +11275,21 @@ export type ProviderDirectoryPage = {
 export type ProviderModelLookup = {
   version: string
   models: Array<ProviderDirectoryModel>
+}
+
+export type ProviderConnectionTestResult = {
+  providerID: string
+  modelID?: string
+  success: boolean
+  durationMs: number
+  error?: {
+    kind: "authentication" | "rate_limit" | "model" | "network" | "timeout" | "unavailable" | "provider"
+    statusCode?: number
+  }
+}
+
+export type ProviderConnectionTestInput = {
+  modelID?: string
 }
 
 export type ProviderConnectionCreateInput = {
@@ -11759,6 +11878,19 @@ export type EnvironmentExecutionInfo = {
   saved?: {
     [key: string]: unknown
   }
+  checkpointFailures?: Array<{
+    mount: {
+      id: string
+      workspaceID: string
+      generation: number
+    }
+    failure: {
+      name: string
+      message: string
+      code?: string
+      completed?: Array<string>
+    }
+  }>
   outputCursor: number
   createdAt: number
   updatedAt: number
@@ -12198,6 +12330,10 @@ export type ExperienceSearchResult = {
   sessionID: string
   scopeID: string
   intent: string
+  /**
+   * First 320 characters of the stored trajectory script
+   */
+  scriptPreview?: string | null
   sourceProviderID: string | null
   sourceModelID: string | null
   rewardStatus: "evaluated" | "pending" | "encoding_failed"
@@ -12218,6 +12354,10 @@ export type ExperienceInfo = {
   sessionID: string
   scopeID: string
   intent: string
+  /**
+   * First 320 characters of the stored trajectory script
+   */
+  scriptPreview?: string | null
   sourceProviderID: string | null
   sourceModelID: string | null
   rewardStatus: "evaluated" | "pending" | "encoding_failed"
@@ -12254,6 +12394,10 @@ export type ExperienceDetailInfo = {
   sessionID: string
   scopeID: string
   intent: string
+  /**
+   * First 320 characters of the stored trajectory script
+   */
+  scriptPreview?: string | null
   sourceProviderID: string | null
   sourceModelID: string | null
   rewardStatus: "evaluated" | "pending" | "encoding_failed"
@@ -12699,6 +12843,41 @@ export type LatticeEvent = {
   time: {
     created: number
   }
+}
+
+export type DigitalTwinSourceStamp = {
+  rootID: string
+  assistantID: string
+  scopeID: string
+  sessionID: string
+  model: {
+    providerID: string
+    modelID: string
+  }
+  revision: string
+}
+
+export type DigitalTwinPrediction = {
+  proposalID: string
+  candidate: string | null
+  abstention: "insufficient-grounding" | "no-clear-continuation" | null
+  stamp: DigitalTwinSourceStamp
+}
+
+export type DigitalTwinFailure = {
+  code: "source_unavailable" | "source_changed" | "model_unavailable" | "cancelled" | "invalid_prediction"
+  message: string
+}
+
+export type SessionCompletionAnchor = {
+  rootID: string
+  assistantID: string
+}
+
+export type DigitalTwinInput = {
+  sessionID: string
+  expected?: SessionCompletionAnchor
+  requestID: string
 }
 
 export type AssetInfo = {
@@ -14087,6 +14266,15 @@ export type EventInstallationUpdateAvailable = {
   }
 }
 
+export type EventSessionRootCompleted = {
+  type: "session.root.completed"
+  properties: {
+    sessionID: string
+    rootID: string
+    assistantID: string
+  }
+}
+
 export type EventSessionUpdated = {
   type: "session.updated"
   properties: {
@@ -14228,6 +14416,7 @@ export type EventMessagePartUpdated = {
   properties: {
     part: Part
     delta?: string
+    summary?: SessionPartSummary
   }
 }
 
@@ -14322,21 +14511,21 @@ export type EventSessionCompacted = {
 export type EventCortexTaskCreated = {
   type: "cortex.task.created"
   properties: {
-    task: CortexTask
+    task: CortexTaskSummary
   }
 }
 
 export type EventCortexTaskCompleted = {
   type: "cortex.task.completed"
   properties: {
-    task: CortexTask
+    task: CortexTaskSummary
   }
 }
 
 export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
-    tasks: Array<CortexTask>
+    tasks: Array<CortexTaskSummary>
   }
 }
 
@@ -15115,6 +15304,7 @@ export type Event =
   | EventWorkspaceUpdated
   | EventInstallationUpdated
   | EventInstallationUpdateAvailable
+  | EventSessionRootCompleted
   | EventSessionUpdated
   | EventSessionDeleted
   | EventSessionDiff
@@ -18373,6 +18563,7 @@ export type ConfigDomainGetData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18427,6 +18618,7 @@ export type ConfigDomainUpdateData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18481,6 +18673,7 @@ export type ConfigDomainOpenData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18543,6 +18736,7 @@ export type ConfigExportData = {
       | "channels"
       | "holos"
       | "github"
+      | "digital-twin"
       | "email"
       | "plugins"
       | "mcp"
@@ -18564,6 +18758,7 @@ export type ConfigExportData = {
           | "channels"
           | "holos"
           | "github"
+          | "digital-twin"
           | "email"
           | "plugins"
           | "mcp"
@@ -21081,6 +21276,47 @@ export type SessionForkResponses = {
 
 export type SessionForkResponse = SessionForkResponses[keyof SessionForkResponses]
 
+export type SessionRetryRequestData = {
+  body?: never
+  path: {
+    sessionID: string
+    messageID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/message/{messageID}/retry"
+}
+
+export type SessionRetryRequestErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionRetryRequestError = SessionRetryRequestErrors[keyof SessionRetryRequestErrors]
+
+export type SessionRetryRequestResponses = {
+  /**
+   * Retry result
+   */
+  200: {
+    handled: boolean
+  }
+}
+
+export type SessionRetryRequestResponse = SessionRetryRequestResponses[keyof SessionRetryRequestResponses]
+
 export type SessionContinueData = {
   body?: never
   path: {
@@ -21381,7 +21617,8 @@ export type SessionInputData = {
     agent?: string
     noReply?: boolean
     metadata?: {
-      [key: string]: unknown
+      assistance?: InputAssistance
+      [key: string]: unknown | InputAssistance | undefined
     }
     summary?: {
       title?: string
@@ -21689,7 +21926,8 @@ export type SessionPromptData = {
     agent?: string
     noReply?: boolean
     metadata?: {
-      [key: string]: unknown
+      assistance?: InputAssistance
+      [key: string]: unknown | InputAssistance | undefined
     }
     summary?: {
       title?: string
@@ -22361,7 +22599,8 @@ export type SessionPromptAsyncData = {
     agent?: string
     noReply?: boolean
     metadata?: {
-      [key: string]: unknown
+      assistance?: InputAssistance
+      [key: string]: unknown | InputAssistance | undefined
     }
     summary?: {
       title?: string
@@ -23854,7 +24093,7 @@ export type CortexListResponses = {
   /**
    * List of tasks
    */
-  200: Array<CortexTask>
+  200: Array<CortexTaskSummary>
 }
 
 export type CortexListResponse = CortexListResponses[keyof CortexListResponses]
@@ -23895,6 +24134,8 @@ export type CortexGetData = {
   query?: {
     directory?: string
     scopeID?: string
+    parentSessionID?: string
+    sessionID?: string
   }
   url: "/cortex/tasks/{taskID}"
 }
@@ -23933,6 +24174,8 @@ export type CortexOutputData = {
   query?: {
     directory?: string
     scopeID?: string
+    parentSessionID?: string
+    sessionID?: string
   }
   url: "/cortex/tasks/{taskID}/output"
 }
@@ -24155,6 +24398,40 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderConnectionTestData = {
+  body?: ProviderConnectionTestInput
+  path: {
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/connections/{providerID}/test"
+}
+
+export type ProviderConnectionTestErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type ProviderConnectionTestError = ProviderConnectionTestErrors[keyof ProviderConnectionTestErrors]
+
+export type ProviderConnectionTestResponses = {
+  /**
+   * Observed model request result
+   */
+  200: ProviderConnectionTestResult
+}
+
+export type ProviderConnectionTestResponse = ProviderConnectionTestResponses[keyof ProviderConnectionTestResponses]
 
 export type ProviderConnectionCreateData = {
   body?: ProviderConnectionCreateInput
@@ -29119,6 +29396,48 @@ export type LatticeRunApproveResponses = {
 }
 
 export type LatticeRunApproveResponse = LatticeRunApproveResponses[keyof LatticeRunApproveResponses]
+
+export type DigitalTwinPredictNextInputData = {
+  body?: DigitalTwinInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/digital-twin/predict-next-input"
+}
+
+export type DigitalTwinPredictNextInputErrors = {
+  /**
+   * Prediction unavailable
+   */
+  408: DigitalTwinFailure
+  /**
+   * Prediction unavailable
+   */
+  409: DigitalTwinFailure
+  /**
+   * Prediction unavailable
+   */
+  502: DigitalTwinFailure
+  /**
+   * Prediction unavailable
+   */
+  503: DigitalTwinFailure | RuntimeShuttingDownError
+}
+
+export type DigitalTwinPredictNextInputError =
+  DigitalTwinPredictNextInputErrors[keyof DigitalTwinPredictNextInputErrors]
+
+export type DigitalTwinPredictNextInputResponses = {
+  /**
+   * One editable prediction or abstention
+   */
+  200: DigitalTwinPrediction
+}
+
+export type DigitalTwinPredictNextInputResponse =
+  DigitalTwinPredictNextInputResponses[keyof DigitalTwinPredictNextInputResponses]
 
 export type AssetUploadData = {
   body?: {

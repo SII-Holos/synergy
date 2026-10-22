@@ -4,6 +4,7 @@ import path from "node:path"
 import { tmpdir } from "../support/fixture"
 import { StorageBootstrap } from "../../src/storage/bootstrap"
 import { Storage } from "../../src/storage/storage"
+import { StoreTransaction } from "../../src/storage/transactional-store"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
@@ -46,23 +47,34 @@ test.each([false, true])(
               type: "text",
               text: "test",
             }
-            const original = Storage.write
+            const original = StoreTransaction.prototype.write
+            let stagedParts = 0
             {
-              using failure = spyOn(Storage, "write").mockImplementation(async (key, value) => {
-                if (key[5] === "parts") throw new Error("transient part write failure")
-                return original(key, value)
+              using failure = spyOn(StoreTransaction.prototype, "write").mockImplementation(async function (
+                this: StoreTransaction,
+                ...args: Parameters<StoreTransaction["write"]>
+              ) {
+                await original.apply(this, args)
+                if (args[0][5] !== "parts") return
+                stagedParts++
+                throw new Error("transient part write failure")
               })
               await expect(SessionUserMessageMaterialization.write({ info, parts: [part] })).rejects.toThrow(
                 "transient",
               )
             }
-            expect(await Storage.readMany([["sessions", "home", session.id, "messages", messageID, "info"]])).toEqual([
-              undefined,
-            ])
+            expect(stagedParts).toBe(1)
+            expect(
+              await Storage.readMany([
+                ["sessions", "home", session.id, "messages", messageID, "info"],
+                ["sessions", "home", session.id, "messages", messageID, "parts", part.id],
+              ]),
+            ).toEqual([undefined, undefined])
             const drained = await Session.flushPartWrites(session.id).then(
               () => "ok",
               (error: unknown) => (error instanceof Error ? error.message : String(error)),
             )
+            expect(drained).toBe("ok")
             if (retry) {
               await SessionUserMessageMaterialization.write({
                 info,
@@ -74,7 +86,7 @@ test.each([false, true])(
                   item.type === "text" ? item.text : item.type,
                 ),
               ).toEqual(["test"])
-            } else expect(drained).toBe("ok")
+            }
           },
         }),
       )

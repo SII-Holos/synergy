@@ -198,7 +198,7 @@ describe("ToolResolver observability", () => {
         expect(new Set(heartbeats.map((event) => event.scope_id))).toEqual(
           new Set([runningA.scopeID, runningB.scopeID]),
         )
-        expect(new Set(stalled.map((event) => event.scope_id))).toEqual(new Set([runningA.scopeID, runningB.scopeID]))
+        expect(stalled).toEqual([])
         expect(new Set(heartbeats.map((event) => event.span_id)).size).toBe(2)
         expect(heartbeats.every((event) => event.trace_id === "trace_shared_turn")).toBe(true)
 
@@ -207,15 +207,21 @@ describe("ToolResolver observability", () => {
           trace_id: "trace_shared_turn",
           parent_span_id: "parent_ephemeral_scope_a",
           scope_id: runningA.scopeID,
-          stalled: 1,
+          stalled: 0,
         })
         expect(spans.find((span) => span.tool === "ephemeral_scope_b")).toMatchObject({
           trace_id: "trace_shared_turn",
           parent_span_id: "parent_ephemeral_scope_b",
           scope_id: runningB.scopeID,
-          stalled: 1,
+          stalled: 0,
         })
         expect(spans.every((span) => (span.heartbeat_count ?? 0) > 0)).toBe(true)
+        expect(
+          spans.every((span) => {
+            const attributes = JSON.parse(span.attributes_json)
+            return attributes.activityState === "unknown" && attributes.ownerLiveness === "unknown"
+          }),
+        ).toBe(true)
       } finally {
         gateA.resolve()
         gateB.resolve()

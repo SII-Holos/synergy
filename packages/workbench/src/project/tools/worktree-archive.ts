@@ -25,7 +25,7 @@ interface WorktreeArchiveMetadata {
 
 export const WorktreeArchiveTool = Tool.define<typeof parameters, WorktreeArchiveMetadata>("worktree_archive", {
   description:
-    "Archive a finished Synergy-managed git worktree. Use when isolated work is complete, including from the running owner turn, or to reclaim another idle worktree. Optional target accepts a name, ID, branch or path; omitted target selects the caller's current worktree. The caller returns to its original checkout without stopping or archiving the conversation. Idle sessions are rebound before safe removal. Dirty or ignored files, local-only or unverifiable commits, locks and active users keep the checkout; there is no force option. Reports archived/noop/denied, restored checkout and whether cleanup actually happened with its reason. Keeps the branch; retained checkouts can be re-entered with worktree_enter. Removed checkouts have no automatic snapshot restore. Use worktree_leave to leave without requesting reclamation.",
+    "Archive a finished Synergy-managed git worktree. Use when isolated work is complete, including from the running owner turn, or to reclaim another idle worktree. Optional target accepts a name, ID, branch or path; omitted target selects the caller's current worktree. The caller returns to its original checkout without stopping or archiving the conversation. Other sessions retain their Workspace identity and restore the checkout when execution resumes. Dirty or ignored files, local-only or unverifiable commits, locks and active users keep the checkout; there is no force option. Reports archived/noop/denied, restored checkout and whether cleanup actually happened with its reason. Keeps the branch; retained checkouts can be re-entered with worktree_enter. Released clean checkouts retain a pinned Git recovery receipt; worktree_enter and session execution restore them on demand. Use worktree_leave to leave without requesting reclamation.",
   parameters,
   async execute(params, ctx) {
     ctx.abort.throwIfAborted()
@@ -63,17 +63,19 @@ export const WorktreeArchiveTool = Tool.define<typeof parameters, WorktreeArchiv
     const lines = [`Archived worktree "${tree.name}". Conversation remains available and this turn can continue.`]
     if (result.restored) lines.push(`Restored: ${result.restored.path}`)
     if (result.cleanup.performed)
-      lines.push(`Checkout removed; branch "${tree.branch}" retained. No automatic snapshot restore.`)
+      lines.push(
+        `Checkout released; branch "${tree.branch}" and recovery commit retained. Referencing sessions and worktree_enter restore it on demand.`,
+      )
     else if (result.cleanup.state === "unknown")
       lines.push(
-        `Checkout removal could not be confirmed. Workspace admission remains fenced until safe reconciliation.${result.cleanup.error ? ` ${result.cleanup.error}` : ""} Use worktree_list to inspect the target; do not assume it can be re-entered.`,
+        `Checkout removal could not be confirmed.${result.cleanup.error ? ` ${result.cleanup.error}` : ""} Use worktree_list to inspect the target; do not assume it can be re-entered.`,
       )
     else
       lines.push(
         `Checkout kept at ${tree.path}: ${result.cleanup.reason ?? "removal_failed"}.${result.cleanup.error ? ` ${result.cleanup.error}` : ""} Re-enter it with worktree_enter or retry archive after resolving the blocker.`,
       )
     if (result.cleanup.performed && result.cleanup.error)
-      lines.push(`Checkout removal succeeded, but metadata cleanup needs retry: ${result.cleanup.error}`)
+      lines.push(`Checkout release was verified after an error: ${result.cleanup.error}`)
     const message = lines.join("\n")
     return {
       title: "worktree_archive",

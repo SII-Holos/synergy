@@ -1,3 +1,5 @@
+import { createMcpIconResolver } from "./icons"
+import type { ToolDisplay, ToolIconSource } from "@ericsanchezok/synergy-util/tool-display"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Tool as HarnessTool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
@@ -39,7 +41,10 @@ import {
 export namespace MCP {
   const log = Log.create({ service: "mcp" })
   const runtimeState = RuntimeContext.state(() => ({
+    resolveIcons: createMcpIconResolver((url, init) => fetch(url, init)),
     toolCallTimeouts: new Map<string, number | undefined>(),
+    toolIcons: new WeakMap<MCPToolDef, Promise<ToolIconSource[]>>(),
+    serverIcons: new WeakMap<Client, Promise<ToolIconSource[]>>(),
     changedDescriptions: new Map<string, string>(),
     authCompletions: new Map<string, { pending: PendingOAuth.Connection; promise: Promise<Status> }>(),
   }))
@@ -85,6 +90,7 @@ export namespace MCP {
     requiresWorkspace?: boolean
     tool: Tool
     inputSchema: JSONSchema7
+    display?: ToolDisplay
   }
 
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
@@ -99,7 +105,26 @@ export namespace MCP {
     callTimeout: number | undefined,
     requiresWorkspace: boolean,
     description = mcpTool.description ?? "",
-  ): Promise<Pick<ToolEntry, "inputSchema" | "tool">> {
+    serverUrl?: string,
+  ): Promise<Pick<ToolEntry, "inputSchema" | "tool" | "display">> {
+    const cache = runtimeState().toolIcons
+    let icons = cache.get(mcpTool)
+    if (!icons) {
+      icons = runtimeState()
+        .resolveIcons(mcpTool.icons, serverUrl)
+        .then((value) => {
+          if (value.length) return value
+          const serverCache = runtimeState().serverIcons
+          let serverIcons = serverCache.get(client)
+          if (!serverIcons) {
+            serverIcons = runtimeState().resolveIcons(client.getServerVersion()?.icons, serverUrl)
+            serverCache.set(client, serverIcons)
+          }
+          return serverIcons
+        })
+      cache.set(mcpTool, icons)
+    }
+    const resolvedIcons = await icons
     const source = mcpTool.inputSchema
     const inputSchema: JSONSchema7 = {
       ...(source as JSONSchema7),
@@ -110,6 +135,7 @@ export namespace MCP {
 
     return {
       inputSchema,
+      ...(resolvedIcons.length ? { display: { icon: resolvedIcons } } : {}),
       tool: dynamicTool({
         description,
         inputSchema: jsonSchema(inputSchema),
@@ -338,7 +364,7 @@ export namespace MCP {
     const instanceState = runtimeState()
 
     await McpSupervisor().ready()
-    const result: ToolEntry[] = []
+    const result: Promise<ToolEntry>[] = []
     instanceState.toolCallTimeouts.clear()
     const callTimeout = (await Config.current()).mcpDefaults?.callTimeout
 
@@ -369,25 +395,28 @@ export namespace MCP {
             fingerprint: presentation.changed,
           })
         }
-        const converted = await convertMcpTool(
+        const converted = convertMcpTool(
           mcpTool,
           handle.client,
           effectiveCallTimeout,
           handle.config.requiresWorkspace ?? true,
           presentation.description,
+          handle.config.type === "remote" ? handle.config.url : undefined,
         )
-        result.push({
-          id: toolName,
-          serverName: handle.name,
-          toolName: mcpTool.name,
-          source: handle.source,
-          requiresWorkspace: handle.config.requiresWorkspace ?? true,
-          ...converted,
-        })
+        result.push(
+          converted.then((value) => ({
+            id: toolName,
+            serverName: handle.name,
+            toolName: mcpTool.name,
+            source: handle.source,
+            requiresWorkspace: handle.config.requiresWorkspace ?? true,
+            ...value,
+          })),
+        )
       }
     }
 
-    return result
+    return Promise.all(result)
   }
 
   export async function tools(): Promise<Record<string, Tool>> {

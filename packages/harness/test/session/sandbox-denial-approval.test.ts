@@ -5,6 +5,7 @@ import { PermissionNext } from "../../src/permission/next"
 import { ToolRegistry } from "../../src/tool/registry"
 import { ToolResolver } from "../../src/session/tool-resolver"
 import { SandboxHost } from "../../src/sandbox/host"
+import { EnvironmentResources } from "../../src/environment/resources"
 import { buildExplanation } from "../../src/sandbox/explain"
 import { EnforcementError } from "../../src/enforcement/errors"
 import { tmpdir } from "../support/fixture"
@@ -79,6 +80,7 @@ function sandboxBlockedError() {
 function bashRegistryTool(prepare: { mock: { calls: any[][] } }) {
   return {
     id: "bash",
+    requiresWorkspace: true,
     description: "Bash tool",
     parameters: z.object({ command: z.string(), description: z.string().optional() }),
     async execute(params: { command: string; description?: string }, ctx: any) {
@@ -155,6 +157,15 @@ async function resolveBash(input: {
   prepare: { mock: { calls: any[][] } }
 }) {
   const executions = new Map<string, Promise<any>>()
+  const sandbox = spyOn(EnvironmentResources, "prepareSandbox").mockImplementation(async (_resources, options) => {
+    const wrapper = SandboxHost.prepareWrapper(options)
+    return {
+      ...wrapper,
+      id: crypto.randomUUID(),
+      intentDigest: "fixture-sandbox",
+      cleanup: async () => SandboxHost.cleanupWrapper(wrapper),
+    }
+  })
   const originalRegistryTools = ToolRegistry.catalog
   ;(ToolRegistry.catalog as any) = mock(async () => [bashRegistryTool(input.prepare)])
   try {
@@ -171,10 +182,12 @@ async function resolveBash(input: {
       executions,
       restore: () => {
         ;(ToolRegistry.catalog as any) = originalRegistryTools
+        sandbox.mockRestore()
       },
     }
   } catch (error) {
     ;(ToolRegistry.catalog as any) = originalRegistryTools
+    sandbox.mockRestore()
     throw error
   }
 }

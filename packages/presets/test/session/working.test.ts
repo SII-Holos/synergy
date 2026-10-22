@@ -122,6 +122,12 @@ describe("SessionWorking", () => {
             const now = Date.now()
             runtime.status = {
               type: "retry",
+              rootID: "root",
+              messageID: "message",
+              phase: "waiting",
+              error: "API error",
+              startedAt: now,
+              canRetry: true,
               attempt: 3,
               message: "API error",
               next: now + 5000,
@@ -362,11 +368,28 @@ describe("SessionWorking", () => {
         const now = Date.now()
         const result = SessionWorking.toStatus({
           status: "retry",
+          rootID: "root",
+          messageID: "message",
+          phase: "waiting",
+          error: "timeout",
+          startedAt: now,
+          canRetry: true,
           attempt: 2,
           message: "timeout",
           next: now,
         })
-        expect(result).toEqual({ type: "retry", attempt: 2, message: "timeout", next: now })
+        expect(result).toEqual({
+          type: "retry",
+          rootID: "root",
+          messageID: "message",
+          phase: "waiting",
+          error: "timeout",
+          startedAt: now,
+          canRetry: true,
+          attempt: 2,
+          message: "timeout",
+          next: now,
+        })
       }))
 
     test("converts paused WorkingInfo to StatusInfo", () =>

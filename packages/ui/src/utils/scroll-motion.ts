@@ -18,6 +18,7 @@ export function createScrollMotion(target: () => HTMLElement | undefined) {
   }
   reduced?.addEventListener?.("change", preference)
   return {
+    cancel,
     move(viewport: HTMLElement, top: number, animate: boolean, preserveDeadline = false) {
       const next = target()
       const carry = next === element ? offset() : 0

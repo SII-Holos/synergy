@@ -1,6 +1,7 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import type { ContentPart, Prompt, PromptContextSnapshot } from "."
 
-export type ProjectDraft = { prompt: Prompt; context: PromptContextSnapshot }
+export type ProjectDraft = { prompt: Prompt; context: PromptContextSnapshot; assistance?: InputAssistance.Info }
 
 export function qualifyProjectDraft(draft: ProjectDraft, scopeID: string, directory?: string): ProjectDraft {
   const qualify = <T extends { path: string; originScopeID?: string }>(item: T): T => {
@@ -12,6 +13,7 @@ export function qualifyProjectDraft(draft: ProjectDraft, scopeID: string, direct
   return {
     prompt: draft.prompt.map((part) => (part.type === "file" ? qualify(part) : { ...part })),
     context: { items: draft.context.items.map(qualify) },
+    ...(draft.assistance ? { assistance: draft.assistance } : {}),
   }
 }
 
@@ -46,7 +48,9 @@ export function mergeProjectDrafts(target: ProjectDraft, source: ProjectDraft): 
   const items = new Map<string, PromptContextSnapshot["items"][number]>()
   for (const item of [...target.context.items, ...source.context.items])
     items.set(JSON.stringify([item.originScopeID, item.path, item.selection]), { ...item })
+  const assistance = InputAssistance.merge(target.assistance, source.assistance)
   return {
+    ...(assistance ? { assistance } : {}),
     prompt: prompt.length ? prompt : [{ type: "text", content: "", start: 0, end: 0 }],
     context: { items: [...items.values()] },
   }

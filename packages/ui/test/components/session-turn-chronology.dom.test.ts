@@ -10,14 +10,19 @@ let harness: {
   setSegmented: (value: boolean) => void
   addCompaction: (state?: "committed" | "running" | "failed") => void
   selection: () => unknown
+  forkedMessages: () => string[]
   reset: () => void
-  setExecutionState: (value: {
-    rootID: string
-    status: string
-    startedAt: number
-    endedAt: number
-    stoppedAt: number[]
-  }) => void
+  setExecutionState: (
+    value:
+      | {
+          rootID: string
+          status: string
+          startedAt: number
+          endedAt: number
+          stoppedAt: number[]
+        }
+      | undefined,
+  ) => void
   setExecutionSummary: (
     value: { status: string; elapsedMs: number | null; elapsedLowerBound?: boolean } | undefined,
   ) => void
@@ -116,6 +121,81 @@ test("reply actions complete before the interval summary and retain its authorit
   await waitForUpdate()
   expect(completion.textContent).toContain("00:32")
   expect(completion.textContent).not.toContain("≥")
+})
+
+test.each(["copy", "fork"] as const)(
+  "segmented reply actions retain the focused %s button while execution evidence disappears and recovers",
+  async (action) => {
+    harness.move(8)
+    harness.setSegmented(true)
+    await waitForUpdate()
+    const footer = document.querySelector('[data-component="session-turn"][data-segment-footer]')!
+    const copy = footer.querySelector<HTMLButtonElement>('[data-slot="assistant-message-copy"]')!
+    const timestamp = footer.querySelector('[data-slot="assistant-message-time"]')!
+    const fork = footer.querySelector<HTMLButtonElement>('[data-slot="assistant-message-fork"]')!
+    expect(copy).not.toBeNull()
+    expect(timestamp.textContent).toMatch(/^\d{2}:\d{2}$/)
+    expect(fork).not.toBeNull()
+    expect(copy.disabled).toBe(false)
+    expect(footer.querySelector('[data-component="execution-completion"]')?.textContent).toContain("Completed")
+    const focused = action === "copy" ? copy : fork
+    focused.focus()
+    const expectRetainedActions = () => {
+      expect({
+        copy: footer.querySelector('[data-slot="assistant-message-copy"]') === copy,
+        timestamp: footer.querySelector('[data-slot="assistant-message-time"]') === timestamp,
+        fork: footer.querySelector('[data-slot="assistant-message-fork"]') === fork,
+        focus: document.activeElement === focused,
+      }).toEqual({ copy: true, timestamp: true, fork: true, focus: true })
+    }
+
+    harness.setExecutionState(undefined)
+    await waitForUpdate()
+    expect(footer.querySelector('[data-component="execution-completion"]')).toBeNull()
+    expect(footer.textContent).not.toContain("Completed")
+    expectRetainedActions()
+    expect(copy.disabled).toBe(false)
+    fork.click()
+    expect(harness.forkedMessages()).toEqual(["assistant-activity-switch-second"])
+
+    harness.setExecutionState({
+      rootID: "user-activity-switch",
+      status: "completed",
+      startedAt: 1,
+      endedAt: 8,
+      stoppedAt: [],
+    })
+    await waitForUpdate()
+    const completion = footer.querySelector('[data-component="execution-completion"]')!
+    expect(completion.textContent).toContain("Completed")
+    expectRetainedActions()
+
+    harness.setExecutionSummary({ status: "completed", elapsedMs: 32_000, elapsedLowerBound: true })
+    await waitForUpdate()
+    expect(footer.querySelector('[data-component="execution-completion"]')).toBe(completion)
+    expect(completion.textContent).toContain("≥ 00:32")
+    expectRetainedActions()
+  },
+)
+
+test("segmented reply actions require a completed reply but not execution evidence", async () => {
+  harness.move(7)
+  harness.setSegmented(true)
+  harness.setExecutionState(undefined)
+  await waitForUpdate()
+  const footer = document.querySelector('[data-component="session-turn"][data-segment-footer]')!
+  const actions = () => ({
+    copy: footer.querySelectorAll('[data-slot="assistant-message-copy"]').length,
+    timestamp: footer.querySelectorAll('[data-slot="assistant-message-time"]').length,
+    fork: footer.querySelectorAll('[data-slot="assistant-message-fork"]').length,
+  })
+  expect(actions()).toEqual({ copy: 0, timestamp: 0, fork: 0 })
+  harness.move(8)
+  harness.setExecutionState(undefined)
+  await waitForUpdate()
+  expect(footer.querySelector('[data-component="execution-completion"]')).toBeNull()
+  expect(footer.textContent).not.toContain("Completed")
+  expect(actions()).toEqual({ copy: 1, timestamp: 1, fork: 1 })
 })
 
 test("initial reasoning is inside the narrative before public text and later reasoning stays between tools", async () => {

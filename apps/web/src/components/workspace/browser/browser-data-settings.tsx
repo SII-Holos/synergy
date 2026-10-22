@@ -83,9 +83,9 @@ export function BrowserDataDialog(props: PageProps) {
   )
 }
 
-export function BrowserDataSettings(props: Props) {
+export function BrowserDataSettings(props: Props & { confirmationClass?: string }) {
   const platform = usePlatform(),
-    confirm = useConfirm(),
+    confirm = useConfirm({ class: props.confirmationClass }),
     dialog = useDialog(),
     { _ } = useLingui()
   const [data, setData] = createSignal<BrowserDataState>()

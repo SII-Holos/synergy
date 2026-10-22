@@ -18,7 +18,7 @@ import {
   type VcsInfo,
   type PermissionRequest,
   type QuestionRequest,
-  type CortexTask,
+  type CortexTaskSummary,
   type AgendaItem,
   type SessionInboxItem,
   type ScopeBootstrapResponse,
@@ -340,7 +340,7 @@ function createGlobalSync() {
     provider: ProviderSnapshot
     provider_auth: ProviderAuthResponse
     agenda: AgendaItem[]
-    cortex: CortexTask[]
+    cortex: CortexTaskSummary[]
     sessionStatus: SessionStatusIndex
     permission: Record<string, PermissionRequest[]>
     question: Record<string, QuestionRequest[]>
@@ -912,9 +912,16 @@ function createGlobalSync() {
   // is the only path by which a paused session reaches a client at all, because
   // no producer publishes a pause latch on the event bus.
   async function loadGlobalSessionStatus() {
+    const tracker = globalRuntimeTracker
+    const requestRevision = tracker.captureStatusSnapshot()
     return globalSDK.client.session
       .statuses()
-      .then((x) => seedGlobalStatus(x.data ?? {}, x.response?.headers))
+      .then((x) => {
+        if (disposed || tracker !== globalRuntimeTracker) return
+        const statuses = x.data ?? {}
+        const merged = tracker.mergeStatus(requestRevision, statuses, globalStore.sessionStatus)
+        setGlobalStore("sessionStatus", reconcile(merged ?? statuses))
+      })
       .catch((err) => {
         console.error("Failed to load global session status", err)
       })
@@ -1092,7 +1099,7 @@ function createGlobalSync() {
   }
 
   const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
-  const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
+  const terminalCortexStatuses = new Set(["completed", "error", "cancelled", "interrupted"])
 
   function refreshInbox(scopeKey: string, sessionID: string) {
     let timers = inboxRefreshTimers.get(scopeKey)
@@ -1139,7 +1146,7 @@ function createGlobalSync() {
   function reconcileCortexFromSession(info: Session) {
     const cortex = info.cortex
     if (!cortex || !terminalCortexStatuses.has(cortex.status)) return undefined
-    const idx = globalStore.cortex.findIndex((task) => task.sessionID === info.id)
+    const idx = globalStore.cortex.findIndex((task) => task.sessionID === info.id && task.id === cortex.taskID)
     if (idx === -1) return undefined
     const taskID = globalStore.cortex[idx].id
     setGlobalStore(
@@ -1149,8 +1156,16 @@ function createGlobalSync() {
         ...globalStore.cortex[idx],
         status: cortex.status,
         completedAt: cortex.completedAt ?? globalStore.cortex[idx].completedAt,
-        output: cortex.output ?? globalStore.cortex[idx].output,
-        error: cortex.error ?? globalStore.cortex[idx].error,
+        usage: cortex.usage
+          ? {
+              inputTokens: cortex.usage.inputTokens,
+              outputTokens: cortex.usage.outputTokens,
+              reasoningTokens: cortex.usage.reasoningTokens,
+              cacheReadTokens: cortex.usage.cacheReadTokens,
+              cacheWriteTokens: cortex.usage.cacheWriteTokens,
+              cost: cortex.usage.cost,
+            }
+          : globalStore.cortex[idx].usage,
       }),
     )
     return taskID
@@ -1233,7 +1248,11 @@ function createGlobalSync() {
         )
         if (Object.keys(adopt).length || drop.length) {
           const merged = { ...globalStore.sessionStatus }
-          for (const sessionID of drop) delete merged[sessionID]
+          for (const sessionID of drop) {
+            globalRuntimeTracker.scopeStatusWrite(sessionID)
+            delete merged[sessionID]
+          }
+          for (const sessionID of Object.keys(adopt)) globalRuntimeTracker.scopeStatusWrite(sessionID)
           Object.assign(merged, adopt)
           setGlobalStore("sessionStatus", reconcile(merged))
         }
@@ -1535,15 +1554,6 @@ function createGlobalSync() {
     })
     pruneRequestScopes()
     return true
-  }
-
-  // The cross-Scope status route is authoritative for the whole index, so a
-  // response without a comparable stamp replaces it wholesale — including the
-  // sessions it omits, which is how a status left stale by a missed `idle`
-  // converges without waiting for that session to be viewed.
-  function seedGlobalStatus(statuses: SessionStatusIndex, headers: Pick<Headers, "get"> | undefined) {
-    const merged = globalRuntimeTracker.mergeStatus(readSyncVersion(headers), statuses, globalStore.sessionStatus)
-    setGlobalStore("sessionStatus", reconcile(merged ?? statuses))
   }
 
   // LRU eviction of loaded message/part buckets to bound memory as the user
@@ -1888,8 +1898,10 @@ function createGlobalSync() {
         // derived field, so fill a status the index holds no event for. A real
         // status event always wins, mirroring SessionManager.listStatuses.
         const working = info.working
-        if (working && globalStore.sessionStatus[info.id] === undefined)
+        if (working && globalStore.sessionStatus[info.id] === undefined) {
+          globalRuntimeTracker.statusWrite(stamp, info.id)
           setGlobalStore("sessionStatus", info.id, reconcile(sessionStatusFromWorking(working)))
+        }
         const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
           if (index !== -1) {
@@ -1941,7 +1953,7 @@ function createGlobalSync() {
       }
       case "session.status": {
         // Handles busy, retry, paused, and idle statuses
-        if (stamp) globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
+        globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
         // The global index is shared by every Scope and holds only non-idle
         // sessions, so an idle status deletes the key instead of storing it.
         if (event.properties.status.type === "idle") {

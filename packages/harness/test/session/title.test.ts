@@ -301,7 +301,7 @@ describe("ensureTitle", () => {
             const first = requests.length === 1
             return {
               fullStream: (async function* () {
-                if (first) throw Object.assign(new Error("getaddrinfo ENOTFOUND model.test"), { code: "ENOTFOUND" })
+                if (first) throw Object.assign(new Error("getaddrinfo ENONAME model.test"), { code: "ENONAME" })
                 yield { type: "text-delta", id: "title", text: "Recovered title" }
               })(),
               usage: Promise.resolve(undefined),

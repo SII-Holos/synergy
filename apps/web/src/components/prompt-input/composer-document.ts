@@ -1,3 +1,6 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
+
 export interface TextRange {
   start: number
   end: number
@@ -20,6 +23,7 @@ export interface ComposerCompletion {
   revision: number
   position: number
   text: string
+  proposalID?: string
 }
 
 export interface ComposerDecoration {
@@ -33,6 +37,7 @@ export interface ComposerDecoration {
 export interface ComposerExtensionRegistration {
   id: string
   order?: number
+  onCompletionDismissed?: () => void
   onDraftSettled?: (snapshot: ComposerDocumentSnapshot, context: { signal: AbortSignal }) => void | Promise<void>
   onBeforeSubmit?: (snapshot: ComposerDocumentSnapshot, context: { signal: AbortSignal }) => Promise<void>
 }
@@ -52,6 +57,7 @@ type Adapter = {
   read(): Omit<ComposerDocumentSnapshot, "revision">
   applyEdits(edits: ComposerEdit[]): void | Promise<void>
   isEditableRange?(range: TextRange): boolean
+  assistance?: { read(): InputAssistance.Info | undefined; write(value: InputAssistance.Info | undefined): void }
 }
 
 type OwnedRegistration = ComposerExtensionRegistration & { order: number; degraded: boolean }
@@ -72,7 +78,7 @@ export class ComposerDocumentController {
   readonly #settleMs: number
   readonly #beforeSubmitTimeoutMs: number
   readonly #registrations = new Map<string, OwnedRegistration>()
-  readonly #completions = new Map<string, ComposerCompletion>()
+  readonly #completions = new Map<string, ComposerCompletion & { producer: string; proposalID: string }>()
   readonly #decorations = new Map<string, ComposerDecoration[]>()
   readonly #listeners = new Set<() => void>()
   #revision = 0
@@ -81,6 +87,7 @@ export class ComposerDocumentController {
   #submitController?: AbortController
   #composing = false
   #submitting = false
+  #assistance?: InputAssistance.Info
 
   constructor(adapter: Adapter, options?: { settleMs?: number; beforeSubmitTimeoutMs?: number }) {
     this.#adapter = adapter
@@ -92,13 +99,14 @@ export class ComposerDocumentController {
     return { ...this.#adapter.read(), revision: this.#revision }
   }
 
-  completion(): ComposerCompletion | undefined {
+  completion(producer?: string) {
     if (this.#completions.size === 0) return undefined
     const snapshot = this.current()
     return this.#ordered()
       .map((entry) => this.#completions.get(entry.id))
       .find(
         (value) =>
+          (!producer || value?.producer === producer) &&
           value?.revision === snapshot.revision &&
           value.position === snapshot.selection.start &&
           snapshot.selection.start === snapshot.selection.end,
@@ -133,9 +141,14 @@ export class ComposerDocumentController {
   service(input: {
     id: string
     order?: number
+    onCompletionDismissed?: () => void
     capabilities: ReadonlySet<"composer.read" | "composer.write" | "composer.intercept">
   }): ComposerExtensionService {
-    const registration: ComposerExtensionRegistration = { id: input.id, order: input.order }
+    const registration: ComposerExtensionRegistration = {
+      id: input.id,
+      order: input.order,
+      onCompletionDismissed: input.onCompletionDismissed,
+    }
     const dispose = this.register(registration)
     let active = true
     const requireCapability = (capability: "composer.read" | "composer.write" | "composer.intercept") => {
@@ -190,23 +203,85 @@ export class ComposerDocumentController {
     this.#draftController?.abort()
     this.#completions.clear()
     this.#decorations.clear()
+    if (!this.current().text) this.#setAssistance(undefined)
     this.#notify()
     this.#scheduleSettled()
   }
 
   selectionChanged() {
     if (this.#completions.size === 0) return
+    const snapshot = this.current()
+    let removed = false
+    for (const [owner, completion] of this.#completions) {
+      if (
+        completion.revision === snapshot.revision &&
+        completion.position === snapshot.selection.start &&
+        snapshot.selection.start === snapshot.selection.end
+      )
+        continue
+      this.#completions.delete(owner)
+      removed = true
+    }
+    if (removed) this.#notify()
+  }
+
+  dismissCompletion() {
+    if (this.#completions.size === 0) return
+    const owners = [...this.#completions.keys()]
     this.#completions.clear()
+    for (const owner of owners) this.#registrations.get(owner)?.onCompletionDismissed?.()
     this.#notify()
   }
 
   setComposing(value: boolean) {
     this.#composing = value
     if (value) {
+      this.#completions.clear()
+      this.#draftController?.abort()
+      this.#notify()
       if (this.#settleTimer) clearTimeout(this.#settleTimer)
       return
     }
+    this.#notify()
     this.#scheduleSettled()
+  }
+
+  composing() {
+    return this.#composing
+  }
+
+  assistance() {
+    return this.#adapter.assistance ? this.#adapter.assistance.read() : this.#assistance
+  }
+
+  async acceptCompletion() {
+    const completion = this.completion()
+    if (!completion) return false
+    const before = this.current()
+    const assistance = InputAssistance.accept(this.assistance(), {
+      producer: completion.producer,
+      proposalID: completion.proposalID,
+      generated: completion.text,
+      accepted: completion.text,
+    })
+    const applied = await this.applyEdits({
+      revision: completion.revision,
+      edits: [{ range: { start: completion.position, end: completion.position }, text: completion.text }],
+    })
+    if (
+      applied.sessionId !== before.sessionId ||
+      applied.mode !== before.mode ||
+      applied.text !==
+        before.text.slice(0, completion.position) + completion.text + before.text.slice(completion.position)
+    )
+      return false
+    this.#setAssistance(assistance)
+    return true
+  }
+
+  #setAssistance(value: InputAssistance.Info | undefined) {
+    if (this.#adapter.assistance) this.#adapter.assistance.write(value)
+    else this.#assistance = value
   }
 
   async applyEdits(input: { revision: number; edits: ComposerEdit[] }): Promise<ComposerDocumentSnapshot> {
@@ -304,7 +379,7 @@ export class ComposerDocumentController {
       ) {
         throw new ComposerDocumentError("stale_revision", "Composer completion does not match the active caret")
       }
-      this.#completions.set(owner, value)
+      this.#completions.set(owner, { ...value, producer: owner, proposalID: value.proposalID ?? generateUUID() })
     }
     this.#notify()
   }

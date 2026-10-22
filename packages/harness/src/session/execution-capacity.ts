@@ -8,6 +8,11 @@ export namespace ExecutionCapacity {
   }
   const sessions = RuntimeContext.state(() => new Map<string, Owner>())
   const context = RuntimeContext.createAsyncContext<ReadonlyMap<string, Owner>>()
+  const waiting = RuntimeContext.createAsyncContext<(() => () => void) | undefined>()
+
+  export function observeWait<T>(observe: () => () => void, fn: () => T): T {
+    return waiting.run(observe, fn)
+  }
 
   export function provide<T>(kind: "tool" | "cortex", owner: Owner, fn: () => T): T {
     return context.run(new Map([...(context.getStore() ?? []), [kind, owner]]), fn)
@@ -41,26 +46,31 @@ export namespace ExecutionCapacity {
   }
 
   export function detached<T>(fn: () => T): T {
-    return context.run(new Map(), fn)
+    return waiting.run(undefined, () => context.run(new Map(), fn))
   }
 
   export async function wait<T>(fn: () => Promise<T>): Promise<T> {
+    const finishWaiting = waiting.getStore()?.()
     const current = context.getStore()
     const owners = [current?.get("cortex"), current?.get("tool")].filter((owner): owner is Owner => !!owner)
-    for (const owner of owners) owner.pause()
     try {
-      return await detached(fn)
-    } finally {
-      const errors: unknown[] = []
-      // Tool admission acquires Cortex before its tool slot; recovery must use the same order.
-      for (const owner of owners) {
-        try {
-          await owner.resume()
-        } catch (error) {
-          errors.push(error)
+      for (const owner of owners) owner.pause()
+      try {
+        return await detached(fn)
+      } finally {
+        const errors: unknown[] = []
+        // Tool admission acquires Cortex before its tool slot; recovery must use the same order.
+        for (const owner of owners) {
+          try {
+            await owner.resume()
+          } catch (error) {
+            errors.push(error)
+          }
         }
+        if (errors.length) throw errors[0]
       }
-      if (errors.length) throw errors[0]
+    } finally {
+      finishWaiting?.()
     }
   }
 }

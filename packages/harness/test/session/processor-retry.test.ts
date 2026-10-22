@@ -317,14 +317,19 @@ test(
   }),
 )
 
-test(
-  "a failed provider stream cannot execute its proposed tool, and recovery executes once",
-  runtime.bind(async () => {
-    const result = await run("stream")
+test.each(["ETIMEOUT", "ENOTFOUND"])(
+  "a provider %s failure cannot execute its proposed tool, and recovery executes once",
+  runtime.bind(async (code) => {
+    const result = await run(
+      "stream",
+      Object.assign(new TypeError(`getaddrinfo ${code} provider.invalid`), { code, syscall: "getaddrinfo" }),
+    )
     expect(result.calls).toBe(2)
     expect(result.effects).toBe(1)
     expect(result.disposed).toBe(2)
     expect(result.modelCompletions).toBe(1)
+    expect(result.recordedCalls.map((call) => call.retryIndex)).toEqual([0, 1])
+    expect(result.recordedCalls.map((call) => call.status)).toEqual(["failed", "completed"])
     expect(
       result.message.parts
         .filter((part) => part.type === "tool")
@@ -334,25 +339,34 @@ test(
   }),
 )
 
-test(
-  "a failure after tool dispatch never replays the model or side effect",
-  runtime.bind(async () => {
-    const result = await run("dispatch")
+test.each(["ECONNRESET", "ENOTFOUND"])(
+  "a %s failure after tool dispatch never replays the model or side effect",
+  runtime.bind(async (code) => {
+    const result = await run("dispatch", Object.assign(new Error("post-dispatch failure"), { code }))
     expect(result.calls).toBe(1)
     expect(result.effects).toBe(1)
     expect(result.message.info).toMatchObject({ finish: "error" })
   }),
 )
 
-test(
-  "provider retries stop at the attempt budget and persist a terminal failure",
-  runtime.bind(async () => {
-    const result = await run("exhausted")
+test.each(["ETIMEOUT", "ENOTFOUND"])(
+  "provider %s retries stop at the attempt budget and persist a terminal failure",
+  runtime.bind(async (code) => {
+    const result = await run(
+      "exhausted",
+      Object.assign(new TypeError(`getaddrinfo ${code} provider.invalid`), { code, syscall: "getaddrinfo" }),
+    )
     expect(result.calls).toBe(1 + SessionRetry.RETRY_MAX_ATTEMPTS)
     expect(result.effects).toBe(0)
     expect(result.disposed).toBe(result.calls)
     expect(result.modelCompletions).toBe(1)
-    expect(result.message.info).toMatchObject({ finish: "error", error: { name: "APIError" } })
+    expect(result.recordedCalls.map((call) => call.retryIndex)).toEqual(
+      Array.from({ length: result.calls }, (_, index) => index),
+    )
+    expect(result.message.info).toMatchObject({
+      finish: "error",
+      error: { name: "APIError", data: { isRetryable: true, metadata: { networkKind: "transient", code } } },
+    })
   }),
 )
 

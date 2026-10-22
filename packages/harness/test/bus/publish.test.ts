@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import z from "zod"
 import { Bus } from "../../src/bus"
 import { BusEvent } from "../../src/bus/bus-event"
 import { ScopeContext } from "../../src/scope/context"
+import { ScopedState } from "../../src/scope/scoped-state"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -252,6 +253,28 @@ test("multiple streaming event types have independent rate counters", () =>
           unsubA()
           unsubB()
         }
+      },
+    })
+  }))
+
+test("Scope disposal cancels replay expiry even without wildcard subscribers and creates a fresh epoch", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const Replay = BusEvent.define("test.replay.disposal", z.object({ text: z.string() }))
+        const epoch = Bus.epoch()
+        using scheduled = spyOn(globalThis, "setTimeout")
+        using cleared = spyOn(globalThis, "clearTimeout")
+        await Bus.publish(Replay, { text: "retained payload" })
+        const expiry = scheduled.mock.results.find((_, index) => scheduled.mock.calls[index][1] === 300_001)?.value
+        expect(expiry).toBeDefined()
+        expect(Bus.replay(0)).toMatchObject({ status: "ok", epoch, seq: 1 })
+        await ScopedState.dispose()
+        expect(cleared.mock.calls.some(([timer]) => timer === expiry)).toBe(true)
+        expect(Bus.epoch()).not.toBe(epoch)
+        expect(Bus.replay(0)).toMatchObject({ status: "ok", seq: 0, events: [] })
       },
     })
   }))

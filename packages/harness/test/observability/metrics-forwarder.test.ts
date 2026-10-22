@@ -3,6 +3,7 @@ import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { ObservabilityStore } from "../../src/observability/store"
 import { testRuntime } from "../support/runtime"
+import { Storage } from "../../src/storage/storage"
 
 const runtime = await testRuntime()
 const row = { name: "llm.fetch.headers", value: 42, unit: "ms" as const, module: "llm" as const }
@@ -83,3 +84,31 @@ test("a forwarder cannot cross Runtime ownership or survive a closed owner", asy
 })
 
 afterAll(() => runtime.close())
+
+test(
+  "counts bulk mutations individually and aggregates byte counters without extra telemetry rows",
+  runtime.bind(async () => {
+    const rows: Parameters<typeof ObservabilityMetrics.record>[0][] = []
+    await ObservabilityMetrics.withForwarder(
+      (row) => rows.push(row),
+      () =>
+        Storage.transaction(async (tx) => {
+          await tx.writeMany([1, 2, 3].map((value) => ({ key: ["metric-fixture", String(value)], value })))
+        }),
+    )
+    expect(rows.filter((row) => row.name === "storage.record.write").reduce((sum, row) => sum + row.value, 0)).toBe(3)
+    expect(
+      rows.filter((row) => row.name === "storage.transaction.count" && row.labels?.outcome === "committed"),
+    ).toHaveLength(1)
+    ObservabilityMetrics.flushAggregates(true)
+    using inserted = spyOn(ObservabilityStore, "insertMetric")
+    for (const metric of rows.filter((row) => row.name === "storage.record.encoded_bytes"))
+      ObservabilityMetrics.record(metric)
+    expect(inserted).not.toHaveBeenCalled()
+    ObservabilityMetrics.flushAggregates(true)
+    expect(inserted).toHaveBeenCalledTimes(1)
+    expect(inserted.mock.calls[0][0].value).toBe(
+      rows.filter((row) => row.name === "storage.record.encoded_bytes").reduce((sum, row) => sum + row.value, 0),
+    )
+  }),
+)

@@ -23,6 +23,7 @@ import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harne
 const log = Log.create({ service: "runtime.workspace" })
 
 const workspaceServices: SessionWorkspaceRuntime.Provider = {
+  prepare: (session, signal) => Worktree.prepareSession(session, signal),
   async homeWorkspace() {
     const directory = path.join(Global.Path.root, "workspaces", "home")
     await fs.mkdir(directory, { recursive: true })
@@ -34,7 +35,7 @@ const workspaceServices: SessionWorkspaceRuntime.Provider = {
   async releaseSession(session) {
     await ScopeContext.provide({
       scope: session.scope,
-      workspace: session.workspace,
+      workspace: null,
       fn: async () => {
         await Pty.removeForSession(session.id)
         if (session.workspace?.type === "git_worktree") await Worktree.detachSession(session.id, session.workspace)
@@ -65,42 +66,13 @@ export function registerWorkspace(coordinator = new WorkspaceCoordinator()) {
       try {
         const session = await Session.get(input.sessionID)
         const workspace = session.workspace
-        if (workspace?.type !== "git_worktree" || !workspace.worktreeID) return
-        const state = await Worktree.status(input.sessionID)
-        if (!state.worktree || !state.worktree.managed) return
-        const owner = state.worktree.owner
+        if (workspace?.type !== "git_worktree" || typeof workspace.worktreeID !== "string") return
+        const worktree = await Worktree.resolve(workspace.worktreeID)
+        if (!worktree.managed) return
+        const owner = worktree.owner
         if (owner?.type !== "session" || owner.sessionID !== input.sessionID) return
-        if (state.dirty) {
-          await Worktree.markLifecycle(state.worktree.id, "gc_candidate")
-          log.info("child worktree dirty, marked for gc", {
-            taskID: input.taskID,
-            worktreeID: state.worktree.id,
-            worktreeName: state.worktree.name,
-          })
-          return
-        }
-        // One owner for this probe: the shared helper confirms a remote exists
-        // before trusting the count, because `--not --remotes` degenerates to
-        // the whole local history when the repository has no remote-tracking ref.
-        if (state.worktree.branch) {
-          const localOnly = await Worktree.localOnlyCommitCount(workspace.path)
-          if (localOnly > 0) {
-            log.info("child worktree has local-only commits, kept for review", {
-              taskID: input.taskID,
-              worktreeID: state.worktree.id,
-              worktreeName: state.worktree.name,
-              branch: state.worktree.branch,
-              localCommits: localOnly,
-            })
-            return
-          }
-        }
-        await Worktree.remove({ sessionID: input.sessionID, target: state.worktree.id, force: false })
-        log.info("child worktree removed", {
-          taskID: input.taskID,
-          worktreeID: state.worktree.id,
-          worktreeName: state.worktree.name,
-        })
+        const cleanup = await Worktree.release(worktree.id)
+        log.info("child worktree cleanup", { taskID: input.taskID, worktreeID: worktree.id, ...cleanup })
       } catch (error) {
         log.warn("child worktree cleanup failed", { taskID: input.taskID, error })
       }

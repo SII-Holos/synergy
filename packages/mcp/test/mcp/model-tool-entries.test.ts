@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { MCP } from "../../src/index"
 import { McpSupervisor } from "../../src/supervisor"
@@ -7,6 +7,8 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { testRuntime } from "../support/runtime"
 import definitions from "../fixtures/anysearch-tools.json"
+
+const icon = `data:image/svg+xml;base64,${Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M0 0h24v24H0z"/></svg>').toString("base64")}`
 
 test("model adaptation preserves raw discovery, schemas and the actual MCP call", async () => {
   await using runtime = await testRuntime()
@@ -20,7 +22,7 @@ const definitions = ${JSON.stringify(definitions)};
 require("node:readline").createInterface({input:process.stdin}).on("line", line => {
   const m = JSON.parse(line); if (m.id === undefined) return;
   const result = m.method === "initialize"
-    ? {protocolVersion:m.params.protocolVersion, serverInfo:{name:"fixture",version:"1"},capabilities:{tools:{}}}
+    ? {protocolVersion:m.params.protocolVersion, serverInfo:{name:"fixture",version:"1",icons:[{src:${JSON.stringify(icon)},theme:"light"}]},capabilities:{tools:{}}}
     : m.method === "tools/list" ? {tools:definitions}
     : {content:[{type:"text",text:JSON.stringify(m.params)}]};
   console.log(JSON.stringify({jsonrpc:"2.0",id:m.id,result}));
@@ -39,6 +41,7 @@ require("node:readline").createInterface({input:process.stdin}).on("line", line 
         try {
           await supervisor.connect(handle.name, handle.identity)
           const raw = await MCP.toolEntries()
+          expect(raw[0]?.display?.icon).toMatchObject([{ mimeType: "image/svg+xml", theme: "light" }])
           const custom = await MCP.toolEntries({ audience: "model" })
           expect(custom.map((entry) => entry.tool.description)).toEqual(raw.map((entry) => entry.tool.description))
           handle.source = "builtin"
@@ -48,6 +51,7 @@ require("node:readline").createInterface({input:process.stdin}).on("line", line 
             raw.map((entry) => entry.tool.description),
           )
           const model = await ToolMcpSource.get()!.toolEntries({ audience: "model" })
+          expect(model[0]?.display).toEqual(raw[0]?.display)
           for (const entry of model)
             expect(entry.presentation?.description ?? entry.tool.description).toBe(entry.tool.description)
           expect(model.map((entry) => entry.inputSchema)).toEqual(raw.map((entry) => entry.inputSchema))
@@ -69,12 +73,54 @@ require("node:readline").createInterface({input:process.stdin}).on("line", line 
           expect(result).toMatchObject({
             content: [{ type: "text", text: JSON.stringify({ name: "search", arguments: args }) }],
           })
+          handle.toolDefs[0] = { ...handle.toolDefs[0]!, icons: [{ src: icon, theme: "dark" }] }
+          const withToolIcon = await ToolMcpSource.get()!.toolEntries()
+          expect(withToolIcon[0]?.display?.icon).toMatchObject([{ src: icon, theme: "dark" }])
+          expect(withToolIcon[1]?.display?.icon).toMatchObject([{ src: icon, theme: "light" }])
           handle.toolDefs[0]!.description += " Updated remote contract."
           expect((await MCP.toolEntries({ audience: "model" }))[0]!.tool.description).toBe(
             handle.toolDefs[0]!.description,
           )
           const changed = (await ToolMcpSource.get()!.toolEntries({ audience: "model" }))[0]!
           expect(changed.presentation?.description ?? changed.tool.description).toBe(handle.toolDefs[0]!.description)
+          handle.toolDefs = Array.from({ length: 80 }, (_, index) => ({
+            name: `icon_fixture_${index}`,
+            inputSchema: { type: "object" as const, properties: {} },
+            icons: [{ src: "https://api.anysearch.com/shared.svg" }],
+          }))
+          let active = 0
+          let peak = 0
+          let requests = 0
+          using fetching = spyOn(globalThis, "fetch").mockImplementation(
+            Object.assign(
+              async () => {
+                requests++
+                active++
+                peak = Math.max(peak, active)
+                await Bun.sleep(5)
+                active--
+                return new Response(Buffer.from(icon.split(",")[1]!, "base64"), {
+                  headers: { "content-type": "image/svg+xml" },
+                })
+              },
+              { preconnect: fetch.preconnect },
+            ),
+          )
+          const sharedIcons = await MCP.toolEntries()
+          expect(sharedIcons).toHaveLength(80)
+          expect(requests).toBe(1)
+          expect(
+            sharedIcons.every((entry) => Array.isArray(entry.display?.icon) && entry.display.icon[0]?.src === icon),
+          ).toBe(true)
+          handle.toolDefs = handle.toolDefs.map((tool, index) => ({
+            ...tool,
+            icons: [{ src: `https://api.anysearch.com/icon-${index}.svg` }],
+          }))
+          const distinctIcons = await MCP.toolEntries()
+          expect(distinctIcons).toHaveLength(80)
+          expect(requests).toBe(81)
+          expect(peak).toBeLessThanOrEqual(4)
+          expect(active).toBe(0)
           await supervisor.disconnect(handle.name)
           expect(await MCP.toolEntries({ audience: "model" })).toEqual([])
         } finally {

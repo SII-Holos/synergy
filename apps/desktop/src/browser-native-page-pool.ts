@@ -176,14 +176,16 @@ export class BrowserNativePagePool {
   detach(window: BrowserWindow, ownerKey: string, pageId: string): void {
     const entry = this.find(ownerKey, pageId)
     if (!entry || !entry.attached) return
-    if (entry.generation.capture) entry.generation.view.setVisible(false)
-    else window.contentView.removeChildView(entry.generation.view)
+    if (entry.generation.capture && !entry.generation.view.webContents.isDestroyed())
+      entry.generation.view.setVisible(false)
+    else if (!window.isDestroyed()) window.contentView.removeChildView(entry.generation.view)
     entry.attached = false
     this.updateNativeViewport(entry)
   }
 
   private updateNativeViewport(entry: Entry): void {
     const generation = entry.generation
+    if (generation.view.webContents.isDestroyed()) return
     const { width, height } = generation.view.getBounds()
     void generation.control.setNativeViewport(entry.attached ? null : { width, height }).catch((error) => {
       if (entry.closing || entry.generation !== generation) return

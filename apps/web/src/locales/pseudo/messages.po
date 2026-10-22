@@ -4431,10 +4431,6 @@ msgid "app.library.experience.visits"
 msgstr "⟦{visits} visits⟧"
 
 #. js-lingui-explicit-id
-msgid "app.library.home.empty"
-msgstr "⟦Your memories and experiences will appear here.⟧"
-
-#. js-lingui-explicit-id
 msgid "app.library.home.groupFailed"
 msgstr "⟦Unable to refresh {group}. Other results remain available.⟧"
 
@@ -4445,10 +4441,6 @@ msgstr "⟦Loading library…⟧"
 #. js-lingui-explicit-id
 msgid "app.library.home.noMatches"
 msgstr "⟦No matching results⟧"
-
-#. js-lingui-explicit-id
-msgid "app.library.home.recent"
-msgstr "⟦Recently updated⟧"
 
 #. js-lingui-explicit-id
 msgid "app.library.memory.allCategories"
@@ -4513,10 +4505,6 @@ msgstr "⟦Experiences⟧"
 #. js-lingui-explicit-id
 msgid "app.library.nav.experiencesCount"
 msgstr "⟦Experiences {count}⟧"
-
-#. js-lingui-explicit-id
-msgid "app.library.nav.home"
-msgstr "⟦Home⟧"
 
 #. js-lingui-explicit-id
 msgid "app.library.nav.memories"
@@ -4605,10 +4593,6 @@ msgstr "⟦Select all⟧"
 #. js-lingui-explicit-id
 msgid "app.library.skills.card.compatLabel"
 msgstr "⟦{level} compatibility⟧"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.diagnosticsCount"
-msgstr "⟦{count, plural, one {# diagnostic} other {# diagnostics}}⟧"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.card.openDetails"
@@ -4715,16 +4699,16 @@ msgid "app.library.skills.diagnostics.failed"
 msgstr "⟦{count, plural, one {# skill failed to load} other {# skills failed to load}}⟧"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.failedGroup"
-msgstr "⟦Failed to load⟧"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.diagnostics.shadowed"
-msgstr "⟦{count, plural, one {# skill shadowed} other {# skills shadowed}}⟧"
+msgid "app.library.skills.diagnostics.overridden"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.diagnostics.shadowedGroup"
 msgstr "⟦Shadowed⟧"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.diagnostics.title"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.hint"
@@ -6235,6 +6219,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.performance.issue.slowTurn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.performance.issue.stalledTool"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8192,6 +8180,14 @@ msgstr "⟦{provider} is connected. Models sync in the background.⟧"
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.reconnected"
 msgstr "⟦reconnected⟧"
+
+#. js-lingui-explicit-id
+msgid "app.provider.toast.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.provider.toast.untested"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.back"
@@ -12093,6 +12089,46 @@ msgid "diff.preview-truncated"
 msgstr "⟦Preview truncated⟧"
 
 #. js-lingui-explicit-id
+msgid "digitalTwin.composer.abstained"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.predict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.predicting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.composer.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automatic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automaticHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.follow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "directory.navigation.cancel"
 msgstr "⟦Cancel⟧"
 
@@ -12882,6 +12918,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.trajectory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.trajectory.short"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15995,8 +16035,8 @@ msgid "provider.recovery.updateEnv"
 msgstr "⟦{providerName} rejected credentials from {names}. Update the environment and restart the server.⟧"
 
 #. js-lingui-explicit-id
-msgid "provider.status.connected"
-msgstr "⟦Connected⟧"
+msgid "provider.status.configured"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "provider.status.notConnected"
@@ -16021,6 +16061,54 @@ msgstr "⟦Unavailable⟧"
 #. js-lingui-explicit-id
 msgid "provider.status.updateEnvironment"
 msgstr "⟦Update environment⟧"
+
+#. js-lingui-explicit-id
+msgid "provider.test.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.authentication"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.model"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.network"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.provider"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.rateLimit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.saveFirst"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.success"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.timeout"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "provider.test.unavailable"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "provider.usage.available"
@@ -16615,6 +16703,10 @@ msgid "session-status.managing-tasks"
 msgstr "⟦Managing tasks⟧"
 
 #. js-lingui-explicit-id
+msgid "session-status.pausing-session"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
 msgstr "⟦Planning next steps⟧"
 
@@ -16748,6 +16840,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.activity.bindWorktree"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.activity.blueprintAction"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17275,6 +17371,10 @@ msgstr "⟦Undo⟧"
 #. js-lingui-explicit-id
 msgid "session.cmd.undoDesc"
 msgstr "⟦Undo the last message turn⟧"
+
+#. js-lingui-explicit-id
+msgid "session.column.resize"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.content.loadFailed"
@@ -18217,6 +18317,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.progress.expand"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.progress.inactive"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -19558,6 +19662,10 @@ msgstr "⟦Control Profile⟧"
 #. js-lingui-explicit-id
 msgid "settings.catalog.controlProfile.searchTerms"
 msgstr "⟦control profile | guarded | autonomous | full access⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.digitalTwin.searchTerms"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.email.description"
@@ -26308,6 +26416,10 @@ msgid "tool.title.pathwayWrite"
 msgstr "⟦Write Pathway⟧"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.pause-session"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"
 msgstr "⟦Manage research plan⟧"
 
@@ -26584,6 +26696,10 @@ msgid "tool.title.wiki"
 msgstr "⟦Manage research knowledge⟧"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.workbench-view"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.worktrees"
 msgstr "⟦View isolated workspaces⟧"
 
@@ -26820,6 +26936,10 @@ msgid "ui.errorCard.detailsTitle"
 msgstr "⟦Error details⟧"
 
 #. js-lingui-explicit-id
+msgid "ui.errorCard.showDetails"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "ui.errorCard.toolInput"
 msgstr "⟦Tool input⟧"
 
@@ -26966,6 +27086,50 @@ msgstr "⟦Generation failed⟧"
 #. js-lingui-explicit-id
 msgid "ui.mediaGeneration.generating"
 msgstr "⟦Generating media⟧"
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.connecting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdown"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.countdownAttempt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.provider"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.reconnect"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.retryNow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.selectModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.recovery.waitingResponse"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.resource.close"

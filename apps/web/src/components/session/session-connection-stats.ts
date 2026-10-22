@@ -1,4 +1,4 @@
-import type { CortexTask, LspStatus, McpStatus } from "@ericsanchezok/synergy-sdk/client"
+import type { CortexTaskSummary, LspStatus, McpStatus } from "@ericsanchezok/synergy-sdk/client"
 
 export interface LspStats {
   connected: number
@@ -32,7 +32,7 @@ export interface CortexStats {
   hasRunning: boolean
 }
 
-export function computeCortexStats(tasks: CortexTask[] | undefined, sessionID: string): CortexStats {
+export function computeCortexStats(tasks: CortexTaskSummary[] | undefined, sessionID: string): CortexStats {
   const items = (tasks ?? []).filter((t) => t.parentSessionID === sessionID)
   const running = items.filter((t) => t.status === "running").length
   const queued = items.filter((t) => t.status === "queued").length

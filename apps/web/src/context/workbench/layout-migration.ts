@@ -83,7 +83,7 @@ function basename(value: string) {
   return value.split("/").at(-1) ?? value
 }
 
-const currentLayoutKeys = ["sidebar", "review", "mobileSidebar", "rightSidebar", "sessionView"] as const
+const currentLayoutKeys = ["sidebar", "review", "mobileSidebar", "rightSidebar", "sessionView", "conversation"] as const
 
 function normalizeSidebarState(value: unknown): unknown {
   if (!isRecord(value)) return value

@@ -156,7 +156,7 @@ test.each([
       expect(Math.max(...opening.map((sample) => sample.overlap))).toBeLessThanOrEqual(1)
     }
     const earlier = page.locator('[data-part-id="earlier-thought"] [data-slot="process-reasoning-trigger"]').first()
-    if (kind === "continuous") {
+    if (await page.locator('[data-component="process-viewport"]').count()) {
       await page.locator('[data-component="process-viewport"]').first().hover()
       await page.mouse.wheel(0, -10000)
     }

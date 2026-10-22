@@ -134,6 +134,26 @@ test("plain-text paste replaces the selection and participates in native undo an
   }
 }, 20_000)
 
+test("a completion inserts into an empty native editor and retains native undo", async () => {
+  await page.reload()
+  await page.waitForSelector("#seed")
+  await page.evaluate("window.projectDraftFixture.prompt.resetDraft()")
+  await page.click("#mount")
+  await page.locator("#editor").focus()
+  expect(await page.locator("#editor").textContent()).toBe("")
+  expect(
+    await page.evaluate(`(async () => {
+      const { controller } = window.projectDraftFixture
+      const service = controller.service({ id: 'completion', capabilities: new Set(['composer.write']) })
+      service.setCompletion({ revision: controller.current().revision, position: 0, text: '再检查一下 API 的边界' })
+      try { return await controller.acceptCompletion() } finally { service.dispose() }
+    })()`),
+  ).toBe(true)
+  expect(await page.locator("#value").textContent()).toBe("再检查一下 API 的边界")
+  await page.locator("#editor").press("ControlOrMeta+z")
+  expect(await page.locator("#value").textContent()).toBe("")
+})
+
 test("project transfer checks both draft revisions and cancellation leaves both drafts intact", async () => {
   await page.goto(`${server.resolvedUrls!.local[0]}c2NvcGU/session/a`)
   await page.waitForSelector("#seed")

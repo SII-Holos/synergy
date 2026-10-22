@@ -54,7 +54,7 @@ const bytesLabel = { id: "settings.personalize.bytes", message: "bytes" }
 export function PersonalizePanel(props: { controller: PersonalizeController }) {
   const { _ } = useLingui()
   const { fmt } = useLocale()
-  const confirm = useConfirm()
+  const confirm = useConfirm({ class: "settings-control-scope" })
   const controller = props.controller
 
   onMount(() => {

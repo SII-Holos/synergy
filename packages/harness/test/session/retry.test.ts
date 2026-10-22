@@ -112,7 +112,7 @@ describe("session.message-v2.fromError", () => {
     expect(SessionRetry.retryable({ name: "UnknownError", data: { message: `Error: ${message}` } })).toBeDefined()
   })
 
-  test.each(["ETIMEOUT", "EHOSTUNREACH", "ESERVFAIL", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"])(
+  test.each(["ENOTFOUND", "ETIMEOUT", "EHOSTUNREACH", "ESERVFAIL", "UND_ERR_SOCKET", "UND_ERR_BODY_TIMEOUT"])(
     "preserves retry classification for nested %s through the worker protocol",
     (code) => {
       const source = new TypeError("request failed", {
@@ -126,7 +126,7 @@ describe("session.message-v2.fromError", () => {
     },
   )
 
-  test.each(["ENOTFOUND", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "UND_ERR_ABORTED"])(
+  test.each(["ENONAME", "CERT_HAS_EXPIRED", "ERR_TLS_CERT_ALTNAME_INVALID", "UND_ERR_ABORTED"])(
     "does not retry nested %s despite an optimistic SDK retry flag",
     (code) => {
       const source = new APICallError({
@@ -438,6 +438,29 @@ test("keeps the full attempt budget for a classified transient failure", () => {
     { providerID: "test" },
   )
   expect(SessionRetry.retryable(parsed)?.maxAttempts).toBe(SessionRetry.RETRY_MAX_ATTEMPTS)
+})
+
+test("ENOTFOUND retains its evidence and retry budget in structured and message-only session errors", () => {
+  const message = "getaddrinfo ENOTFOUND provider.invalid"
+  const parsed = MessageV2.fromError(
+    Object.assign(new TypeError(message), { code: "ENOTFOUND", syscall: "getaddrinfo" }),
+    { providerID: "test", endpointHost: "provider.invalid" },
+  )
+  expect(parsed).toMatchObject({
+    name: "APIError",
+    data: {
+      isRetryable: true,
+      metadata: {
+        networkKind: "transient",
+        code: "ENOTFOUND",
+        syscall: "getaddrinfo",
+        endpointHost: "provider.invalid",
+      },
+    },
+  })
+  for (const error of [parsed, { name: "UnknownError", data: { message } }]) {
+    expect(SessionRetry.retryable(error)?.maxAttempts).toBe(SessionRetry.RETRY_MAX_ATTEMPTS)
+  }
 })
 
 test("does not persist a credentialed endpoint path in error metadata", () => {

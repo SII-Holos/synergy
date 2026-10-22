@@ -52,7 +52,7 @@ export namespace AgentCall {
     small?: boolean
     maxOutputTokens?: number
     /** A schema-only output Tool; this call has no domain Tool executor. */
-    outputTool?: { name: string; description: string; schema: JSONSchema7 }
+    outputTool?: { name: string; description: string; schema: JSONSchema7; force?: boolean }
   }
 
   export type TextOutput = {
@@ -104,6 +104,7 @@ export namespace AgentCall {
     const outputTool = input.outputTool && {
       name: input.outputTool.name,
       description: input.outputTool.description,
+      force: input.outputTool.force !== false,
       binding: ToolIntent.snapshot(input.outputTool.schema),
     }
     if (!Experiment.current()) return Experiment.provide(await Experiment.resolve(), () => text(input))
@@ -218,7 +219,7 @@ export namespace AgentCall {
                   },
                 ]
               : [],
-            toolChoice: outputTool ? { type: "tool", toolName: outputTool.name } : undefined,
+            toolChoice: outputTool?.force ? { type: "tool", toolName: outputTool.name } : undefined,
             model,
             small: input.small ?? true,
             messages: input.messages,

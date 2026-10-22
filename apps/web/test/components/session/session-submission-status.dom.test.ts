@@ -5,18 +5,18 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
 
 let server: ViteDevServer, browser: Browser, page: Page, directory: string, url: string
 const errors: string[] = []
 const app = path.resolve(import.meta.dir, "../../..")
-const ui = path.resolve(app, "../../packages/ui/src")
 beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".submission-status-"))
   const locale = path.join(directory, "locale.ts")
   await Promise.all([
     Bun.write(
       path.join(directory, "index.html"),
-      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+      '<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
     ),
     Bun.write(
       locale,
@@ -41,9 +41,7 @@ beforeAll(async () => {
       import { I18nProvider } from "@lingui/solid"
       import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme/context"
       import { SubmissionFixture } from ${JSON.stringify(`/@fs/${app}/test/fixtures/conversation/submission.tsx`)}
-      import ${JSON.stringify(`/@fs/${ui}/components/error-card.css`)}
-      import ${JSON.stringify(`/@fs/${ui}/components/collapsible.css`)}
-      import ${JSON.stringify(`/@fs/${ui}/components/button.css`)}
+      import ${JSON.stringify(`/@fs/${app}/src/index.css`)}
       import { core, activate } from "./locale"
       render(() => <I18nProvider i18n={core}><ThemeProvider><Suspense><SubmissionFixture locale={activate} /></Suspense></ThemeProvider></I18nProvider>, document.querySelector("#root"))
     `,
@@ -57,7 +55,7 @@ beforeAll(async () => {
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, ".vite"),
-    plugins: [solid()],
+    plugins: [tailwind(), solid()],
     resolve: {
       alias: {
         "@/context/locale": locale,
@@ -232,10 +230,13 @@ test("storage readiness gates canonical history while retaining the captured att
 test("shared error cards retain diagnostics and expose keyboard retry with details collapsed in both themes", async () => {
   await page.goto(url)
   await page.getByRole("status").waitFor()
+  await page.getByText("Inspect this project", { exact: true }).waitFor()
+  const message = await page.locator('[data-component="user-message"]').elementHandle()
   await page.evaluate("window.fixture.fail()")
-  const header = page.getByRole("button", { name: "Unable to start execution" })
+  await page.getByText("Unable to start execution", { exact: true }).waitFor()
+  const header = page.locator('[data-slot="error-card-details-trigger"]')
   await header.waitFor()
-  expect(await page.getByRole("status").count()).toBe(0)
+  expect(await page.getByRole("status").allTextContents()).toEqual(["Unable to start execution"])
   expect(await header.getAttribute("aria-expanded")).toBe("false")
   for (const mode of ["light", "dark"]) {
     await page.evaluate(
@@ -249,6 +250,7 @@ test("shared error cards retain diagnostics and expose keyboard retry with detai
   }
   expect(await page.evaluate<number>("window.fixture.retries()")).toBe(2)
   expect(await page.getByText("Inspect this project", { exact: true }).count()).toBe(1)
+  expect(await message!.evaluate((node) => node.isConnected)).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await header.press("Enter")
   await page.getByText("InputMaterializationError: Execution configuration unavailable", { exact: true }).waitFor()

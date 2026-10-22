@@ -443,6 +443,7 @@ export type RuntimeStore = {
 }
 
 export type SettingsState = {
+  digitalTwin: { automatic: boolean; model: string }
   general: GeneralStore
   models: ModelsStore
   agents: AgentsStore
@@ -461,6 +462,7 @@ export type SettingsState = {
 
 export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: ColorScheme = "system"): SettingsState {
   return {
+    digitalTwin: { automatic: false, model: "" },
     general: {
       colorScheme,
       snapshot: UI_DEFAULTS.snapshot,

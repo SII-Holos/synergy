@@ -50,6 +50,7 @@ export namespace Storage {
     pending?: Promise<unknown>[]
     commitGuards?: Array<() => void>
     eventCapture?: Promise<void>
+    acknowledgements?: string[]
   }
   const context = new AsyncLocalStorage<Context>()
 
@@ -116,6 +117,7 @@ export namespace Storage {
       return body(parent.transaction)
     }
     let effects: Array<() => Promise<unknown> | void> = []
+    let acknowledgements: string[] = []
     const settled: NonNullable<Context["settled"]> = []
     let commitGuards = options?.commitGuard ? [options.commitGuard] : []
     let outcome: "committed" | "aborted" | "unknown" = "aborted"
@@ -127,11 +129,22 @@ export namespace Storage {
             tx.guardMutations((keys, tree) => StorageMutationGuard.assert(tx, keys, tree))
           }
           effects = []
+          acknowledgements = []
           commitGuards = options?.commitGuard ? [options.commitGuard] : []
           const pending: Promise<unknown>[] = []
           return RuntimeContext.transaction(() =>
             context.run(
-              { ...parent, owner: RuntimeContext.current(), transaction: tx, effects, pending, settled, commitGuards },
+              {
+                ...parent,
+                owner: RuntimeContext.current(),
+                transaction: tx,
+                effects,
+                pending,
+                settled,
+                commitGuards,
+                acknowledgements,
+                eventCapture: undefined,
+              },
               async () => {
                 const result = await body(tx)
                 for (let offset = 0; offset < pending.length;) {
@@ -162,6 +175,20 @@ export namespace Storage {
             module: "storage",
             title: "A committed change could not publish its notification",
             message: "The database commit succeeded. Pending events remain available for reconciliation.",
+            evidence: { errorName: error instanceof Error ? error.name : "unknown" },
+          })
+        }
+      }
+      if (acknowledgements.length) {
+        try {
+          await parent.store.acknowledgeEvents(acknowledgements)
+        } catch (error) {
+          ObservabilityIssues.raise({
+            code: "STORAGE_POST_COMMIT_FAILED",
+            severity: "error",
+            module: "storage",
+            title: "Committed notifications could not be acknowledged",
+            message: "The database commit succeeded. Delivered events remain pending for reconciliation.",
             evidence: { errorName: error instanceof Error ? error.name : "unknown" },
           })
         }
@@ -211,21 +238,31 @@ export namespace Storage {
     active.effects.push(effect)
   }
 
-  export function enqueue(event: StoredEvent, effect: () => Promise<void>): Promise<void> {
+  function captureEvent(event: StoredEvent, enqueue: boolean): Promise<void> {
     const active = context.getStore()
     if (!active?.transaction || !active.effects || !active.pending)
       throw new StorageConflictError("An event requires a write transaction")
     const tx = active.transaction
     const pending = (active.eventCapture ?? Promise.resolve()).then(async () => {
       await StorageEventSinks.capture(tx, event)
-      await tx.enqueue(event)
+      if (enqueue) await tx.enqueue(event)
     })
     active.eventCapture = pending
     active.pending.push(pending)
     void pending.catch(() => {})
-    active.effects.push(async () => {
+    return pending
+  }
+
+  export function capture(event: StoredEvent): Promise<void> {
+    return captureEvent(event, false)
+  }
+
+  export function enqueue(event: StoredEvent, effect: () => Promise<void>): Promise<void> {
+    const pending = captureEvent(event, true)
+    const active = context.getStore()!
+    active.effects!.push(async () => {
       await effect()
-      await active.store.acknowledgeEvents([event.id])
+      active.acknowledgements!.push(event.id)
     })
     return pending
   }
@@ -242,6 +279,10 @@ export namespace Storage {
 
   export function versioned<T>(key: string[]) {
     return snapshot((tx) => tx.versioned<T>(key), { singleStatement: true })
+  }
+
+  export function revisions(keys: string[][]) {
+    return snapshot((tx) => tx.revisions(keys), { singleStatement: keys.length <= 128 })
   }
 
   export function write<T>(key: string[], value: T) {

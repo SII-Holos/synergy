@@ -40,7 +40,8 @@ export namespace EnvironmentControl {
   }
 
   export async function recoverExecution(input: Selection & { operationID: string }) {
-    await execution(input)
+    const previous = await execution(input)
+    if (previous.state === "completed") return previous
     await Environment.reconcile(input.environmentID, input.scopeID)
     const info = await EnvironmentExecution.reconcile(input.operationID, input.scopeID)
     return ["exited", "unsaved", "saved"].includes(info.state)

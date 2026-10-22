@@ -36,7 +36,6 @@ export namespace ObservabilityResources {
     sampleIntervalMs: undefined as number | undefined,
     sampleController: undefined as AbortController | undefined,
     pendingSamples: new Set<Promise<void>>(),
-    rssWindow: [] as Array<{ time: number; rss: number }>,
     lastRuntimeMetricSampleAt: 0,
     io: { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 },
   }))
@@ -100,7 +99,7 @@ export namespace ObservabilityResources {
     const elapsedMs = Math.max(1, performance.now() - instanceState.lastTime)
     const userDelta = cpu.user - instanceState.lastCpu.user
     const systemDelta = cpu.system - instanceState.lastCpu.system
-    const utilizationRatio = Math.min(1, Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000)))
+    const utilizationRatio = Math.max(0, (userDelta + systemDelta) / (elapsedMs * 1000))
     instanceState.lastCpu = cpu
     instanceState.lastTime = performance.now()
     const sample = ObservabilitySchema.ResourceSample.parse({
@@ -371,109 +370,76 @@ export namespace ObservabilityResources {
     sample: ObservabilitySchema.ResourceSample,
     config: ReturnType<typeof ObservabilityConfig.current>,
   ) {
-    const instanceState = runtimeState()
-
-    const rss = sample.memory.rssBytes ?? 0
     const heapRatio = ProcessMemory.heapUsageRatio({
       heapUsedBytes: sample.memory.heapUsedBytes,
       heapTotalBytes: sample.memory.heapTotalBytes,
     })
-    const cpu = sample.cpu.utilizationRatio ?? 0
-    const lag = sample.eventLoop.lagMs ?? 0
-    instanceState.rssWindow.push({ time: sample.time, rss })
-    while (instanceState.rssWindow.length > 0 && sample.time - instanceState.rssWindow[0].time > 2 * 60 * 60 * 1000)
-      instanceState.rssWindow.shift()
-    const first = instanceState.rssWindow[0]
-    const rssGrowthBytesPerMin =
-      first && sample.time > first.time ? ((rss - first.rss) / Math.max(1, sample.time - first.time)) * 60_000 : 0
-    if (rss >= (config.thresholds.highRssBytes ?? ObservabilityConfig.defaults.thresholds.highRssBytes)) {
-      ObservabilityIssues.raise({
+    const observations: Array<
+      Pick<
+        ObservabilityIssues.ConditionObservation,
+        "code" | "title" | "recommendation" | "observedValue" | "thresholdValue" | "unit"
+      >
+    > = [
+      {
         code: "PERF_MEMORY_HIGH_RSS",
-        severity: "warning",
-        module: "process",
         title: "High RSS memory usage",
-        message: `Process RSS is ${rss} bytes`,
         recommendation: "Inspect resource trends and inflight operations to identify the owning process or tool.",
-        evidence: {
-          observedValue: rss,
-          thresholdValue: config.thresholds.highRssBytes ?? null,
-          rssGrowthBytesPerMin,
-          unit: "bytes",
-        },
-      })
-    }
-    if (
-      heapRatio.available &&
-      heapRatio.ratio >=
-        (config.thresholds.highHeapUsedRatio ?? ObservabilityConfig.defaults.thresholds.highHeapUsedRatio)
-    ) {
-      ObservabilityIssues.raise({
+        observedValue: sample.memory.rssBytes,
+        thresholdValue: config.thresholds.highRssBytes,
+        unit: "bytes",
+      },
+      {
         code: "PERF_MEMORY_HIGH_HEAP_RATIO",
-        severity: "warning",
-        module: "process",
         title: "High heap usage ratio",
-        message: `Heap usage ratio is ${heapRatio.ratio.toFixed(2)}`,
         recommendation: "Inspect memory trend and active sessions/tools before restarting the server.",
-        evidence: {
-          heapUsedBytes: sample.memory.heapUsedBytes ?? null,
-          heapTotalBytes: sample.memory.heapTotalBytes ?? null,
-          ratio: heapRatio.ratio,
-        },
-      })
-    }
-    if (
-      cpu >=
-      (config.thresholds.highCpuUtilizationRatio ?? ObservabilityConfig.defaults.thresholds.highCpuUtilizationRatio)
-    ) {
-      ObservabilityIssues.raise({
+        observedValue: heapRatio.available ? heapRatio.ratio : undefined,
+        thresholdValue: config.thresholds.highHeapUsedRatio,
+        unit: "ratio",
+      },
+      {
         code: "PERF_CPU_HIGH_UTILIZATION",
-        severity: "warning",
-        module: "process",
         title: "High CPU utilization",
-        message: `Process CPU utilization is ${cpu}`,
         recommendation: "Compare this sample with inflight spans and process registry entries.",
-        evidence: {
-          observedValue: cpu,
-          thresholdValue: config.thresholds.highCpuUtilizationRatio ?? null,
-          unit: "ratio",
-        },
-      })
-    }
-    if (lag >= (config.thresholds.eventLoopLagMs ?? ObservabilityConfig.defaults.thresholds.eventLoopLagMs)) {
-      ObservabilityIssues.raise({
+        observedValue: sample.cpu.utilizationRatio,
+        thresholdValue: config.thresholds.highCpuUtilizationRatio,
+        unit: "ratio",
+      },
+      {
         code: "PERF_EVENT_LOOP_LAG",
-        severity: "warning",
-        module: "process",
         title: "Event loop lag detected",
-        message: `Event loop lag is ${Math.round(lag)}ms`,
         recommendation: "Inspect CPU-heavy spans and recent process/tool output around the same timestamp.",
-        evidence: { observedValue: lag, thresholdValue: config.thresholds.eventLoopLagMs ?? null, unit: "ms" },
-      })
-    }
-    const external = sample.memory.externalBytes ?? 0
-    const highExternalThreshold =
-      config.thresholds.highExternalBytes ?? ObservabilityConfig.defaults.thresholds.highExternalBytes
-    if (external >= highExternalThreshold) {
-      ObservabilityIssues.raise({
+        observedValue: sample.eventLoop.lagMs,
+        thresholdValue: config.thresholds.eventLoopLagMs,
+        unit: "ms",
+      },
+      {
         code: "PERF_MEMORY_HIGH_EXTERNAL",
-        severity: "warning",
-        module: "process",
         title: "High external memory usage",
-        message: `Process external memory is ${external} bytes`,
-        evidence: { observedValue: external, thresholdValue: highExternalThreshold, unit: "bytes" },
-      })
-    }
-    const arrayBuffers = sample.memory.arrayBuffersBytes ?? 0
-    const highArrayBuffersThreshold =
-      config.thresholds.highArrayBuffersBytes ?? ObservabilityConfig.defaults.thresholds.highArrayBuffersBytes
-    if (arrayBuffers >= highArrayBuffersThreshold) {
-      ObservabilityIssues.raise({
+        observedValue: sample.memory.externalBytes,
+        thresholdValue: config.thresholds.highExternalBytes,
+        unit: "bytes",
+      },
+      {
         code: "PERF_MEMORY_HIGH_ARRAY_BUFFERS",
-        severity: "warning",
-        module: "process",
         title: "High ArrayBuffers memory usage",
-        message: `Process ArrayBuffers memory is ${arrayBuffers} bytes`,
-        evidence: { observedValue: arrayBuffers, thresholdValue: highArrayBuffersThreshold, unit: "bytes" },
+        observedValue: sample.memory.arrayBuffersBytes,
+        thresholdValue: config.thresholds.highArrayBuffersBytes,
+        unit: "bytes",
+      },
+    ]
+    for (const observation of observations) {
+      ObservabilityIssues.observeCondition({
+        ...observation,
+        owner: "control-plane",
+        module: "process",
+        severity: "warning",
+        scopeID: sample.scopeID,
+        state:
+          observation.observedValue === undefined || observation.thresholdValue === undefined
+            ? "unknown"
+            : observation.observedValue >= observation.thresholdValue
+              ? "active"
+              : "normal",
       })
     }
   }

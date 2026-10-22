@@ -43,7 +43,7 @@ import { useExecution } from "@/context/execution"
 type SessionConversationProps = PluginComponentProps<PluginConversationService> & {
   initialScrollSettled?: () => boolean
   onAdmitted?: (sessionID: string) => void
-  onHydrated?: (sessionID: string) => void
+  onHydrationChange?: (sessionID: string, hydrated: boolean) => void
 }
 
 export function SessionConversation(input: SessionConversationProps) {
@@ -56,7 +56,7 @@ export function SessionConversation(input: SessionConversationProps) {
           context={mergeProps(input.context, { sessionID: untrack(() => input.context.sessionID) })}
           initialScrollSettled={input.initialScrollSettled}
           onAdmitted={input.onAdmitted}
-          onHydrated={input.onHydrated}
+          onHydrationChange={input.onHydrationChange}
         />
       )}
     </Show>
@@ -91,10 +91,6 @@ function SessionConversationView(input: SessionConversationProps) {
       setArrivalView(undefined)
     })
   })
-  createEffect(() => {
-    const view = arrivalView()
-    view?.ready(admitted())
-  })
   const takePartArrival = (partID: string) =>
     active() && (arrivalView()?.take(partID) ?? false) && document.visibilityState === "visible"
   const takeUserArrival = (messageID: string) =>
@@ -127,6 +123,15 @@ function SessionConversationView(input: SessionConversationProps) {
       optimisticSubmission(),
     )
   let stateRequest: AbortController | undefined
+  const executionOwner = createMemo(
+    () => ({ server: sdk.url, scope: sdk.scopeKey, client: sdk.client, sessionID: props.sessionID }),
+    undefined,
+    {
+      equals: (a, b) =>
+        a === b ||
+        (!!a && a.server === b.server && a.scope === b.scope && a.client === b.client && a.sessionID === b.sessionID),
+    },
+  )
   const executionRequest = createMemo(
     () => {
       if (!preparation.ready() || !data().sessionFor(props.sessionID)) return undefined
@@ -134,18 +139,13 @@ function SessionConversationView(input: SessionConversationProps) {
       const latest = props.lastUserMessage()
       const last = latest ? props.turnProjection().turnMessagesFor(latest).at(-1) : undefined
       const status = data().statusFor(props.sessionID)
-      return roots.length
-        ? {
-            server: sdk.url,
-            scope: sdk.scopeKey,
-            client: sdk.client,
-            sessionID: props.sessionID,
-            rootIDs: roots.slice(-64),
-            latestRootID: latest?.id,
-            revision: `${status?.type}:${last?.id}:${last?.role === "assistant" ? last.time.completed : ""}`,
-            reconnect: globalSync.reconnectVersion(),
-          }
-        : undefined
+      return {
+        owner: executionOwner(),
+        rootIDs: roots.slice(-64),
+        latestRootID: latest?.id,
+        revision: `${status?.type}:${last?.id}:${last?.role === "assistant" ? last.time.completed : ""}`,
+        reconnect: globalSync.reconnectVersion(),
+      }
     },
     undefined,
     {
@@ -153,10 +153,7 @@ function SessionConversationView(input: SessionConversationProps) {
         a === b ||
         (!!a &&
           !!b &&
-          a.server === b.server &&
-          a.scope === b.scope &&
-          a.sessionID === b.sessionID &&
-          a.client === b.client &&
+          a.owner === b.owner &&
           a.latestRootID === b.latestRootID &&
           a.reconnect === b.reconnect &&
           a.revision === b.revision &&
@@ -165,6 +162,7 @@ function SessionConversationView(input: SessionConversationProps) {
     },
   )
   let baseline: ReturnType<typeof executionRequest>
+  let baselineOwner: ReturnType<typeof executionOwner> | undefined
   let identityEpoch = 0
   let rootVersion = 0
   let disposed = false
@@ -173,8 +171,15 @@ function SessionConversationView(input: SessionConversationProps) {
   const dirtyRoots = new Set<string>()
   let pendingRoots: string[] = []
   const [executionPending, setExecutionPending] = createSignal(false)
+  const pauseExecutions = () => {
+    for (const rootID of pendingRoots) if (versions.has(rootID)) dirtyRoots.add(rootID)
+    stateRequest?.abort()
+    stateRequest = undefined
+    pendingRoots = []
+    setExecutionPending(false)
+  }
   const scheduleExecutions = () => {
-    if (disposed || !active() || queued || stateRequest || !dirtyRoots.size) return
+    if (disposed || !active() || !baseline || queued || stateRequest || !dirtyRoots.size) return
     queued = true
     setExecutionPending(true)
     queueMicrotask(() => {
@@ -193,17 +198,11 @@ function SessionConversationView(input: SessionConversationProps) {
       stateRequest = controller
       pendingRoots = rootIDs
       const isCurrent = () =>
-        !disposed &&
-        !controller.signal.aborted &&
-        identityEpoch === epoch &&
-        sdk.url === request.server &&
-        sdk.scopeKey === request.scope &&
-        sdk.client === request.client &&
-        props.sessionID === request.sessionID
+        !disposed && !controller.signal.aborted && identityEpoch === epoch && executionOwner() === request.owner
       void (async () => {
         try {
-          const response = await request.client.session.turnExecution(
-            { sessionID: request.sessionID, rootIDs },
+          const response = await request.owner.client.session.turnExecution(
+            { sessionID: request.owner.sessionID, rootIDs },
             { signal: controller.signal, throwOnError: true },
           )
           if (!isCurrent()) return
@@ -238,28 +237,24 @@ function SessionConversationView(input: SessionConversationProps) {
     for (const rootID of versions.keys()) invalidateExecution(rootID)
   }
   createEffect(() => {
+    const owner = executionOwner()
     const request = executionRequest()
     untrack(() => {
       const previous = baseline
-      const hasChangedIdentity =
-        !previous ||
-        !request ||
-        previous.server !== request.server ||
-        previous.scope !== request.scope ||
-        previous.client !== request.client ||
-        previous.sessionID !== request.sessionID
+      const hasChangedIdentity = baselineOwner !== owner
+      baselineOwner = owner
       baseline = request
       if (hasChangedIdentity) {
         identityEpoch++
-        stateRequest?.abort()
-        stateRequest = undefined
-        pendingRoots = []
-        setExecutionPending(false)
+        pauseExecutions()
         versions.clear()
         dirtyRoots.clear()
         setExecutionStates(reconcile({}))
       }
-      if (!request) return
+      if (!request) {
+        pauseExecutions()
+        return
+      }
       const roots = new Set(request.rootIDs)
       for (const rootID of versions.keys()) {
         if (roots.has(rootID)) continue
@@ -267,13 +262,17 @@ function SessionConversationView(input: SessionConversationProps) {
         dirtyRoots.delete(rootID)
         setExecutionStates(rootID, undefined)
       }
+      if (!request.rootIDs.length) {
+        pauseExecutions()
+        return
+      }
       for (const rootID of request.rootIDs) {
         if (versions.has(rootID)) continue
         versions.set(rootID, ++rootVersion)
         dirtyRoots.add(rootID)
       }
-      if (!hasChangedIdentity && previous) {
-        if (previous.reconnect !== request.reconnect) invalidateWindow()
+      if (!hasChangedIdentity) {
+        if (!previous || previous.reconnect !== request.reconnect) invalidateWindow()
         else if (previous.revision !== request.revision) invalidateExecution(request.latestRootID)
       }
       scheduleExecutions()
@@ -286,11 +285,7 @@ function SessionConversationView(input: SessionConversationProps) {
         scheduleExecutions()
         return
       }
-      for (const rootID of pendingRoots) if (versions.has(rootID)) dirtyRoots.add(rootID)
-      stateRequest?.abort()
-      stateRequest = undefined
-      pendingRoots = []
-      setExecutionPending(false)
+      pauseExecutions()
     })
   })
   onCleanup(() => {
@@ -315,16 +310,8 @@ function SessionConversationView(input: SessionConversationProps) {
     }),
   )
   const executionFor = (rootID: string) => {
-    const request = executionRequest()
     const executionState = executionStates[rootID]
-    return request &&
-      baseline?.server === request.server &&
-      baseline.scope === request.scope &&
-      baseline.client === request.client &&
-      baseline.sessionID === request.sessionID &&
-      request.rootIDs.includes(rootID)
-      ? executionState
-      : undefined
+    return baselineOwner === executionOwner() && versions.has(rootID) ? executionState : undefined
   }
   createEffect(() => {
     const handoff = transitions.get(props.sessionID)?.handoff
@@ -362,13 +349,15 @@ function SessionConversationView(input: SessionConversationProps) {
       setAdmitted(true)
     }
   })
+  const restorationReady = () =>
+    active() &&
+    sdk.connected() &&
+    globalSync.reconnectVersion() > 0 &&
+    !globalSync.scopeRecoveryPending(sdk.scopeKey) &&
+    (!input.initialScrollSettled || input.initialScrollSettled())
   const hydrated = createConversationHydration({
-    active,
-    ready: () =>
-      (!input.initialScrollSettled || input.initialScrollSettled()) &&
-      !sdk.content.pending(sdk.scopeKey, props.sessionID) &&
-      rowsReady() &&
-      !executionPending(),
+    active: restorationReady,
+    ready: () => !sdk.content.pending(sdk.scopeKey, props.sessionID) && rowsReady() && !executionPending(),
     surface: () => scrollRef()?.querySelector<HTMLElement>("[data-conversation-motion]") ?? undefined,
     onHydrated: () =>
       batch(() => {
@@ -376,8 +365,12 @@ function SessionConversationView(input: SessionConversationProps) {
           input.onAdmitted?.(props.sessionID)
           setAdmitted(true)
         }
-        input.onHydrated?.(props.sessionID)
       }),
+  })
+  createEffect(() => arrivalView()?.ready(admitted() && restorationReady()))
+  createEffect(() => {
+    const ready = hydrated()
+    untrack(() => input.onHydrationChange?.(props.sessionID, ready))
   })
   // Rows below are keyed by the stable message id (see conversation-timeline):
   // message objects are replaced in place by window reload, reconnect replay,

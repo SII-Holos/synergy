@@ -63,6 +63,14 @@ describe("generated catalog completeness", () => {
     expect(body).toContain("| `windowId` | number | yes |")
     expect(body).not.toContain("| `type` |")
   })
+  test("presentation documentation resolves shared namespace parameters and excludes the retired executable", async () => {
+    const catalog = await generateTools()
+    const body = catalog.split("## workbench_view\n")[1]!.split("\n## ")[0]!
+    expect(body).toContain("| `input` |")
+    expect(body).toContain("| `clientId` | string |  |")
+    expect(body).toContain("| `timeoutSeconds` | number |  |")
+    expect(catalog).not.toContain("## browser_view\n")
+  })
   test("memory editing documentation resolves local parameter schemas and optional revisions", async () => {
     const catalog = await generateTools()
     const edit = catalog.split("## memory_edit\n")[1]!.split("\n## ")[0]!

@@ -87,6 +87,8 @@ export function VirtualConversationRows(
   },
 ) {
   const active = useViewActivity()
+  const motionReady = useConversationMotionReady()
+  const resumed = createMemo((previous) => previous || !active(), false)
   const props = input.context
   const content = props.content!
   const { view } = useData()
@@ -313,6 +315,18 @@ export function VirtualConversationRows(
         locatedIndex(),
         keys().indexOf(readingOwner() ?? ""),
         keys().indexOf(outerReadingOwner() ?? ""),
+        active() &&
+        resumed() &&
+        !motionReady() &&
+        props.autoScroll &&
+        props.historyMode() === "latest" &&
+        !props.scrolledUp() &&
+        !readingOwner() &&
+        !located()
+          ? rows().findLastIndex(
+              (row) => !row.exiting && row.kind === "activity" && row.activity.active && row.activity.open,
+            )
+          : -1,
       ]),
     ].filter((index) => index >= 0),
   )
@@ -1133,7 +1147,7 @@ function ConversationActivityStatus(
     question: props.lastUserMessage()?.id === row().root.id && view.questionsFor(props.sessionID).length > 0,
     connected: input.connected?.(),
   })
-  const active = () => row().activity?.active && (sessionStatus()?.type === "busy" || sessionStatus()?.type === "retry")
+  const active = () => row().activity?.active && sessionStatus()?.type === "busy"
   return (
     <ActivityBatchStatus
       label={active() ? sessionActivityLabel(sessionStatus(), i18n(), activityContext()) : undefined}

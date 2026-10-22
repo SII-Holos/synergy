@@ -176,11 +176,13 @@ a {
 }
 
 .session-content-column {
+  --session-column-gutter: 24px;
+  --session-text-inset: 1rem;
   width: 100%;
   min-width: 0;
-  max-width: 50rem;
+  max-width: var(--session-content-width, 50rem);
   margin-inline: auto;
-  padding-inline: 24px;
+  padding-inline: var(--session-column-gutter);
 }
 
 .session-empty-view {
@@ -714,6 +716,54 @@ a {
   width: 12px;
   height: 12px;
 }
+.prompt-attachment-entry:has(> [data-component="attachment-card"][data-type="file"]) {
+  max-width: min(288px, 100%);
+  > [data-component="attachment-card"] {
+    padding-inline-end: 44px;
+  }
+  .prompt-attachment-remove {
+    inset-inline-end: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+  }
+  [data-slot="attachment-retry"] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    padding-inline: 8px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+  }
+  [data-component="tooltip-trigger"] {
+    flex-shrink: 0;
+  }
+  .prompt-attachment-remove:hover,
+  [data-slot="attachment-retry"]:hover {
+    background: var(--surface-base-hover);
+  }
+}
+@media (pointer: coarse) {
+  .prompt-attachment-entry:has(> [data-component="attachment-card"][data-type="file"]) {
+    > [data-component="attachment-card"] {
+      padding-inline-end: 56px;
+    }
+    .prompt-attachment-remove {
+      width: 44px;
+      height: 44px;
+    }
+    [data-slot="attachment-retry"] {
+      min-width: 44px;
+      height: 44px;
+    }
+  }
+}
 .prompt-attachment-status {
   display: flex;
   flex-wrap: wrap;
@@ -729,14 +779,6 @@ a {
   color: var(--text-interactive-base);
   cursor: pointer;
   text-align: start;
-}
-.prompt-attachment-error {
-  font-size: 11px;
-  color: var(--text-error);
-  max-width: 168px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .prompt-attachment-reference {
   height: 48px;
@@ -766,13 +808,15 @@ a {
 }
 
 .session-conversation-content {
+  --conversation-reading-max-width: 100%;
+  padding-inline: calc(var(--session-column-gutter) + var(--session-text-inset));
   font-size: 1rem;
   line-height: 1.625rem;
 }
 
 @container (max-width: 48rem) {
   .session-content-column {
-    padding-inline: 16px;
+    --session-column-gutter: 16px;
   }
   .session-conversation-content {
     font-size: var(--type-ui-body-size);
@@ -1561,8 +1605,8 @@ a {
   height: 32px;
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button:hover,
-.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover {
+.synergy-workbench-canvas .prompt-input-toolbar-button:hover:not(:disabled),
+.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
 }
 
@@ -1841,4 +1885,49 @@ a {
 }
 .session-work-context-button[data-unavailable="true"] {
   color: var(--text-error);
+}
+
+.conversation-column-resize {
+  position: absolute;
+  inset: 72px 0 16px;
+  width: min(100%, var(--session-content-width, 50rem));
+  margin-inline: auto;
+  pointer-events: none;
+  z-index: 10;
+}
+.conversation-column-resize-handle {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 8px;
+  width: 16px;
+  cursor: ew-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+.conversation-column-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: 6px;
+  top: calc(50% - 20px);
+  height: 40px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--border-base);
+}
+.conversation-column-resize-handle:hover::after,
+.conversation-column-resize-handle:focus-visible::after {
+  background: var(--border-strong-base);
+}
+@media (max-width: 767px) {
+  .conversation-column-resize {
+    display: none;
+  }
+}
+
+.conversation-column-resize-handle:hover,
+.conversation-column-resize-handle:focus-visible {
+  background: transparent;
 }

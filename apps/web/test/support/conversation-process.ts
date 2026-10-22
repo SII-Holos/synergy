@@ -23,6 +23,7 @@ type Fixture = {
   reasoning(text: string, partID?: string): void
 
   fragments(count: number): void
+  documents(count: number, purpose?: "evidence" | "deliverable"): void
   toolCase(
     tool: string,
     input: Record<string, unknown>,

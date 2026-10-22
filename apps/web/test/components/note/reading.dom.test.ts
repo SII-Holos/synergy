@@ -90,19 +90,18 @@ beforeAll(async () => {
     import {tab,parts,slot,setSlot,working,workflow,active} from "./services"
     import {usePromptAttachments} from ${JSON.stringify(path.join(source, "components/prompt-input/attachments-hook.ts"))}
     import {createPendingAttachmentTracker} from ${JSON.stringify(path.join(source, "components/prompt-input/pending-attachments.ts"))}
-    import {LoopStatusEntry} from ${JSON.stringify(path.join(source, "components/prompt-input/loop-status-entry.tsx"))}
-    import {resolveLoopDisplay} from ${JSON.stringify(path.join(source, "components/prompt-input/loop-status.ts"))}
+    import {BlueprintDraftEntry} from ${JSON.stringify(path.join(source, "components/prompt-input/loop-status-entry.tsx"))}
     import {PromptAttachments} from ${JSON.stringify(path.join(source, "components/prompt-input/attachments.tsx"))}
     import {Show} from "solid-js"
     import ${JSON.stringify(path.join(source, "index.css"))}
     configureClipboard({writer:text=>window.fixture.copy(text)})
     function Content(){const docs=useNoteDocuments();window.fixture.controller=()=>docs.peek("home","reading");const list=new URLSearchParams(location.search).has("list");docs.navigation("home").setOpen(list);const api=usePromptAttachments({editor:()=>undefined,noteAttachments:()=>parts().filter(p=>p.type==="note"),sessionAttachments:()=>[],localArmedLoop:slot,setLocalArmedLoop:setSlot,activeLoopID:()=>undefined,working,workflowKind:workflow,clearPendingWorkflows:()=>window.fixture.requests.push("clear"),setStore(){},pendingUploads:createPendingAttachmentTracker()});
     return <ViewActivityProvider active={active}><Suspense fallback={<p>Loading</p>}><div style={list?"height:calc(100dvh - 110px)":"height:100%"}><NotePanel tab={list?undefined:tab}/></div><Show when={list}><div id="composer-drop" style="height:110px;border-top:1px solid var(--border-base)" onDragOver={api.handleDragOver} onDrop={api.handleDrop}>
-      <Show when={slot()}><LoopStatusEntry value={resolveLoopDisplay({localBlueprint:slot(),status:{type:"idle"}})} onRemove={()=>setSlot(null)}/></Show>
+      <Show when={slot()}><BlueprintDraftEntry value={slot()} onRemove={()=>setSlot(null)}/></Show>
       <PromptAttachments uploads={()=>[]} notes={()=>parts().filter(p=>p.type==="note")} sessions={()=>[]} pending={()=>[]} order={()=>parts().map(p=>p.id)} pendingFile={()=>undefined} retryAttachment={async()=>{}} serverUrl="http://fixture.test" removeAttachment={()=>{}}/>
       <span>Drop into composer</span>
     </div></Show></Suspense></ViewActivityProvider>}
-    render(()=><ThemeProvider><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{}}})}><DataProvider data={{}} directory={null} serverUrl="http://fixture.test"><DialogProvider><NoteDocumentsProvider><main style="height:100dvh;overflow:hidden"><Content/></main></NoteDocumentsProvider></DialogProvider></DataProvider></I18nProvider></ThemeProvider>,document.getElementById("root"))
+    render(()=><ThemeProvider><I18nProvider i18n={setupI18n({locale:"en",messages:{en:{"prompt.attach.removeButton":["Remove ",["filename"]]}}})}><DataProvider data={{}} directory={null} serverUrl="http://fixture.test"><DialogProvider><NoteDocumentsProvider><main style="height:100dvh;overflow:hidden"><Content/></main></NoteDocumentsProvider></DialogProvider></DataProvider></I18nProvider></ThemeProvider>,document.getElementById("root"))
   `,
   )
   const services = path.join(directory, "services.ts")
@@ -370,12 +369,12 @@ test("native drags attach Notes and stage Blueprints after replacing idle workfl
       { working, workflow },
     )
     await page.getByRole("button", { name: "Blueprint: 阅读和编辑的连续性", exact: true }).dragTo(target)
-    await target.locator('[data-component="loop-status-entry"]').waitFor()
+    await target.locator('[data-component="blueprint-draft-entry"]').waitFor()
     const state = await fixture()
     expect(state.slot).toMatchObject({ type: "pending", noteID: "reading", title: "Blueprint: 阅读和编辑的连续性" })
     expect(state.requests).toEqual(workflow ? [{ id: "session", workflowSetInput: { kind: "none" } }, "clear"] : [])
-    expect(await target.getByText("Ready to run", { exact: true }).isVisible()).toBe(true)
-    await target.getByRole("button", { name: "Cancel loop", exact: true }).click()
+    expect(await target.getByText("Send a task to start", { exact: true }).isVisible()).toBe(true)
+    await target.getByRole("button", { name: "Remove Blueprint: 阅读和编辑的连续性", exact: true }).click()
     expect((await fixture()).slot).toBeNull()
     expect((await fixture()).requests).toEqual(state.requests)
   }
@@ -443,7 +442,7 @@ test("Blueprint staging preserves busy workflows and failed or stale transitions
           data.continueWorkflow()
         })
         await blueprint.dragTo(target)
-        expect(await target.getByText("Ready to run", { exact: true }).isVisible()).toBe(true)
+        expect(await target.getByText("Send a task to start", { exact: true }).isVisible()).toBe(true)
       }
 
       await page.evaluate((mode) => {

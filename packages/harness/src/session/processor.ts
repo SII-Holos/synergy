@@ -14,6 +14,7 @@ import { SessionEvent } from "./event"
 import { Bus } from "../bus"
 import { SessionRetry } from "./retry"
 import { SessionManager } from "./manager"
+import { SessionLifecycle } from "./lifecycle"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { providerEndpointHost } from "../provider/retry-coordinator"
 import { Provider } from "../provider/provider"
@@ -49,6 +50,7 @@ import { RuntimeContext } from "../lifecycle/context"
 
 export namespace SessionProcessor {
   const TOOL_SETTLE_TIMEOUT = 5_000
+  const TRACE_ACTIVITY_INTERVAL_MS = 1_000
   const log = Log.create({ service: "session.processor" })
 
   export type ToolOutcome =
@@ -89,6 +91,7 @@ export namespace SessionProcessor {
     title?: string
     metadata?: Record<string, any>
     start?: number
+    onProgress?: () => void
   }
 
   export function createSlot(callID: string): ToolExecutionSlot {
@@ -196,7 +199,42 @@ export namespace SessionProcessor {
     toolDisplay?: (toolName: string) => ToolDisplay | undefined
   }) {
     const runtime = RuntimeContext.current()
+    const isCurrent = () => {
+      if (input.abort.aborted) return false
+      if (input.generation === undefined) return true
+      const owner = SessionManager.getRuntime(input.sessionID)?.owner
+      return (
+        owner?.lease.generation === input.generation &&
+        owner.rootID === (input.assistantMessage.rootID ?? input.assistantMessage.parentID) &&
+        owner.phase !== "stopping"
+      )
+    }
+    const executionPhase = (phase: SessionManager.ExecutionPhase) => {
+      if (isCurrent()) SessionManager.setExecutionPhase(input.sessionID, phase)
+    }
+    const recovery = SessionRetry.create({
+      sessionID: input.sessionID,
+      rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+      messageID: input.assistantMessage.id,
+      providerID: input.model.providerID,
+      abort: input.abort,
+      publish: (state) =>
+        SessionManager.setStatus(
+          input.sessionID,
+          state,
+          input.generation === undefined
+            ? undefined
+            : {
+                generation: input.generation,
+                rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+              },
+        ),
+    })
     const activity = (phase: Activity["phase"], tool?: Activity["tool"]) => {
+      if (recovery.active()) {
+        if (phase === "preparing_context" || phase === "queued_agent" || phase === "waiting_model") return
+        recovery.finish()
+      }
       if (input.generation === undefined) return
       SessionManager.setActivity(
         input.sessionID,
@@ -253,9 +291,13 @@ export namespace SessionProcessor {
       return metadata as Record<string, any>
     }
 
-    function runningToolMetadata(toolName: string, providerMetadata: unknown): Record<string, any> | undefined {
+    function runningToolMetadata(
+      toolName: string,
+      providerMetadata: unknown,
+      resolvedDisplay?: ToolDisplay,
+    ): Record<string, any> | undefined {
       const metadata = providerMetadataObject(providerMetadata)
-      const display = input.toolDisplay?.(toolName)
+      const display = resolvedDisplay ?? input.toolDisplay?.(toolName)
       if (!display) return metadata
       const existingDisplay = metadata?.display as { media?: Record<string, any> } | undefined
       const media =
@@ -341,6 +383,15 @@ export namespace SessionProcessor {
             },
           })
           Object.assign(live, updated)
+          const paused =
+            !input.abort.aborted &&
+            (await SessionLifecycle.blocksDrive(await SessionManager.getSession(input.sessionID)))
+          if (paused && !input.abort.aborted) {
+            SessionManager.signalAbort(input.sessionID, {
+              pauseTurn: true,
+              rootID: input.assistantMessage.rootID ?? input.assistantMessage.parentID,
+            })
+          }
         }
         settledToolCalls.add(live.callID)
         await Observability.emit("tool.settle.end", {
@@ -619,6 +670,7 @@ export namespace SessionProcessor {
         title: state.title ?? pending?.title,
         metadata: ToolTimeout.mergeMetadata(pending?.metadata, state.metadata),
         start: state.start ?? pending?.start,
+        onProgress: state.onProgress ?? pending?.onProgress,
       })
     }
 
@@ -636,6 +688,7 @@ export namespace SessionProcessor {
         ),
       }
       await SecretMask.transformResult(presentation)
+      const previousState = match.state
       const updated = await Session.updatePart({
         ...match,
         state: {
@@ -649,6 +702,12 @@ export namespace SessionProcessor {
         },
       })
       Object.assign(match, updated)
+      if (
+        updated.type === "tool" &&
+        updated.state.status === "running" &&
+        (updated.state.title !== previousState.title || !Bun.deepEquals(updated.state.metadata, previousState.metadata))
+      )
+        state.onProgress?.()
     }
 
     async function queueToolCallStateFlush(callID: string) {
@@ -1078,7 +1137,7 @@ export namespace SessionProcessor {
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
               })
-              SessionManager.setExecutionPhase(input.sessionID, "queued_agent")
+              executionPhase("queued_agent")
               activity("preparing_context")
               const {
                 executionTools: _executionTools,
@@ -1102,6 +1161,7 @@ export namespace SessionProcessor {
                 usageRole: streamInput.usageRole ?? "conversation",
                 retryIndex: attempt,
                 onPhase: runtime.bind((phase) => activity(phase)),
+                recovery: { immediate: recovery.takeImmediate(), onWait: runtime.bind(recovery.providerWait) },
               })
               const rollout = stream.rollout
               const stepFinishes: MessageV2.StepFinishPart[] = []
@@ -1112,7 +1172,7 @@ export namespace SessionProcessor {
                   callIDs: [...new Set([...(previous?.kind === "rollout" ? previous.callIDs : []), rollout.callID])],
                 }
               }
-              SessionManager.setExecutionPhase(input.sessionID, "running_agent")
+              executionPhase("running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
                 sessionID: input.sessionID,
@@ -1123,10 +1183,96 @@ export namespace SessionProcessor {
                 module: "llm",
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
-                attributes: { provider: input.model.providerID, model: input.model.id },
+                attributes: {
+                  provider: input.model.providerID,
+                  model: input.model.id,
+                  executionPhase: "waiting_model",
+                  activityState: "unknown",
+                },
               })
               const llmStartedAt = Date.now()
               let firstTokenSeen = false
+              let firstContent: { at: number; kind: "text" | "reasoning" | "tool" } | undefined
+              let firstVisibleText: { at: number; kind: "text" } | undefined
+              let lastTraceActivityAt = llmStartedAt
+              let lastContentKind: "text" | "reasoning" | "tool" | undefined
+              function observeContent(kind: "text" | "reasoning" | "tool", text: string) {
+                if (!text.trim() || !isCurrent()) return
+                const at = Date.now()
+                firstContent ??= { at, kind }
+                if (kind === "text") firstVisibleText ??= { at, kind }
+                if (llmSpan) llmSpan.lastActivityTime = at
+                if (kind !== lastContentKind || at - lastTraceActivityAt >= TRACE_ACTIVITY_INTERVAL_MS) {
+                  lastTraceActivityAt = at
+                  lastContentKind = kind
+                  ObservabilitySpans.activity(llmSpan, {
+                    executionPhase: "responding",
+                    activityState: "recent_progress",
+                    contentKind: kind,
+                  })
+                }
+                activity("responding")
+              }
+              function recordFirstDelta(kind: "text" | "reasoning") {
+                if (firstTokenSeen) return
+                firstTokenSeen = true
+                ObservabilityMetrics.record({
+                  name: "llm.stream.first_token",
+                  value: Date.now() - llmStartedAt,
+                  unit: "ms",
+                  module: "llm",
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                  labels: {
+                    provider: input.model.providerID,
+                    model: input.model.id,
+                    kind,
+                    clock: "stream_opened",
+                    semantics: "first_text_or_reasoning_delta",
+                  },
+                })
+              }
+              async function flushFirstContentMetrics() {
+                if (!firstContent) return
+                const attempts = rollout
+                  ? await RolloutLedger.attempts(rollout.owner, rollout.runID, rollout.callID)
+                  : []
+                for (const [name, observation] of [
+                  ["llm.stream.first_content", firstContent],
+                  ["llm.stream.first_visible_text", firstVisibleText],
+                ] as const) {
+                  if (!observation) continue
+                  const started = attempts.filter((attempt) => attempt.started <= observation.at)
+                  const corresponding = started.at(-1)
+                  const ambiguous =
+                    corresponding !== undefined &&
+                    started.some(
+                      (attempt) =>
+                        attempt !== corresponding &&
+                        (attempt.ended === undefined || attempt.ended > corresponding.started),
+                    )
+                  const dispatch = corresponding?.timing?.sentAt
+                  const sentAt =
+                    !ambiguous && dispatch !== undefined && dispatch <= observation.at ? dispatch : undefined
+                  ObservabilityMetrics.record({
+                    name: sentAt === undefined ? `${name}.unavailable` : name,
+                    value: sentAt === undefined ? 1 : observation.at - sentAt,
+                    unit: sentAt === undefined ? "count" : "ms",
+                    module: "llm",
+                    sessionID: input.sessionID,
+                    messageID: input.assistantMessage.id,
+                    callID: rollout?.callID,
+                    labels: {
+                      provider: input.model.providerID,
+                      model: input.model.id,
+                      kind: observation.kind,
+                      clock: sentAt === undefined ? "unknown" : "transport.sentAt",
+                      observedAt: "processor",
+                      ...(sentAt === undefined ? { reason: ambiguous ? "attempt_ambiguous" : "dispatch_unknown" } : {}),
+                    },
+                  })
+                }
+              }
               const streamStats = {
                 text: { lastChunkAt: undefined as number | undefined, outputChars: 0, gapTotalMs: 0, gapCount: 0 },
                 reasoning: {
@@ -1181,6 +1327,11 @@ export namespace SessionProcessor {
                 for await (const value of stream.fullStream) {
                   input.abort.throwIfAborted()
                   if (
+                    isCurrent() &&
+                    Date.now() - (llmSpan?.heartbeatTime ?? llmStartedAt) >= TRACE_ACTIVITY_INTERVAL_MS
+                  )
+                    ObservabilitySpans.heartbeat(llmSpan, { observerLiveness: "alive" })
+                  if (
                     streamInput.toolChoice === "none" &&
                     (value.type === "tool-input-start" || value.type === "tool-call")
                   ) {
@@ -1218,19 +1369,10 @@ export namespace SessionProcessor {
                       break
 
                     case "reasoning-delta":
+                      recordFirstDelta("reasoning")
+                      if (!value.text) break
                       activity("responding")
-                      if (!firstTokenSeen) {
-                        firstTokenSeen = true
-                        ObservabilityMetrics.record({
-                          name: "llm.stream.first_token",
-                          value: Date.now() - llmStartedAt,
-                          unit: "ms",
-                          module: "llm",
-                          sessionID: input.sessionID,
-                          messageID: input.assistantMessage.id,
-                          labels: { provider: input.model.providerID, model: input.model.id, kind: "reasoning" },
-                        })
-                      }
+                      observeContent("reasoning", value.text)
                       if (value.text) {
                         streamInput.memoryTurn?.addOutputChars(value.text.length)
                         ObservabilityMetrics.record({
@@ -1268,8 +1410,9 @@ export namespace SessionProcessor {
                       break
 
                     case "tool-input-start": {
-                      activity("responding")
                       if (shouldIgnoreSettledStreamEvent(value.id, "tool-input-start", value.toolName)) break
+                      activity("responding")
+                      observeContent("tool", value.toolName)
                       const part = await Session.updatePart({
                         id: toolcalls[value.id]?.id ?? Identifier.ascending("part"),
                         messageID: input.assistantMessage.id,
@@ -1317,6 +1460,7 @@ export namespace SessionProcessor {
                         delete generatingBytes[value.id]
                         throw new Error(error)
                       }
+                      observeContent("tool", value.delta)
                       generatingBytes[value.id] = receivedBytes
                       const raw = prevRaw + value.delta
                       generatingAccum[value.id] = raw
@@ -1360,7 +1504,6 @@ export namespace SessionProcessor {
                     }
 
                     case "tool-call": {
-                      if (rollout) modelCalls.set(value.toolCallId, rollout)
                       log.info("tool.stream.tool_call.received", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1371,6 +1514,7 @@ export namespace SessionProcessor {
                         snapshot: toolSettlementSnapshot(value.toolCallId),
                       })
                       if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
+                      if (rollout) modelCalls.set(value.toolCallId, rollout)
                       const match = toolcalls[value.toolCallId]
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
@@ -1398,7 +1542,7 @@ export namespace SessionProcessor {
                         streamedBytes: streamedRaw === undefined ? undefined : SessionBounds.byteLength(streamedRaw),
                       })
                       const runningMetadata = ToolTimeout.mergeMetadata(
-                        runningToolMetadata(value.toolName, value.providerMetadata),
+                        runningToolMetadata(value.toolName, value.providerMetadata, expanded?.display),
                         pendingState?.metadata,
                       )
                       log.info("tool.stream.tool_call.metadata_ready", {
@@ -1439,6 +1583,7 @@ export namespace SessionProcessor {
                         delete generatingBytes[value.toolCallId]
                         throw new Error(error)
                       }
+                      observeContent("tool", value.toolName)
                       log.info("tool.stream.tool_call.persist_running", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
@@ -1670,19 +1815,10 @@ export namespace SessionProcessor {
                       break
 
                     case "text-delta":
+                      recordFirstDelta("text")
+                      if (!value.text) break
                       activity("responding")
-                      if (!firstTokenSeen) {
-                        firstTokenSeen = true
-                        ObservabilityMetrics.record({
-                          name: "llm.stream.first_token",
-                          value: Date.now() - llmStartedAt,
-                          unit: "ms",
-                          module: "llm",
-                          sessionID: input.sessionID,
-                          messageID: input.assistantMessage.id,
-                          labels: { provider: input.model.providerID, model: input.model.id, kind: "text" },
-                        })
-                      }
+                      observeContent("text", value.text)
                       if (value.text) {
                         streamInput.memoryTurn?.addOutputChars(value.text.length)
                         ObservabilityMetrics.record({
@@ -1741,6 +1877,7 @@ export namespace SessionProcessor {
                   }
                 }
                 retryEligible = false
+                if (recovery.active()) activity("finalizing")
                 ObservabilitySpans.end(llmSpan, {
                   attributes: { provider: input.model.providerID, model: input.model.id },
                 })
@@ -1757,6 +1894,7 @@ export namespace SessionProcessor {
                 } finally {
                   streamInput.memoryTurn?.streamDisposed()
                   flushChunkMetrics()
+                  await flushFirstContentMetrics()
                   currentText = undefined
                   reasoningMap = {}
                   SessionMemoryPressure.probe("processor.after_full_stream", {
@@ -1791,10 +1929,10 @@ export namespace SessionProcessor {
               agentTurnInput.toolDefinitions?.splice(0)
               agentTurnInput.activeToolIDs?.splice(0)
               if (deferredToolCalls.length > 0) {
-                SessionManager.setExecutionPhase(input.sessionID, "authorizing_tools")
+                executionPhase("authorizing_tools")
               }
               if (deferredToolCalls.length > 0) {
-                SessionManager.setExecutionPhase(input.sessionID, "queued_tools")
+                executionPhase("queued_tools")
                 activity("queued_tools")
               }
               const runningTools = new Map<string, string>()
@@ -1840,7 +1978,7 @@ export namespace SessionProcessor {
                       processor: result,
                       signal: input.abort,
                       onState(state) {
-                        if (state === "running") SessionManager.setExecutionPhase(input.sessionID, "running_tools")
+                        if (state === "running") executionPhase("running_tools")
                         if (state === "running") {
                           queuedTools.delete(call.callID)
                           runningTools.set(call.callID, call.toolName)
@@ -1868,7 +2006,7 @@ export namespace SessionProcessor {
                   }),
                 ),
               )
-              SessionManager.setExecutionPhase(input.sessionID, "waiting_background")
+              executionPhase("waiting_background")
             } catch (e: unknown) {
               if (RolloutRecordingError.isInstance(e)) recordingFailure = e
               fastAbort = !!recordingFailure || isFastAbort(input.abort, e)
@@ -1919,15 +2057,12 @@ export namespace SessionProcessor {
                     error,
                   },
                 })
-                SessionManager.setStatus(input.sessionID, {
-                  type: "retry",
-                  attempt,
-                  message: retry.message,
-                  next: Date.now() + delay,
+                await recovery.wait(error, attempt, delay).catch((error) => {
+                  if (!input.abort.aborted) throw error
                 })
-                await SessionRetry.sleep(delay, input.abort).catch(() => {})
                 continue
               }
+              recovery.finish()
               settleModelStream(error)
               // A user stop pauses the session; it does not fail it. Writing the
               // turn's terminal record here — `finish:"error"` plus
@@ -2062,6 +2197,7 @@ export namespace SessionProcessor {
             return "continue"
           }
         } finally {
+          recovery.dispose()
           dispose("process.complete")
         }
       },

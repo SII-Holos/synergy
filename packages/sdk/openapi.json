@@ -6376,6 +6376,7 @@
                 "channels",
                 "holos",
                 "github",
+                "digital-twin",
                 "email",
                 "plugins",
                 "mcp",
@@ -6465,6 +6466,7 @@
                 "channels",
                 "holos",
                 "github",
+                "digital-twin",
                 "email",
                 "plugins",
                 "mcp",
@@ -6565,6 +6567,7 @@
                 "channels",
                 "holos",
                 "github",
+                "digital-twin",
                 "email",
                 "plugins",
                 "mcp",
@@ -6675,6 +6678,7 @@
                     "channels",
                     "holos",
                     "github",
+                    "digital-twin",
                     "email",
                     "plugins",
                     "mcp",
@@ -6702,6 +6706,7 @@
                       "channels",
                       "holos",
                       "github",
+                      "digital-twin",
                       "email",
                       "plugins",
                       "mcp",
@@ -12489,6 +12494,103 @@
         ]
       }
     },
+    "/session/{sessionID}/message/{messageID}/retry": {
+      "post": {
+        "operationId": "session.retryRequest",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^msg.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Retry a model request",
+        "description": "Wake a waiting request or resume the latest retryable failure through the existing task Inbox. Server cooldowns and a shared recovery probe remain authoritative. Stale or duplicate requests report handled false.",
+        "responses": {
+          "200": {
+            "description": "Retry result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "handled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["handled"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.retryRequest({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/continue": {
       "post": {
         "operationId": "session.continue",
@@ -13220,8 +13322,10 @@
                   },
                   "metadata": {
                     "type": "object",
-                    "propertyNames": {
-                      "type": "string"
+                    "properties": {
+                      "assistance": {
+                        "$ref": "#/components/schemas/InputAssistance"
+                      }
                     },
                     "additionalProperties": {}
                   },
@@ -13903,8 +14007,10 @@
                   },
                   "metadata": {
                     "type": "object",
-                    "propertyNames": {
-                      "type": "string"
+                    "properties": {
+                      "assistance": {
+                        "$ref": "#/components/schemas/InputAssistance"
+                      }
                     },
                     "additionalProperties": {}
                   },
@@ -15572,8 +15678,10 @@
                   },
                   "metadata": {
                     "type": "object",
-                    "propertyNames": {
-                      "type": "string"
+                    "properties": {
+                      "assistance": {
+                        "$ref": "#/components/schemas/InputAssistance"
+                      }
                     },
                     "additionalProperties": {}
                   },
@@ -19032,7 +19140,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/CortexTask"
+                    "$ref": "#/components/schemas/CortexTaskSummary"
                   }
                 }
               }
@@ -19143,10 +19251,28 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "parentSessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            }
           }
         ],
         "summary": "Get Cortex task",
-        "description": "Get a specific background task by ID",
+        "description": "Get a background task, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.",
         "responses": {
           "200": {
             "description": "Task details",
@@ -19222,10 +19348,28 @@
               "type": "string"
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "parentSessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            }
           }
         ],
         "summary": "Get task output",
-        "description": "Get the output of a completed background task",
+        "description": "Get task output, optionally qualified by its expected parent or child Session. Ambiguous durable task IDs return 404.",
         "responses": {
           "200": {
             "description": "Task output",
@@ -19716,6 +19860,83 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/provider/connections/{providerID}/test": {
+      "post": {
+        "operationId": "provider.connection.test",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Test a saved provider connection with one short model request",
+        "responses": {
+          "200": {
+            "description": "Observed model request result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnectionTestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionTestInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.connection.test({\n  ...\n})"
           }
         ]
       }
@@ -30479,6 +30700,102 @@
         ]
       }
     },
+    "/digital-twin/predict-next-input": {
+      "post": {
+        "operationId": "digitalTwin.predictNextInput",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Predict the next user input",
+        "responses": {
+          "200": {
+            "description": "One editable prediction or abstention",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigitalTwinPrediction"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "Prediction unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigitalTwinFailure"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Prediction unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigitalTwinFailure"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Prediction unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DigitalTwinFailure"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Prediction unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DigitalTwinFailure"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DigitalTwinInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.digitalTwin.predictNextInput({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/asset": {
       "post": {
         "operationId": "asset.upload",
@@ -39335,7 +39652,7 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["active", "detached", "gc_candidate", "deleted"]
+            "enum": ["active", "detached", "gc_candidate", "released", "deleted"]
           },
           "createdAt": {
             "type": "number"
@@ -39548,7 +39865,7 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["active", "detached", "gc_candidate", "deleted"]
+            "enum": ["active", "detached", "gc_candidate", "released", "deleted"]
           },
           "createdAt": {
             "type": "number"
@@ -47383,7 +47700,8 @@
                 "type": "number"
               },
               "utilizationRatio": {
-                "type": "number"
+                "type": "number",
+                "description": "Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1"
               }
             }
           },
@@ -48071,7 +48389,8 @@
                 "type": "number"
               },
               "cpuUtilizationRatio": {
-                "type": "number"
+                "type": "number",
+                "description": "Process CPU time per wall-clock time; 1 is one fully used CPU core and values may exceed 1"
               },
               "eventLoopLagP95Ms": {
                 "type": "number"
@@ -51156,9 +51475,15 @@
           {
             "type": "object",
             "properties": {
-              "type": {
+              "rootID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "phase": {
                 "type": "string",
-                "const": "retry"
+                "enum": ["waiting", "waiting_provider", "connecting"]
               },
               "attempt": {
                 "type": "number"
@@ -51166,11 +51491,24 @@
               "message": {
                 "type": "string"
               },
+              "error": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": "number"
+              },
               "next": {
                 "type": "number"
+              },
+              "canRetry": {
+                "type": "boolean"
+              },
+              "type": {
+                "type": "string",
+                "const": "retry"
               }
             },
-            "required": ["type", "attempt", "message", "next"]
+            "required": ["rootID", "messageID", "phase", "attempt", "message", "error", "startedAt", "canRetry", "type"]
           },
           {
             "type": "object",
@@ -52043,6 +52381,15 @@
           "description": {
             "type": "string"
           },
+          "prompt": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          },
+          "dagNodeId": {
+            "type": "string"
+          },
           "agent": {
             "type": "string"
           },
@@ -52282,9 +52629,15 @@
           {
             "type": "object",
             "properties": {
-              "status": {
+              "rootID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "phase": {
                 "type": "string",
-                "const": "retry"
+                "enum": ["waiting", "waiting_provider", "connecting"]
               },
               "attempt": {
                 "type": "number"
@@ -52292,11 +52645,34 @@
               "message": {
                 "type": "string"
               },
+              "error": {
+                "type": "string"
+              },
+              "startedAt": {
+                "type": "number"
+              },
               "next": {
                 "type": "number"
+              },
+              "canRetry": {
+                "type": "boolean"
+              },
+              "status": {
+                "type": "string",
+                "const": "retry"
               }
             },
-            "required": ["status", "attempt", "message", "next"]
+            "required": [
+              "rootID",
+              "messageID",
+              "phase",
+              "attempt",
+              "message",
+              "error",
+              "startedAt",
+              "canRetry",
+              "status"
+            ]
           },
           {
             "type": "object",
@@ -54430,6 +54806,23 @@
             },
             "required": ["provider", "spec"]
           },
+          "recovery": {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "minLength": 1
+              },
+              "spec": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              }
+            },
+            "required": ["provider", "spec"]
+          },
           "content": {
             "type": "object",
             "properties": {
@@ -54512,7 +54905,7 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["active", "deleting", "deleted"]
+            "enum": ["active", "deleting", "released", "deleted"]
           },
           "createdAt": {
             "type": "number"
@@ -55907,7 +56300,7 @@
         "type": "object",
         "properties": {
           "maxManaged": {
-            "description": "Maximum number of managed git worktrees kept before the janitor reclaims the oldest idle ones",
+            "description": "Soft limit for materialized managed worktrees; only archived or unreferenced, finished, clean worktrees can be released and restored on demand",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
@@ -57308,6 +57701,37 @@
           },
           "watch": {
             "$ref": "#/components/schemas/GithubWatchConfig"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DigitalTwinSettings": {
+        "description": "Next-input prediction: automatic defaults to false; model defaults to the current Session model",
+        "type": "object",
+        "properties": {
+          "automatic": {
+            "description": "Automatically predict the next input after a completed task (default: false)",
+            "type": "boolean"
+          },
+          "model": {
+            "description": "Prediction model; null or absent follows the current Session",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "modelID"]
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "additionalProperties": false
@@ -59579,6 +60003,9 @@
           "github": {
             "$ref": "#/components/schemas/GithubConfig"
           },
+          "digitalTwin": {
+            "$ref": "#/components/schemas/DigitalTwinSettings"
+          },
           "email": {
             "$ref": "#/components/schemas/EmailConfig"
           },
@@ -59932,7 +60359,7 @@
         },
         "required": ["name", "hints"]
       },
-      "CortexTask": {
+      "CortexTaskSummary": {
         "type": "object",
         "properties": {
           "id": {
@@ -59956,9 +60383,6 @@
             "pattern": "^msg.*"
           },
           "description": {
-            "type": "string"
-          },
-          "prompt": {
             "type": "string"
           },
           "agent": {
@@ -59996,9 +60420,6 @@
           "completedAt": {
             "type": "number"
           },
-          "error": {
-            "type": "string"
-          },
           "launchFailure": {
             "type": "boolean"
           },
@@ -60014,184 +60435,11 @@
               "lastToolStatus": {
                 "type": "string"
               },
-              "lastTitle": {
-                "type": "string"
-              },
-              "lastPartId": {
-                "type": "string"
-              },
               "lastUpdate": {
                 "type": "number"
-              },
-              "lastMessage": {
-                "type": "string"
-              },
-              "recentTools": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "tool": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "updatedAt": {
-                      "type": "number"
-                    }
-                  },
-                  "required": ["id", "tool", "status", "updatedAt"]
-                }
               }
             },
             "required": ["toolCalls", "lastUpdate"]
-          },
-          "notifyParentOnComplete": {
-            "type": "boolean"
-          },
-          "visibility": {
-            "type": "string",
-            "enum": ["visible", "hidden"]
-          },
-          "tools": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "outputConfig": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "summary"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "final_response"
-                  }
-                },
-                "required": ["mode"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "structured"
-                  },
-                  "schema": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "maxRepairTurns": {
-                    "anyOf": [
-                      {
-                        "type": "number",
-                        "const": 0
-                      },
-                      {
-                        "type": "number",
-                        "const": 1
-                      },
-                      {
-                        "type": "number",
-                        "const": 2
-                      },
-                      {
-                        "type": "number",
-                        "const": 3
-                      }
-                    ]
-                  }
-                },
-                "required": ["mode", "schema"]
-              }
-            ]
-          },
-          "output": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "summary"
-                  },
-                  "value": {
-                    "type": "string"
-                  }
-                },
-                "required": ["mode", "value"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "final_response"
-                  },
-                  "value": {
-                    "type": "string"
-                  }
-                },
-                "required": ["mode", "value"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "structured"
-                  },
-                  "value": {}
-                },
-                "required": ["mode", "value"]
-              }
-            ]
-          },
-          "owner": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "pluginGeneration": {
-                "type": "string"
-              },
-              "scopeId": {
-                "type": "string"
-              },
-              "correlationId": {
-                "type": "string"
-              }
-            },
-            "required": ["pluginId", "pluginGeneration", "scopeId", "correlationId"]
-          },
-          "timeoutMs": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
           },
           "usage": {
             "type": "object",
@@ -60213,9 +60461,6 @@
               },
               "cost": {
                 "type": "number"
-              },
-              "accounting": {
-                "$ref": "#/components/schemas/RolloutAccountingSummary"
               }
             },
             "required": [
@@ -60234,7 +60479,6 @@
           "parentSessionID",
           "parentMessageID",
           "description",
-          "prompt",
           "agent",
           "status",
           "startedAt"
@@ -60498,7 +60742,7 @@
           "cortex": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/CortexTask"
+              "$ref": "#/components/schemas/CortexTaskSummary"
             }
           },
           "_errors": {
@@ -60708,6 +60952,7 @@
               "channels",
               "holos",
               "github",
+              "digital-twin",
               "email",
               "plugins",
               "mcp",
@@ -60858,6 +61103,7 @@
                 "channels",
                 "holos",
                 "github",
+                "digital-twin",
                 "email",
                 "plugins",
                 "mcp",
@@ -60993,6 +61239,7 @@
               "channels",
               "holos",
               "github",
+              "digital-twin",
               "email",
               "plugins",
               "mcp",
@@ -61129,6 +61376,7 @@
                 "channels",
                 "holos",
                 "github",
+                "digital-twin",
                 "email",
                 "plugins",
                 "mcp",
@@ -61353,6 +61601,7 @@
                     "channels",
                     "holos",
                     "github",
+                    "digital-twin",
                     "email",
                     "plugins",
                     "mcp",
@@ -61415,6 +61664,7 @@
                 "channels",
                 "holos",
                 "github",
+                "digital-twin",
                 "email",
                 "plugins",
                 "mcp",
@@ -69310,6 +69560,46 @@
         "required": ["version", "label"],
         "additionalProperties": false
       },
+      "InputAssistance": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "proposals": {
+            "minItems": 1,
+            "maxItems": 128,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "producer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "proposalID": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "generatedFingerprint": {
+                  "type": "string"
+                },
+                "acceptedFingerprint": {
+                  "type": "string"
+                }
+              },
+              "required": ["producer", "proposalID", "generatedFingerprint", "acceptedFingerprint"]
+            }
+          },
+          "submittedFingerprint": {
+            "type": "string"
+          }
+        },
+        "required": ["version", "proposals"]
+      },
       "TextPartInput": {
         "type": "object",
         "properties": {
@@ -69675,8 +69965,10 @@
           },
           "metadata": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "assistance": {
+                "$ref": "#/components/schemas/InputAssistance"
+              }
             },
             "additionalProperties": {}
           }
@@ -72193,6 +72485,314 @@
           "queued"
         ]
       },
+      "CortexTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^ctx.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^ses.*"
+          },
+          "parentSessionID": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^ses.*"
+          },
+          "parentMessageID": {
+            "type": "string",
+            "format": "starts_with",
+            "pattern": "^msg.*"
+          },
+          "description": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "executionRole": {
+            "type": "string",
+            "enum": ["primary", "delegated_subagent"]
+          },
+          "category": {
+            "type": "string"
+          },
+          "dagNodeId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "error": {
+            "type": "string"
+          },
+          "launchFailure": {
+            "type": "boolean"
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "toolCalls": {
+                "type": "number"
+              },
+              "lastTool": {
+                "type": "string"
+              },
+              "lastToolStatus": {
+                "type": "string"
+              },
+              "lastTitle": {
+                "type": "string"
+              },
+              "lastPartId": {
+                "type": "string"
+              },
+              "lastUpdate": {
+                "type": "number"
+              },
+              "lastMessage": {
+                "type": "string"
+              },
+              "recentTools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "tool", "status", "updatedAt"]
+                }
+              }
+            },
+            "required": ["toolCalls", "lastUpdate"]
+          },
+          "notifyParentOnComplete": {
+            "type": "boolean"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["visible", "hidden"]
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "outputConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  }
+                },
+                "required": ["mode"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "maxRepairTurns": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  }
+                },
+                "required": ["mode", "schema"]
+              }
+            ]
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "value": {}
+                },
+                "required": ["mode", "value"]
+              }
+            ]
+          },
+          "owner": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginGeneration": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "correlationId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "pluginGeneration", "scopeId", "correlationId"]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "reasoningTokens": {
+                "type": "number"
+              },
+              "cacheReadTokens": {
+                "type": "number"
+              },
+              "cacheWriteTokens": {
+                "type": "number"
+              },
+              "cost": {
+                "type": "number"
+              },
+              "accounting": {
+                "$ref": "#/components/schemas/RolloutAccountingSummary"
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens",
+              "reasoningTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+              "cost"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "parentSessionID",
+          "parentMessageID",
+          "description",
+          "prompt",
+          "agent",
+          "status",
+          "startedAt"
+        ]
+      },
       "ProviderDirectoryModel": {
         "type": "object",
         "properties": {
@@ -72240,6 +72840,47 @@
           }
         },
         "required": ["version", "models"]
+      },
+      "ProviderConnectionTestResult": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "modelID": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "durationMs": {
+            "type": "number"
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["authentication", "rate_limit", "model", "network", "timeout", "unavailable", "provider"]
+              },
+              "statusCode": {
+                "type": "number"
+              }
+            },
+            "required": ["kind"]
+          }
+        },
+        "required": ["providerID", "success", "durationMs"]
+      },
+      "ProviderConnectionTestInput": {
+        "type": "object",
+        "properties": {
+          "modelID": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
       },
       "ProviderConnectionCreateInput": {
         "type": "object",
@@ -74180,6 +74821,62 @@
             },
             "additionalProperties": {}
           },
+          "checkpointFailures": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "mount": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                    },
+                    "workspaceID": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256,
+                      "pattern": "^[a-zA-Z0-9_-][a-zA-Z0-9_.:-]*$"
+                    },
+                    "generation": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": ["id", "workspaceID", "generation"]
+                },
+                "failure": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "maxLength": 256
+                    },
+                    "message": {
+                      "type": "string",
+                      "maxLength": 8192
+                    },
+                    "code": {
+                      "type": "string",
+                      "maxLength": 128
+                    },
+                    "completed": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": ["name", "message"]
+                }
+              },
+              "required": ["mount", "failure"]
+            }
+          },
           "outputCursor": {
             "type": "integer",
             "minimum": 0,
@@ -75331,6 +76028,10 @@
           "intent": {
             "type": "string"
           },
+          "scriptPreview": {
+            "description": "First 320 characters of the stored trajectory script",
+            "type": ["string", "null"]
+          },
           "sourceProviderID": {
             "type": ["string", "null"]
           },
@@ -75406,6 +76107,10 @@
           },
           "intent": {
             "type": "string"
+          },
+          "scriptPreview": {
+            "description": "First 320 characters of the stored trajectory script",
+            "type": ["string", "null"]
           },
           "sourceProviderID": {
             "type": ["string", "null"]
@@ -75510,6 +76215,10 @@
           },
           "intent": {
             "type": "string"
+          },
+          "scriptPreview": {
+            "description": "First 320 characters of the stored trajectory script",
+            "type": ["string", "null"]
           },
           "sourceProviderID": {
             "type": ["string", "null"]
@@ -76799,6 +77508,109 @@
           }
         },
         "required": ["id", "runID", "scopeID", "sessionID", "kind", "time"],
+        "additionalProperties": false
+      },
+      "DigitalTwinSourceStamp": {
+        "type": "object",
+        "properties": {
+          "rootID": {
+            "type": "string"
+          },
+          "assistantID": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": ["rootID", "assistantID", "scopeID", "sessionID", "model", "revision"]
+      },
+      "DigitalTwinPrediction": {
+        "type": "object",
+        "properties": {
+          "proposalID": {
+            "type": "string"
+          },
+          "candidate": {
+            "type": ["string", "null"]
+          },
+          "abstention": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["insufficient-grounding", "no-clear-continuation"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stamp": {
+            "$ref": "#/components/schemas/DigitalTwinSourceStamp"
+          }
+        },
+        "required": ["proposalID", "candidate", "abstention", "stamp"]
+      },
+      "DigitalTwinFailure": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["source_unavailable", "source_changed", "model_unavailable", "cancelled", "invalid_prediction"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "SessionCompletionAnchor": {
+        "type": "object",
+        "properties": {
+          "rootID": {
+            "type": "string"
+          },
+          "assistantID": {
+            "type": "string"
+          }
+        },
+        "required": ["rootID", "assistantID"]
+      },
+      "DigitalTwinInput": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected": {
+            "$ref": "#/components/schemas/SessionCompletionAnchor"
+          },
+          "requestID": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": ["sessionID", "requestID"],
         "additionalProperties": false
       },
       "AssetInfo": {
@@ -81471,6 +82283,31 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.root.completed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.root.completed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "assistantID": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "rootID", "assistantID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.updated": {
         "type": "object",
         "properties": {
@@ -81880,6 +82717,9 @@
               },
               "delta": {
                 "type": "string"
+              },
+              "summary": {
+                "$ref": "#/components/schemas/SessionPartSummary"
               }
             },
             "required": ["part"]
@@ -82180,7 +83020,7 @@
             "type": "object",
             "properties": {
               "task": {
-                "$ref": "#/components/schemas/CortexTask"
+                "$ref": "#/components/schemas/CortexTaskSummary"
               }
             },
             "required": ["task"]
@@ -82199,7 +83039,7 @@
             "type": "object",
             "properties": {
               "task": {
-                "$ref": "#/components/schemas/CortexTask"
+                "$ref": "#/components/schemas/CortexTaskSummary"
               }
             },
             "required": ["task"]
@@ -82220,7 +83060,7 @@
               "tasks": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/CortexTask"
+                  "$ref": "#/components/schemas/CortexTaskSummary"
                 }
               }
             },
@@ -84622,6 +85462,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.installation.update-available"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.root.completed"
           },
           {
             "$ref": "#/components/schemas/Event.session.updated"

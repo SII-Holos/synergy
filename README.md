@@ -67,7 +67,7 @@ The separation also provides an integration point for additional Environment pro
 
 Use **Atlas** for general work, **Forge** for software engineering, and **Pico** for lightweight tasks. Sessions retain their history, files, tool evidence, and operating context across Web, Desktop, CLI, and background work. Plan produces a durable Blueprint; Light Loop works toward a verified goal; BlueprintLoop adds independent final acceptance. Specialist subagents and Boss Mode support coordinated work.
 
-Build applications, investigate a repository, write documents, or explore an interactive result in the same workbench. Review file changes beside the conversation, open an artifact in Desktop's native Browser, and retain reusable memory and experience in Library. Skills, MCP, plugins, and Channels extend the selected runtime. [The product overview](docs/product/overview.md) covers these workflows.
+Build applications, investigate a repository, write documents, or explore an interactive result in the same workbench. Review file changes beside the conversation, open an artifact in Desktop's native Browser, and retain reusable memory and experience in Library. Agents can explicitly [present existing resources](docs/architecture/workbench-presentation.md) through a confirmed frontend request without taking keyboard focus. Skills, MCP, plugins, and Channels extend the selected runtime. [The product overview](docs/product/overview.md) covers these workflows.
 
 ## What makes Synergy different
 
@@ -77,6 +77,7 @@ Build applications, investigate a repository, write documents, or explore an int
 - **Files and Browser stay in context** — Browse, edit, create, copy, move and delete Workspace files alongside Desktop browser pages with saved website logins without moving the task into a separate tool or disposable environment. Review and restore file changes against their original Workspace.
 - **Compute starts when needed** — Select native or Docker execution independently of durable Workspace files. API-only work allocates no container; local, S3 and OSS object stores preserve files across compute reclamation. See [resource configuration](docs/reference/configuration-layout.md).
 - **Knowledge compounds** — Retain reusable memory and learned experience in Library while authoring Notes and Blueprints as durable documents.
+- **Editable next-input suggestions** — Optional [Digital Twin](packages/digital-twin/README.md) uses completed conversations and earlier original writing to suggest your next message. You decide what to insert and send.
 - **Visual results stay interactive** — Stream native controls and metrics, explore charts, simulations, calendars and variants in the conversation, retain parameters, review changes with the agent and export interactive HTML. See [visual results](docs/architecture/visual-results.md).
 - **Compose what you need** — Embed Agent Runtime with explicit capability components, or use the full Desktop and CLI product. Unselected capabilities add no tools, UI, or model guidance. See [Embedding](docs/reference/embedding.md).
 

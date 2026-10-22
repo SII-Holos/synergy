@@ -12,6 +12,10 @@ export namespace SessionDrive {
     inflight: new Map<string, Promise<boolean>>(),
   }))
 
+  export function isPending(sessionID: string): boolean {
+    return runtimeState().inflight.has(sessionID) || SessionManager.hasPendingWake(sessionID)
+  }
+
   export interface RequestOptions {
     waitForProcessing?: boolean
     /**
@@ -40,19 +44,20 @@ export namespace SessionDrive {
           () => arbitrate(sessionID, reason, options?.force === true),
         )
       : arbitrate(sessionID, reason, options?.force === true)
-    const tracked = arbitration.finally(() => {
-      if (instanceState.inflight.get(sessionID) === tracked) instanceState.inflight.delete(sessionID)
-    })
-    instanceState.inflight.set(sessionID, tracked)
+    instanceState.inflight.set(sessionID, arbitration)
 
-    const handled = await tracked
-    if (!handled || SessionManager.isRunning(sessionID)) return handled
-    if (options?.waitForProcessing) {
-      await SessionManager.wake(sessionID, { force: options?.force === true })
-    } else {
-      SessionManager.scheduleWake(sessionID, reason)
+    try {
+      const handled = await arbitration
+      if (!handled || SessionManager.isRunning(sessionID)) return handled
+      if (options?.waitForProcessing) {
+        await SessionManager.wake(sessionID, { force: options?.force === true })
+      } else {
+        SessionManager.scheduleWake(sessionID, reason)
+      }
+      return true
+    } finally {
+      if (instanceState.inflight.get(sessionID) === arbitration) instanceState.inflight.delete(sessionID)
     }
-    return true
   }
 
   export function reset(): void {

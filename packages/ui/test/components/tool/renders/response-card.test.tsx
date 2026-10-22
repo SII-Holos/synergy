@@ -1,3 +1,4 @@
+import { createSignal } from "solid-js"
 import { describe, expect, mock, test } from "bun:test"
 import { TOOL_TITLE_DESC } from "../../../../src/components/tool-title-descriptors"
 
@@ -22,7 +23,7 @@ mock.module("@lingui/solid", () => ({
     },
   }),
 }))
-mock.module("solid-js", () => ({ Show: () => null }))
+mock.module("solid-js", () => ({ createSignal, Show: () => null }))
 mock.module("../../../../src/components/basic-tool", () => ({
   BasicTool: (props: { trigger: Record<string, unknown> }) => {
     capturedTrigger = props.trigger
@@ -57,7 +58,7 @@ describe("registered response_card renderer", () => {
 
     expect(registeredName).toBe("response_card")
     expect(capturedTrigger).toEqual({
-      icon: "message-square-more",
+      icon: "message-circle",
       title: TOOL_TITLE_DESC.response_card,
       subtitle: "Choose a release path",
       tags: [{ label: "2 elements" }],

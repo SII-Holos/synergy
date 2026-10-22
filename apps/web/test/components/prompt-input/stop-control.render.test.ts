@@ -70,6 +70,7 @@ let loopCancelFails = false
 let loopCancelBarrier: Promise<void> | undefined
 let loopReply: Promise<unknown> | undefined
 let lightTerminalReply: LoopTerminal | undefined
+let lightTerminalReads = 0
 
 const message = (content: string): Prompt => [{ type: "text", content, start: 0, end: content.length }]
 
@@ -100,9 +101,10 @@ const sdkClient = () => ({
         await lightUpdateBarrier
         return { data: {} }
       },
-      getLightloopTerminal: async () => ({
-        data: lightTerminalReply ?? { status: "cancelled", instructions: "Verify edge cases", createdAt: 1 },
-      }),
+      getLightloopTerminal: async () => {
+        lightTerminalReads++
+        return { data: lightTerminalReply ?? { status: "cancelled", instructions: "Verify edge cases", createdAt: 1 } }
+      },
     },
   },
   session: {
@@ -244,6 +246,8 @@ mock.module("../../../src/context/prompt", () => ({
   PromptProvider: (props: { children?: unknown }) => props.children,
   usePrompt: () => ({
     ready: () => true,
+    assistance: () => undefined,
+    setAssistance: () => {},
     current: promptParts,
     dirty: () => promptParts().length > 0,
     cursor: () => 0,
@@ -258,6 +262,7 @@ mock.module("../../../src/context/prompt", () => ({
     },
     capture: () => ({
       draft: {
+        assistance: () => undefined,
         current: promptParts,
         context: { items: () => [] },
         revision: () => 0,
@@ -348,15 +353,18 @@ mock.module("@ericsanchezok/synergy-ui/toast", () => ({
 // Static imports of `packages/ui` TSX compile before this file's Bun loader is
 // registered, so the UI surfaces load dynamically after it.
 const { createPromptInputController } = await import("../../../src/components/prompt-input/prompt-controller")
-const { DialogProvider } = await import("@ericsanchezok/synergy-ui/context/dialog")
+const { DialogProvider, useDialog } = await import("@ericsanchezok/synergy-ui/context/dialog")
+const { Dialog } = await import("@ericsanchezok/synergy-ui/dialog")
 const { PI } = await import("../../../src/components/prompt-input/prompt-input-i18n")
 const { composerPresentation } = await import("../../../src/components/prompt-input/composer-presentation")
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 type Harness = { root: HTMLDivElement; dispose: () => void }
+let dialogs: ReturnType<typeof useDialog>
 
 function Toolbar() {
+  dialogs = useDialog()
   const controller = createPromptInputController({
     get readOnly() {
       return transitionError()
@@ -369,6 +377,7 @@ function Toolbar() {
   editor.contentEditable = "true"
   editor.setAttribute("role", "textbox")
   editor.addEventListener("keydown", controller.input.editor.keyDown)
+  editor.addEventListener("drop", (event) => void controller.input.drop(event))
   onCleanup(controller.input.editor.mount(editor, editor))
   return [
     editor,
@@ -402,6 +411,32 @@ const controlCount = () =>
     node.classList.contains("prompt-input-submit"),
   ).length
 
+test("a dropped Blueprint remains a removable draft without claiming a Session binding", async () => {
+  const harness = mount()
+  try {
+    await settle()
+    const editor = harness.root.querySelector('[role="textbox"]')!
+    const drop = new Event("drop", { bubbles: true, cancelable: true })
+    Object.defineProperty(drop, "dataTransfer", {
+      value: { getData: () => JSON.stringify({ noteID: "draft-note", title: "Next Blueprint" }) },
+    })
+    editor.dispatchEvent(drop)
+    await settle()
+    const draft = harness.root.querySelector('[data-component="blueprint-draft-entry"]')
+    expect(draft?.textContent).toContain("Next Blueprint")
+    expect(draft?.textContent).toContain("Send a task to start")
+    expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+    expect(loopGetCalls).toEqual([])
+    draft!.querySelector<HTMLButtonElement>("button")!.click()
+    await settle()
+    expect(harness.root.querySelector('[data-component="blueprint-draft-entry"]')).toBeNull()
+    expect(harness.root.querySelector('[role="textbox"]')).toBe(editor)
+    expect(abandonCalls).toEqual([])
+  } finally {
+    harness.dispose()
+  }
+})
+
 afterEach(() => {
   setStatusType("idle")
   setPromptParts([])
@@ -420,6 +455,7 @@ afterEach(() => {
   loopGetSignals.length = 0
   loopReply = undefined
   lightTerminalReply = undefined
+  lightTerminalReads = 0
   setSessionID("ses_prompt")
   lightCancelCalls.length = 0
   lightUpdateCalls.length = 0
@@ -768,6 +804,7 @@ describe("Loop status entry", () => {
   })
   test("Blueprint cancellation uses the existing whole-loop exit and never clears a failed request", async () => {
     setSessionBinding({ loopID: "loop-cancel", source: "user" })
+    setPromptParts(message("Keep my ordinary draft"))
     loopReply = Promise.resolve({
       id: "loop-cancel",
       source: "user",
@@ -776,6 +813,12 @@ describe("Loop status entry", () => {
       title: "Check the result",
       noteID: "note",
       status: "auditing",
+      stopRequest: {
+        summary: "Ready for review",
+        requestedAt: 1,
+        requesterSessionID: "ses_prompt",
+        requesterMessageID: "request",
+      },
       time: { created: 1, updated: 1 },
     })
     const harness = mount()
@@ -789,6 +832,25 @@ describe("Loop status entry", () => {
       expect(harness.root.textContent).toContain("In review")
       expect(cancel.disabled).toBe(false)
       expect(toastTitles.length).toBeGreaterThan(0)
+      const editor = harness.root.querySelector('[role="textbox"]')
+      harness.root.querySelector<HTMLButtonElement>('[aria-label="Loop details"]')!.click()
+      await settle()
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Ready for review")
+      const unrelated = dialogs.push(() =>
+        createComponent(Dialog, { title: "Another action", children: "Keep this dialog" }),
+      )
+      await settle()
+      expect(document.querySelectorAll('[role="dialog"]').length).toBe(2)
+      setSessionBinding(undefined)
+      await settle()
+      expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+      expect(document.querySelectorAll('[role="dialog"]').length).toBe(1)
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Keep this dialog")
+      if (unrelated) dialogs.close(unrelated)
+      await settle()
+      expect(document.querySelectorAll('[role="dialog"]').length).toBe(0)
+      expect(harness.root.querySelector('[role="textbox"]')).toBe(editor)
+      expect(promptParts()).toEqual(message("Keep my ordinary draft"))
     } finally {
       harness.dispose()
     }
@@ -825,13 +887,15 @@ describe("Loop status entry", () => {
       expect(cancel.disabled).toBe(true)
       pending.resolve()
       await settle()
-      expect(harness.root.textContent).toContain("Cancelled")
+      expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+      expect(lightTerminalReads).toBe(0)
     } finally {
       harness.dispose()
     }
   })
-  test("bound Blueprint title stays visible before execution", async () => {
+  test("Blueprint attachment disappears on unbinding and stays absent after a warm return", async () => {
     setSessionBinding({ loopID: "loop-visible", source: "user" })
+    setPromptParts(message("Keep my ordinary draft"))
     loopReply = Promise.resolve({
       id: "loop-visible",
       source: "user",
@@ -845,11 +909,24 @@ describe("Loop status entry", () => {
     const harness = mount()
     try {
       await settle()
+      const editor = harness.root.querySelector('[role="textbox"]')
       expect(harness.root.querySelector('[data-component="loop-status-entry"]')?.getAttribute("aria-label")).toBe(
         "BlueprintLoop",
       )
       expect(harness.root.textContent).toContain("Verify the deliverable")
       expect(harness.root.textContent).toContain("Bound")
+      setSessionBinding(undefined)
+      await settle()
+      expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+      setSessionID("another-session")
+      await settle()
+      setSessionID("ses_prompt")
+      await settle()
+      expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+      expect(loopGetCalls).toEqual(["loop-visible"])
+      expect(harness.root.querySelector('[role="textbox"]')).toBe(editor)
+      expect(promptParts()).toEqual(message("Keep my ordinary draft"))
+      expect(draftResets).toBe(0)
     } finally {
       harness.dispose()
     }
@@ -872,36 +949,39 @@ describe("Loop status entry", () => {
       harness.dispose()
     }
   })
-  test.each([
-    ["completed", undefined],
-    ["failed", "Failed"],
-    ["cancelled", "Cancelled"],
-    ["timed_out", "Time limit reached"],
-    ["iteration_exhausted", "Review limit reached"],
-  ] as const)("Light Loop settles from the terminal record (%s)", async (status, label) => {
-    setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
-    setStatusType("busy")
-    const harness = mount()
-    try {
-      await settle()
-      expect(harness.root.querySelector('[data-component="loop-status-entry"]')?.textContent).toContain("Running")
-      lightTerminalReply = {
-        status,
-        instructions: "Verify edge cases",
-        error: "Execution could not finish",
-        createdAt: 2,
+  test.each(["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"] as const)(
+    "Light Loop %s leaves no attachment or historical read after its workflow clears",
+    async (status) => {
+      setSessionWorkflow({ kind: "lightloop", instructions: "Verify edge cases" })
+      setStatusType("busy")
+      setPromptParts(message("Keep my ordinary draft"))
+      const harness = mount()
+      try {
+        await settle()
+        const editor = harness.root.querySelector('[role="textbox"]')
+        expect(harness.root.querySelector('[data-component="loop-status-entry"]')?.textContent).toContain("Running")
+        lightTerminalReply = {
+          status,
+          instructions: "Verify edge cases",
+          error: "Execution could not finish",
+          createdAt: 2,
+        }
+        setSessionWorkflow(undefined)
+        setStatusType("idle")
+        await settle()
+        expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+        setSessionID("another-session")
+        await settle()
+        setSessionID("ses_prompt")
+        await settle()
+        expect(harness.root.querySelector('[data-component="loop-status-entry"]')).toBeNull()
+        expect(lightTerminalReads).toBe(0)
+        expect(harness.root.querySelector('[role="textbox"]')).toBe(editor)
+        expect(promptParts()).toEqual(message("Keep my ordinary draft"))
+        expect(draftResets).toBe(0)
+      } finally {
+        harness.dispose()
       }
-      setSessionWorkflow(undefined)
-      setStatusType("idle")
-      await settle()
-      const entry = harness.root.querySelector('[data-component="loop-status-entry"]')
-      if (label) {
-        expect(entry?.textContent).toContain(label)
-        expect(entry?.textContent).toContain("Verify edge cases")
-        expect(entry?.querySelector('[aria-label="Edit goal"]')).toBeNull()
-      } else expect(entry).toBeNull()
-    } finally {
-      harness.dispose()
-    }
-  })
+    },
+  )
 })

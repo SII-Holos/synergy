@@ -72,6 +72,9 @@ const CortexDelegationInfoInner = z.object({
   parentSessionID: z.string(),
   parentMessageID: z.string(),
   description: z.string(),
+  prompt: z.string().optional(),
+  category: z.string().optional(),
+  dagNodeId: z.string().optional(),
   agent: z.string(),
   executionRole: z.enum(["primary", "delegated_subagent"]).optional(),
   startedAt: z.number(),
@@ -99,6 +102,17 @@ const CortexDelegationInfoInner = z.object({
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
 export type CortexDelegationInfo = z.infer<typeof CortexDelegationInfoInner>
+
+export const CortexDelegationSummary = CortexDelegationInfoInner.omit({
+  prompt: true,
+  error: true,
+  tools: true,
+  outputConfig: true,
+  output: true,
+  owner: true,
+})
+  .extend({ usage: CortexTypes.TaskUsage.omit({ accounting: true }).optional() })
+  .meta({ ref: "SessionCortexDelegationSummary" })
 
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
 
@@ -174,6 +188,18 @@ export const Activity = z
   .meta({ ref: "SessionActivity" })
 export type Activity = z.infer<typeof Activity>
 
+const RetryInfo = z.object({
+  rootID: z.string(),
+  messageID: z.string(),
+  phase: z.enum(["waiting", "waiting_provider", "connecting"]),
+  attempt: z.number(),
+  message: z.string(),
+  error: z.string(),
+  startedAt: z.number(),
+  next: z.number().optional(),
+  canRetry: z.boolean(),
+})
+
 export const WorkingInfo = z
   .union([
     z.object({
@@ -181,12 +207,7 @@ export const WorkingInfo = z
       description: z.string().optional(),
       activity: Activity.optional(),
     }),
-    z.object({
-      status: z.literal("retry"),
-      attempt: z.number(),
-      message: z.string(),
-      next: z.number(),
-    }),
+    RetryInfo.extend({ status: z.literal("retry") }),
     z.object({
       status: z.literal("paused"),
       reason: PausedReason,
@@ -339,12 +360,7 @@ export const StatusInfo = z
     z.object({
       type: z.literal("idle"),
     }),
-    z.object({
-      type: z.literal("retry"),
-      attempt: z.number(),
-      message: z.string(),
-      next: z.number(),
-    }),
+    RetryInfo.extend({ type: z.literal("retry") }),
     z.object({
       type: z.literal("busy"),
       description: z.string().optional(),

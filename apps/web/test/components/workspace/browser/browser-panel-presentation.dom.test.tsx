@@ -110,6 +110,7 @@ beforeAll(async () => {
         if(options.activate!==false) {window.activeTabId=tab.id; setActive(tab.id)};
       };
       const open=id => window.openPanel({init:browserPageTab(window.pages.find(p=>p.id===id),route)});
+      window.presentPage=id => { const init=browserPageTab(window.pages.find(p=>p.id===id),route); window.openPanel({init:{...init,state:{...init.state,focusAddress:false}}}) };
       window.replaceMetadata=(id,title,url) => {
         const next={...window.pages.find(item=>item.id===id),title,url};
         window.store.upsertPage(next);
@@ -118,6 +119,7 @@ beforeAll(async () => {
       return <Suspense><Show when={loaded()} keyed>{state => <>
         {(() => {window.publishPage=() => {window.seq++; window.catalogPages=window.pages; state.store.upsertPage(window.pages[0])}; return null})()}
         <output aria-label="Presentation">{state.store.presentation()?.kind ?? "none"}</output>
+        <textarea aria-label="Composer" />
         <button onClick={() => open("page-one")}>Open first</button>
         <button onClick={() => open("page-two")}>Open second</button>
         <div class="synergy-workbench-canvas" style="height:500px"><For each={tabs}>{tab => <ViewActivityProvider active={() => active()===tab.id}><section data-page={tab.resourceId} style={{height:"100%",display:active()===tab.id ? "block" : "none"}} inert={active()!==tab.id}><BrowserPanel tab={tab} /></section></ViewActivityProvider>}</For></div>
@@ -172,6 +174,7 @@ type Fixture = Window & {
   deliverPresentation(value: unknown): void
   attachments: Array<{ pageId: string; visible: boolean }>
   publishPage(): void
+  presentPage(id: string): void
   dataUnavailable: boolean
   dataFailure: boolean
   dataRequests: Array<{ pageId: string; action: { type: string } }>
@@ -187,6 +190,27 @@ test("catalog metadata initializes presentation without waiting for an event or 
   await page.getByRole("button", { name: "Open first", exact: true }).waitFor()
   expect(await page.getByLabel("Presentation").innerText()).toBe("native")
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments)).toEqual([])
+})
+
+test("Agent presentation of a blank page preserves composer focus while explicit user opening keeps address autofocus", async () => {
+  await page.goto(`${url}?blank`)
+  const composer = page.getByRole("textbox", { name: "Composer", exact: true })
+  await composer.fill("Retain this draft")
+  await composer.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(2, 8, "backward"))
+  await page.evaluate(() => (window as unknown as Fixture).presentPage("page-one"))
+  await page.getByRole("combobox", { name: "Enter URL or search", exact: true }).waitFor()
+  expect(
+    await composer.evaluate((element: HTMLTextAreaElement) => [
+      document.activeElement === element,
+      element.value,
+      element.selectionStart,
+      element.selectionEnd,
+      element.selectionDirection,
+    ]),
+  ).toEqual([true, "Retain this draft", 2, 8, "backward"])
+  await page.getByRole("button", { name: "Open second", exact: true }).click()
+  const address = page.getByRole("combobox", { name: "Enter URL or search", exact: true }).filter({ visible: true })
+  expect(await address.evaluate((element) => document.activeElement === element)).toBe(true)
 })
 
 test("mounting and changing peer page panels preserves the catalog's current native presentation", async () => {
@@ -415,4 +439,42 @@ test("loading and completion keep content bounds stable and do not focus the add
   })
   await page.getByRole("progressbar").waitFor({ state: "hidden" })
   expect(await page.locator(".browser-surface").boundingBox()).toEqual(before)
+})
+
+test("navigation Retry resumes a disconnected suspended page instead of navigating it", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.getByRole("combobox").waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    const current = fixture.store.session.pages[0]!
+    fixture.store.upsertPage({
+      ...current,
+      status: "suspended",
+      navigation: {
+        id: "failed-navigation",
+        generation: 1,
+        revision: 1,
+        phase: "failed",
+        requestedURL: current.url,
+        slow: false,
+      },
+    })
+    fixture.store.setHostStatus(current.id, "detached")
+    fixture.store.setBrowserError({
+      pageId: current.id,
+      severity: "error",
+      code: "browser_page_error",
+      message: "Browser Host broker disconnected.",
+    })
+  })
+  await page
+    .locator('[role="status"]')
+    .filter({ hasText: "Browser Host broker disconnected." })
+    .getByRole("button", { name: "Retry", exact: true })
+    .click()
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands)).toEqual([
+    { type: "resume", pageId: "page-one" },
+  ])
+  expect(errors).toEqual([])
 })

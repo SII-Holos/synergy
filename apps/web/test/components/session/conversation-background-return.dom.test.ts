@@ -1,70 +1,174 @@
 import { beforeEach, expect, test } from "bun:test"
 import { page, url, frames, errors } from "../../support/conversation-process"
+import { testOptions } from "../../../script/test-options"
 
 beforeEach(async () => {
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 })
 })
 
+for (const manual of [false, true]) {
+  test(`${manual ? "manual disclosure" : "automatic collection"} interrupted by navigation is settled from the first return frame`, async () => {
+    await page.goto(`${url}?resident&scrolling&motion&content=background`)
+    await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+    await page.evaluate((manual) => {
+      if (manual) window.__conversationProcess.mode("full")
+      window.__conversationProcess.latest()
+    }, manual)
+    await page.waitForFunction(
+      () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+    )
+    const result = await page.evaluate(async (manual) => {
+      const fixture = window.__conversationProcess
+      const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+      const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+      const trigger = [...viewport.querySelectorAll<HTMLButtonElement>('[data-slot="activity-batch-trigger"]')].at(-1)!
+      if (manual) trigger.click()
+      else fixture.terminal()
+      await Promise.resolve()
+      const started = viewport.querySelectorAll("[data-motion-changing]").length
+      fixture.select("peer")
+      await settle()
+      fixture.select("session")
+      const samples = []
+      for (let frame = 0; frame < 6; frame++) {
+        await settle()
+        samples.push({
+          visible: viewport.checkVisibility(),
+          changing: viewport.querySelectorAll("[data-motion-changing]").length,
+          open: manual
+            ? trigger.getAttribute("aria-expanded") === "true"
+            : !!viewport.querySelector('[data-slot="turn-process-trigger"][aria-expanded="true"]'),
+        })
+      }
+      return { started, samples }
+    }, manual)
+    expect(result.started).toBeGreaterThan(0)
+    expect(result.samples).toEqual(Array.from({ length: 6 }, () => ({ visible: true, changing: 0, open: false })))
+    expect(errors).toEqual([])
+  }, 30000)
+}
+
 for (const ended of [false, true]) {
-  test(`background message backlog returns with stable ${ended ? "collected history" : "latest tools"} before summary page validation finishes`, async () => {
+  test(
+    `background message backlog returns with stable ${ended ? "collected history" : "latest tools"} before summary page validation finishes`,
+    async () => {
+      const cdp = await page.context().newCDPSession(page)
+      await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
+      await page.goto(`${url}?resident&scrolling&motion&content=background`)
+      await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
+      await page.evaluate(() => window.__conversationProcess.latest())
+      await page.waitForFunction(
+        () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+      )
+      const result = await page.evaluate(async (ended) => {
+        const fixture = window.__conversationProcess
+        const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
+        const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+        const before = fixture.contentStats()
+        const hydrated = viewport.dataset.hydrated
+        fixture.select("peer")
+        await settle()
+        if (ended) fixture.execution("running")
+        fixture.backlog(24, ended)
+        await settle()
+        const hidden = fixture.contentStats()
+        fixture.select("session")
+        const samples = []
+        for (let frame = 0; frame < 64; frame++) {
+          if (frame >= 16 && frame < 40) fixture.backlogPage(frame - 16)
+          if (frame === 48) fixture.execution()
+          await settle()
+          const open = viewport.querySelectorAll('[data-slot="activity-batch-trigger"][aria-expanded="true"]')
+          const latest = viewport.querySelector<HTMLElement>(
+            '[data-slot="activity-step"][data-part-id="backlog-23-tool-3"]',
+          )
+          const bounds = latest?.closest('[data-component="process-viewport"]')?.getBoundingClientRect()
+          const rect = latest?.getBoundingClientRect()
+          samples.push({
+            open: open.length,
+            rows: viewport.querySelectorAll("[data-display-row]").length,
+            latest:
+              !!rect && !!bounds && rect.height > 0 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1,
+            gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+            moving: viewport.querySelectorAll("[data-motion-changing]").length,
+            placeholders: [...viewport.querySelectorAll<HTMLElement>('[data-row-kind="load"]')]
+              .filter((element) => element.dataset.messageId?.startsWith("backlog-"))
+              .reduce((height, element) => height + element.getBoundingClientRect().height, 0),
+          })
+        }
+        return {
+          before,
+          hydrated,
+          hidden,
+          samples,
+          reads: fixture.contentStats(),
+          answer: viewport.textContent?.includes("Background answer."),
+        }
+      }, ended)
+      expect(result.hidden).toEqual(result.before)
+      expect(result.hydrated).toBe("true")
+      expect(
+        result.samples.map((sample) => sample.open),
+        JSON.stringify(result.samples.slice(0, 8)),
+      ).toEqual(Array(64).fill(ended ? 0 : 1))
+      expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
+      expect(result.samples.every((sample) => sample.rows > 0)).toBe(true)
+      expect(result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
+      if (ended) {
+        expect(result.answer).toBe(true)
+        expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-"))).toEqual([])
+      } else {
+        expect(result.samples.slice(8).every((sample) => sample.latest)).toBe(true)
+        expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-")).length).toBeLessThan(40)
+      }
+      expect(errors).toEqual([])
+    },
+    testOptions.isolatedTimeoutMs,
+  )
+}
+
+for (const completionFrame of [0, 1, 16]) {
+  test(`a returned live backlog remains readable when it completes at frame ${completionFrame}`, async () => {
     await page.goto(`${url}?resident&scrolling&motion&content=background`)
     await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
     await page.evaluate(() => window.__conversationProcess.latest())
-    await frames()
-    const result = await page.evaluate(async (ended) => {
+    await page.waitForFunction(
+      () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+    )
+    const result = await page.evaluate(async (completionFrame) => {
       const fixture = window.__conversationProcess
       const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
       const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
       const before = fixture.contentStats()
       fixture.select("peer")
       await settle()
-      if (ended) fixture.execution("running")
-      fixture.backlog(24, ended)
+      fixture.backlog(24, false)
       await settle()
       const hidden = fixture.contentStats()
       fixture.select("session")
       const samples = []
-      for (let frame = 0; frame < 64; frame++) {
-        if (frame >= 16 && frame < 40) fixture.backlogPage(frame - 16)
-        if (frame === 48) fixture.execution()
+      for (let frame = 0; frame < 96; frame++) {
+        if (frame === completionFrame) fixture.background(true, false)
         await settle()
-        const open = viewport.querySelectorAll('[data-slot="activity-batch-trigger"][aria-expanded="true"]')
-        const latest = viewport.querySelector<HTMLElement>(
-          '[data-slot="activity-step"][data-part-id="backlog-23-tool-3"]',
-        )
-        const bounds = latest?.closest('[data-component="process-viewport"]')?.getBoundingClientRect()
-        const rect = latest?.getBoundingClientRect()
+        const bounds = viewport.getBoundingClientRect()
         samples.push({
-          open: open.length,
-          latest:
-            !!rect && !!bounds && rect.height > 0 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1,
+          rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
+            const rect = row.getBoundingClientRect()
+            return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
+          }).length,
           gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
-          moving: viewport.querySelectorAll("[data-motion-changing]").length,
-          placeholders: [...viewport.querySelectorAll<HTMLElement>('[data-row-kind="load"]')]
-            .filter((element) => element.dataset.messageId?.startsWith("backlog-"))
-            .reduce((height, element) => height + element.getBoundingClientRect().height, 0),
         })
       }
-      return {
-        before,
-        hidden,
-        samples,
-        reads: fixture.contentStats(),
-        answer: viewport.textContent?.includes("Background answer."),
-      }
-    }, ended)
+      return { before, hidden, samples, answer: viewport.textContent?.includes("Background answer.") }
+    }, completionFrame)
     expect(result.hidden).toEqual(result.before)
-    expect(result.samples.slice(4).map((sample) => sample.open)).toEqual(Array(60).fill(ended ? 0 : 1))
-    expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
-    expect(result.samples.slice(8).every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
-    if (ended) {
-      expect(result.answer).toBe(true)
-      expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-"))).toEqual([])
-    } else {
-      expect(result.samples.slice(8).every((sample) => sample.latest)).toBe(true)
-      expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-")).length).toBeLessThan(40)
-    }
+    expect(
+      result.samples.every((sample) => sample.rows > 0),
+      JSON.stringify(result.samples.slice(0, 24)),
+    ).toBe(true)
+    expect(result.samples.every((sample) => Math.abs(sample.gap) <= 2)).toBe(true)
+    expect(result.answer).toBe(true)
     expect(errors).toEqual([])
   }, 30000)
 }
@@ -222,13 +326,18 @@ test("background completion applies automatic process collection without replayi
       await settle()
       samples.push({
         changing: viewport.querySelectorAll("[data-motion-changing]").length,
+        parent: viewport.querySelector('[data-slot="turn-process-trigger"]')?.getAttribute("aria-expanded"),
         gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
         visible: viewport.checkVisibility(),
       })
     }
     return samples
   })
-  expect(samples.every((sample) => sample.changing === 0 && sample.visible && Math.abs(sample.gap) <= 2)).toBe(true)
+  expect(
+    samples.every(
+      (sample) => sample.parent === "false" && sample.changing === 0 && sample.visible && Math.abs(sample.gap) <= 2,
+    ),
+  ).toBe(true)
   expect(errors).toEqual([])
 })
 
@@ -287,6 +396,9 @@ for (const ended of [false, true]) {
               if (i === 8 && delayed) fixture.contentFinish("background-answer")
               const transform = getComputedStyle(surface).transform
               samples.push({
+                frame: i,
+                hydrated: viewport.dataset.hydrated,
+                pending: viewport.querySelectorAll("[data-content-pending], [data-markdown-pending]").length,
                 offset: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42,
                 gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
                 drift: reading ? anchor.getBoundingClientRect().top - before : 0,
@@ -309,7 +421,7 @@ for (const ended of [false, true]) {
         for (const [id, count] of Object.entries(result.readsBefore)) expect(result.readsAfter[id], id).toBe(count)
         expect(result.hiddenAnchor).toBe(true)
         expect(result.samples.filter((sample) => !sample.retained || !sample.visible)).toEqual([])
-        expect(Math.max(...result.samples.map((s) => Math.abs(s.offset)))).toBeLessThanOrEqual(1)
+        expect(result.samples.filter((sample) => Math.abs(sample.offset) > 1)).toEqual([])
         if (reading) expect(Math.max(...result.samples.map((s) => Math.abs(s.drift)))).toBeLessThanOrEqual(1)
         else {
           expect(Math.max(...result.samples.map((s) => Math.abs(s.gap)))).toBeLessThanOrEqual(2)

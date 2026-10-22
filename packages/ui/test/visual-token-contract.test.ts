@@ -207,6 +207,7 @@ function buildP0ValidTokenSet(): Set<string> {
 
   // Local component-scoped tokens
   const localTokens = [
+    "conversation-reading-max-width",
     "workbench-canvas-bg",
     "workbench-panel-bg",
     "workbench-panel-bg-hover",

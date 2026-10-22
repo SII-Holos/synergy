@@ -13,6 +13,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `providers` | `20-providers.jsonc` | merge |
 | `library` | `30-library.jsonc` | merge |
 | `anima` | `35-anima.jsonc` | merge |
+| `digital-twin` | `35-digital-twin.jsonc` | merge |
 | `mcp` | `40-mcp.jsonc` | merge |
 | `plugins` | `50-plugins.jsonc` | merge |
 | `skills` | `55-skills.jsonc` | merge |
@@ -96,6 +97,14 @@ File: `35-anima.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `anima` | object (optional) |  |
+
+## Digital Twin
+
+File: `35-digital-twin.jsonc` · Merge: merge
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `digitalTwin` | DigitalTwinContract.Settings.optional (optional) | Next-input prediction: automatic defaults to false; model defaults to the current Session model |
 
 ## MCP
 

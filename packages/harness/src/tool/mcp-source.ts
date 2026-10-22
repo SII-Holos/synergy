@@ -1,3 +1,4 @@
+import type { ToolDisplay } from "@ericsanchezok/synergy-util/tool-display"
 import { RuntimeContext } from "../lifecycle/context"
 import type { Tool, JSONSchema7 } from "ai"
 import type { ToolExposure } from "./exposure"
@@ -15,6 +16,7 @@ export namespace ToolMcpSource {
     toolName: string
     requiresWorkspace?: boolean
     tool: Tool
+    display?: ToolDisplay
     inputSchema: JSONSchema7
     presentation?: {
       title?: string

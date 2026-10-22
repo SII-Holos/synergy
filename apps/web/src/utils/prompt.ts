@@ -1,3 +1,4 @@
+import { InputAssistance } from "@ericsanchezok/synergy-util/input-assistance"
 import type { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import type { AttachmentPart, Part, TextPart } from "@ericsanchezok/synergy-sdk"
 import { sanitizeContextItemsValue, sanitizePromptContextValue, sanitizePromptValue } from "@/context/prompt/sanitize"
@@ -125,6 +126,7 @@ export type PromptDraftSnapshot = {
   version: 1
   prompt: Prompt
   context: PromptContextSnapshot
+  assistance?: InputAssistance.Info
 }
 
 export type PromptDraftMetadataMessage = {
@@ -142,6 +144,7 @@ function cloneDraft(snapshot: PromptDraftSnapshot): PromptDraftSnapshot {
     version: 1,
     prompt: sanitizePrompt(snapshot.prompt),
     context: sanitizePromptContext(snapshot.context),
+    ...(snapshot.assistance ? { assistance: snapshot.assistance } : {}),
   }
 }
 
@@ -359,17 +362,20 @@ function restoreLegacyPromptDraft(parts: Part[], opts?: { directory?: string }):
 export function createPromptDraftSnapshot(input: {
   prompt: Prompt
   context: PromptContextSnapshot
+  assistance?: InputAssistance.Info
 }): PromptDraftSnapshot {
   return {
     version: 1,
     prompt: sanitizePrompt(input.prompt),
     context: { items: sanitizeContextItems(input.context.items) },
+    ...(input.assistance ? { assistance: input.assistance } : {}),
   }
 }
 
 export function createSubmitFailureRestoreSnapshot(input: {
   prompt: Prompt
   context: PromptContextSnapshot
+  assistance?: InputAssistance.Info
 }): PromptDraftSnapshot {
   return createPromptDraftSnapshot(input)
 }
@@ -385,8 +391,12 @@ export function extractPromptDraft(input: {
       version: 1,
       prompt: promptDraft.prompt as Prompt,
       context: promptDraft.context as PromptContextSnapshot,
+      assistance: InputAssistance.read(input.message?.metadata) ?? InputAssistance.read(promptDraft),
     })
   }
 
-  return restoreLegacyPromptDraft(input.parts, { directory: input.directory })
+  return {
+    ...restoreLegacyPromptDraft(input.parts, { directory: input.directory }),
+    assistance: InputAssistance.read(input.message?.metadata),
+  }
 }

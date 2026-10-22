@@ -28,6 +28,7 @@ export type ProgressIslandStatus = "hidden" | "active" | "attention" | "complete
 export type ProgressIslandTone = "neutral" | "ready" | "running" | "blocked" | "failed" | "complete"
 
 export interface ProgressIslandSnapshot {
+  source: "dag" | "todo" | undefined
   status: ProgressIslandStatus
   tone: ProgressIslandTone
   completed: number
@@ -157,21 +158,32 @@ export function computeProgressMode(hasDag: boolean, hasTodo: boolean): Progress
   return "none"
 }
 
+function progressSource(mode: ProgressMode, dag?: DagSummary, todo?: TodoSummary): ProgressIslandSnapshot["source"] {
+  if (mode === "none") return undefined
+  if (dag && (dag.failed > 0 || dag.blocked > 0)) return "dag"
+  const dagUnfinished = !!dag && dag.completed < dag.total
+  const todoUnfinished = !!todo && todo.completed < todo.total
+  if (dagUnfinished && !todoUnfinished) return "dag"
+  if (todoUnfinished && !dagUnfinished) return "todo"
+  return mode === "dag" || !todo ? "dag" : "todo"
+}
+
 export function computeProgressIslandSnapshot(
   mode: ProgressMode,
   dag?: DagSummary,
   todo?: TodoSummary,
 ): ProgressIslandSnapshot {
-  const source = mode === "none" ? undefined : mode === "dag" ? dag : (todo ?? dag)
-  const total = source?.total ?? 0
-  const completed = source?.completed ?? 0
-  const cancelled = source?.cancelled ?? 0
-  const active = source && "running" in source ? source.running : (source?.inProgress ?? 0)
-  const pending = source?.pending ?? 0
-  const blocked = source && "blocked" in source ? source.blocked : 0
-  const failed = source && "failed" in source ? source.failed : 0
-  const progressRatio = source?.progressRatio ?? 0
-  const values = { total, completed, cancelled, active, pending, blocked, failed, progressRatio }
+  const source = progressSource(mode, dag, todo)
+  const summary = source === "dag" ? dag : source === "todo" ? todo : undefined
+  const total = summary?.total ?? 0
+  const completed = summary?.completed ?? 0
+  const cancelled = summary?.cancelled ?? 0
+  const active = summary && "running" in summary ? summary.running : (summary?.inProgress ?? 0)
+  const pending = summary?.pending ?? 0
+  const blocked = summary && "blocked" in summary ? summary.blocked : 0
+  const failed = summary && "failed" in summary ? summary.failed : 0
+  const progressRatio = summary?.progressRatio ?? 0
+  const values = { source, total, completed, cancelled, active, pending, blocked, failed, progressRatio }
   if (total === 0 && cancelled === 0) return { ...values, status: "hidden", tone: "neutral" }
   if (completed === total) return { ...values, status: "complete", tone: "complete" }
   if (failed > 0) return { ...values, status: "attention", tone: "failed" }

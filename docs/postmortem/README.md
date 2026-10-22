@@ -6,24 +6,30 @@
 - **Systemic** — missed safeguards.
 - **Costly**.
 
-Otherwise, test.
-
-## Placement
-
-Rationale: `docs/decisions/`.
-
 ## Format
 
 `NNNN-kebab-case-title.md` sections:
 
 - **Executive summary** — failure, cause, lesson.
 - **Summary** — failure details.
-- **Timeline** — observations and timing.
+- **Timeline** — dated observations.
 - **Root cause** — mechanism and missing safeguards.
-- **Guardrails** — tests, documentation and gates.
+- **Guardrails** — tests, docs, gates.
 - **Lessons** — durable takeaways.
 
 ## Index
+
+- [0087](0087-browser-view-completed-without-presentation.md)
+
+- [0086](0086-loop-failure-state-divergence.md)
+
+- [0085](0085-cross-scope-status-snapshot-resurrected-busy.md)
+
+- [0084](0084-replaced-directory-checkpoint-blocked-rebind.md)
+
+- [0083](0083-blueprint-blockers-could-not-pause.md)
+
+- [0082](0082-performance-evidence-and-failure-retention.md)
 
 - [0081](0081-browser-navigation-timeouts.md)
 
@@ -33,9 +39,9 @@ Rationale: `docs/decisions/`.
 
 - [0078](0078-cold-navigation-migration-admission.md)
 
-- [0074: Agenda Home origin](0074-agenda-home-origin-blocked-session-creation.md)
+- [0074: Agenda origin](0074-agenda-home-origin-blocked-session-creation.md)
 
-- [0072: Native watcher concurrency](0072-native-watcher-exception-concurrency.md)
+- [0072: Watcher concurrency](0072-native-watcher-exception-concurrency.md)
 
 - [0071: Cold hydration](0071-cold-conversation-hydration-motion.md)
 
@@ -147,6 +153,6 @@ Rationale: `docs/decisions/`.
 
 - [0037: Mount identity](0037-mount-number-invalidated-directory.md)
 
-## History rules
+## History
 
-Preserve history; append corrections.
+Only append corrections.

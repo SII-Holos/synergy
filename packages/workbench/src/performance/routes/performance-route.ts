@@ -509,10 +509,10 @@ export const PerformanceRoute = () =>
               .finally(() => pendingWrites--)
           }
           const unsubscribe = ObservabilityLiveEvents.subscribe((event) => {
-            if (event.type === "issue.raised") {
+            if (event.type === "issue.raised" || event.type === "issue.resolved") {
               if (query.scopeID && (event.issue.scopeID ?? event.issue.evidence.scopeID) !== query.scopeID) return
               if (query.sessionID && event.issue.sessionID !== query.sessionID) return
-              write("performance.issue.raised", PerformanceProjection.issue(event.issue))
+              write(`performance.${event.type}`, PerformanceProjection.issue(event.issue))
               return
             }
             if (event.type === "trace.ended") {

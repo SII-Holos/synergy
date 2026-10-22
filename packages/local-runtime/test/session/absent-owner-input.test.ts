@@ -13,8 +13,12 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { localRuntime } from "../../src/component"
 import { submitInput } from "../../src/session-api"
 
-for (const paused of [false, true])
-  test(`new human input leaves an absent owner's ${paused ? "paused" : "idle"} root untouched`, async () => {
+for (const scenario of [
+  { name: "an absent owner's idle", source: "agenda" },
+  { name: "an absent owner's paused", source: "agenda", paused: "interrupted" },
+  { name: "a failed ordinary", paused: "failed" },
+] as const)
+  test(`new human input leaves ${scenario.name} root untouched`, async () => {
     await using home = await runtimeHome()
     await using runtime = await testRuntime({
       home: home.host.home,
@@ -34,11 +38,12 @@ for (const paused of [false, true])
             agent: "general",
             model: { providerID: "fixture", modelID: "fixture" },
             time: { created: Date.now() },
-            metadata: { source: "agenda" },
+            metadata: "source" in scenario ? { source: scenario.source } : undefined,
           })
           await RolloutLedger.cancelUnopenedRun(RolloutLifecycle.owner(session), rootID, Date.now())
           const previous = await RolloutLedger.getRun(RolloutLifecycle.owner(session), rootID)
-          if (paused) await SessionLifecycle.pause({ sessionID: session.id, reason: "interrupted" })
+          if ("paused" in scenario && scenario.paused)
+            await SessionLifecycle.pause({ sessionID: session.id, reason: scenario.paused })
           using drive = spyOn(SessionDrive, "request").mockResolvedValue(false)
           const result = await submitInput({
             sessionID: session.id,

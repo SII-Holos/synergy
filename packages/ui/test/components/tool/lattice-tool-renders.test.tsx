@@ -30,7 +30,18 @@ mock.module("../../../src/components/message-part", () => ({
   },
 }))
 
-for (const name of ["file-ops", "standard", "task", "dag", "browser", "anysearch", "scholight", "batch", "computer"]) {
+for (const name of [
+  "file-ops",
+  "standard",
+  "task",
+  "dag",
+  "browser",
+  "anysearch",
+  "scholight",
+  "batch",
+  "computer",
+  "workbench-view",
+]) {
   mock.module(`../../../src/components/tool/renders/${name}`, () => ({}))
 }
 
@@ -67,14 +78,14 @@ describe("Lattice tool renderers", () => {
     })
   })
 
-  test("renders channel_push with the crown glyph and text subtitle", () => {
+  test("renders channel_push with the channel glyph and text subtitle", () => {
     registrations.get("channel_push")?.({
       tool: "channel_push",
       input: { text: "Done: task complete", chatId: "oc_test_group" },
       metadata: {},
     })
     expect(capturedTrigger).toEqual({
-      icon: "crown",
+      icon: "message-circle",
       title: { id: "tool.title.channel-push", message: "Push to channel" },
       subtitle: "Done: task complete",
       tags: undefined,
@@ -103,7 +114,7 @@ describe("Lattice tool renderers", () => {
     })
 
     expect(capturedTrigger).toEqual({
-      icon: "circle-check",
+      icon: "waypoints",
       title: { id: "tool.title.latticeApproveExecution", message: "Approve Blueprint execution" },
       subtitle: "Reviewed",
       tags: [{ label: "Panel" }],
@@ -118,7 +129,7 @@ describe("Lattice tool renderers", () => {
     })
 
     expect(capturedTrigger).toEqual({
-      icon: "list-checks",
+      icon: "waypoints",
       title: { id: "tool.title.pathwayWrite", message: "Write Pathway" },
       subtitle: undefined,
       tags: [{ label: "2 steps" }],

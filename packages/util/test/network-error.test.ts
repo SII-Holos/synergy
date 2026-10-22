@@ -2,11 +2,29 @@ import { expect, test } from "bun:test"
 import { classifyNetworkError } from "../src/network-error"
 
 test.each([
+  "getaddrinfo ENOTFOUND provider.invalid",
+  "TypeError: getaddrinfo ENOTFOUND other.example",
   "getaddrinfo ETIMEOUT api.deepseek.com",
   "TypeError: getaddrinfo ETIMEOUT other.example",
   "connect ECONNREFUSED 127.0.0.1",
 ])("recognizes transport codes retained only in messages: %s", (message) => {
   expect(classifyNetworkError(new TypeError(message))?.kind).toBe("transient")
+})
+test("preserves ENOTFOUND evidence through nested and aggregate transport errors", () => {
+  const error = Object.assign(new TypeError("getaddrinfo ENOTFOUND provider.invalid"), {
+    code: "ENOTFOUND",
+    syscall: "getaddrinfo",
+  })
+  for (const source of [error, new TypeError("fetch failed", { cause: new AggregateError([error]) })]) {
+    expect(classifyNetworkError(source)).toMatchObject({
+      kind: "transient",
+      code: "ENOTFOUND",
+      syscall: "getaddrinfo",
+    })
+  }
+})
+test.each(["ENONAME", "EAI_NONAME", "ENODATA", "EBADNAME"])("keeps definitive address code %s terminal", (code) => {
+  expect(classifyNetworkError({ code })).toMatchObject({ kind: "permanent", code })
 })
 test("does not infer network failures from unrelated timeout or TLS text", () => {
   for (const message of [
@@ -21,7 +39,7 @@ test("does not infer network failures from unrelated timeout or TLS text", () =>
 test("preserves permanent causes in mixed IPv4 and IPv6 failures", () => {
   const error = new TypeError("fetch failed", {
     cause: new AggregateError([
-      { code: "ETIMEDOUT", message: "timeout" },
+      { code: "ENOTFOUND", message: "lookup failed" },
       { code: "CERT_HAS_EXPIRED", message: "expired" },
     ]),
   })

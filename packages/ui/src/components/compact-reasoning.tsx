@@ -54,7 +54,7 @@ export function CompactReasoningLine(props: { fullText: string; running: boolean
           <Collapsible open={open()} onOpenChange={setOpen} variant="ghost">
             <Collapsible.Trigger data-slot="compact-reasoning-trigger" type="button">
               <span data-slot="compact-reasoning-leading" aria-hidden="true">
-                <Icon name={getSemanticIcon("performance.trace")} size="small" />
+                <Icon name={getSemanticIcon("session.reasoning")} size="small" />
               </span>
               <span data-slot="compact-reasoning-label">{_(SESSION_TURN_DESC.compactReasoningThinking)}</span>
               <span data-slot="compact-reasoning-summary">{summary()}</span>

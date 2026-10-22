@@ -18,6 +18,9 @@
   min-width: 0;
   max-width: 100%;
 }
+[data-slot="attachment-row-entry"]:has([data-component="attachment-card"][data-compact][data-type="file"]) {
+  max-width: min(288px, 100%);
+}
 [data-component="attachment-gallery"][data-align="end"] [data-slot="attachment-row-layout"] {
   justify-content: flex-end;
 }
@@ -29,13 +32,11 @@
   cursor: pointer;
 }
 [data-component="attachment-card"][data-compact] {
-  min-height: 48px;
-  padding: 8px;
-  gap: 8px;
-  width: 216px;
-  max-width: 100%;
+  width: fit-content;
+  min-width: min(192px, 100%);
+  max-width: min(288px, 100%);
 }
-[data-component="attachment-card"][data-compact] .attachment-compact-filename {
+.attachment-compact-filename {
   display: flex;
   min-width: 0;
 }
@@ -50,6 +51,7 @@
 [data-component="attachment-card"][data-compact][data-type="image"] {
   width: 96px;
   height: 72px;
+  min-width: 0;
   min-height: 0;
   padding: 0;
 }
@@ -88,8 +90,12 @@
 }
 
 [data-slot="activity-evidence"] {
-  padding: 2px 0 8px 24px;
+  padding: 8px 0;
   min-width: 0;
+}
+
+[data-slot="activity-evidence"] [data-slot="attachment-row-layout"] {
+  padding-inline: 0;
 }
 
 [data-slot="activity-evidence"] [data-component="attachment-gallery"],
@@ -115,6 +121,7 @@
   align-items: flex-start;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
 }
 
 [data-component="attachment-gallery"][data-columns="1"] [data-slot="attachment-column-layout"],
@@ -129,22 +136,22 @@
   gap: 10px;
   width: 100%;
   min-width: 0;
-  min-height: 96px;
-  padding: 12px;
-  border-radius: 8px;
+  min-height: 56px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
   background: var(--workbench-card-bg, var(--surface-base));
-  border: 1px solid var(--workbench-border, var(--border-base));
+  border: 1px solid var(--workbench-border, var(--border-weak-base));
   transition:
-    border-color 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease;
+    border-color var(--motion-duration-fast) ease,
+    background var(--motion-duration-fast) ease;
   text-decoration: none;
+  text-align: start;
   cursor: pointer;
   color: var(--text-base);
   font-family: inherit;
   font-size: inherit;
 
-  &:hover {
+  &:not([data-disabled="true"]):hover {
     border-color: var(--border-strong-base);
     background: var(--workbench-card-bg-hover, var(--surface-base-hover));
   }
@@ -168,6 +175,14 @@
     height: 20px;
   }
 
+  &:is([data-type="file"], [data-type="pdf"]) [data-slot="attachment-card-preview"] {
+    flex-basis: 20px;
+    width: 20px;
+    height: 20px;
+    border-radius: 0;
+    background: transparent;
+  }
+
   [data-slot="attachment-card-body"] {
     display: flex;
     flex: 1;
@@ -181,19 +196,19 @@
     overflow: hidden;
     color: var(--text-base);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
+    font-size: var(--type-ui-row-title-size);
     font-weight: var(--font-weight-medium);
-    line-height: var(--line-height-large);
+    line-height: var(--type-ui-row-title-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   [data-slot="attachment-card-meta"] {
     overflow: hidden;
-    color: var(--text-weaker);
+    color: var(--text-weak);
     font-family: var(--font-family-sans);
-    font-size: var(--font-size-small);
-    line-height: var(--line-height-large);
+    font-size: var(--type-ui-caption-size);
+    line-height: var(--type-ui-caption-line-height);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -204,7 +219,7 @@
     transition: color 0.15s ease;
   }
 
-  &:hover [data-slot="icon-svg"] {
+  &:not([data-disabled="true"]):hover [data-slot="icon-svg"] {
     color: var(--icon-base);
   }
 }
@@ -220,14 +235,6 @@
 
 [data-component="attachment-card"][data-disabled="true"] {
   cursor: default;
-}
-
-[data-component="attachment-card"][data-size="small"] {
-  min-height: 64px;
-}
-
-[data-component="attachment-card"][data-size="large"] {
-  min-height: 120px;
 }
 
 [data-component="attachment-card"][data-type="image"],
@@ -345,6 +352,8 @@
 
 [data-component="attachment-card"][data-type="audio"] {
   min-height: 116px;
+  padding: 12px;
+  border-radius: 8px;
   align-items: flex-start;
 
   audio {
@@ -376,5 +385,8 @@
 @media (max-width: 720px) {
   [data-slot="attachment-column-layout"] {
     flex-direction: column;
+  }
+  [data-slot="attachment-column"] {
+    width: 100%;
   }
 }

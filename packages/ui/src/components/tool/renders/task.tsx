@@ -20,6 +20,7 @@ ToolRegistry.register({
     const isBackground = () => props.metadata.background === true
     const trigger = createMemo(() =>
       getTaskToolTrigger(props.input, {
+        metadata: props.metadata,
         backgroundLabel: isBackground() ? _(TOOL_MISC_DESC.backgroundTask) : undefined,
       }),
     )

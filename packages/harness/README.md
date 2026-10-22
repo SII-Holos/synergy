@@ -12,6 +12,8 @@ The harness owns permission policy and the `SandboxHost` execution contract. OS 
 
 Embedded tool admission uses `tool/policy-source`: a host can narrow visible and deferred identities and authorize exact calls before execution resources are acquired. The source cannot widen the registry or replace permission and sandbox decisions. The public `cortex/tools` entry exposes the complete suite for explicit registration.
 
+Initialized tools may declare `resourceNeeds(args)` for input-dependent Workspace or execution requirements. Those requirements augment static declarations and use the same resource admission, capability gate and release path. Directory-independent actions remain usable without allocating a Workspace; precise file operations retain their resolved-path permission requests.
+
 The `environment` host entries own durable allocation and operation identities. Register providers before opening a Runtime; missing providers fail explicitly. See [Environments](../../docs/architecture/environments.md) for execution, checkpoint and recovery semantics.
 
 Hosts supply immutable environment and paths, composition, and storage ownership to `RuntimeHandle.open()`. Imports have no registration side effects. Enter work with `handle.run()` or capture callbacks with `handle.bind()`; await `close()` or use `await using`. Multiple handles can coexist in one process. See [Runtime and Scope](../../docs/architecture/runtime-and-scope.md) for lifecycle and workspace semantics.
@@ -21,6 +23,8 @@ Optional configuration owners register their public `shape` through `ConfigExten
 Hosts with a different file delivery mechanism register `AttachmentDelivery` guidance during composition. The selected response instructions and execution-tool instructions replace the default immutable-attachment guidance together, and remain isolated to that Runtime. This changes model instructions only: the host must also supply the matching delivery tools and authorization. Without a registration, the existing attachment behavior and guidance remain unchanged.
 
 The public `/usage` entry exposes retained accounting, typed queries, clear/rebuild operations, and explicit host lifecycle/transfer integration. Its [accounting contract](../../docs/architecture/usage-accounting.md) is independent of transcript and archive retention.
+
+The public `/rollout` entry provides `RolloutSnapshot.modelCalls()` for current run and model-call metadata without journal replay, tool evidence or artifact bodies. `current()` maintains a reusable validated journal prefix during concurrent appends; `read()` retains strict historical replay for integrity checks and archives.
 
 Selective tool catalogs use `cortexTools()` and register `registerCortexToolInputHistory()` from `./cortex/tools` before sealing the Runtime. The history registration keeps owned session migrations independent of product tool registration.
 

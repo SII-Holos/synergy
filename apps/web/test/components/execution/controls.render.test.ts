@@ -517,14 +517,16 @@ test("task details remain reachable without execution support; supported summari
   expect(document.querySelector(".execution-popover")?.textContent).toContain("US$0.0076")
   expect(document.querySelector(".execution-task-row")?.textContent).toContain("Read project notes")
   document.querySelector<HTMLButtonElement>(".execution-task-row .execution-row-main")!.click()
-  expect(opened).toEqual([{ id: "context", options: { init: { state: { runID: undefined, nodeID: "child-node" } } } }])
+  expect(opened).toEqual([
+    { id: "trajectory", options: { init: { state: { runID: undefined, nodeID: "child-node" } } } },
+  ])
   expect(document.querySelector(".execution-trigger")?.getAttribute("aria-expanded")).toBe("false")
   document.querySelector<HTMLButtonElement>(".execution-trigger")!.click()
   await flush()
   document.querySelector<HTMLButtonElement>(".execution-identity-action")!.click()
   await flush()
   document.querySelector<HTMLButtonElement>(".execution-options .execution-menu-action")!.click()
-  expect(opened.at(-1)).toEqual({ id: "context", options: undefined })
+  expect(opened.at(-1)).toEqual({ id: "trajectory", options: undefined })
 })
 
 test("summary load failures expose a working retry rather than a success placeholder", async () => {

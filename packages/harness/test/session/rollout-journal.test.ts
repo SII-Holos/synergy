@@ -1,9 +1,10 @@
 import { expect, spyOn, test } from "bun:test"
 import { RolloutJournal } from "../../src/session/rollout/journal"
 import { RolloutArtifact } from "../../src/session/rollout/artifact"
-import { SqliteDriver } from "../../src/storage/sqlite-driver"
-import type { SqlConnection } from "../../src/storage/sql-contract"
+import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { Storage } from "../../src/storage/storage"
+import { RolloutSchema } from "../../src/session/rollout/schema"
+import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { migrationFixture } from "../migration/fixture"
 const runtime = await migrationFixture()
@@ -15,6 +16,78 @@ function run(owner: ReturnType<typeof targetOwner>, status: "running" | "complet
 function targetOwner() {
   return { kind: "operation" as const, scopeID: "test", operationID: crypto.randomUUID() }
 }
+
+test("attempt history shares immutable context and decodes mixed formats without changing projections", () =>
+  runtime.run(async () => {
+    const target = targetOwner()
+    const root = RolloutArtifact.root(target)
+    const id = crypto.randomUUID()
+    const key = [...root, "runs", "run", "attempts", "call", id]
+    const attempt: RolloutSchema.AttemptRecord = {
+      version: 1,
+      id,
+      owner: target,
+      runID: "run",
+      callID: "call",
+      index: 0,
+      url: "https://fixture.invalid/" + "path".repeat(500),
+      method: "POST",
+      started: 1,
+      status: "running",
+      request: {
+        version: 1,
+        id: crypto.randomUUID(),
+        mediaType: "application/json",
+        bytes: 0,
+        chunks: 0,
+        sha256: null,
+        status: "partial",
+      },
+      pricingEvidence: { version: 1, source: "attempt", pricing: null },
+    }
+    await Storage.write([...root, "runs", "run", "calls", "call"], {
+      version: 1,
+      id: "call",
+      owner: target,
+      runID: "run",
+      purpose: "fixture",
+      model: { providerID: "fixture", modelID: "fixture", sdk: "fixture", pricing: null },
+      started: 1,
+      status: "running",
+      request: attempt.request,
+      sdkUsage: null,
+      transportCaptured: true,
+    })
+    await RolloutJournal.write(target, key, attempt)
+    const updated = { ...attempt, httpStatus: 200, responseHeaders: { "x-request-id": "next" } }
+    await RolloutJournal.write(target, key, updated)
+    await RolloutLedger.writeAttempt({ ...updated, error: undefined })
+    expect((await RolloutJournal.head(target)).committed).toBe(2)
+    await RolloutJournal.write(target, key, { ...updated, status: "completed", ended: 2 })
+    const stored = await Storage.read<{ version: number; context: string }>([
+      ...root,
+      "journal",
+      "events",
+      "000000000003",
+    ])
+    expect(stored.version).toBe(2)
+    expect(JSON.stringify(stored)).not.toContain(attempt.url)
+    expect(await Storage.scan([...root, "journal", "contexts"])).toHaveLength(2)
+    const events = []
+    for await (const event of RolloutJournal.events(target, 3)) events.push(event)
+    expect(events.map((event) => event.kind === "record" && event.value)).toEqual([
+      attempt,
+      updated,
+      { ...updated, status: "completed", ended: 2 },
+    ])
+    expect(await Storage.read(key)).toEqual({ ...updated, status: "completed", ended: 2 })
+    await Storage.write([...root, "journal", "events", "000000000001"], events[0])
+    const mixed = []
+    for await (const event of RolloutJournal.events(target, 3)) mixed.push(event)
+    expect(mixed).toEqual(events)
+    await Storage.remove([...root, "journal", "contexts", stored.context])
+    await expect(Array.fromAsync(RolloutJournal.events(target, 3))).rejects.toThrow("Missing rollout journal context")
+  }))
 
 test("journal snapshots keep a fixed revision while later records are written", () =>
   runtime.run(async () => {
@@ -59,21 +132,15 @@ test("one logical write commits its evidence before acknowledging the usage outb
   runtime.run(async () => {
     const target = targetOwner()
     const key = [...RolloutArtifact.root(target), "runs", "run", "info"]
-    const original = SqliteDriver.prototype.transaction
     let commits = 0
-    {
-      using counted = spyOn(SqliteDriver.prototype, "transaction").mockImplementation(async function <T>(
-        this: SqliteDriver,
-        body: (connection: SqlConnection) => Promise<T>,
-        options?: { readOnly?: boolean; operationID?: string },
-      ) {
-        if (!options?.readOnly) commits++
-        return (await original.call(this, body, options)) as T
-      })
-      expect(await RolloutJournal.write(target, key, run(target, "running"))).toBe(1)
-    }
-    // Evidence and external capture share one commit; usage and the inert notification are acknowledged afterward.
-    expect(commits).toBe(3)
+    await ObservabilityMetrics.withForwarder(
+      (metric) => {
+        if (metric.name === "storage.transaction.count" && metric.labels?.outcome === "committed")
+          commits += metric.value
+      },
+      async () => expect(await RolloutJournal.write(target, key, run(target, "running"))).toBe(1),
+    )
+    expect(commits).toBe(2)
     expect(await RolloutJournal.head(target)).toEqual({ allocated: 1, committed: 1 })
   }))
 

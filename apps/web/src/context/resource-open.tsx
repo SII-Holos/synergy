@@ -2,7 +2,9 @@ import { toolFeatureAvailable, toolRequiredFeatures } from "@ericsanchezok/syner
 import { useGlobalSDK } from "./global-sdk"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
-import { catalogFileWorkspace } from "./file/workspace"
+import { catalogFileWorkspace, workspaceFileResource } from "./file/workspace"
+import { createWorkbenchViewExecutor } from "./workbench-view"
+import type { WorkbenchView } from "@ericsanchezok/synergy-util/workbench-view"
 import { buildWorkspaceFileBrowserUrl } from "@/utils/workspace-file-url"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useNoteDocuments } from "@/components/note/documents"
@@ -64,6 +66,7 @@ import { isOptimisticMessagePending } from "./session-optimistic-message"
 import { useBrowserCatalog } from "@/components/workspace/browser/browser-catalog"
 import {
   browserWorkbenchRoute,
+  browserPageTab,
   browserURLTitle,
   sameBrowserCatalog,
   type BrowserWorkbenchRoute,
@@ -262,9 +265,11 @@ export function ResourceOpenProvider(props: ParentProps) {
       canCommit: () =>
         !disposed &&
         !options?.signal?.aborted &&
+        options?.canCommit?.() !== false &&
         ownerKey() === owner &&
         side.selectionRevision() === selectionRevision,
-      reuseExisting: !options?.newTab,
+      intent: options?.origin,
+      reuseExisting: options?.origin !== "agent" && !options?.newTab,
       forceNew: options?.newTab,
       init: {
         ...init,
@@ -281,8 +286,9 @@ export function ResourceOpenProvider(props: ParentProps) {
       if (side.selectionRevision() !== selectionRevision) return false
       throw new Error(_({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
     }
-    setOpenedResource({ session, tabID: tab.id, origin: options?.focusTarget ?? (() => origin) })
-    return true
+    if (options?.origin !== "agent")
+      setOpenedResource({ session, tabID: tab.id, origin: options?.focusTarget ?? (() => origin) })
+    return tab
   }
 
   const openActivityDetail = (target: ActivityDetailTarget, part?: ToolPart) => {
@@ -514,6 +520,8 @@ export function ResourceOpenProvider(props: ParentProps) {
     })
 
   const openWorkspaceFile = async (path: string, options: ResourceOpenOptions = {}, mime?: string) => {
+    if (options.origin === "agent" && options.context?.state !== "bound")
+      throw new Error("An Agent file view requires the captured source Workspace.")
     if (options.context && options.context.state !== "bound") {
       const context = await chooseWorkspace(options.signal ?? new AbortController().signal)
       if (!context) return false
@@ -523,7 +531,8 @@ export function ResourceOpenProvider(props: ParentProps) {
     const owner = ownerKey()
     const side = workbench.surface("side")
     const revision = side.selectionRevision()
-    const current = () => !disposed && !options.signal?.aborted && ownerKey() === owner
+    const current = () =>
+      !disposed && !options.signal?.aborted && ownerKey() === owner && options.canCommit?.() !== false
     const response = await sdk.client.workspace.files.stat(
       {
         path: target.path,
@@ -533,6 +542,13 @@ export function ResourceOpenProvider(props: ParentProps) {
       { signal: options.signal, throwOnError: true },
     )
     if (!current() || side.selectionRevision() !== revision) return false
+    if (options.origin === "agent") {
+      const latest = workspaceTarget(path, options.context)
+      if (workspaceFileResource(latest.workspace, latest.path) !== workspaceFileResource(target.workspace, target.path))
+        return false
+      if (!response.data || response.data.type === "directory")
+        throw new Error("The target is not an available Workspace file.")
+    }
     const preview = classifyResourcePreview("", target.path)
     if (
       options.prefer === "preview" &&
@@ -563,10 +579,12 @@ export function ResourceOpenProvider(props: ParentProps) {
       directory: response.data?.type === "directory",
       signal: options.signal,
       focusTarget: options.focusTarget,
+      origin: options.origin,
+      canCommit: options.canCommit,
     })
-    if (current() && tab)
+    if (options.origin !== "agent" && current() && tab)
       setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
-    return current() && !!tab
+    return !disposed && !options.signal?.aborted && ownerKey() === owner && (tab ?? false)
   }
 
   const resolveUrl = (reference: ResourceReference.Target, context?: ResourceReference.Context) => {
@@ -593,7 +611,8 @@ export function ResourceOpenProvider(props: ParentProps) {
       throw new Error(_({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
     const owner = ownerKey()
     const captured = contextKey()
-    const current = () => !disposed && !options.signal?.aborted && contextKey() === captured
+    const current = () =>
+      !disposed && !options.signal?.aborted && options.canCommit?.() !== false && contextKey() === captured
     const note = await resolveNoteReference(sdk.client, sdk.scopeID, resource.id, options.signal)
     if (!current()) return false
     const state = { referenceLocation: options.location, referenceNavigation: generateUUID() }
@@ -605,18 +624,21 @@ export function ResourceOpenProvider(props: ParentProps) {
       : undefined
     if (existing) {
       workbench.updateTab(existing.id, { state: { ...(existing.state as object), ...state } })
-      workbench.activateTab("side", existing.id)
-      setOpenedResource({ session: workbench.sessionKey(), tabID: existing.id, origin: options.focusTarget })
-      return true
+      workbench.activateTab("side", existing.id, options.origin)
+      if (options.origin !== "agent")
+        setOpenedResource({ session: workbench.sessionKey(), tabID: existing.id, origin: options.focusTarget })
+      return existing
     }
     const tab = await workbench.openPanel("notes", {
       canCommit: current,
+      intent: options.origin,
       forceNew: options.newTab,
       init: { resourceId: note.id, source: note.scopeID, state },
     })
     if (!tab || disposed || options.signal?.aborted || ownerKey() !== owner) return false
-    setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
-    return true
+    if (options.origin !== "agent")
+      setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
+    return tab
   }
 
   const preview = async (resource: OpenableResource, options: ResourceOpenOptions = {}): Promise<ResourcePreview> => {
@@ -997,7 +1019,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   const openAttachment = async (
     attachment: AttachmentFile,
     options?: ResourceOpenOptions & { serverUrl?: string },
-  ): Promise<boolean> => {
+  ): Promise<boolean | WorkbenchPanelTab> => {
     options = { ...options, context: attachmentReferenceContext(attachment, options?.context) }
     const captured = () => {
       const draft =
@@ -1119,7 +1141,13 @@ export function ResourceOpenProvider(props: ParentProps) {
         )
       const source =
         resource.kind === "asset" ? resource.url : resource.kind === "attachment" ? resource.file.url : undefined
-      if (source && /^asset:\/\/[a-f0-9]{16}\.bin$/.test(source) && params.id && globalSDK.capabilities.has("media")) {
+      if (
+        options.origin !== "agent" &&
+        source &&
+        /^asset:\/\/[a-f0-9]{16}\.bin$/.test(source) &&
+        params.id &&
+        globalSDK.capabilities.has("media")
+      ) {
         const captured = ownerKey()
         const reference = await sdk.client.render.find(
           { sessionID: params.id, assetID: source.slice("asset://".length) },
@@ -1165,7 +1193,7 @@ export function ResourceOpenProvider(props: ParentProps) {
           return { status: "opened" }
         }
       }
-      let opened = false
+      let opened: boolean | WorkbenchPanelTab = false
       if (resource.kind === "attachment")
         opened = await openAttachment(resource.file, { ...options, serverUrl: resource.serverUrl })
       else if (resource.kind === "asset") {
@@ -1185,7 +1213,12 @@ export function ResourceOpenProvider(props: ParentProps) {
         )
       if (signal.aborted) return { status: "cancelled" }
       if (!opened) return { status: "cancelled" }
-      return { status: "opened" }
+      return {
+        status: "opened",
+        ...(options.origin === "agent" && typeof opened === "object"
+          ? { view: { viewId: opened.id, surface: "side" as const } }
+          : {}),
+      }
     } catch (error) {
       if (signal.aborted) return { status: "cancelled" }
       const reason =
@@ -1193,6 +1226,7 @@ export function ResourceOpenProvider(props: ParentProps) {
         (error instanceof Error
           ? error.message
           : _({ id: "app.reference.unavailable", message: "The resource is unavailable." }))
+      if (options.origin === "agent") return { status: "unavailable", reason }
       const reference = (() => {
         try {
           return resource.kind === "attachment"
@@ -1239,6 +1273,82 @@ export function ResourceOpenProvider(props: ParentProps) {
     }
   }
 
+  const present = async (
+    target: WorkbenchView.Target,
+    supplied: ResourceOpenOptions = {},
+  ): Promise<ResourceOpenResult> => {
+    const options: ResourceOpenOptions = { ...supplied, origin: "agent", prefer: "workspace" }
+    if (target.kind !== "browser-page") return open(target, options)
+    if (!globalSDK.capabilities.has("browser") || !platform.browserNative || !workbench.getPanel("browser"))
+      return { status: "unavailable", reason: "Native Browser presentation is unavailable." }
+    const owner = ownerKey()
+    const side = workbench.surface("side")
+    const revision = side.selectionRevision()
+    const current = () =>
+      !disposed &&
+      !options.signal?.aborted &&
+      options.canCommit?.() !== false &&
+      ownerKey() === owner &&
+      side.selectionRevision() === revision
+    try {
+      const capability = BrowserNativePresentationCapabilityResultSchema.safeParse(
+        await readNativeCapability(platform.browserNative),
+      )
+      if (!current()) return { status: "cancelled" }
+      if (
+        !capability.success ||
+        !capability.data.managedLocal ||
+        capability.data.error ||
+        capability.data.status !== "ready"
+      )
+        return { status: "unavailable", reason: "Native Browser presentation is unavailable." }
+      const routes: BrowserWorkbenchRoute[] = [
+        { mode: "scope", scopeID: sdk.scopeID, path_directory: params.dir ?? sdk.scopeID },
+      ]
+      if (params.id)
+        routes.push({
+          mode: "session",
+          scopeID: sdk.scopeID,
+          sessionID: params.id,
+          path_directory: params.dir ?? sdk.scopeID,
+        })
+      for (const route of routes) {
+        const catalog = await browserCatalog.get(route)
+        if (!current()) return { status: "cancelled" }
+        const page = catalog.store.session.pages.find((page) => page.id === target.pageId)
+        if (!page) continue
+        if (page.status !== "active")
+          return {
+            status: "unavailable",
+            reason: "The Browser page is not active. Viewing never resumes or recreates a page.",
+          }
+        const init = browserPageTab(page, catalog.route)
+        const tab = await workbench.openPanel("browser", {
+          intent: "agent",
+          activate: false,
+          canCommit: () =>
+            current() &&
+            catalog.store.session.pages.some((page) => page.id === target.pageId && page.status === "active"),
+          init: {
+            ...init,
+            state: { ...(init.state && typeof init.state === "object" ? init.state : {}), focusAddress: false },
+          },
+        })
+        if (!current()) return { status: "cancelled" }
+        if (!tab) return { status: "unavailable", reason: "The Browser page could not be selected." }
+        workbench.activateTab("side", tab.id, "agent")
+        return { status: "opened", view: { viewId: tab.id, surface: "side" } }
+      }
+      return { status: "unavailable", reason: "The Browser page does not exist in the current Scope or Session." }
+    } catch (error) {
+      if (!current()) return { status: "cancelled" }
+      return {
+        status: "unavailable",
+        reason: error instanceof Error ? error.message : "The Browser page is unavailable.",
+      }
+    }
+  }
+
   onMount(() => {
     onCleanup(
       plugins.resources.register((resource) => {
@@ -1252,6 +1362,7 @@ export function ResourceOpenProvider(props: ParentProps) {
 
   const controller = {
     open,
+    present,
     preview,
     openLabel,
     nativeLink,
@@ -1263,5 +1374,6 @@ export function ResourceOpenProvider(props: ParentProps) {
     openActivityDetail,
     isActivityDetailSelected,
   }
+  createWorkbenchViewExecutor(controller)
   return <BaseResourceOpenProvider value={controller}>{props.children}</BaseResourceOpenProvider>
 }

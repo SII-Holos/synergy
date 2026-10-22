@@ -40,6 +40,60 @@ function fixture() {
 const transient = () => Object.assign(new Error("getaddrinfo ETIMEOUT"), { code: "ETIMEOUT" })
 const signal = () => new AbortController().signal
 
+test("a shared cooldown exposes one immediate wake and removes it while the probe runs", async () => {
+  const { coordinator, advance } = fixture()
+  const first = await coordinator.acquire("connection", signal())
+  first.failure(transient())
+  first.release()
+  let retry: (() => boolean) | undefined
+  const next = coordinator.acquire("connection", signal(), {
+    onWait: (state) => {
+      retry = state?.retry
+    },
+  })
+  expect(retry?.()).toBe(true)
+  expect(retry?.()).toBe(false)
+  await advance(0)
+  const probe = await next
+  expect(retry).toBeUndefined()
+  probe.success()
+  probe.release()
+})
+
+test("immediate recovery bypasses only local cooldown and still admits one probe", async () => {
+  const { coordinator, advance } = fixture()
+  const first = await coordinator.acquire("connection", signal())
+  first.failure(transient())
+  first.release()
+  const probe = await coordinator.acquire("connection", signal(), { immediate: true })
+  const waits: Array<{ next?: number; retry?: () => boolean; error: unknown } | undefined> = []
+  const other = coordinator.acquire("connection", signal(), { onWait: (state) => waits.push(state) })
+  await advance(0)
+  expect(waits.at(-1)).toMatchObject({ error: { code: "ETIMEOUT" } })
+  expect(waits.at(-1)?.next).toBeUndefined()
+  expect(waits.at(-1)?.retry).toBeUndefined()
+  probe.success()
+  probe.release()
+  ;(await other).release()
+  expect(waits.at(-1)).toBeUndefined()
+})
+
+test("immediate recovery honors server cooldown", async () => {
+  const { coordinator, advance } = fixture()
+  const first = await coordinator.acquire("connection", signal())
+  first.failure(Object.assign(transient(), { responseHeaders: { "retry-after": "2" } }))
+  first.release()
+  let started = false
+  const waiting = coordinator.acquire("connection", signal(), { immediate: true }).then((lease) => {
+    started = true
+    return lease
+  })
+  await advance(1999)
+  expect(started).toBe(false)
+  await advance(1)
+  ;(await waiting).release()
+})
+
 test("a connection shares cooldown and admits only one recovery probe", async () => {
   const { coordinator, advance } = fixture()
   const first = await coordinator.acquire("connection", signal())

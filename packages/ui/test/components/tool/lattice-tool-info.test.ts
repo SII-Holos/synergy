@@ -9,7 +9,7 @@ describe("Lattice tool presentation", () => {
       { completed: 2, total: 5, currentStepTitle: "Ship UI" },
     )!
 
-    expect(info.icon).toBe("route")
+    expect(info.icon).toBe("waypoints")
     expect(typeof info.title).not.toBe("string")
     expect(info.subtitle).toBe("Ship UI")
     expect(info.args).toEqual(["2/5"])
@@ -39,7 +39,7 @@ describe("Lattice tool presentation", () => {
       { blueprintTitle: "Release Blueprint", source: "tool" },
     )!
 
-    expect(info.icon).toBe("circle-check")
+    expect(info.icon).toBe("waypoints")
     expect((info.title as { message?: string }).message).toBe("Select Blueprint")
     expect(info.subtitle).toBe("Release Blueprint")
     expect(info.args).toEqual(["Chat"])

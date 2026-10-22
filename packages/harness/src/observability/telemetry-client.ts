@@ -23,14 +23,17 @@ export namespace ObservabilityTelemetryClient {
     flushTimer: undefined as ReturnType<typeof setTimeout> | undefined,
     nextAckId: 0,
     dropped: 0,
+    uncertain: 0,
     lastError: undefined as string | undefined,
     currentInput: undefined as { dbPath: string; config: TelemetryProtocol.WorkerConfig } | undefined,
     pending: [] as TelemetryProtocol.BatchRow[],
-    sentBatches: [] as number[],
+    sentBatches: [] as Array<{ rows: number; observations: number }>,
+    beforeFlushHooks: new Set<() => void>(),
     ackWaiters: new Map<number, () => void>(),
     bufferedControls: [] as Array<() => void>,
     lastWorkerCommitted: 0,
     lastWorkerDropped: 0,
+    lastWorkerDroppedObservations: 0,
     statusMirror: {
       capExceededBytes: 0,
       maintenanceDeferred: false,
@@ -59,9 +62,20 @@ export namespace ObservabilityTelemetryClient {
     instanceState.pending.push(row)
     if (instanceState.pending.length >= MAX_PENDING) {
       const dropCount = Math.max(1, Math.floor(MAX_PENDING / 10))
-      instanceState.pending.splice(0, dropCount)
-      instanceState.dropped += dropCount
+      const dropped = instanceState.pending.splice(0, dropCount)
+      instanceState.dropped += dropped.reduce((total, row) => total + TelemetryProtocol.observationCount(row), 0)
     }
+    requestFlush()
+  }
+
+  export function beforeFlush(hook: () => void) {
+    runtimeState().beforeFlushHooks.add(hook)
+    return () => runtimeState().beforeFlushHooks.delete(hook)
+  }
+
+  export function requestFlush(): void {
+    const instanceState = runtimeState()
+    if (!instanceState.started) return
     if (!instanceState.flushTimer) {
       instanceState.flushTimer = setTimeout(flushPending, FLUSH_DELAY_MS)
       instanceState.flushTimer.unref()
@@ -71,6 +85,7 @@ export namespace ObservabilityTelemetryClient {
   export function flushPending(): void {
     const instanceState = runtimeState()
 
+    for (const hook of instanceState.beforeFlushHooks) hook()
     if (instanceState.flushTimer) {
       clearTimeout(instanceState.flushTimer)
       instanceState.flushTimer = undefined
@@ -85,7 +100,10 @@ export namespace ObservabilityTelemetryClient {
         chunk.push(instanceState.pending.shift()!)
         chunkBytes += rowBytes
       }
-      instanceState.sentBatches.push(chunk.length)
+      instanceState.sentBatches.push({
+        rows: chunk.length,
+        observations: chunk.reduce((total, row) => total + TelemetryProtocol.observationCount(row), 0),
+      })
       send({ type: "batch", rows: chunk })
     }
   }
@@ -189,12 +207,16 @@ export namespace ObservabilityTelemetryClient {
         await active.exited.catch(() => undefined)
       }
     }
-    instanceState.dropped +=
-      instanceState.pending.length + instanceState.sentBatches.reduce((total, rows) => total + rows, 0)
+    instanceState.dropped += instanceState.pending.reduce(
+      (total, row) => total + TelemetryProtocol.observationCount(row),
+      0,
+    )
+    instanceState.uncertain += instanceState.sentBatches.reduce((total, batch) => total + batch.observations, 0)
     instanceState.pending.length = 0
     instanceState.sentBatches.length = 0
     instanceState.lastWorkerCommitted = 0
     instanceState.lastWorkerDropped = 0
+    instanceState.lastWorkerDroppedObservations = 0
     if (instanceState.worker === active) {
       instanceState.worker = undefined
       instanceState.workerReady = false
@@ -207,8 +229,9 @@ export namespace ObservabilityTelemetryClient {
 
     return {
       pending: instanceState.pending.length,
-      unconfirmed: instanceState.sentBatches.reduce((total, rows) => total + rows, 0),
+      unconfirmed: instanceState.sentBatches.reduce((total, batch) => total + batch.rows, 0),
       dropped: instanceState.dropped,
+      uncertain: instanceState.uncertain,
       workerReady: instanceState.workerReady,
       restarts: instanceState.restarts,
       lastError: instanceState.lastError,
@@ -264,12 +287,11 @@ export namespace ObservabilityTelemetryClient {
         if (instanceState.worker !== processHandle) return
         instanceState.worker = undefined
         instanceState.workerReady = false
-        // Batches that left the queue but were never confirmed by this
-        // worker are lost: count them as dropped so diagnostics stay honest.
-        instanceState.dropped += instanceState.sentBatches.reduce((total, rows) => total + rows, 0)
+        instanceState.uncertain += instanceState.sentBatches.reduce((total, batch) => total + batch.observations, 0)
         instanceState.sentBatches.length = 0
         instanceState.lastWorkerCommitted = 0
         instanceState.lastWorkerDropped = 0
+        instanceState.lastWorkerDroppedObservations = 0
         failAllWaiters()
         if (!instanceState.started) return
         instanceState.restarts++
@@ -297,6 +319,7 @@ export namespace ObservabilityTelemetryClient {
         instanceState.failures = 0
         instanceState.lastWorkerCommitted = 0
         instanceState.lastWorkerDropped = 0
+        instanceState.lastWorkerDroppedObservations = 0
         flushPending()
         for (const control of instanceState.bufferedControls.splice(0)) control()
         break
@@ -318,6 +341,8 @@ export namespace ObservabilityTelemetryClient {
         )
         instanceState.lastWorkerCommitted = message.counters.committed
         instanceState.lastWorkerDropped = message.counters.dropped
+        instanceState.dropped += message.counters.droppedObservations - instanceState.lastWorkerDroppedObservations
+        instanceState.lastWorkerDroppedObservations = message.counters.droppedObservations
         break
     }
   }
@@ -331,12 +356,11 @@ export namespace ObservabilityTelemetryClient {
     let remaining = confirmed
     while (remaining > 0 && instanceState.sentBatches.length) {
       const head = instanceState.sentBatches[0]
-      if (head <= remaining) {
+      if (head.rows <= remaining) {
         instanceState.sentBatches.shift()
-        remaining -= head
+        remaining -= head.rows
       } else {
-        instanceState.sentBatches[0] = head - remaining
-        remaining = 0
+        break
       }
     }
   }

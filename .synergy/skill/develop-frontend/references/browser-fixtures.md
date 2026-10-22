@@ -4,6 +4,10 @@ Use standards-mode fixture documents for composed interaction tests. Include the
 
 CSS-only fixtures retain production cascade layers and shared focus styles. Assert the control's current surface or text cue after its real transition settles, separately from focus ownership. Model scrolling with the initiating user input, then await the native scroll receipt and resulting control state; assigning `scrollTop` alone does not release an explicit latest-follow lease.
 
+For compact action toolbars, keep a wide viewport and resize only the owning pane to verify container-based adaptation. Exercise real English, Chinese and expanded catalogs with production fonts in both themes; check heading/action separation and each target's bounds, not only document overflow. Hidden text must retain localized accessible names and focus/hover help. Tooltip wrappers participate in flex sizing, so preserve their non-shrinking hit areas while titles and metadata truncate.
+
+Attachment layout regressions must retain their production presentation purpose. Automatically discovered evidence renders inside compact tool activity, while deliverables use a separate gallery; an aligned deliverable fixture does not establish evidence alignment. Compare the actual card edge with prose and tool rows and check wrapping within the scroller.
+
 An opened Popover can become visible before its deferred initial focus lands. Before testing keyboard dismissal, assert that focus entered the popup; retain a separate close-focus assertion. Reopening from another action must exercise this same admission rather than relying on a fixed sleep or visibility alone.
 
 Separate SPA benchmark warm-up from visible-readiness timing. Track the current navigation's requests through completion before opening warm counters; document `networkidle` may already be satisfied from an earlier route. Keep first reads and repeated reads distinguishable, preserve failed samples and apply the same warm-up to baseline and candidate.

@@ -74,7 +74,9 @@ test("interactive source runs in an opaque frame and preserves parameters throug
   await setup()
   expect(await page.locator('[data-component="render-tool"]').count()).toBe(1)
   expect(await page.locator('[data-component="attachment-card"]').count()).toBe(1)
-  expect(await page.locator('[data-component="attachment-card"]').innerText()).toContain("visual.synergy.json")
+  const filename = page.locator('[data-slot="attachment-card-filename"]')
+  expect(await filename.textContent()).toBe("visual.synergy.json")
+  expect(await filename.getAttribute("title")).toBe("visual.synergy.json")
   expect(await page.locator("iframe").getAttribute("sandbox")).toBe("allow-scripts")
   await inline().getByRole("slider", { name: "Workers" }).fill("4")
   await inline().getByRole("slider", { name: "Workers" }).dispatchEvent("change")
@@ -651,11 +653,12 @@ test("native state adopts canonical updates received while a save response is pe
     await page.waitForFunction(
       () => document.querySelector<HTMLInputElement>('[data-render-node="seats"] input')?.value === "12",
     )
+    expect(await slider.inputValue()).toBe("12")
     await page.getByRole("button", { name: "Expand visual" }).click()
     const viewer = page.locator('[data-component="render-viewer"]')
-    expect(await slider.inputValue()).toBe("12")
     expect(await viewer.getByRole("slider", { name: "Seats" }).inputValue()).toBe("12")
     await viewer.getByRole("button", { name: "Close dialog" }).click()
+    expect(await slider.inputValue()).toBe("12")
   } finally {
     await page.evaluate(() =>
       (window as unknown as { __renderTest: { releaseWrites(): void } }).__renderTest.releaseWrites(),

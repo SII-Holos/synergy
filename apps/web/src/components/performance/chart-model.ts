@@ -264,7 +264,7 @@ export function formatDuration(value?: number): string {
 
 export function ratioToPercent(value?: number): number | undefined {
   if (value === undefined) return undefined
-  return value <= 1 ? value * 100 : value
+  return value * 100
 }
 
 function tooltipLabel(context: TooltipItem<"line">, datasets: ChartDatasetSpec[]) {

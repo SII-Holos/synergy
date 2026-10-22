@@ -59,6 +59,9 @@ import { ToolExecutor } from "./tool-executor"
 import type { ToolExecutorKind } from "./tool-scheduler"
 import { SecretMask } from "../secrets/mask"
 import { SecretResolve } from "../secrets/resolve"
+import { ProcessRegistry } from "../process/registry"
+import { ProcessInspection } from "../process/inspection"
+import { ExecutionCapacity } from "./execution-capacity"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -81,6 +84,10 @@ export namespace ToolResolver {
     toolName: string
     cwd?: string
     scopeID: string
+    isCurrent(): boolean
+    executing: boolean
+    waits: Set<{ reason: "child" | "authorization" | "capacity" }>
+    owners: Set<() => boolean | undefined>
   }
 
   const runtimeState = RuntimeContext.state(() => ({
@@ -88,6 +95,48 @@ export namespace ToolResolver {
     sweepTimer: null as ReturnType<typeof setInterval> | null,
   }))
   const SWEEP_INTERVAL_MS = 5_000
+
+  function traceActivity(entry: ActiveTraceEntry, now = Date.now()) {
+    const waits = [...entry.waits]
+    const waiting =
+      waits.findLast((wait) => wait.reason !== "capacity")?.reason ??
+      waits.at(-1)?.reason ??
+      (entry.executing ? undefined : "authorization")
+    const owners = [...entry.owners].map((alive) => {
+      try {
+        return alive()
+      } catch {
+        return undefined
+      }
+    })
+    const ownerAlive = owners.some((alive) => alive === true)
+      ? true
+      : owners.length && owners.every((alive) => alive === false)
+        ? false
+        : undefined
+    return {
+      phase: entry.phase,
+      executionPhase:
+        waiting === "child"
+          ? "waiting_background"
+          : waiting === "authorization"
+            ? "authorizing_tools"
+            : waiting === "capacity"
+              ? "queued_tools"
+              : "running_tools",
+      waitReason: waiting ?? "none",
+      ownerLiveness: ownerAlive === undefined ? "unknown" : ownerAlive ? "alive" : "unresponsive",
+      activityState: waiting
+        ? "waiting"
+        : ownerAlive === true
+          ? "running"
+          : now - entry.lastActivity >= entry.stalledMs
+            ? ownerAlive === false
+              ? "no_progress"
+              : "unknown"
+            : "recent_progress",
+    }
+  }
 
   function ensureSweepTimer() {
     const instanceState = runtimeState()
@@ -106,12 +155,14 @@ export namespace ToolResolver {
       return
     }
     for (const entry of instanceState.activeTraces.values()) {
+      if (!entry.isCurrent()) continue
       const traceId = entry.traceId
       const idleMs = now - entry.lastActivity
+      const observation = traceActivity(entry, now)
 
       if (now - entry.lastHeartbeat >= TOOL_HEARTBEAT_MS) {
         entry.lastHeartbeat = now
-        ObservabilitySpans.heartbeat(entry.span, { phase: entry.phase })
+        ObservabilitySpans.heartbeat(entry.span, observation)
         void Observability.emit("tool.heartbeat", {
           traceId,
           spanId: entry.span?.spanId,
@@ -123,16 +174,16 @@ export namespace ToolResolver {
           cwd: entry.cwd,
           scopeID: entry.scopeID,
           data: {
-            phase: entry.phase,
+            ...observation,
             elapsedMs: now - entry.startedAt,
             idleMs,
           },
         }).catch(() => {})
       }
 
-      if (!entry.stalled && idleMs >= entry.stalledMs) {
+      if (!entry.stalled && observation.activityState === "no_progress") {
         entry.stalled = true
-        ObservabilitySpans.markStalled(entry.span, { phase: entry.phase, idleMs })
+        ObservabilitySpans.markStalled(entry.span, { ...observation, idleMs })
         void Observability.emit("tool.stalled", {
           traceId,
           spanId: entry.span?.spanId,
@@ -145,7 +196,7 @@ export namespace ToolResolver {
           scopeID: entry.scopeID,
           level: "warn",
           data: {
-            phase: entry.phase,
+            ...observation,
             elapsedMs: now - entry.startedAt,
             idleMs,
             thresholdMs: entry.stalledMs,
@@ -169,15 +220,15 @@ export namespace ToolResolver {
           severity: "warning",
           module: "tool",
           title: "Tool execution stalled",
-          message: `${entry.toolName} has not reported activity for ${idleMs}ms`,
-          recommendation: "Inspect the tool trace and owning tool implementation.",
+          message: `${entry.toolName} has no responsive execution owner and no observed progress for ${idleMs}ms`,
+          recommendation: "Inspect the tool trace and execution owner; this observation does not establish a deadlock.",
           traceId,
           spanId: entry.span?.spanId,
           sessionID: entry.sessionID,
           messageID: entry.messageID,
           callID: entry.callID,
           scopeID: entry.scopeID,
-          evidence: { idleMs, thresholdMs: entry.stalledMs, tool: entry.toolName },
+          evidence: { idleMs, thresholdMs: entry.stalledMs, tool: entry.toolName, ownerAlive: false },
         })
       }
     }
@@ -451,6 +502,15 @@ export namespace ToolResolver {
     const instanceState = runtimeState()
 
     const startedAt = Date.now()
+    const lease = SessionManager.getRuntime(input.sessionID)?.owner?.lease
+    const rootID = input.processor.message.rootID ?? input.processor.message.parentID
+    let closed = false
+    const isCurrent = () => {
+      if (closed || ctx.abort.aborted) return false
+      if (!lease) return true
+      const owner = SessionManager.getRuntime(input.sessionID)?.owner
+      return owner?.lease === lease && owner.rootID === rootID && owner.phase !== "stopping"
+    }
     let phase = "start"
     let lastActivity = startedAt
     const stalledMs = await stalledToolMs()
@@ -466,7 +526,7 @@ export namespace ToolResolver {
       messageID: input.processor.message.id,
       callID: ctx.callID,
       tool: toolName,
-      attributes: { tool: toolName },
+      attributes: { tool: toolName, executionPhase: "authorizing_tools", activityState: "waiting" },
     })
     const traceId = span?.traceId ?? Observability.traceId("tool")
     const activeTraceKey = span?.spanId ?? Observability.traceId("active_tool")
@@ -521,6 +581,33 @@ export namespace ToolResolver {
       toolName,
       cwd,
       scopeID,
+      isCurrent,
+      executing: false,
+      waits: new Set(),
+      owners: new Set(),
+    }
+    ctx.execution = {
+      progress() {
+        if (!isCurrent()) return
+        entry.lastActivity = Date.now()
+        ObservabilitySpans.activity(span, traceActivity(entry))
+      },
+      waiting(reason) {
+        const wait = { reason }
+        if (isCurrent()) {
+          entry.waits.add(wait)
+          ctx.execution?.progress()
+        }
+        return () => {
+          if (entry.waits.delete(wait)) ctx.execution?.progress()
+        }
+      },
+      owner(alive) {
+        if (isCurrent()) entry.owners.add(alive)
+        return () => {
+          entry.owners.delete(alive)
+        }
+      },
     }
     instanceState.activeTraces.set(activeTraceKey, entry)
     ensureSweepTimer()
@@ -529,12 +616,14 @@ export namespace ToolResolver {
       traceId,
       span,
       async phase(type, nextPhase, data, level) {
+        if (!isCurrent()) return
         const previousPhase = phase
         phase = nextPhase
         const now = Date.now()
         entry.phase = nextPhase
+        if (type === "tool.execution.started" || type === "tool.execute.start") entry.executing = true
         entry.lastActivity = now
-        ObservabilitySpans.activity(span, { phase: nextPhase })
+        ObservabilitySpans.activity(span, traceActivity(entry, now))
         ObservabilityMetrics.record({
           name: "tool.phase.duration",
           value: now - lastActivity,
@@ -552,6 +641,8 @@ export namespace ToolResolver {
         await emit(type, data, level)
       },
       async end(data) {
+        if (closed) return
+        closed = true
         phase = "end"
         lastActivity = Date.now()
         entry.lastActivity = lastActivity
@@ -559,6 +650,8 @@ export namespace ToolResolver {
         ObservabilitySpans.end(span, { attributes: data })
       },
       async error(error, data) {
+        if (closed) return
+        closed = true
         phase = "error"
         lastActivity = Date.now()
         entry.lastActivity = lastActivity
@@ -586,6 +679,9 @@ export namespace ToolResolver {
         ObservabilitySpans.end(span, { status: "error", error, attributes: data })
       },
       dispose() {
+        closed = true
+        entry.waits.clear()
+        entry.owners.clear()
         instanceState.activeTraces.delete(activeTraceKey)
         if (instanceState.activeTraces.size === 0) stopSweepTimer()
       },
@@ -655,6 +751,7 @@ export namespace ToolResolver {
     await input.processor.updateToolCallState(ctx.callID, {
       input: args,
       ...state,
+      onProgress: ctx.execution?.progress,
     })
   }
 
@@ -1135,7 +1232,30 @@ export namespace ToolResolver {
         workBrief: match?.workBrief,
         inputImages: () => input.processor.inputImages(options.toolCallId),
         captureResult: RolloutTool.capture,
-        openProcessEvidence: RolloutTool.openProcess,
+        async openProcessEvidence(id) {
+          const writer = await RolloutTool.openProcess(id)
+          const release = ctx.execution?.owner(() => {
+            const process = ProcessRegistry.get(id)
+            if (!process) return undefined
+            if (process.exited || process.exitObservedAt !== undefined) return false
+            if (process.child?.alive) return process.child.alive()
+            return process.pid === undefined ? undefined : ProcessInspection.alive(process.pid)
+          })
+          return {
+            async append(channel, bytes) {
+              await writer.append(channel, bytes)
+              if (bytes.length) ctx.execution?.progress()
+            },
+            async finish(completion) {
+              try {
+                await writer.finish(completion)
+                ctx.execution?.progress()
+              } finally {
+                release?.()
+              }
+            },
+          }
+        },
         async recordActivity(evidence) {
           const { RolloutArtifact } = await import("./rollout/artifact")
           const { text, ...facts } = evidence
@@ -1282,6 +1402,15 @@ export namespace ToolResolver {
             throw error
           }
         },
+      }
+      const ask = ctx.ask
+      ctx.ask = async (request) => {
+        const finishWaiting = ctx.execution?.waiting("authorization")
+        try {
+          await ask(request)
+        } finally {
+          finishWaiting?.()
+        }
       }
       return ctx
     }
@@ -1641,16 +1770,20 @@ export namespace ToolResolver {
               if (runtimeInput.session) {
                 SessionManager.assertExecutionContext(runtimeInput.session, `tool resolver:${item.id}`)
               }
-              const workspaceInfo =
-                item.requiresWorkspace !== false || item.requiresExecution ? ScopeContext.current.workspace : null
-              if (item.requiresExecution || item.requiresWorkspace) {
+              const requested = item.resourceNeeds?.(args)
+              const needs = {
+                workspace: item.requiresWorkspace === true || requested?.workspace === true,
+                execution: item.requiresExecution ?? requested?.execution,
+              }
+              const workspaceInfo = needs.workspace || needs.execution ? ScopeContext.current.workspace : null
+              if (needs.execution || needs.workspace) {
                 resources = await EnvironmentResources.select({
                   scopeID: ScopeContext.current.scope.id,
                   ownerID: ctx.sessionID,
                   environmentID: ctx.environmentID,
                   workspaceID: runtimeInput.session?.workspaceID ?? workspaceInfo?.id,
                   workspaceGeneration: workspaceInfo?.generation,
-                  needs: { execution: item.requiresExecution, workspace: item.requiresWorkspace },
+                  needs,
                   signal: ctx.abort,
                 })
                 ctx.resources = resources
@@ -1864,7 +1997,14 @@ export namespace ToolResolver {
               const executed =
                 item.id === "apply_patch"
                   ? await item.execute(secrets.args, toolCtx)
-                  : await settleExecutionOnAbort(() => item.execute(secrets.args, toolCtx), combinedAbort)
+                  : await settleExecutionOnAbort(
+                      () =>
+                        ExecutionCapacity.observeWait(
+                          () => ctx.execution!.waiting("capacity"),
+                          () => item.execute(secrets.args, toolCtx),
+                        ),
+                      combinedAbort,
+                    )
               const result = (await SecretMask.transformResult(
                 executed,
                 item.id === "apply_patch" ? undefined : combinedAbort,
@@ -2090,6 +2230,7 @@ export namespace ToolResolver {
         const schema = entry.inputSchema
         result.push({
           id: key,
+          display: entry.display,
           exposure,
           description:
             entry.presentation?.description ??
@@ -2216,7 +2357,11 @@ export namespace ToolResolver {
                     tool: key,
                   })
                   const rawResult = await settleExecutionOnAbort(
-                    () => execute(mcpSecrets.args as Record<string, any>, { ...opts, abortSignal: combinedAbort }),
+                    () =>
+                      ExecutionCapacity.observeWait(
+                        () => ctx.execution!.waiting("capacity"),
+                        () => execute(mcpSecrets.args as Record<string, any>, { ...opts, abortSignal: combinedAbort }),
+                      ),
                     combinedAbort,
                   )
                   await SecretMask.transformResult(rawResult as Record<string, any>, combinedAbort)
@@ -2470,6 +2615,7 @@ export namespace ToolResolver {
   }
 
   export interface AutoExpandedTool {
+    display?: ToolDisplay
     tool: AITool
     executor: ToolExecutorKind
     inputSchema?: JSONSchema7
@@ -2511,7 +2657,9 @@ export namespace ToolResolver {
   export async function runtimeToolFor(
     input: Input,
     toolName: string,
-  ): Promise<{ tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7 } | undefined> {
+  ): Promise<
+    { tool: AITool; executor: ToolExecutorKind; inputSchema?: JSONSchema7; display?: ToolDisplay } | undefined
+  > {
     using _ = log.time("runtimeToolFor")
     const stored = input.session ?? (await Session.get(input.sessionID).catch(() => undefined))
     const session = stored ? await SessionExecutionOwners.currentSession(stored) : undefined
@@ -2528,6 +2676,7 @@ export namespace ToolResolver {
       tool: withExecutionDeduplication(runtimeInput, runtimeTool, item.id),
       executor: item.executor ?? ToolExecutor.classify(item.id, item.source),
       inputSchema: item.inputSchema,
+      display: item.display,
     }
   }
 

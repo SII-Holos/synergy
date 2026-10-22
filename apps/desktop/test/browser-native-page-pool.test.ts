@@ -280,6 +280,7 @@ describe("Browser native page pool", () => {
     const initial = input("initial")
     const children = new Set<MockWebContentsView>()
     const window = {
+      isDestroyed: () => false,
       contentView: {
         addChildView: (view: MockWebContentsView) => children.add(view),
         removeChildView: (view: MockWebContentsView) => children.delete(view),
@@ -697,4 +698,33 @@ test("records correlated native stages without website secrets and updates the b
   ).toBe(true)
   expect(JSON.stringify(stages)).not.toMatch(/example|secret|private|token=/)
   await page.destroy()
+})
+
+test.each([false, true])("detaches from a destroyed parent (page destroyed: %s)", async (pageDestroyed) => {
+  const pool = new BrowserNativePagePool()
+  const initial = input("closed-parent")
+  let destroyed = false
+  const window = {
+    isDestroyed: () => destroyed,
+    get contentView() {
+      if (destroyed) throw new Error("Object has been destroyed")
+      return { addChildView() {}, removeChildView() {} }
+    },
+  }
+  await pool.create(initial)
+  const view = pool.attach(window as never, initial.ownerKey, initial.page.id)
+  const bounds = view.getBounds.bind(view)
+  view.getBounds = () => {
+    if (view.webContents.isDestroyed()) throw new Error("Object has been destroyed")
+    return bounds()
+  }
+  if (pageDestroyed) views.at(-1)!.webContents.destroyed = true
+  destroyed = true
+  try {
+    expect(() => pool.detach(window as never, initial.ownerKey, initial.page.id)).not.toThrow()
+    expect(nativeViewports.at(-1)).toEqual(pageDestroyed ? null : { width: 1280, height: 720 })
+    expect(() => pool.detach(window as never, initial.ownerKey, initial.page.id)).not.toThrow()
+  } finally {
+    await pool.destroy()
+  }
 })

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { BlueprintLoopInfo, Session } from "@ericsanchezok/synergy-sdk/client"
-import { resolveLoopDisplay, resolveLoopHistoryHint } from "../../../src/components/prompt-input/loop-status"
+import { resolveLoopDisplay } from "../../../src/components/prompt-input/loop-status"
 
 const loop: BlueprintLoopInfo = {
   id: "loop",
@@ -13,6 +13,12 @@ const loop: BlueprintLoopInfo = {
   auditAgent: "supervisor",
   time: { created: 1, updated: 2 },
 }
+const blueprintBinding: NonNullable<Session["blueprint"]> = {
+  loopID: loop.id,
+  source: "user",
+  loopRole: "execution",
+  phase: "running",
+}
 const light = (patch: object = {}): Session["workflow"] => ({ kind: "lightloop", instructions: "Acceptance", ...patch })
 const paused = { type: "paused", reason: "aborted", since: 1 } as const
 const stopRequest = {
@@ -22,122 +28,102 @@ const stopRequest = {
   requesterMessageID: "msg",
 }
 
-describe("Loop presentation follows domain terminal state", () => {
-  test("Light Loop keeps its goal as the label instead of execution or review summaries", () => {
+describe("Loop presentation follows current attachments", () => {
+  test.each(["running", "auditing", "completed", "failed", "cancelled"] as const)(
+    "an unbound Blueprint with cached %s metadata leaves no composer row",
+    (status) => {
+      expect(resolveLoopDisplay({ blueprint: { ...loop, status }, status: { type: "idle" } })).toBeUndefined()
+    },
+  )
+  test.each(["completed", "failed", "cancelled", "timed_out", "iteration_exhausted"] as const)(
+    "an ended Light Loop with a %s result leaves no composer row",
+    (status) => {
+      const historical = {
+        lightTerminal: { status, instructions: "Previous task", error: "Evidence", createdAt: 4 },
+        status: { type: "idle" } as const,
+      }
+      expect(resolveLoopDisplay(historical)).toBeUndefined()
+    },
+  )
+  test.each(["completed", "failed", "cancelled"] as const)(
+    "Blueprint %s metadata cannot replace the Session binding as visibility authority",
+    (status) => {
+      expect(resolveLoopDisplay({ blueprint: { ...loop, status }, blueprintBinding, status: paused })).toMatchObject({
+        kind: "blueprint",
+        stage: status,
+        terminal: true,
+      })
+      expect(resolveLoopDisplay({ blueprint: { ...loop, status }, status: paused })).toBeUndefined()
+    },
+  )
+  test("Light Loop keeps its goal while bound, including idle and interrupted execution", () => {
     const instructions = "Repair missing final replies after background generation and preserve the history anchor"
-    const reviewing = light({ instructions })
-    expect(resolveLoopDisplay({ workflow: reviewing, status: { type: "busy" } })).toMatchObject({
-      title: instructions,
-      stage: "running",
-    })
+    for (const status of [{ type: "busy" }, { type: "idle" }, paused] as const)
+      expect(resolveLoopDisplay({ workflow: light({ instructions }), status })).toMatchObject({
+        title: instructions,
+        terminal: false,
+        stage: status.type === "paused" ? "paused" : status.type === "idle" ? "bound" : "running",
+      })
     const revised = instructions + " across reconnects"
     expect(resolveLoopDisplay({ workflow: light({ instructions: revised }), status: paused })?.title).toBe(revised)
-    expect(
-      resolveLoopDisplay({
-        lightTerminal: { instructions: revised, status: "completed", createdAt: 3 },
-        status: { type: "idle" },
-      })?.title,
-    ).toBe(revised)
   })
-  test("Blueprint keeps the associated note title through binding, review and completion", () => {
+  test("a pending Blueprint choice is not a binding; bound states keep the note title", () => {
     const note = { id: "note", title: "Message flow: history loading and session switching" }
-    expect(
-      resolveLoopDisplay({
-        localBlueprint: { type: "pending", noteID: note.id, title: note.title, runMode: "current" },
-        status: { type: "idle" },
-      }),
-    ).toMatchObject({ title: note.title, noteID: note.id })
-    for (const status of ["running", "auditing", "completed"] as const)
+    const pending = {
+      localBlueprint: { type: "pending", noteID: note.id, title: note.title, runMode: "current" },
+      status: { type: "idle" } as const,
+    }
+    expect(resolveLoopDisplay(pending)).toBeUndefined()
+    for (const status of ["armed", "running", "auditing"] as const)
       expect(
         resolveLoopDisplay({
-          blueprint: { ...loop, noteID: note.id, title: note.title, status, stopRequest, summary: "Review passed" },
+          blueprint: { ...loop, noteID: note.id, title: note.title, status, stopRequest },
+          blueprintBinding,
           status: { type: "idle" },
         }),
-      ).toMatchObject({ title: note.title, noteID: note.id })
+      ).toMatchObject({ title: note.title, noteID: note.id, terminal: false })
   })
-  test("loaded metadata identifies a result and its reviewer without reading text", () => {
-    const messages = [
-      { id: "old", metadata: { source: "blueprint_loop_start", loopID: "old-loop" } },
-      { id: "start", metadata: { workflow: "lightloop" } },
-      { id: "approved", metadata: { source: "light_loop_approved", sourceSessionID: "reviewer" } },
-      { id: "new", metadata: { source: "blueprint_loop_start", loopID: "new-loop" } },
-      { id: "unrelated", metadata: { source: "render", loopID: "not-a-loop" } },
-    ]
-    expect(resolveLoopHistoryHint(messages)).toEqual({
-      blueprintID: "new-loop",
-      light: "approved",
-      lightReview: "reviewer",
-    })
-    expect(resolveLoopHistoryHint([{ id: "ordinary" }])).toEqual({
-      blueprintID: undefined,
-      light: undefined,
-      lightReview: undefined,
-    })
-  })
-  test.each(["blueprint"] as const)("%s does not mistake an idle reviewer or paused run for completion", (kind) => {
-    const input =
-      kind === "blueprint"
-        ? { blueprint: { ...loop, status: "auditing" as const } }
-        : { workflow: light({ stopRequest }) }
+  test("Blueprint does not mistake an idle reviewer or interrupted run for completion", () => {
+    const input = { blueprint: { ...loop, status: "auditing" as const }, blueprintBinding }
     expect(resolveLoopDisplay({ ...input, status: { type: "idle" } })?.stage).toBe("auditing")
     expect(resolveLoopDisplay({ ...input, status: paused })?.stage).toBe("paused")
   })
-  test.each(["blueprint"] as const)(
-    "%s shows rejected work, reason, later review and authoritative approval",
-    (kind) => {
-      const rejected =
-        kind === "blueprint"
-          ? { blueprint: { ...loop, audit: { attempts: 1, lastReason: "Missing failure recovery" } } }
-          : { workflow: light({ review: { attempts: 1, lastReason: "Missing failure recovery" } }) }
-      expect(resolveLoopDisplay({ ...rejected, status: { type: "busy" } })).toMatchObject({
-        stage: "rework",
-        reason: "Missing failure recovery",
-        terminal: false,
-      })
-      const reviewing =
-        kind === "blueprint"
-          ? { blueprint: { ...rejected.blueprint!, status: "auditing" as const } }
-          : { workflow: light({ review: { attempts: 1, lastReason: "Missing failure recovery" }, stopRequest }) }
-      expect(resolveLoopDisplay({ ...reviewing, status: { type: "busy" } })?.stage).toBe("auditing")
-      const completed =
-        kind === "blueprint"
-          ? { blueprint: { ...loop, status: "completed" as const, summary: "Recovery verified" } }
-          : { lightTerminal: { instructions: "Acceptance", status: "completed" as const, createdAt: 3 } }
-      expect(resolveLoopDisplay({ ...completed, status: paused })).toMatchObject({ stage: "completed", terminal: true })
-    },
-  )
-  test.each(["failed", "cancelled", "timed_out", "iteration_exhausted"] as const)(
-    "keeps %s distinct from approval",
-    (status) => {
-      expect(
-        resolveLoopDisplay({
-          lightTerminal: { status, instructions: "task", error: "Evidence", createdAt: 4 },
-          status: { type: "idle" },
-        }),
-      ).toMatchObject({ stage: status, reason: "Evidence", terminal: true })
-    },
-  )
-  test("a new binding wins over an older result", () => {
+  test("Blueprint keeps active rejection feedback and later review accessible", () => {
+    const rejected = { ...loop, audit: { attempts: 1, lastReason: "Missing failure recovery" } }
+    expect(resolveLoopDisplay({ blueprint: rejected, blueprintBinding, status: { type: "busy" } })).toMatchObject({
+      stage: "rework",
+      reason: "Missing failure recovery",
+      terminal: false,
+    })
     expect(
       resolveLoopDisplay({
-        localBlueprint: { type: "pending", noteID: "new", title: "Next task", runMode: "current" },
-        blueprint: { ...loop, status: "failed" },
-        status: { type: "idle" },
-      }),
-    ).toMatchObject({ stage: "bound", title: "Next task", pending: true })
-    expect(
-      resolveLoopDisplay({
-        workflow: light(),
-        lightTerminal: { status: "failed", instructions: "old", createdAt: 9 },
+        blueprint: { ...rejected, status: "auditing" },
+        blueprintBinding,
         status: { type: "busy" },
       }),
-    ).toMatchObject({ stage: "running", title: "Acceptance" })
+    ).toMatchObject({ stage: "auditing", terminal: false })
+  })
+  test("an unavailable metadata read belongs only to a current binding", () => {
+    expect(resolveLoopDisplay({ blueprintUnavailable: true, status: { type: "idle" } })).toBeUndefined()
     expect(
-      resolveLoopDisplay({
-        blueprintBinding: { loopID: "new", source: "user", loopRole: "execution", phase: "running" },
-        lightTerminal: { status: "completed", instructions: "old", createdAt: 9 },
-        status: { type: "busy" },
-      }),
-    ).toMatchObject({ kind: "blueprint", terminal: false })
+      resolveLoopDisplay({ blueprint: loop, blueprintBinding, blueprintUnavailable: true, status: paused }),
+    ).toMatchObject({ stage: "unavailable", title: loop.title, terminal: false })
+  })
+  test("pending choices never create a row; only the current Session binding can", () => {
+    const previous = { blueprint: { ...loop, status: "failed" as const }, status: { type: "idle" } as const }
+    const pendingBlueprint = {
+      ...previous,
+      localBlueprint: { type: "pending", noteID: "new", title: "Next task", runMode: "current" },
+    }
+    const pendingLight = { ...previous, lightPending: true }
+    expect(resolveLoopDisplay(pendingBlueprint)).toBeUndefined()
+    expect(resolveLoopDisplay(pendingLight)).toBeUndefined()
+    expect(resolveLoopDisplay({ ...previous, workflow: light(), status: { type: "busy" } })).toMatchObject({
+      stage: "running",
+      title: "Acceptance",
+    })
+    expect(resolveLoopDisplay({ ...previous, blueprintBinding: { ...blueprintBinding, loopID: "new" } })).toMatchObject(
+      { kind: "blueprint", title: "", stage: "bound", terminal: false },
+    )
   })
 })

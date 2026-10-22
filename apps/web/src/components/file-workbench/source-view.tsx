@@ -153,12 +153,13 @@ export function FileSourceView(props: {
         }),
       })
     }
-    editor.setSelection(range)
+    if (request.origin !== "agent" || !host.contains(document.activeElement)) editor.setSelection(range)
     editor.revealRangeInCenter(range)
     if (
-      document.activeElement === document.body ||
-      host.contains(document.activeElement) ||
-      document.activeElement === request.focusTarget?.()
+      request.origin !== "agent" &&
+      (document.activeElement === document.body ||
+        host.contains(document.activeElement) ||
+        document.activeElement === request.focusTarget?.())
     )
       editor.focus()
   })

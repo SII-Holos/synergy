@@ -221,3 +221,7 @@ Agents never receive the token and cannot run `gh`, `git push`, or `git remote` 
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
 - GitHub is a Channel endpoint: it connects a GitHub App installation through outbound API polling (no inbound webhook), translating repository events into agentic Sessions and comments.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.
+
+## Testing a model account
+
+Provider settings distinguish saved configuration from an observed successful model request. After saving account and credential changes, Test connection sends a short request using the saved endpoint and an available text model. The result shows the model and elapsed time, or an authentication, quota, model, network or timeout failure. The test can consume a small provider charge and creates no chat. Editing the account invalidates the displayed result.

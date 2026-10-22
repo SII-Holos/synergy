@@ -6,6 +6,8 @@ import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
 import { MessageV2 } from "../../src/session/message-v2"
+import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { SessionUsage } from "../../src/session/usage"
 import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -38,6 +40,50 @@ function followUpMail(sessionID: string, sourceSessionID: string, text: string) 
       },
     ],
     metadata: { source: "session_send", sourceSessionID },
+  }
+}
+
+function retentionClock() {
+  let elapsed = 0
+  const timers = new Map<ReturnType<typeof setTimeout>, { deadline: number; action: () => void }>()
+  const native = setTimeout
+  const nativeClear = clearTimeout
+  const observer = spyOn(globalThis, "setTimeout").mockImplementation(
+    new Proxy(native, {
+      apply(target, receiver, args) {
+        if (args[1] !== 30_000 && args[1] !== 300_000) return Reflect.apply(target, receiver, args)
+        const timer = native(() => {}, 2_147_483_647)
+        timer.unref()
+        timers.set(timer, {
+          deadline: elapsed + args[1],
+          action: () => Reflect.apply(args[0], receiver, args.slice(2)),
+        })
+        return timer
+      },
+    }),
+  )
+  const cleared = spyOn(globalThis, "clearTimeout").mockImplementation(
+    new Proxy(nativeClear, {
+      apply(target, receiver, args) {
+        timers.delete(args[0])
+        return Reflect.apply(target, receiver, args)
+      },
+    }),
+  )
+  return {
+    count: () => timers.size,
+    advanceTo(time: number) {
+      elapsed = time
+      for (const [handle, timer] of [...timers].filter(([, timer]) => timer.deadline <= time)) {
+        clearTimeout(handle)
+        timer.action()
+      }
+    },
+    [Symbol.dispose]() {
+      for (const timer of timers.keys()) clearTimeout(timer)
+      cleared.mockRestore()
+      observer.mockRestore()
+    },
   }
 }
 
@@ -159,6 +205,170 @@ describe("Cortex cancellation fences queued follow-ups", () => {
       mock.restore()
     }),
   )
+
+  test.each(["none", "notification", "settlement"] as const)(
+    "terminal retention survives %s persistence failure and repeated cancellation",
+    runtime.bind(async (fault) => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "terminal retention" })
+          const prompt = "Complete instructions. ".repeat(300)
+          const task = await Cortex.prepare({
+            description: "Retained task",
+            prompt,
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_terminal_retention",
+            notifyParentOnComplete: fault === "notification",
+          })
+          SessionManager.registerChildRuntime(task.sessionID)
+          const failure =
+            fault === "notification"
+              ? new RolloutRecordingError({ message: "injected notification write failure" })
+              : new Error("injected settlement write failure")
+          let failures = 0
+          const realWrite = Storage.write
+          using write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            const notification = fault === "notification" && key[2] === parent.id && key[3] === "inbox"
+            const settlement =
+              fault === "settlement" &&
+              key[2] === task.sessionID &&
+              key[3] === "info" &&
+              (value as Session.Info).cortex?.settledAt !== undefined
+            if (notification || settlement) {
+              failures++
+              expect(Cortex.get(task.id)?.status).toBe("cancelled")
+              throw failure
+            }
+            return realWrite(key, value)
+          })
+          using clock = retentionClock()
+          if (fault === "none") await Cortex.cancel(task.id)
+          else if (fault === "notification") await expect(Cortex.cancel(task.id)).rejects.toBe(failure)
+          else
+            await expect(Cortex.cancel(task.id)).rejects.toMatchObject({
+              name: "RolloutRecordingError",
+              cause: failure,
+            })
+          expect(failures).toBe(fault === "none" ? 0 : 1)
+          expect(Cortex.get(task.id)?.prompt).toBe(prompt)
+          expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
+          const completedAt = Cortex.get(task.id)?.completedAt
+          await Cortex.cancel(task.id)
+          expect(clock.count()).toBe(2)
+          clock.advanceTo(29_999)
+          expect(Cortex.get(task.id)?.prompt).toBe(prompt)
+          expect(Cortex.get(task.id)?.progress).toBeDefined()
+          clock.advanceTo(30_000)
+          expect(Cortex.get(task.id)?.prompt).toHaveLength(4096)
+          expect(Cortex.get(task.id)?.progress).toBeUndefined()
+          expect((await Cortex.getVisibleTaskForOutput(parent.id, task.id))?.prompt).toBe(prompt)
+          clock.advanceTo(299_999)
+          expect(Cortex.get(task.id)?.status).toBe("cancelled")
+          expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
+          const owner = fault === "none" ? SessionManager.acquire(task.sessionID) : undefined
+          clock.advanceTo(300_000)
+          if (owner) {
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            expect(SessionManager.getRuntime(task.sessionID)?.owner?.lease).toBe(owner)
+            await SessionManager.release(owner, { requestNextWork: false })
+            clock.advanceTo(330_000)
+          }
+          expect(Cortex.get(task.id)).toBeUndefined()
+          expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
+          expect(await Cortex.getVisibleTaskForOutput(parent.id, task.id)).toMatchObject({
+            prompt,
+            status: "cancelled",
+            completedAt,
+          })
+        },
+      })
+    }),
+  )
+
+  test("concurrent terminal cleanup waits for finalization and releases capacity once", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({ title: "concurrent terminal retention" })
+          const task = await Cortex.prepare({
+            description: "Concurrent cancellation",
+            prompt: "work",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_concurrent_terminal_retention",
+            notifyParentOnComplete: false,
+            model: { providerID: "test-provider", modelID: "test-model" },
+          })
+          const started = Promise.withResolvers<void>()
+          const execution = Promise.withResolvers<void>()
+          using invoke = spyOn(SessionInvoke, "invokeInternal").mockImplementation(() => {
+            started.resolve()
+            return execution.promise.then(() => {
+              throw new DOMException("Task stopped", "AbortError")
+            })
+          })
+          await Cortex.start(task.id)
+          await started.promise
+          expect(CortexConcurrency.globalStatus().running).toBe(1)
+          using released = spyOn(CortexConcurrency, "release")
+          const held = Promise.withResolvers<void>()
+          const release = Promise.withResolvers<void>()
+          let terminalWrites = 0
+          const realUsage = SessionUsage.read
+          using usage = spyOn(SessionUsage, "read").mockImplementation(async (...args) => {
+            const result = await realUsage(...args)
+            held.resolve()
+            await release.promise
+            return result
+          })
+          const realWrite = Storage.write
+          const failure = new RolloutRecordingError({ message: "injected concurrent terminal write failure" })
+          using write = spyOn(Storage, "write").mockImplementation(async (key, value) => {
+            if (
+              key[2] === task.sessionID &&
+              key[3] === "info" &&
+              (value as Session.Info).cortex?.status === "cancelled"
+            ) {
+              terminalWrites++
+              if (terminalWrites === 1) throw failure
+            }
+            return realWrite(key, value)
+          })
+          using clock = retentionClock()
+          const first = Cortex.cancel(task.id)
+          await held.promise
+          const second = Cortex.cancel(task.id).catch((error: unknown) => error)
+          let scheduledBeforeRelease = 0
+          try {
+            expect(await second).toBe(failure)
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            scheduledBeforeRelease = clock.count()
+            clock.advanceTo(300_000)
+            expect(Cortex.get(task.id)?.status).toBe("cancelled")
+            expect(SessionManager.getRuntime(task.sessionID)).toBeDefined()
+            expect(CortexConcurrency.globalStatus().running).toBe(1)
+          } finally {
+            release.resolve()
+            await first
+            execution.resolve()
+            await Cortex.drain(task.id)
+          }
+          expect(scheduledBeforeRelease).toBe(2)
+          expect(released).toHaveBeenCalledTimes(1)
+          expect(CortexConcurrency.globalStatus().running).toBe(0)
+          expect(clock.count()).toBe(1)
+          clock.advanceTo(330_000)
+          expect(clock.count()).toBe(0)
+          expect(Cortex.get(task.id)).toBeUndefined()
+          expect(SessionManager.getRuntime(task.sessionID)).toBeUndefined()
+        },
+      })
+    }))
 
   test("cancelling a running task discards its queued follow-up instead of restarting it", () =>
     runtime.run(async () => {

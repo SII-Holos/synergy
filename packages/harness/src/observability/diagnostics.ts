@@ -87,12 +87,18 @@ export namespace Diagnostics {
       .slice(0, 50)
     const issues = ObservabilityIssues.list({ status: "open", limit: 50 })
     const inflight = ObservabilityStore.queryInflight({ limit: 100 }).map(inflightFromRow)
-    const resourceRows = ObservabilityStore.resourceSince(Date.now() - 15 * 60_000, { limit: 500 })
+    const until = Date.now() + 1
+    const since = until - 15 * 60_000
+    const resourceRows = ObservabilityStore.resourceSince(since, { until, limit: 500 })
     const resourceSamples = resourceRows.map(resourceFromRow)
-    const latest = ObservabilityStore.latestResource()
-    if (latest && !resourceRows.some((row) => row.sample_id === latest.sample_id)) {
-      resourceSamples.push(resourceFromRow(latest))
+    const first = ObservabilityStore.resourceSince(since, { role: "server", until, limit: 1 })[0]
+    const latest = ObservabilityStore.resourceSince(0, { role: "server", until, limit: 1, newestFirst: true })[0]
+    for (const row of [first, latest]) {
+      if (row && !resourceSamples.some((sample) => sample.sampleId === row.sample_id)) {
+        resourceSamples.push(resourceFromRow(row))
+      }
     }
+    resourceSamples.sort((left, right) => left.time - right.time)
 
     return ObservabilitySchema.DiagnosticsSummary.parse({
       generatedAt: new Date().toISOString(),
@@ -324,12 +330,14 @@ export namespace Diagnostics {
   }
 
   function resourcePressure(samples: ObservabilitySchema.ResourceSample[]) {
-    const latest = samples[samples.length - 1]
+    const serverSamples = samples.filter((sample) => sample.process.role === "server")
+    const latest = serverSamples.at(-1)
     const pressure: ObservabilitySchema.Labels = {}
     const store = ObservabilityStore.stats()
     pressure.observabilityStoreAvailable = store.available
     pressure.observabilityPendingWrites = store.pending
     pressure.observabilityDroppedWrites = store.dropped
+    pressure.observabilityUncertainObservations = store.uncertain
     pressure.observabilityCapExceededBytes = store.capExceededBytes
     if (store.lastOpenError) pressure.observabilityStoreError = ObservabilityRedaction.text(store.lastOpenError, 160)
     if (!latest) return pressure
@@ -342,7 +350,7 @@ export namespace Diagnostics {
     if (latest.cpu.utilizationRatio !== undefined) pressure.cpuUtilizationRatio = latest.cpu.utilizationRatio
     if (latest.eventLoop.lagMs !== undefined) pressure.eventLoopLagMs = latest.eventLoop.lagMs
     if (latest.memory.rssBytes !== undefined) pressure.rssBytes = latest.memory.rssBytes
-    const first = samples.find((sample) => sample.memory.rssBytes !== undefined)
+    const first = serverSamples.find((sample) => sample.memory.rssBytes !== undefined)
     if (first?.memory.rssBytes !== undefined && latest.memory.rssBytes !== undefined && latest.time > first.time) {
       pressure.rssGrowthBytesPerMin =
         ((latest.memory.rssBytes - first.memory.rssBytes) / Math.max(1, latest.time - first.time)) * 60_000

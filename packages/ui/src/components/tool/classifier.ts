@@ -1,12 +1,13 @@
+import { getToolIcon, getCategoryIcon } from "./icons"
 import {
   classifySemanticCategory,
   semanticCategoryForKnownTool,
   type SemanticCategory,
 } from "@ericsanchezok/synergy-util/activity"
-import type { IconName } from "../icon"
+import type { IconName, IconSource } from "../icon"
 import { COMPUTER_TOOL_ICONS } from "./computer-icons"
+import { getWorkbenchViewInfo } from "./workbench-info"
 import type { MessageDescriptor } from "@lingui/core"
-import { getSemanticIcon } from "../semantic-icon"
 import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
 export const LATTICE_TOOL_TITLE_DESCRIPTORS: Record<string, MessageDescriptor> = {
@@ -37,12 +38,12 @@ export function getLatticeToolPresentation(
   tool: string,
   input: Record<string, any> = {},
   metadata: Record<string, any> = {},
-): { icon: IconName; title: MessageDescriptor; subtitle?: string; args?: string[] } | undefined {
+): { icon: IconSource; title: MessageDescriptor; subtitle?: string; args?: string[] } | undefined {
   if (tool === "pathway_read") {
     const completed = typeof metadata.completed === "number" ? metadata.completed : undefined
     const total = typeof metadata.total === "number" ? metadata.total : undefined
     return {
-      icon: "route",
+      icon: getToolIcon(tool, input, metadata),
       title: LATTICE_TOOL_TITLE_DESCRIPTORS.pathway_read!,
       subtitle: typeof metadata.currentStepTitle === "string" ? metadata.currentStepTitle : undefined,
       args: completed !== undefined && total !== undefined ? [`${completed}/${total}`] : undefined,
@@ -57,7 +58,7 @@ export function getLatticeToolPresentation(
         : undefined
     const stepCount = steps?.length
     return {
-      icon: "list-checks",
+      icon: getToolIcon(tool, input, metadata),
       title: LATTICE_TOOL_TITLE_DESCRIPTORS.pathway_write!,
       subtitle: typeof metadata.currentStepTitle === "string" ? metadata.currentStepTitle : undefined,
       args: stepCount !== undefined ? [String(stepCount)] : undefined,
@@ -73,7 +74,7 @@ export function getLatticeToolPresentation(
   const source = typeof metadata.source === "string" ? metadata.source : undefined
   const sourceDescriptor = source ? LATTICE_SOURCE_DESCRIPTORS[source] : undefined
   return {
-    icon: "circle-check",
+    icon: getToolIcon(tool, input, metadata),
     title,
     subtitle: blueprintTitle ?? reason ?? goal,
     args: sourceDescriptor ? [sourceDescriptor.message ?? sourceDescriptor.id] : undefined,
@@ -98,117 +99,117 @@ export interface CategorySpec {
 
 export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   "file-read": {
-    icon: "glasses",
+    icon: getCategoryIcon("file-read"),
     descriptor: CLASSIFIER_LABEL_DESC["file-read"],
     subtitleKeys: ["filePath", "file_path", "path", "filename"],
   },
   "file-write": {
-    icon: "file-pen",
+    icon: getCategoryIcon("file-write"),
     descriptor: CLASSIFIER_LABEL_DESC["file-write"],
     subtitleKeys: ["filePath", "file_path", "path", "filename"],
   },
   shell: {
-    icon: "terminal",
+    icon: getCategoryIcon("shell"),
     descriptor: CLASSIFIER_LABEL_DESC["shell"],
     subtitleKeys: ["description", "command", "cmd", "script"],
   },
   search: {
-    icon: "regex",
+    icon: getCategoryIcon("search"),
     descriptor: CLASSIFIER_LABEL_DESC["search"],
     subtitleKeys: ["pattern", "query", "regex", "search"],
     argsKeys: ["include", "lang", "language"],
   },
   web: {
-    icon: "globe",
+    icon: getCategoryIcon("web"),
     descriptor: CLASSIFIER_LABEL_DESC["web"],
     subtitleKeys: ["url", "query"],
     argsKeys: ["format", "categories"],
   },
   browser: {
-    icon: "panel-right",
+    icon: getCategoryIcon("browser"),
     descriptor: CLASSIFIER_LABEL_DESC["browser"],
     subtitleKeys: ["url", "title", "action", "type"],
     argsKeys: ["action", "kind", "captureKind"],
   },
   memory: {
-    icon: "brain",
+    icon: getCategoryIcon("memory"),
     descriptor: CLASSIFIER_LABEL_DESC["memory"],
     subtitleKeys: ["query", "title"],
   },
   note: {
-    icon: "notebook-pen",
+    icon: getCategoryIcon("note"),
     descriptor: CLASSIFIER_LABEL_DESC["note"],
     subtitleKeys: ["title", "pattern"],
     argsKeys: ["scope", "mode"],
   },
   blueprint: {
-    icon: getSemanticIcon("blueprint.main"),
+    icon: getCategoryIcon("blueprint"),
     descriptor: CLASSIFIER_LABEL_DESC["blueprint"],
     subtitleKeys: ["title", "loopID", "id"],
     argsKeys: ["status"],
   },
   task: {
-    icon: "list-todo",
+    icon: getCategoryIcon("task"),
     descriptor: CLASSIFIER_LABEL_DESC["task"],
     subtitleKeys: ["description", "prompt"],
   },
   dag: {
-    icon: "route",
+    icon: getCategoryIcon("dag"),
     descriptor: CLASSIFIER_LABEL_DESC["dag"],
     subtitleKeys: [],
   },
   schedule: {
-    icon: "clipboard-check",
+    icon: getCategoryIcon("schedule"),
     descriptor: CLASSIFIER_LABEL_DESC["schedule"],
     subtitleKeys: ["title", "id"],
     argsKeys: ["status"],
   },
   session: {
-    icon: "message-square",
+    icon: getCategoryIcon("session"),
     descriptor: CLASSIFIER_LABEL_DESC["session"],
     subtitleKeys: ["target", "pattern"],
     argsKeys: ["scope"],
   },
   "session-control": {
-    icon: "radar",
+    icon: getCategoryIcon("session-control"),
     descriptor: CLASSIFIER_LABEL_DESC["session-control"],
     subtitleKeys: ["target"],
     argsKeys: ["action"],
   },
   network: {
-    icon: "cable",
+    icon: getCategoryIcon("network"),
     descriptor: CLASSIFIER_LABEL_DESC["network"],
     subtitleKeys: [],
     argsKeys: ["action"],
   },
   analyze: {
-    icon: "scan-eye",
+    icon: getCategoryIcon("analyze"),
     descriptor: CLASSIFIER_LABEL_DESC["analyze"],
     subtitleKeys: ["goal", "file_path", "description"],
   },
   config: {
-    icon: "rotate-cw",
+    icon: getCategoryIcon("config"),
     descriptor: CLASSIFIER_LABEL_DESC["config"],
     subtitleKeys: ["target", "name", "reason"],
   },
   communication: {
-    icon: "mail",
+    icon: getCategoryIcon("communication"),
     descriptor: CLASSIFIER_LABEL_DESC["communication"],
     subtitleKeys: ["to", "target", "subject", "output_path", "input_paths", "prompt"],
   },
   skill: {
-    icon: "sparkles",
+    icon: getCategoryIcon("skill"),
     descriptor: CLASSIFIER_LABEL_DESC["skill"],
     subtitleKeys: ["name"],
   },
   research: {
-    icon: "flask-conical",
+    icon: getCategoryIcon("research"),
     descriptor: CLASSIFIER_LABEL_DESC["research"],
     subtitleKeys: ["action", "title", "project"],
     argsKeys: ["action"],
   },
   generic: {
-    icon: "settings",
+    icon: getCategoryIcon("generic"),
     descriptor: CLASSIFIER_LABEL_DESC["generic"],
     subtitleKeys: [],
   },
@@ -238,6 +239,18 @@ export function classifyTool(
   const category = classifySemanticCategory(toolName, input)
 
   const spec = CATEGORIES[category]
+
+  if (toolName === "workbench_view") {
+    const info = getWorkbenchViewInfo(input, metadata)
+    return {
+      category,
+      spec,
+      title: info.title.message ?? toolName,
+      titleDescriptor: info.title,
+      subtitle: info.subtitle,
+      args: info.args,
+    }
+  }
 
   const titleDescriptor = toolTitleDescriptor(toolName, spec)
   const title = titleDescriptor?.message ?? humanizeToolName(toolName)
@@ -351,12 +364,16 @@ function buildArgs(
 // Re-export for convenient access
 export { CLASSIFIER_LABEL_DESC }
 
-export function getComputerToolPresentation(tool: string, input: Record<string, unknown> = {}) {
+export function getComputerToolPresentation(
+  tool: string,
+  input: Record<string, unknown> = {},
+  metadata: Record<string, unknown> = {},
+) {
   if (!Object.hasOwn(COMPUTER_TOOL_ICONS, tool)) return undefined
   const action =
     input.input && typeof input.input === "object" && "action" in input.input ? input.input.action : undefined
   return {
-    icon: COMPUTER_TOOL_ICONS[tool]!,
+    icon: getToolIcon(tool, input, metadata),
     title: TOOL_TITLE_DESC[tool]!,
     subtitle: typeof action === "string" ? action : undefined,
   }

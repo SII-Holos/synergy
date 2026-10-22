@@ -160,8 +160,9 @@ export namespace SessionManager {
 
     instanceState.accepting = true
   }
-  export function hasPendingWake(): boolean {
+  export function hasPendingWake(sessionID?: string): boolean {
     const state = runtimeState()
+    if (sessionID) return state.activeWakeChains.has(sessionID) || state.sessionCompletions.has(sessionID)
     return state.activeWakeChains.size > 0 || state.running.size > 0
   }
   export async function drain() {
@@ -457,9 +458,11 @@ export namespace SessionManager {
         sessionID,
         async () => {
           const session = await requireSession(sessionID)
-          if (session.workspaceID != null && options?.workspace !== "history")
+          if (session.workspaceID != null && options?.workspace !== "history") {
+            await SessionWorkspaceRuntime.prepare(session, lease.signal)
             await WorkspaceCatalog.assertActive(session.workspaceID, session.scope.id)
-          return session
+          }
+          return requireSession(sessionID)
         },
         lease.signal,
       )
@@ -808,11 +811,28 @@ export namespace SessionManager {
     scheduleWakeAttempt(sessionID, reason, 0, 0)
   }
 
-  export function setStatus(sessionID: string, status: StatusInfo): void {
+  export function setStatus(
+    sessionID: string,
+    status: StatusInfo,
+    expected?: { generation: number; rootID?: string },
+  ): boolean {
     const runtime = getRuntime(sessionID)
-    if (!runtime) return
+    if (!runtime) return false
+    if (expected) {
+      const owner = runtime.owner
+      if (
+        !owner ||
+        owner.lease.generation !== expected.generation ||
+        owner.lease.signal.aborted ||
+        owner.phase === "stopping" ||
+        runtime.status.type === "paused"
+      )
+        return false
+      if (expected.rootID !== undefined && owner.rootID !== expected.rootID) return false
+    }
     runtime.status = status
     emitStatus(runtime, status)
+    return true
   }
 
   export function setActivity(

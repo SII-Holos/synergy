@@ -14,6 +14,17 @@ import { UpgradeWork } from "./upgrade-work"
 
 export const migrations: Migration[] = [
   {
+    id: "20261021-text-lexical-structure",
+    isApplied: async () => true,
+    scope: "global",
+    execution: "startup",
+    domain: "storage",
+    description: "Prepare the rebuildable ranked lexical index without reading historical bodies",
+    async up(progress) {
+      progress(1, 1)
+    },
+  },
+  {
     id: "20261010-demand-driven-history",
     scope: "global",
     execution: "startup",

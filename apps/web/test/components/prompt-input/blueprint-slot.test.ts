@@ -14,7 +14,7 @@ function loop(status: BlueprintLoopInfo["status"] = "running") {
     noteID: "note_blueprint",
     title: "Active Blueprint",
     runMode: "current" as const,
-    status: status as any,
+    status,
   }
 }
 
@@ -27,24 +27,28 @@ describe("prompt blueprint slot display", () => {
     expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(), activeLoopID: "bll_other" })).toBeNull()
   })
 
-  test("does not display terminal session loops", () => {
+  test("Loop terminal metadata cannot clear the Session binding", () => {
     const terminalStatuses: BlueprintLoopInfo["status"][] = ["completed", "failed", "cancelled"]
     for (const status of terminalStatuses) {
-      expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })).toBeNull()
+      expect(
+        resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })?.slot,
+      ).toMatchObject({ loopID: "bll_active" })
+      expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(status) })).toBeNull()
     }
   })
 
   test("displays an active non-terminal session loop", () => {
-    expect(resolveBlueprintSlotDisplay({ sessionLoop: loop("auditing"), activeLoopID: "bll_active" })).toEqual({
-      slot: {
-        type: "loop",
-        loopID: "bll_active",
-        noteID: "note_blueprint",
-        title: "Active Blueprint",
-        runMode: "current",
-      },
-      mode: "auditing",
-    } satisfies BlueprintSlotDisplay)
+    for (const status of ["armed", "running", "auditing"] as const)
+      expect(resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })).toEqual({
+        slot: {
+          type: "loop",
+          loopID: "bll_active",
+          noteID: "note_blueprint",
+          title: "Active Blueprint",
+          runMode: "current",
+        },
+        mode: status,
+      } satisfies BlueprintSlotDisplay)
   })
 
   test("session and local loop controls require their source owner while user drafts stay available", () => {
@@ -90,22 +94,6 @@ describe("prompt blueprint slot display", () => {
       slot: localSlot,
       mode: "pending",
     } satisfies BlueprintSlotDisplay)
-  })
-
-  test("displays all non-terminal statuses without returning null", () => {
-    const nonTerminalStatuses: BlueprintLoopInfo["status"][] = ["armed", "running", "auditing"]
-    for (const status of nonTerminalStatuses) {
-      const result = resolveBlueprintSlotDisplay({ sessionLoop: loop(status), activeLoopID: "bll_active" })
-      expect(result).not.toBeNull()
-      expect(result!.mode).toBe(status)
-      expect(result!.slot).toEqual({
-        type: "loop",
-        loopID: "bll_active",
-        noteID: "note_blueprint",
-        title: "Active Blueprint",
-        runMode: "current",
-      })
-    }
   })
 })
 

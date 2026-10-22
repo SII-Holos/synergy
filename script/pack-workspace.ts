@@ -22,6 +22,7 @@ export const runtimePackages = new Set(
     "computer-runtime",
     "library",
     "note",
+    "digital-twin",
     "workflows",
     "connections",
     "agenda",

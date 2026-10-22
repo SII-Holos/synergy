@@ -243,20 +243,6 @@
     word-break: break-word;
     overflow-wrap: anywhere;
     overflow: hidden;
-    transition:
-      border-color var(--motion-duration-fast) var(--motion-ease-standard),
-      background-color var(--motion-duration-fast) var(--motion-ease-standard);
-
-    &:hover {
-      border-color: var(--border-strong-base);
-    }
-
-    &:hover,
-    &:focus-within {
-      --user-message-bubble-bg: var(--workbench-control-bg-hover, var(--surface-base-hover));
-      background: var(--user-message-bubble-bg);
-      background-image: linear-gradient(var(--surface-focus), var(--surface-focus));
-    }
 
     &[data-collapsed] {
       max-height: 14rem;
@@ -278,15 +264,6 @@
     font-size: var(--font-size-x-small);
     font-weight: var(--font-weight-regular);
     line-height: 1.2;
-    pointer-events: auto;
-  }
-
-  &:hover [data-slot="user-message-meta"],
-  &:focus-within [data-slot="user-message-meta"],
-  [data-slot="user-message-text"]:hover + [data-slot="user-message-meta"],
-  [data-slot="user-message-text"]:focus-within + [data-slot="user-message-meta"],
-  [data-slot="user-message-meta"]:hover {
-    opacity: 1;
     pointer-events: auto;
   }
 
@@ -383,20 +360,6 @@
       outline: none;
       border-radius: var(--radius-sm);
     }
-  }
-
-  [data-slot="user-message-text"]:hover [data-slot="user-message-fade"],
-  [data-slot="user-message-text"]:focus-within [data-slot="user-message-fade"] {
-    background: linear-gradient(
-      to bottom,
-      transparent,
-      var(--workbench-control-bg-hover, var(--surface-base-hover)) 72%
-    );
-  }
-
-  [data-slot="user-message-text"]:hover [data-slot="user-message-expand"],
-  [data-slot="user-message-text"]:focus-within [data-slot="user-message-expand"] {
-    background: var(--workbench-control-bg-hover, var(--surface-base-hover));
   }
 }
 

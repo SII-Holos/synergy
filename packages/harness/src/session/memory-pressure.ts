@@ -329,14 +329,11 @@ export namespace SessionMemoryPressure {
       action: "gc",
       reason: decision.reason,
       at: now,
-      beforeBytes: before.heapUsedBytes + before.externalBytes,
-      afterBytes: after.heapUsedBytes + after.externalBytes,
-      reclaimedBytes: Math.max(
-        0,
-        before.heapUsedBytes + before.externalBytes - after.heapUsedBytes - after.externalBytes,
-      ),
+      beforeBytes: before.rssBytes,
+      afterBytes: after.rssBytes,
+      reclaimedBytes: Math.max(0, before.rssBytes - after.rssBytes),
     }
-    log.info("gc completed", {
+    log.info(synchronous ? "gc completed" : "gc requested", {
       sessionID: input.sessionID,
       messageID: input.messageID,
       phase: input.phase,

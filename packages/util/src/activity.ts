@@ -95,6 +95,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   computer_apps: "generic",
   computer_observe: "generic",
   computer_action: "generic",
+  workbench_view: "generic",
   webfetch: "web",
   browser_navigation: "browser",
   browser_snapshot: "browser",

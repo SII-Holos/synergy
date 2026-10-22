@@ -150,6 +150,9 @@ describe("GlobalEventClients", () => {
     expect(registry.size()).toBe(1)
     expect(closed).toEqual([])
     expect([...registry.clients()][0].consecutiveBackpressure).toBe(0)
+    expect(registry.stream(fakeWs({ raw }), "cursor")).toBe("backpressured")
+    expect(registry.size()).toBe(0)
+    expect(closed).toEqual([1013])
   })
 
   test("explicit removal closes the registered socket across fresh wrappers", () => {
@@ -212,5 +215,29 @@ describe("GlobalEventClients", () => {
 
     expect(fullEncodes).toBe(1)
     expect(deltaEncodes).toBe(1)
+  })
+
+  test("stops sending when a projection flush removes the subscription", () => {
+    const registry = GlobalEventClients.createRegistry()
+    let sends = 0
+    const ws = fakeWs({
+      raw: {
+        readyState: 1,
+        send: () => {
+          sends++
+          return 0
+        },
+      },
+    })
+    registry.add(ws, "projection-v2")
+    registry.broadcast(
+      () => "visible",
+      () => {
+        registry.stream(ws, "cursor")
+        return "visible"
+      },
+    )
+    expect(sends).toBe(1)
+    expect(registry.size()).toBe(0)
   })
 })

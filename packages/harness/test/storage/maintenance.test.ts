@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import fs from "node:fs/promises"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { Database } from "bun:sqlite"
 import path from "node:path"
@@ -9,6 +10,61 @@ import { beginStorageMaintenance, observeStorageMaintenance } from "../../src/st
 import { SqliteDriver } from "../../src/storage/sqlite-driver"
 import type { SqliteRequest } from "../../src/storage/sql-contract"
 import type { StorageMaintenanceEvent } from "@ericsanchezok/synergy-util/runtime-startup"
+
+test("offline backup copies a checkpointed database while fencing later writes", async () => {
+  await using tmp = await tmpdir()
+  const store = await TransactionalStore.open({
+    backend: "sqlite",
+    namespace: "backup",
+    filename: path.join(tmp.path, "agent.sqlite"),
+  })
+  const filename = path.join(tmp.path, "backup.sqlite")
+  const entered = Promise.withResolvers<void>(),
+    release = Promise.withResolvers<void>()
+  const copy = fs.copyFile
+  using copying = spyOn(fs, "copyFile").mockImplementation(async (...args) => {
+    entered.resolve()
+    await release.promise
+    await copy(...args)
+  })
+  let pending: Promise<void> | undefined
+  try {
+    await store.write(["snapshot"], "before")
+    const events: StorageMaintenanceEvent[] = []
+    const backup = observeStorageMaintenance(
+      () => store.backupSqlite(filename),
+      (event) => events.push(event),
+    )
+    expect(await Promise.race([backup.then(() => "finished"), entered.promise.then(() => "copying")])).toBe("copying")
+    let written = false
+    pending = store.write(["snapshot"], "after").then(() => {
+      written = true
+    })
+    await Promise.resolve()
+    expect(written).toBe(false)
+    release.resolve()
+    await backup
+    expect(events.filter((event) => event.state === "started").map((event) => event.operation)).toEqual(["checkpoint"])
+    await pending
+    const snapshot = await TransactionalStore.open({ backend: "sqlite", namespace: "backup", filename, readonly: true })
+    try {
+      expect(await snapshot.read(["snapshot"])).toBe("before")
+    } finally {
+      await snapshot.close()
+    }
+    expect(await store.read(["snapshot"])).toBe("after")
+    const existing = await store.backupSqlite(filename).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(existing).toBeInstanceOf(Error)
+    expect(existing).toMatchObject({ code: "EEXIST" })
+  } finally {
+    release.resolve()
+    await pending
+    await store.close()
+  }
+})
 
 test("observes real opening DDL, VACUUM, verification and failed DDL outside the operation context", async () => {
   await using tmp = await tmpdir()
@@ -28,7 +84,12 @@ test("observes real opening DDL, VACUUM, verification and failed DDL outside the
           await store.maintain({ operation: "enable-incremental-vacuum" })
           expect((await store.verify()).issues).toEqual([])
           await store.dropIndexIfExists("storage_records_owner")
-          await expect(store.maintainDdl("CREATE INDEX broken ON absent(x)", "create-index")).rejects.toThrow()
+          const invalid = await store.maintainDdl("CREATE INDEX broken ON absent(x)", "create-index").then(
+            () => undefined,
+            (error: unknown) => error,
+          )
+          expect(invalid).toBeInstanceOf(Error)
+          expect(invalid).toMatchObject({ code: "SQLITE_ERROR", message: expect.stringContaining("absent") })
         } finally {
           await store.close()
         }
@@ -81,7 +142,12 @@ test("worker loss emits one failed maintenance event and rejects the pending ope
     pending.catch(() => {})
     await dispatched.promise
     worker.kill()
-    await expect(pending).rejects.toThrow("SQLite worker exited")
+    const exited = await pending.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(exited).toBeInstanceOf(Error)
+    expect(exited).toMatchObject({ message: expect.stringContaining("SQLite worker exited") })
     expect(events.map((event) => event.state)).toEqual(["started", "failed"])
     expect(events[0]?.id).toBe(events[1]?.id)
   } finally {
