@@ -8302,6 +8302,10 @@ msgid "app.rawMessages.title"
 msgstr "原始消息"
 
 #. js-lingui-explicit-id
+msgid "app.reference.assetMissing"
+msgstr "该附件已不在存储中。"
+
+#. js-lingui-explicit-id
 msgid "app.reference.assetSource"
 msgstr "附件"
 
@@ -8316,6 +8320,14 @@ msgstr "选择这条引用所属的工作区"
 #. js-lingui-explicit-id
 msgid "app.reference.copy"
 msgstr "复制引用"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileIgnored"
+msgstr "该路径已被排除在工作区之外，无法打开。"
+
+#. js-lingui-explicit-id
+msgid "app.reference.fileMissing"
+msgstr "该文件已不存在。"
 
 #. js-lingui-explicit-id
 msgid "app.reference.fileSource"

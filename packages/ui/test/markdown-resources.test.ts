@@ -479,3 +479,98 @@ test("binding a long document resolves only images and leaves existing blocks un
     root.remove()
   }
 })
+
+describe("Markdown reference availability", () => {
+  const harness = (availability: "available" | "ignored", inspected: string[]) => {
+    const root = document.createElement("div")
+    document.body.append(root)
+    const dispose = observeMarkdownResources(root, {
+      async open() {
+        return { status: "opened" }
+      },
+      resolveUrl(reference) {
+        return reference.kind === "asset" ? `https://backend.example/asset/${reference.url.slice(8)}` : undefined
+      },
+      async inspectReference(reference) {
+        inspected.push(reference.kind)
+        return availability === "available"
+          ? { state: "available" }
+          : {
+              state: "unavailable",
+              code: "ignored",
+              path: "tmp/dag-probe/A-now.png",
+              reason: "This path is excluded from the workspace, so it cannot be opened.",
+            }
+      },
+    })
+    return {
+      root,
+      dispose: () => {
+        dispose()
+        root.remove()
+      },
+    }
+  }
+
+  test("serves raw-HTML media through the resolved reference URL", async () => {
+    const inspected: string[] = []
+    const f = harness("available", inspected)
+    try {
+      f.root.innerHTML = sanitizeHtml(
+        '<video src="asset://0123456789abcdef.mp4" controls></video>' +
+          '<audio src="asset://fedcba9876543210.mp3" controls></audio>',
+      )
+      await flush()
+      await flush()
+      expect(f.root.querySelector("video")?.getAttribute("src")).toBe(
+        "https://backend.example/asset/0123456789abcdef.mp4",
+      )
+      expect(f.root.querySelector("audio")?.getAttribute("src")).toBe(
+        "https://backend.example/asset/fedcba9876543210.mp3",
+      )
+      expect(f.root.querySelector("video")?.hasAttribute("controls")).toBe(true)
+      expect(inspected).toHaveLength(2)
+    } finally {
+      f.dispose()
+    }
+  })
+
+  test("states the path and the reason when the target cannot be served", async () => {
+    const f = harness("ignored", [])
+    try {
+      f.root.innerHTML = sanitizeHtml('<img src="asset://0123456789abcdef.png" alt="probe">')
+      await flush()
+      await flush()
+      const placeholder = f.root.querySelector('[data-slot="markdown-reference-unavailable"]')
+      expect(placeholder).not.toBeNull()
+      expect(placeholder!.getAttribute("data-resource-unavailable")).toBe("ignored")
+      expect(placeholder!.querySelector('[data-slot="markdown-reference-unavailable-path"]')?.textContent).toBe(
+        "tmp/dag-probe/A-now.png",
+      )
+      expect(placeholder!.querySelector('[data-slot="markdown-reference-unavailable-reason"]')?.textContent).toContain(
+        "excluded from the workspace",
+      )
+      expect(f.root.querySelector("img")).toBeNull()
+    } finally {
+      f.dispose()
+    }
+  })
+
+  test("leaves text citations lazy so long documents issue no per-reference check", async () => {
+    const inspected: string[] = []
+    const f = harness("available", inspected)
+    try {
+      f.root.innerHTML = sanitizeHtml(
+        await parser.parse(
+          Array.from({ length: 50 }, (_, index) => `[src/file-${index}.ts](src/file-${index}.ts#L1)`).join(" "),
+        ),
+      )
+      await flush()
+      await flush()
+      expect(inspected).toEqual([])
+      expect(f.root.querySelectorAll("[data-reference-icon]")).toHaveLength(50)
+    } finally {
+      f.dispose()
+    }
+  })
+})
