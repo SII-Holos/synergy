@@ -1251,3 +1251,49 @@ test("a narrow greeting tightens its heading and drops the subtitle without touc
   expect(desktop.subtitle).not.toBe("none")
   expect(errors).toEqual([])
 }, 40_000)
+
+test("a desktop viewport keeps the desktop heading even when the greeting pane is narrow", async () => {
+  // The stage measures its own container, so a split view or an open sidebar can
+  // leave it under 768 pixels while the viewport is still desktop. The mobile
+  // typography must not follow the container alone, or a desktop pane shrinks
+  // its heading and moves the playfield.
+  const read = () =>
+    page.evaluate(() => {
+      const stage = document.querySelector(".welcome-stage")!
+      const heading = stage.querySelector(".welcome-scene-heading h1")!
+      const subtitle = stage.querySelector(".welcome-scene-heading p")!
+      const canvas = document.querySelector(".welcome-game-canvas")!.getBoundingClientRect()
+      return {
+        stageWidth: Math.round(stage.getBoundingClientRect().width),
+        heading: Number.parseFloat(getComputedStyle(heading).fontSize),
+        subtitle: getComputedStyle(subtitle).display,
+        canvasY: Math.round(canvas.y * 100) / 100,
+        canvasHeight: Math.round(canvas.height * 100) / 100,
+      }
+    })
+
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await open("stack")
+  const wide = await read()
+  expect(wide.stageWidth).toBeGreaterThan(767)
+  expect(wide.heading).toBeGreaterThanOrEqual(32)
+
+  // Same desktop viewport, but the pane is constrained below the mobile
+  // breakpoint the way a side panel does.
+  await page.evaluate(() => {
+    const pane = document.querySelector<HTMLElement>(".session-workbench-pane")!
+    pane.style.maxWidth = "700px"
+  })
+  await page.waitForTimeout(200)
+  const narrowPane = await read()
+  expect(narrowPane.stageWidth).toBeLessThanOrEqual(767)
+  expect(await page.evaluate(() => window.innerWidth)).toBe(1024)
+  // The desktop rule is `clamp(28px, 4.2cqw, 44px)`, so a narrower pane shrinks
+  // the heading only as much as that formula says. Mobile typography (24px)
+  // must not appear here, and the subtitle must stay readable.
+  const baseHeading = Math.min(44, Math.max(28, 0.042 * narrowPane.stageWidth))
+  expect(narrowPane.heading).toBeCloseTo(baseHeading, 1)
+  expect(narrowPane.heading).toBeGreaterThan(24)
+  expect(narrowPane.subtitle).not.toBe("none")
+  expect(errors).toEqual([])
+}, 40_000)
