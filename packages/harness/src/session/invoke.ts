@@ -378,6 +378,15 @@ export namespace SessionInvoke {
     return SessionManager.run(
       input.sessionID,
       async (runLease) => {
+        // An explicit human prompt is the user taking the session back. Without
+        // this the turn starts against the latched pause, aborts on its first
+        // iteration, and reports the *previous* turn's terminal error as this
+        // prompt's outcome. Only `clear` applies here: a pause means the
+        // previous turn already ended, so there is nothing to drain, and this
+        // runs inside the turn's own lease where draining would wait on itself.
+        // Machine input and passive injection keep the latch, because only the
+        // user may release a stop the user asked for.
+        if (input.noReply !== true && MessageV2.isHumanInput(input)) await SessionLifecycle.clear(input.sessionID)
         const message = await createUserMessage(input)
         if (input.ephemeralTools?.length) {
           instanceState.ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)

@@ -188,6 +188,14 @@ export namespace BlueprintLoopService {
       status: "running",
       userPrompt: normalized ?? null,
     })
+    // A user-owned start is the user taking the session back: the first prompt
+    // is a new task root, so a pause left by the previous failure must be
+    // released here. The drive gate refuses paused sessions, which would
+    // otherwise park this delivery in the inbox while the loop already reported
+    // `running`. Machine-owned starts (`lattice`, `plugin`) keep the latch,
+    // because resuming work the user stopped behind their back is the defect
+    // the latch exists to prevent.
+    if (before.source === "user") await SessionLifecycle.startNewTask(before.sessionID)
     void deliverFirstPrompt(before.sessionID, before, normalized).catch(async (err) => {
       // Delivery awaits the executing turn; a user interruption is not a failed start.
       if (
@@ -204,15 +212,5 @@ export namespace BlueprintLoopService {
       }).catch(() => undefined)
     })
     return loop
-  }
-
-  /**
-   * Create an armed loop and immediately start it. The primary entry point for
-   * external orchestrators (e.g. Lattice) that own the whole lifecycle.
-   */
-  export async function createAndStart(input: CreateInput & { userPrompt?: string }): Promise<Info> {
-    const scopeID = ScopeContext.current.scope.id
-    const armed = await create(input)
-    return start(scopeID, armed.id, input.userPrompt)
   }
 }
