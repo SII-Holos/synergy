@@ -180,3 +180,5 @@ Separate Docker CI groups that need frozen preparation from groups without that 
 Cache only external engine objects and indexes across CI jobs, with byte and inventory verification on every reuse. Keep locks, preparation staging, task Homes and test results local to each execution; cold build runs bypass the external object cache as well as prepared bundles.
 
 For deterministic native-model providers, select a complete reader/writer pair from the advertised tool catalog. Do not override product configuration to retain a historical default. Assert the emitted call schema and actual edited bytes, and keep compaction, execution and usage receipts unchanged.
+
+Fault-injection fixtures start their provider-response observation deadline only after the native `agent` lifecycle stage begins. Environment preparation and shared image-lock admission keep their own recorded budgets; fixture waits must not consume them. Preserve early-exit detection and the original response/recording deadline once execution starts.

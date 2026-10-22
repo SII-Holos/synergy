@@ -10,6 +10,8 @@ Cortex collections retain the same bounded `TaskSummary` in list, bootstrap and 
 
 Live Agent resource-presentation requests share the existing connection but are not canonical state events, tool-result effects or replayable history. Workbench owns their target-client selection and execution receipts; see [Workbench presentation](workbench-presentation.md).
 
+A retained latest transcript returning to the foreground keeps its last renderable row mounted until hydration settles, including when a running process completes during that return. History reading and explicit location anchors retain their existing ownership.
+
 ## Connection Model
 
 `GlobalSDKProvider` opens one WebSocket to:

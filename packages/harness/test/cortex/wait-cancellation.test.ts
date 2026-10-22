@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test"
 import { Cortex } from "../../src/cortex"
+import { registerCortexSessionRuntime } from "../../src/cortex/session-runtime"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
 test("cancelled Cortex output waits settle without cancelling the delegated task", async () => {
-  await using runtime = await testRuntime()
+  await using runtime = await testRuntime({ register: registerCortexSessionRuntime })
   await runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({

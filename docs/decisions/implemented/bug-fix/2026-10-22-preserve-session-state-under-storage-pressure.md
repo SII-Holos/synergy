@@ -12,6 +12,8 @@ Session access reads the durable locator before applying the preparation budget.
 
 The existing execution request cancellation signal reaches Rollout presentation replay and storage admission. Cancellation stops replay before publishing its discardable checkpoint; recovery and audit still use strict reads. This follows the consumed-signal cancellation approach described by [TanStack Query](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation) using the existing AbortSignal and storage queue, without another scheduler or cache.
 
+A returning latest-view transcript keeps its last renderable row mounted until hydration settles. Completion can remove the active process before the virtualizer measures the new tail; pinning that tail bounds the transition to one additional row and prevents a blank frame without changing history reading anchors. The browser regression completes a background backlog at three return-frame boundaries under CPU throttling.
+
 ## Alternatives considered
 
 **Increase the preparation timeout.** Rejected because queue delay still does not establish that import is required. A larger timer merely postpones the same false classification.
