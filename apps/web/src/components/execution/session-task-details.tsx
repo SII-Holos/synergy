@@ -43,7 +43,7 @@ function Details(props: { sessionID: string; hasCanonicalRoot?: boolean; inboxFr
             aria-label={_(E.trajectory)}
             onClick={() => void execution.openTrajectory()}
           >
-            <Icon name={getSemanticIcon("performance.trace")} size="small" />
+            <Icon name={getSemanticIcon("execution.trajectory")} size="small" />
             <span class="hidden md:inline">{_({ id: "execution.trajectory.short", message: "Trajectory" })}</span>
           </button>
         </Tooltip>

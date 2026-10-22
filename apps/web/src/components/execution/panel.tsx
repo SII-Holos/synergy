@@ -936,7 +936,7 @@ export function ExecutionPanelBody(
         </Show>
         <Show when={!selected()}>
           <section class="execution-inspector-placeholder">
-            <Icon name={getSemanticIcon("performance.trace")} size="large" />
+            <Icon name={getSemanticIcon("execution.trajectory")} size="large" />
             <h3>{_(E.chooseRecord)}</h3>
             <p>{_(E.chooseRecordHelp)}</p>
           </section>

@@ -248,7 +248,7 @@ export function KanbanPane(props: {
                 aria-label={_(E.trajectory)}
                 onClick={() => props.onOpenTrajectory?.()}
               >
-                <Icon name={getSemanticIcon("performance.trace")} size="small" />
+                <Icon name={getSemanticIcon("execution.trajectory")} size="small" />
               </button>
             </Tooltip>
           </Show>

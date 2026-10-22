@@ -12,6 +12,8 @@ The shared UI tool icon resolver owns tool identities, input-dependent variants 
 
 Workbench presentation uses the same resolver in its activity summary and specialized card. Its category classifier supplies descriptive metadata without overriding the tool glyph, so integrating new presentation tools cannot silently fall back to the generic icon in only one surface.
 
+Execution surfaces keep separate identities instead of borrowing performance tracing. The trajectory panel and its toolbar and Kanban entries use `execution.trajectory` (footprints), execution details uses `execution.details` (logs), and task details keeps `session.context` (chart-pie) in both the toolbar trigger and the workbench launcher, because they open the same panel and must not present two glyphs for one destination. The trajectory and execution-details panels therefore no longer share a single `activity` glyph.
+
 The selected icon vocabulary uses the existing Lucide dependency, one vendored Tabler outline and monochrome integration brand assets. Upstream provenance and the applicable license accompany the assets. The change preserves conversation ordering, grouping and detail expansion.
 
 `ToolDisplay.icon` carries owner-declared icons through the existing tool definition and Part metadata path, including automatically expanded tools. Both presentation surfaces use that declaration before their semantic default. Plugin glyphs resolve in the plugin namespace and react to registry changes. The unused fallback-metadata lookup and its template overrides are removed instead of preserving a second presentation path.
