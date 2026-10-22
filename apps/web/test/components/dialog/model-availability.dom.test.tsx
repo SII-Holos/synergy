@@ -35,6 +35,30 @@ const USABLE_ENV_PROVIDER = {
   },
 }
 
+const fixtureModel = (id: string, name: string) => ({
+  id,
+  name,
+  status: "active",
+  capabilities: { reasoning: false, input: { image: false, pdf: false, video: false } },
+  cost: { input: 1, output: 1 },
+})
+const CATALOG_PROVIDER = {
+  id: "env-only",
+  name: "Fixture provider",
+  models: {
+    quick: fixtureModel("quick", "Fixture model"),
+    standard: fixtureModel("standard", "Standard model"),
+    recent: fixtureModel("recent", "Recent model"),
+    retained: { ...fixtureModel("retained", "Retained model"), catalogState: "retained" },
+    deprecated: { ...fixtureModel("deprecated", "Deprecated model"), status: "deprecated" },
+  },
+}
+const FULL_CATALOG = { ...USABLE_ENV_PROVIDER, all: [CATALOG_PROVIDER] }
+const PARTIAL_CATALOG = {
+  ...USABLE_ENV_PROVIDER,
+  all: [{ ...CATALOG_PROVIDER, models: { quick: CATALOG_PROVIDER.models.quick } }],
+}
+
 const NEEDS_ATTENTION = {
   ...EMPTY_SNAPSHOT,
   connected: ["rejected"],
@@ -61,7 +85,6 @@ beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".model-availability-fixture-"))
   const globalSyncStubPath = path.join(fixtureDirectory, "global-sync-stub.ts")
   const settingsStubPath = path.join(fixtureDirectory, "settings-stub.tsx")
-  const modelsStubPath = path.join(fixtureDirectory, "models-stub.tsx")
 
   await Promise.all([
     Bun.write(
@@ -72,24 +95,39 @@ beforeAll(async () => {
       globalSyncStubPath,
       `
         import { createStore } from "solid-js/store"
+        import { listSelectableConnectedModels, recommendQuickSwitcherModels, resolveQuickSwitcherModels } from ${JSON.stringify(`/@fs/${path.resolve(import.meta.dir, "../../../src/components/provider/model-catalog.ts")}`)}
 
         export const EMPTY = ${JSON.stringify(EMPTY_SNAPSHOT)}
 
-        const [state, setState] = createStore({ provider: EMPTY, scope: { status: "loading", provider: EMPTY }, route: {} })
+        const [state, setState] = createStore({ provider: EMPTY, scope: { status: "loading", provider: EMPTY }, route: {}, config: { quick_switcher: { models: [{ providerID: "env-only", modelID: "quick", state: "add" }] } }, recent: [{ providerID: "env-only", modelID: "recent" }], selected: { providerID: "env-only", modelID: "quick" } })
         globalThis.__setProvider = (provider) => setState("provider", provider ?? EMPTY)
+        globalThis.__setQuickSwitcher = (preferences) => setState("config", "quick_switcher", "models", preferences)
+        globalThis.__selectedModel = () => state.selected
+        globalThis.__catalogLoads = []
         globalThis.__setScope = (provider, status = "complete") => {
           setState("scope", { provider, status }); setState("route", {dir: btoa("project-scope")})
         }
         export const useParams = () => state.route
 
         export function useGlobalSync() {
-          return { data: state, ensureScopeState: () => [state.scope] }
+          return { data: state, ensureScopeState: () => [state.scope], loadModelCatalog: async scope => { globalThis.__catalogLoads.push(scope) } }
+        }
+        export function useLocal() {
+          const snapshot = () => state.route.dir ? state.scope.provider : state.provider
+          const all = () => {
+            const data = snapshot()
+            return listSelectableConnectedModels(data.all, data.connected.filter(id => data.runtimeAvailability?.[id]?.available !== false))
+          }
+          const find = ref => all().find(model => model.provider.id === ref.providerID && model.id === ref.modelID)
+          return { model: {
+            all,
+            quickSwitcher: () => resolveQuickSwitcherModels(recommendQuickSwitcherModels(all(), snapshot().default), state.config.quick_switcher.models).map(find).filter(Boolean),
+            recent: () => state.recent.map(find).filter(Boolean),
+            current: () => find(state.selected),
+            set: (model, options) => { setState("selected", model); if (options?.recent) setState("recent", [model, ...state.recent.filter(ref => ref.providerID !== model.providerID || ref.modelID !== model.modelID)]) },
+          } }
         }
       `,
-    ),
-    Bun.write(
-      modelsStubPath,
-      `export const QuickSwitcherList = props => <button onClick={props.onSelect}>Fixture model</button>`,
     ),
     Bun.write(
       settingsStubPath,
@@ -115,28 +153,24 @@ beforeAll(async () => {
         import { I18nProvider } from "@lingui/solid"
         import { setupI18n } from "@lingui/core"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
+        import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme"
         import { ModelSelectorPopover, DialogSelectModel } from ${JSON.stringify(`/@fs/${selectorPath}`)}
         import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-        import { AP } from "@/app-i18n"
+        import { messages as en } from "@/locales/en/messages.po"
+        import { messages as zh } from "@/locales/zh-CN/messages.po"
         import "@ericsanchezok/synergy-ui/styles"
         import "@/index.css"
         import "@/components/top-bar/session-top-bar.css"
 
-        const messages = {}
-        for (const descriptor of Object.values(AP)) {
-          if (descriptor && typeof descriptor === "object" && "id" in descriptor && "message" in descriptor) {
-            messages[descriptor.id] = descriptor.message
-          }
-        }
-        const i18n = setupI18n({ locale: "en", messages: { en: messages } })
+        const i18n = setupI18n({ locale: "en", messages: { en, "zh-CN": zh } })
 
-        const Shortcut = () => { const dialog = useDialog(); return <button onClick={() => dialog.show(() => <DialogSelectModel />)}>Model shortcut</button> }
+        const Shortcut = () => { const dialog = useDialog(); globalThis.__setColorScheme = useTheme().setColorScheme; return <button onClick={() => dialog.show(() => <DialogSelectModel />)}>Model shortcut</button> }
         render(
           () =>
             createComponent(I18nProvider, {
               i18n,
               get children() {
-                return createComponent(DialogProvider, {
+                return createComponent(ThemeProvider, { get children() { return createComponent(DialogProvider, {
                   get children() {
                     return <div style="height:100dvh;display:flex;flex-direction:column">
                       <header class="stb-root" style="position:relative;pointer-events:auto;height:48px;flex-shrink:0;display:flex;align-items:center">
@@ -151,7 +185,7 @@ beforeAll(async () => {
                       <textarea aria-label="Message" style="height:120px;flex-shrink:0" />
                     </div>
                   },
-                })
+                }) } })
               },
             }),
           document.querySelector("#root"),
@@ -166,8 +200,8 @@ beforeAll(async () => {
     aliases: [
       { find: "@/context/global-sync", replacement: globalSyncStubPath },
       { find: "@/context/session-route", replacement: globalSyncStubPath },
+      { find: "@/context/local", replacement: globalSyncStubPath },
       { find: "@/components/settings", replacement: settingsStubPath },
-      { find: "@/components/provider/model-manager", replacement: modelsStubPath },
       { find: "@", replacement: path.resolve(import.meta.dir, "../../../src") },
     ],
   })
@@ -238,12 +272,114 @@ describe("model availability recovery", () => {
   })
 
   test("usable models keep the normal selector, including env-only providers", async () => {
-    await mount(USABLE_ENV_PROVIDER)
+    await mount(FULL_CATALOG)
     expect(await trigger().innerText()).toBe("Fixture model")
     await trigger().click()
     await page.getByRole("button", { name: "Fixture model", exact: true }).last().click()
     expect(await trigger().getAttribute("aria-expanded")).toBe("false")
     expect(await notice().count()).toBe(0)
+  })
+
+  test("provider groups expose and search models outside quick switch and recent history", async () => {
+    await mount(FULL_CATALOG)
+    await trigger().click()
+    const popup = page.locator(".model-selector-popover")
+    const provider = popup.locator('[data-slot="list-group"]').filter({
+      has: page.locator('[data-slot="list-header"]').filter({ hasText: /^Fixture provider$/ }),
+    })
+    expect(await provider.locator('[data-slot="list-item"]').allTextContents()).toEqual([
+      "Fixture model",
+      "Recent model",
+      "Standard model",
+    ])
+    expect(await provider.locator('[data-key="env-only:quick"]').getAttribute("data-selected")).toBe("true")
+    await popup.getByRole("textbox").fill("standard")
+    const row = popup.locator('[data-slot="list-item"]')
+    await row.filter({ hasText: "Standard model" }).waitFor()
+    expect(await row.count()).toBe(1)
+    await page.keyboard.press("Enter")
+    expect(
+      await page.evaluate(() => (globalThis as unknown as { __selectedModel(): unknown }).__selectedModel()),
+    ).toEqual({ providerID: "env-only", modelID: "standard" })
+    expect(await trigger().getAttribute("aria-expanded")).toBe("false")
+    await trigger().click()
+    expect(await popup.locator('[data-key="recent:env-only:standard"]').getAttribute("data-selected")).toBe("true")
+    expect(await popup.locator('[data-key="env-only:standard"]').getAttribute("data-selected")).toBe("true")
+  })
+
+  test("same-name service accounts keep distinct provider groups and shortcut identities", async () => {
+    await mount({
+      ...FULL_CATALOG,
+      connected: ["env-only", "second"],
+      all: [CATALOG_PROVIDER, { ...CATALOG_PROVIDER, id: "second" }],
+    })
+    await trigger().click()
+    const popup = page.locator(".model-selector-popover")
+    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+      "Recent",
+      "Quick switch",
+      "Fixture provider (env-only)",
+      "Fixture provider (second)",
+    ])
+    expect(await popup.locator('[data-key^="quick:"]').count()).toBe(1)
+    expect(await popup.locator('[data-key="second:quick"]').getAttribute("data-selected")).toBe("false")
+    await setProvider({
+      ...FULL_CATALOG,
+      connected: ["env-only", "second"],
+      all: [CATALOG_PROVIDER, { ...CATALOG_PROVIDER, id: "second", name: "Quick switch" }],
+    })
+    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+      "Recent",
+      "Quick switch",
+      "Fixture provider",
+      "Quick switch (second)",
+    ])
+  })
+
+  test("late catalogs and empty quick-switch preferences preserve full selection in Home and project Scopes", async () => {
+    for (const scope of ["home", "project"]) {
+      await mount(PARTIAL_CATALOG)
+      if (scope === "project") {
+        await page.evaluate(
+          (snapshot) => (globalThis as unknown as { __setScope(value: unknown): void }).__setScope(snapshot),
+          PARTIAL_CATALOG,
+        )
+      }
+      await trigger().click()
+      const popup = page.locator(".model-selector-popover")
+      const search = popup.getByRole("textbox")
+      const input = await search.elementHandle()
+      expect(await page.evaluate(() => (globalThis as unknown as { __catalogLoads: string[] }).__catalogLoads)).toEqual(
+        [scope === "home" ? "home" : "project-scope"],
+      )
+      expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(0)
+      if (scope === "project") {
+        await page.evaluate(
+          (snapshot) => (globalThis as unknown as { __setScope(value: unknown): void }).__setScope(snapshot),
+          FULL_CATALOG,
+        )
+      } else await setProvider(FULL_CATALOG)
+      await popup.getByText("Standard model", { exact: true }).waitFor()
+      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+        "Recent",
+        "Quick switch",
+        "Fixture provider",
+      ])
+      await page.evaluate(() =>
+        (globalThis as unknown as { __setQuickSwitcher(ids: string[]): void }).__setQuickSwitcher([]),
+      )
+      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Recent", "Fixture provider"])
+      expect(await input!.evaluate((node) => node === document.activeElement)).toBe(true)
+      expect(await search.inputValue()).toBe("")
+      expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(1)
+      expect(
+        await page.evaluate(() => (globalThis as unknown as { __selectedModel(): unknown }).__selectedModel()),
+      ).toEqual({ providerID: "env-only", modelID: "quick" })
+      await search.fill("standard")
+      await popup.getByText("Standard model", { exact: true }).waitFor()
+      await page.keyboard.press("Escape")
+      await page.waitForFunction(() => document.activeElement?.hasAttribute("data-model-trigger"))
+    }
   })
 
   test("shows concise configuration guidance only after opening the model entry", async () => {
@@ -338,7 +474,10 @@ describe("model availability recovery", () => {
     ] as const) {
       await page.setViewportSize({ width, height: 640 })
       await mount(RESTRICTED_MANY)
-      await page.evaluate((theme) => (document.documentElement.dataset.colorScheme = theme), theme)
+      await page.evaluate(
+        (theme) => (globalThis as unknown as { __setColorScheme(value: string): void }).__setColorScheme(theme),
+        theme,
+      )
       await trigger().focus()
       await page.keyboard.press("Enter")
       await notice().waitFor()
@@ -350,6 +489,15 @@ describe("model availability recovery", () => {
       await page.keyboard.press("Escape")
       await page.waitForFunction(() => document.activeElement?.hasAttribute("data-model-trigger"))
       expect(await trigger().getAttribute("aria-expanded")).toBe("false")
+      await setProvider(FULL_CATALOG)
+      await page.keyboard.press("Enter")
+      const model = page.locator('.model-selector-popover [data-key="env-only:standard"]')
+      await model.waitFor()
+      const modelBox = (await model.boundingBox())!
+      expect(modelBox.x).toBeGreaterThanOrEqual(0)
+      expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(width)
+      await page.keyboard.press("Escape")
+      await page.waitForFunction(() => document.activeElement?.hasAttribute("data-model-trigger"))
     }
     await page.setViewportSize({ width: 800, height: 600 })
   })

@@ -7,7 +7,7 @@ import { useLingui } from "@lingui/solid"
 import { AP } from "@/app-i18n"
 import { dialog } from "@/locales/messages"
 import { SettingsDialog } from "@/components/settings"
-import { QuickSwitcherList } from "@/components/provider/model-manager"
+import { ModelSelectionList } from "@/components/provider/model-manager"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useProviders } from "@/hooks/use-providers"
@@ -65,7 +65,7 @@ export const ModelSelectorPopover: Component<{
           when={unavailable()}
           fallback={
             <div class="model-selector-content flex min-h-0 flex-col p-1">
-              <QuickSwitcherList provider={props.provider} onSelect={close} />
+              <ModelSelectionList provider={props.provider} onSelect={close} />
               <div class="model-selector-footer shrink-0 px-2 pb-2 pt-1 flex items-center justify-between gap-2">
                 <Button
                   variant="ghost"
@@ -127,7 +127,7 @@ export const DialogSelectModel: Component<{ provider?: string }> = (props) => {
         when={unavailable()}
         fallback={
           <div class="flex h-96 min-h-0 flex-col p-1">
-            <QuickSwitcherList provider={props.provider} onSelect={() => dialogContext.close()} />
+            <ModelSelectionList provider={props.provider} onSelect={() => dialogContext.close()} />
           </div>
         }
       >

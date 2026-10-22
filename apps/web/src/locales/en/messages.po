@@ -2398,7 +2398,7 @@ msgstr "Connect provider"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.description"
-msgstr "Choose a quick-switch model for the current session."
+msgstr "Choose an available model for the current session."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.search"
@@ -13149,12 +13149,12 @@ msgid "model.manager.empty.connected"
 msgstr "No connected model results"
 
 #. js-lingui-explicit-id
-msgid "model.manager.empty.quickSwitch"
-msgstr "No quick-switch models"
-
-#. js-lingui-explicit-id
 msgid "model.manager.quick"
 msgstr "Quick switch"
+
+#. js-lingui-explicit-id
+msgid "model.manager.recent"
+msgstr "Recent"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -22581,7 +22581,7 @@ msgstr "Models"
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.description"
-msgstr "Pick the connected models that appear in model switchers and command shortcuts."
+msgstr "Pin models to the Quick switch group. All available models remain selectable."
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.title"

@@ -31,6 +31,8 @@ For resource configuration flows, test list search across all visible resource g
 
 Pass reactive local collections to the shared `List` as arrays, such as `items={models()}`. Function-valued `items` are filter-driven loaders; passing a memo as a loader does not subscribe the list to later catalog updates. Hold catalog publication until the initial rows are visible, then verify new models appear and their quick-switch preferences can change without search input or remounting.
 
+Keep shortcut preferences separate from the selectable model catalog. Verify that unpinned and non-recent models appear in provider groups and search, including after late catalog publication and when every quick-switch entry is removed.
+
 For credential recovery, remount the connection form through a Settings section change after a successful write and failed refresh. Automatic method selection must honor the retained receipt, preserve the refresh action and avoid replaying API-key writes or credential imports.
 
 ## Library and statistics recovery

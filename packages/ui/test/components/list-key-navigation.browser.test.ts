@@ -16,6 +16,7 @@ type FixtureWindow = typeof window & {
     showLoading(): void
     finishLoading(): void
     setEmptyMessage(value: string): void
+    showGroupedCopies(): void
   }
 }
 
@@ -62,10 +63,11 @@ beforeAll(async () => {
     const loading=new Promise(resolve=>{finishLoading=()=>resolve([])})
     const first={id:"row-0",label:"First"}
     const target=()=>({id:key(),label:"Target"})
-    const items=()=>state()==="loading"?()=>loading:state()==="empty"?[]:[first,...Array.from({length:7},(_,i)=>({id:"row-"+(i+1),label:"Row "+(i+1)})),target(),{id:"last",label:"Last"}]
+    const copies=[{id:"first-copy",entity:"shared",group:"first",label:"First copy"},{id:"second-copy",entity:"shared",group:"second",label:"Second copy"}]
+    const items=()=>state()==="loading"?()=>loading:state()==="empty"?[]:state()==="grouped"?copies:[first,...Array.from({length:7},(_,i)=>({id:"row-"+(i+1),label:"Row "+(i+1)})),target(),{id:"last",label:"Last"}]
     const i18n=setupI18n({locale:"en",messages:{en:{"ui.list.loading":"Loading","ui.list.noResults":"No results","list.for-label":"for"},"zh-CN":{"ui.list.loading":"加载中","ui.list.noResults":"无结果","list.for-label":"匹配"}}})
-    window.listKeyFixture={setKey,setInteractive,setEmptyMessage,setLocale:locale=>i18n.activate(locale),selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false),showLoading:()=>{setMounted(false);setState("loading");setMounted(true)},finishLoading:()=>{finishLoading();setState("empty")}}
-    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} emptyMessage={emptyMessage()} key={item=>item.id} current={current()} filterKeys={["label"]} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
+    window.listKeyFixture={setKey,setInteractive,setEmptyMessage,setLocale:locale=>i18n.activate(locale),selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false),showLoading:()=>{setMounted(false);setState("loading");setMounted(true)},finishLoading:()=>{finishLoading();setState("empty")},showGroupedCopies:()=>{setCurrent(copies[0]);setState("grouped")}}
+    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} emptyMessage={emptyMessage()} key={item=>item.id} selectionKey={state()==="grouped"?item=>item.entity:undefined} groupBy={state()==="grouped"?item=>item.group:undefined} groupLabel={state()==="grouped"?()=>"Same heading":undefined} current={current()} filterKeys={["label"]} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
     `,
   )
   await build({
@@ -213,6 +215,17 @@ test("non-interactive rows cannot select through pointer or keyboard input", asy
   await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setInteractive(true))
   await page.getByRole("button", { name: "Target", exact: true }).click()
   expect(await page.getByTestId("selection").textContent()).toBe("Target")
+  expect(errors).toEqual([])
+})
+
+test("group labels and selected entities stay independent from group and row identities", async () => {
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.showGroupedCopies())
+  await settleFrames()
+  expect(await page.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Same heading", "Same heading"])
+  expect(await page.locator('[data-selected="true"]').count()).toBe(2)
+  expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(2)
+  await page.locator('[data-key="second-copy"]').click()
+  expect(await page.getByTestId("selection").textContent()).toBe("Second copy")
   expect(errors).toEqual([])
 })
 

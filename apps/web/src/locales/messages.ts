@@ -998,7 +998,7 @@ export const dialog = {
   selectModel: { id: "app.dialog.model.title", message: "Select model" },
   selectModelDesc: {
     id: "app.dialog.model.description",
-    message: "Choose a quick-switch model for the current session.",
+    message: "Choose an available model for the current session.",
   },
   modelSettings: { id: "app.dialog.model.settings", message: "Model settings" },
   connectProvider: { id: "app.dialog.model.connectProvider", message: "Connect provider" },

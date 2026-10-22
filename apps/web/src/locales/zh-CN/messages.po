@@ -2398,7 +2398,7 @@ msgstr "连接提供商"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.description"
-msgstr "为当前会话选择可快速切换的模型。"
+msgstr "为当前会话选择可用模型。"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.search"
@@ -13149,12 +13149,12 @@ msgid "model.manager.empty.connected"
 msgstr "没有已连接的模型结果"
 
 #. js-lingui-explicit-id
-msgid "model.manager.empty.quickSwitch"
-msgstr "没有快速切换模型"
-
-#. js-lingui-explicit-id
 msgid "model.manager.quick"
 msgstr "快速切换"
+
+#. js-lingui-explicit-id
+msgid "model.manager.recent"
+msgstr "最近使用"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -22581,7 +22581,7 @@ msgstr "模型"
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.description"
-msgstr "选择要显示在模型快速切换列表和命令快捷方式中的模型。"
+msgstr "将模型加入「快速切换」分组。所有可用模型仍可选择。"
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.title"
