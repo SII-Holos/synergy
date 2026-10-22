@@ -68,6 +68,17 @@ beforeAll(async () => {
       const result={pending,nodes:nodes.length,text:root.textContent===text,caret:document.getSelection()!.anchorOffset,source:controller.sourceAt(nodes[0],text.indexOf("👩")),expected:text.indexOf("👩"),graphemes:["é","👩‍🔬","🇨🇳"].every(cluster=>root.textContent!.includes(cluster))}
       document.getSelection()!.removeAllRanges();root.remove()
       return result
+    }, async captureGrowingStream(prefix:string, source:string){
+      const parser=createMarkdownParser()
+      const root=document.createElement("div")
+      root.dataset.component="markdown";root.style.cssText="position:fixed;top:0;width:720px"
+      document.body.append(root)
+      const controller=createMarkdownStreamController(root)
+      try {
+        controller.update(prefix);controller.end()
+        const parsed=await parseMarkdownDocument(parser,source)
+        return {measured:controller.layout(parsed)?.sizes.length,complete:parsed.blocks.filter(block=>block.source.end<=prefix.length).length,total:parsed.blocks.length}
+      } finally {root.remove();parser.dispose()}
     }, async compareLayoutCache(change:string){
       const parser=createMarkdownParser()
       const document=await parseMarkdownDocument(parser,Array.from({length:80},(_,index)=>"\\n\\n\u0060\u0060\u0060txt\\n"+("cache-row-"+index+": "+"wide text ".repeat(14)+"\\n").repeat(10)+"\u0060\u0060\u0060\\n").join(""))
@@ -423,13 +434,17 @@ test.each(["index.jsx", "index.mjs"])(
 )
 
 test.each([
-  ["index.jsx", false],
-  ["index.mjs", false],
-  ["index.jsx", true],
-  ["index.mjs", true],
-])("%s accepts existing measurements before paint (window=%s)", async (entry, windowed) => {
+  ["index.jsx", false, false],
+  ["index.mjs", false, false],
+  ["index.jsx", true, false],
+  ["index.mjs", true, false],
+  ["index.jsx", false, true],
+  ["index.mjs", false, true],
+  ["index.jsx", true, true],
+  ["index.mjs", true, true],
+])("%s accepts existing measurements before paint (window=%s, partial=%s)", async (entry, windowed, partial) => {
   const result = await page.evaluate(
-    async ({ entry, windowed }) => {
+    async ({ entry, windowed, partial }) => {
       const values = Array.from({ length: 320 }, (_, index) => 37 + (index % 11))
       const fixture = window as unknown as {
         mountMeasured(
@@ -438,7 +453,7 @@ test.each([
           windowed: boolean,
         ): Promise<{ scroller: HTMLElement; dispose(): void }>
       }
-      const probe = await fixture.mountMeasured(entry, values, windowed)
+      const probe = await fixture.mountMeasured(entry, partial ? values.slice(0, 110) : values, windowed)
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
       const target = probe.scroller.querySelector<HTMLElement>('[data-probe-row="100"]')
       const offset = target
@@ -458,7 +473,7 @@ test.each([
       probe.dispose()
       return diagnostics
     },
-    { entry, windowed },
+    { entry, windowed, partial },
   )
   if (process.env.SYNERGY_BROWSER_MARKDOWN_OUTPUT)
     await Bun.write(
@@ -513,6 +528,89 @@ test("real arrival animations retain one settled Text run, Unicode, provenance a
   expect(result.caret).toBe(12)
   expect(result.source).toBe(result.expected)
   expect(errors).toEqual([])
+})
+
+test("a large live backlog uses bounded blocks and converges while the stream remains open", async () => {
+  await page.evaluate(() => {
+    document.getSelection()?.removeAllRanges()
+    ;(document.activeElement as HTMLElement)?.blur()
+    const fixture = (window as unknown as { markdownFixture: { beginStream(text: string): void } }).markdownFixture
+    fixture.beginStream("A live backlog. ".repeat(32768) + "Initial tail.")
+  })
+  await page.waitForFunction(() => !!document.querySelector("[data-markdown-block]"), undefined, { timeout: 4000 })
+  expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
+  expect((await page.locator('[data-component="markdown"]').textContent())!.length).toBeLessThan(160_000)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { markdownFixture: { setText(text: string): void } }).markdownFixture
+    for (let index = 0; index < 20; index++)
+      fixture.setText("A live backlog. ".repeat(32768) + `Current tail ${index}.`)
+  })
+  await page.waitForTimeout(500)
+  await page.locator("#scroller").evaluate((element) => {
+    element.scrollTop = element.scrollHeight
+  })
+  await page.waitForFunction(
+    () => {
+      const scroller = document.getElementById("scroller")!
+      scroller.scrollTop = scroller.scrollHeight
+      return scroller.textContent?.includes("Current tail 19.")
+    },
+    undefined,
+    { timeout: 5000 },
+  )
+  expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
+})
+
+test("growing beyond the live DOM limit preserves reading and reaches the unmeasured tail", async () => {
+  const prefix = Array.from(
+    { length: 30 },
+    (_, index) => `### Prefix heading ${index}\n\nPrefix paragraph ${index}. ${"Accepted reading. ".repeat(25)}\n\n`,
+  ).join("")
+  await page.evaluate((text) => {
+    document.getSelection()?.removeAllRanges()
+    ;(document.activeElement as HTMLElement)?.blur()
+    ;(window as unknown as { markdownFixture: { beginStream(text: string): void } }).markdownFixture.beginStream(text)
+  }, prefix)
+  const source = prefix + "Large background continuation. ".repeat(16384) + "\n\nUnmeasured tail marker."
+  const layout = await page.evaluate(
+    ({ prefix, source }) =>
+      (
+        window as unknown as {
+          captureGrowingStream(
+            prefix: string,
+            source: string,
+          ): Promise<{ measured: number; complete: number; total: number }>
+        }
+      ).captureGrowingStream(prefix, source),
+    { prefix, source },
+  )
+  expect(layout.measured).toBe(layout.complete)
+  expect(layout.measured).toBeLessThan(layout.total)
+  const anchor = page.locator("p").filter({ hasText: /^Prefix paragraph 12\./ })
+  await anchor.scrollIntoViewIfNeeded()
+  await anchor.evaluate((element) => {
+    const scroller = document.getElementById("scroller")!
+    scroller.scrollTop += element.getBoundingClientRect().top - scroller.getBoundingClientRect().top + 10
+  })
+  const before = await anchor.evaluate((element) => element.getBoundingClientRect().top)
+  await page.evaluate((text) => {
+    ;(window as unknown as { markdownFixture: { setText(text: string): void } }).markdownFixture.setText(text)
+  }, source)
+  await page.waitForFunction(() => !!document.querySelector("[data-markdown-block]"))
+  await page.waitForTimeout(100)
+  expect(
+    Math.abs((await anchor.evaluate((element) => element.getBoundingClientRect().top)) - before),
+  ).toBeLessThanOrEqual(1)
+  await page.waitForFunction(
+    () => {
+      const scroller = document.getElementById("scroller")!
+      scroller.scrollTop = scroller.scrollHeight
+      return scroller.textContent?.includes("Unmeasured tail marker.")
+    },
+    undefined,
+    { timeout: 3000 },
+  )
+  expect(await page.locator("[data-markdown-block]").count()).toBeLessThan(20)
 })
 
 test("a large streamed answer preserves the paragraph being read through terminal virtualization", async () => {

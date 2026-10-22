@@ -14,7 +14,7 @@ import { Persist, persisted } from "@/utils/persist"
 import type { ComposerDocumentController } from "../prompt-input/composer-document"
 import { PredictionRequest } from "./request"
 import { twinCopy } from "./copy"
-import { registerComposer } from "./presence"
+import { claimCompletion, registerComposer } from "./presence"
 
 type Props = {
   controller: ComposerDocumentController
@@ -54,7 +54,7 @@ function SessionPrediction(props: Props) {
   const sync = useSync()
   const active = useViewActivity()
   const { _ } = useLingui()
-  onCleanup(registerComposer({ url: sdk.url, scopeKey: sdk.scopeKey, sessionID: props.sessionID ?? "" }))
+  const owner = { url: sdk.url, scopeKey: sdk.scopeKey, sessionID: props.sessionID ?? "" }
   const [saved, setSaved] = persisted(
     {
       ...Persist.scoped(Persist.scopeKey(sdk.url, sdk.scopeKey), props.sessionID, "digital-twin"),
@@ -62,6 +62,7 @@ function SessionPrediction(props: Props) {
     },
     createStore<z.infer<typeof SavedSuggestion>>({ version: 1 }),
   )
+  onCleanup(registerComposer(owner, (suggestion) => setSaved("suggestion", suggestion)))
   const service = props.controller.service({
     id: "digital-twin",
     capabilities: new Set(["composer.read", "composer.write"]),
@@ -228,7 +229,8 @@ function SessionPrediction(props: Props) {
     if (properties.sessionID !== props.sessionID || !eligible()) return
     completionGeneration++
     setCompletedRoot(properties.rootID)
-    requests.completed({ rootID: properties.rootID, assistantID: properties.assistantID })
+    if (claimCompletion(owner, properties.rootID, properties.assistantID))
+      requests.completed({ rootID: properties.rootID, assistantID: properties.assistantID })
   })
   const sourceChanged = (sessionID: string) => {
     if (sessionID === props.sessionID) setSourceRevision((value) => value + 1)

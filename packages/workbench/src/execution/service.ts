@@ -1589,18 +1589,17 @@ export namespace ExecutionService {
     if (field !== "message") throw new Storage.NotFoundError({ message: "Message content field was not found" })
     const message =
       found.message && (await MessageV2.get({ sessionID: found.message.sessionID, messageID: found.message.messageID }))
-    const text = JSON.stringify(
-      message && { info: message.info, part: message.parts.find((part) => part.id === found.message!.partID) },
-      null,
-      2,
-    )
-    if (!text) throw new Storage.NotFoundError({ message: "Message content was not found" })
+    const part = message?.parts.find((value) => value.id === found.message!.partID)
+    const body = part && "text" in part && typeof part.text === "string" ? part.text : null
+    const text = body ?? JSON.stringify(message && { info: message.info, part }, null, 2)
+    if (text === undefined) throw new Storage.NotFoundError({ message: "Message content was not found" })
+    const mediaType = body === null ? "application/json" : "text/plain"
     const bytes = Buffer.from(text)
     const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
     const contentVersion = "message:" + id + ":" + sha256
     if (version && version !== contentVersion) throw new ExecutionQueryError("Execution message version changed")
     return {
-      mediaType: "application/json",
+      mediaType,
       bytes: bytes.length,
       status: "complete",
       sha256,
@@ -1611,7 +1610,7 @@ export namespace ExecutionService {
         if (offset > bytes.length) throw new ExecutionQueryError("Content offset exceeds the recorded message")
         const end = offset + RolloutEvidence.textBoundary(bytes.subarray(offset, offset + limit + 4), limit)
         return ExecutionSchema.Content.parse({
-          mediaType: "application/json",
+          mediaType,
           text: bytes.subarray(offset, end).toString(),
           offset,
           nextOffset: end < bytes.length ? end : null,

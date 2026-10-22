@@ -25,7 +25,7 @@ import {createPartContentStore} from ${JSON.stringify(contentStore)};
 const partContentStore=createPartContentStore();
 export const contentCalls=[];
 export const recoveryCalls=[];
-let finishContent;export const completeContent=()=>finishContent();
+let finishContent,startContent;export const contentStarted=new Promise(resolve=>{startContent=resolve});export const completeContent=()=>finishContent();
 const summary=id=>({id,sessionID:'session',messageID:id==='live'?'live-message':'message',type:'text',preview:id,content:{version:'one',bytes:32}});
 const page=items=>({items,nextCursor:null,previousCursor:null,hasMore:false,hasEarlier:false});
 const contentBudget=createContentBudget();
@@ -39,7 +39,7 @@ export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};
 export const updatePlanBlueprintOfferState=()=>{};
 export const useSDK=()=>({url:'http://fixture',scopeKey:'probe',content:{retain:()=>()=>{}},client:{session:{
 partPage:input=>Promise.resolve({data:page([summary(input.messageID==='live-message'?'live':'a')])}),
-partContent:(input,options)=>{if(input.partID==='live'){recoveryCalls.push(input);return Promise.reject({name:'SessionDisplayConflict',data:{message:'Part content changed; refresh its summary'}})}contentCalls.push(options.signal);return new Promise(resolve=>{finishContent=()=>resolve({data:{part:{id:'a',sessionID:'session',messageID:'message',type:'text',text:'Original body'},version:input.version}})})},
+partContent:(input,options)=>{if(input.partID==='live'){recoveryCalls.push(input);return Promise.reject({name:'SessionDisplayConflict',data:{message:'Part content changed; refresh its summary'}})}contentCalls.push(options.signal);return new Promise(resolve=>{finishContent=()=>resolve({data:{part:{id:'a',sessionID:'session',messageID:'message',type:'text',text:'Original body'},version:input.version}});startContent()})},
 }}});
 `,
   )
@@ -48,7 +48,7 @@ partContent:(input,options)=>{if(input.partID==='live'){recoveryCalls.push(input
     `
 import {render} from 'solid-js/web';
 import {SyncProvider,useSync} from ${JSON.stringify(sync)};
-import {snapshot,contentCalls,completeContent,seedRecovery,checkpoint,recoveryCalls} from ${JSON.stringify(stub)};
+import {snapshot,contentCalls,completeContent,contentStarted,seedRecovery,checkpoint,recoveryCalls} from ${JSON.stringify(stub)};
 let api,peer;
 function Child(){api=useSync();return <div>probe</div>}
 function Peer(){peer=useSync();return <div>peer</div>}
@@ -73,7 +73,7 @@ export const harness={snapshot,dispose,run:()=>api.session.content.summaries('se
     lease.release();dropped.push(lease.ready);
   }
   const successor=peer.session.content.retain(summary);
-  await Promise.resolve();
+  await contentStarted;
   const reads=contentCalls.length;
   completeContent();await Promise.all([...dropped,successor.ready]);
   const text=api.data.part.message.find(part=>part.id==='a')?.text;

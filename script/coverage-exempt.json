@@ -1513,6 +1513,18 @@
         {
           "glob": "src/pages/session-route.tsx",
           "reason": "Production route composition is exercised by test/performance/browser.mjs, panels.mjs and the private HTTP build smoke; retained lifetime behavior is covered in retained-session-views.dom.test.ts. Bun cannot instrument the browser renderer."
+        },
+        {
+          "glob": "src/components/digital-twin/background.tsx",
+          "reason": "Completion routing, mounted-consumer handoff and cancellation on capability, connection and configuration changes run in test/components/digital-twin/composer.dom.test.ts through Vite/Chromium, outside Bun coverage. Ownership and bounded completion claims have direct unit coverage."
+        },
+        {
+          "glob": "src/components/text-selection/i18n.ts",
+          "reason": "Localized descriptors are exercised by test/components/text-selection/toolbar.dom.test.ts and localization extraction; browser-bundled descriptor modules are outside Bun coverage."
+        },
+        {
+          "glob": "src/components/text-selection/selection-toolbar.tsx",
+          "reason": "Real selection, copy, quote dispatch and stale asynchronous action completion run in test/components/text-selection/toolbar.dom.test.ts through Vite/Chromium, outside Bun coverage. Controller, ownership and positioning have direct unit coverage."
         }
       ]
     },

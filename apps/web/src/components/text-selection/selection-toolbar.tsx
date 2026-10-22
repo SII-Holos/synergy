@@ -88,6 +88,7 @@ export function SelectionToolbar() {
       label: i18n._(TS.copy),
       notifyFailure: false,
     })
+    if (state()?.snapshot.selectionId !== snapshot.selectionId) return
     if (result.ok) {
       close()
       return
@@ -110,7 +111,7 @@ export function SelectionToolbar() {
     if (!input.action.presentation) {
       try {
         await textSelectionController.run(input.action.id, input.snapshot, controller.signal)
-        close()
+        if (!controller.signal.aborted) close()
       } catch (error) {
         if (controller.signal.aborted) return
         showToast({

@@ -35,7 +35,9 @@ beforeAll(async () => {
     const rate={value:null,tokens:0,milliseconds:0,samples:0,excluded:0}
     const latency={samples:0,excluded:0,totalMs:0,meanMs:null,p50Ms:null,p95Ms:null}
     const summary={sessionID:"root",revision:1,computedAt:1,status:"completed",elapsedMs:1,elapsedActive:false,accounting:accounting(),own:accounting(),descendants:accounting(),rates:{generation:rate,endToEnd:rate},cache:{ratio:null,observedRatio:null,read:0,input:0,samples:0,excluded:0},latency:{headers:latency,firstByte:latency,ttft:latency,request:latency,generation:latency},outcomes:{completed:0,failed:0,cancelled:0,interrupted:0,running:0,retries:0,logicalRetries:0,transportRetries:0,rootTasks:0},tools:[{tool:"read",calls:2,failed:1,timedSamples:2,durationMs:100}],context:null,contextDistribution:null,tasks:[task(child,"root"),task(nested,"child")],rounds:[{id:"root-round",started:1,status:"completed",elapsedMs:3000,elapsedActive:false,elapsedLowerBound:false},{id:"round-2",started:2,status:"completed"}],coverage:{recorded:2,messages:0,gaps:0,partial:false},lanes:[]}
-    const records={root:[node("root","root","turn","Root task"),child],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
+    const messageRow={...node("message-row","root","output","A very long recorded assistant reply that must not become the inspector title","root"),source:"messages"}
+    const messageNodes=location.search.includes("messages=1")?[messageRow]:[]
+    const records={root:[node("root","root","turn","Root task"),child,...messageNodes],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
     const exportRows=[...new Map(Object.values(records).flat().map(n=>[n.id,n])).values(),...Array.from({length:600},(_,i)=>node("export-"+i,"root","context","Export row "+i))]
     const event=createGlobalEmitter()
     export const [ownerActive,setOwnerActive]=createSignal(true)
@@ -46,7 +48,7 @@ beforeAll(async () => {
     const longRows=Array.from({length:10_000},(_,i)=>({...node("long-"+i,"root","tool","Long tool "+i),started:i+1,ended:i+2}))
     const model={...node("model","root","model","Test model"),modelID:"test-model",evidenceKind:"call",tokens:{known:1250,total:1250,unknown:0}}
     const relatedRows=Array.from({length:40},(_,i)=>node("related-"+i,"child","model","Related request "+i,"child"))
-    const fixtureNode=(id)=>id==="model"?model:[...exportRows,...longRows,...relatedRows].find(n=>n.id===id)
+    const fixtureNode=(id)=>id==="model"?model:[messageRow,...exportRows,...longRows,...relatedRows].find(n=>n.id===id)
     export const updateFixture=()=>{
       const changed={...longRows[9950],preview:"Updated tool 9950",revision:2}
       const added={...node("long-new","root","tool","New tool"),started:10001,revision:2}
@@ -69,7 +71,7 @@ beforeAll(async () => {
       }
       if(q.limit===500){const start=q.cursor==="page-2"?500:0;return {data:{sessionID:q.sessionID,revision:1,total:exportRows.length,items:exportRows.slice(start,start+500),nextCursor:start===0?"page-2":null,previousCursor:null}}}
       return {data:{sessionID:q.sessionID,revision:1,total:records[q.sessionID].length,items:records[q.sessionID],nextCursor:null,previousCursor:null}}
-    },executionSummary:async()=>{window.summaryReads=(window.summaryReads??0)+1;if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>{window.nodeReads=(window.nodeReads??0)+1;return ({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:q.nodeID==="child" && location.search.includes("related=1")?relatedRows:[]}})},executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:"application/json",text:'{"test": true}',offset:0,bytes:14,totalBytes:14,nextOffset:null}}}}}}
+    },executionSummary:async()=>{window.summaryReads=(window.summaryReads??0)+1;if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>{window.nodeReads=(window.nodeReads??0)+1;return ({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:q.nodeID==="child" && location.search.includes("related=1")?relatedRows:[]}})},executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));const text=q.nodeID==="message-row"?"Recorded assistant reply body":'{"test": true}';const bytes=new TextEncoder().encode(text).byteLength;return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:q.nodeID==="message-row"?"text/plain":"application/json",text,offset:0,bytes,totalBytes:bytes,nextOffset:null}}}}}}
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     const snapshots=[1,2].map(n=>({sessionID:"root",callID:"call-"+n,nodeID:"model",runID:"root-round",requestNumber:n,roundNumber:1,started:n,modelID:"test-model",providerID:"test-provider",status:"completed",inputTokens:n*100,outputTokens:10,cacheHit:0.5,elapsedMs:1000,retries:0,usage:null,compactedBefore:false,requestAvailable:true,contextLimit:10000}))
@@ -829,3 +831,51 @@ test("an inspector opened offline loads its first node after reconnect", async (
   await page.locator(".execution-content-row").first().waitFor()
   expect(errors).toEqual([])
 })
+
+for (const width of [1440, 1024]) {
+  test("execution records keep title, search and filter controls on one row at " + width + "px", async () => {
+    await page.setViewportSize({ width, height: 820 })
+    await page.goto(server.resolvedUrls!.local[0]!)
+    await page.locator(".execution-node").first().waitFor()
+    await page.getByRole("button", { name: "All records", exact: true }).click()
+    await page.locator(".execution-view-switch").nth(1).waitFor()
+    const layout = await page.evaluate(() => {
+      const header = document.querySelector(".execution-records-header") as HTMLElement
+      const controls = [
+        ...header.querySelectorAll(":scope > *"),
+        ...header.querySelectorAll(':scope > [data-slot="execution-filters"] > *, :scope > .execution-filters > *'),
+      ].filter((element) => {
+        const box = element.getBoundingClientRect()
+        return box.width > 0 && box.height > 0
+      })
+      const bands: { top: number; bottom: number }[] = []
+      for (const element of controls) {
+        const box = element.getBoundingClientRect()
+        const band = bands.find((value) => box.top < value.bottom - 4 && box.bottom > value.top + 4)
+        if (band) {
+          band.top = Math.min(band.top, box.top)
+          band.bottom = Math.max(band.bottom, box.bottom)
+        } else bands.push({ top: box.top, bottom: box.bottom })
+      }
+      return { rows: bands.length, height: Math.round(header.getBoundingClientRect().height) }
+    })
+    expect(layout.rows).toBe(1)
+    expect(layout.height).toBe(36)
+    expect(errors).toEqual([])
+  })
+}
+
+test("a message record is named by its kind and reads its saved text as evidence", async () => {
+  await page.setViewportSize({ width: 1000, height: 900 })
+  await page.goto(server.resolvedUrls!.local[0]! + "?messages=1")
+  await page.locator('[data-node-id="message-row"] .execution-node-button').click()
+  const inspector = page.getByRole("region", { name: "Inspect event", exact: true })
+  await inspector.waitFor()
+  const title = inspector.locator(".execution-inspector-title strong")
+  await page.waitForFunction(() => document.querySelector(".execution-inspector-title strong")?.textContent === "Reply")
+  expect(await title.textContent()).toBe("Reply")
+  const evidence = inspector.getByRole("region", { name: "Recorded message", exact: true })
+  await evidence.locator("code").waitFor()
+  expect(await evidence.locator("code").textContent()).toBe("Recorded assistant reply body")
+  expect(errors).toEqual([])
+}, 15_000)

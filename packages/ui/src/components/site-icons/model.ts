@@ -32,6 +32,7 @@ export const siteIconHosts: Record<string, IconName> = {
   "medium.com": "medium",
   "netlify.com": "netlify",
   "nodejs.org": "nodedotjs",
+  "notion.com": "notion",
   "notion.site": "notion",
   "notion.so": "notion",
   "npmjs.com": "npm",

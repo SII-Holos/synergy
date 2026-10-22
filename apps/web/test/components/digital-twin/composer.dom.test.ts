@@ -586,3 +586,56 @@ test("automatic prediction still runs for a Session the user is not viewing", as
     await page.close()
   }
 })
+
+test("a background prediction reaches a composer mounted before its response", async () => {
+  const page = await browser.newPage()
+  try {
+    await page.goto(fixture.url)
+    await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+    await page.evaluate(() => {
+      window.twinFixture.composer(false)
+      window.twinFixture.complete()
+    })
+    await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+    await page.evaluate(() => window.twinFixture.composer(true))
+    await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost(), undefined, { timeout: 2000 })
+    expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([false])
+  } finally {
+    await page.close()
+  }
+})
+
+test.each(["setting", "capability", "connection"] as const)(
+  "background prediction rejects obsolete %s results",
+  async (change) => {
+    const page = await browser.newPage()
+    try {
+      await page.goto(fixture.url)
+      await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+      await page.evaluate(() => {
+        window.twinFixture.composer(false)
+        window.twinFixture.complete()
+      })
+      await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+      await page.evaluate((change) => {
+        if (change === "setting") window.twinFixture.automatic(false)
+        if (change === "capability") window.twinFixture.capability("unknown")
+        if (change === "connection") window.twinFixture.connection("http://another-server.test")
+      }, change)
+      expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([true])
+      await page.evaluate(() => window.twinFixture.resolve(0))
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+      expect(await page.evaluate(() => window.twinFixture.stored())).toEqual([])
+      if (change === "connection") {
+        await page.evaluate(() => window.twinFixture.complete())
+        await page.waitForFunction(() => window.twinFixture.requests().length === 2)
+        await page.evaluate(() => window.twinFixture.resolve(1))
+        await page.waitForFunction(() => window.twinFixture.stored().length === 1)
+      }
+    } finally {
+      await page.close()
+    }
+  },
+)

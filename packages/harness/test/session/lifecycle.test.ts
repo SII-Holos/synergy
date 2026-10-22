@@ -58,6 +58,8 @@ describe("SessionLifecycle pause latch", () => {
           for (const read of [
             () => SessionLifecycle.snapshot(session.id),
             () => SessionLifecycle.clear(session.id),
+            () => SessionLifecycle.startNewTask(session.id),
+            () => SessionLifecycle.resume(session.id),
             () => SessionLifecycle.pause({ sessionID: session.id, reason: "aborted" }),
             () => SessionDrive.request(session.id, "fixture", { force: true }),
             () => SessionManager.wake(session.id),

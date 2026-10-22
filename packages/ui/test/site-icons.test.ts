@@ -43,6 +43,7 @@ describe("site brand marks", () => {
   test("subdomains inherit the mark registered on their parent domain", () => {
     expect(siteIcon("en.wikipedia.org")).toBe("wikipedia")
     expect(siteIcon("www.notion.so")).toBe("notion")
+    expect(siteIcon("app.notion.com")).toBe("notion")
     expect(siteIcon("api.github.com")).toBe("github")
   })
 

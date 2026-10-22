@@ -12753,6 +12753,10 @@ msgid "execution.openSession"
 msgstr "打开子任务对话"
 
 #. js-lingui-explicit-id
+msgid "execution.order"
+msgstr "排序"
+
+#. js-lingui-explicit-id
 msgid "execution.output"
 msgstr "输出"
 
@@ -12891,6 +12895,10 @@ msgstr "搜索全部执行记录"
 #. js-lingui-explicit-id
 msgid "execution.searchContent"
 msgstr "搜索完整内容"
+
+#. js-lingui-explicit-id
+msgid "execution.searchShort"
+msgstr "搜索记录"
 
 #. js-lingui-explicit-id
 msgid "execution.sections"

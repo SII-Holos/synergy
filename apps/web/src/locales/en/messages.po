@@ -12753,6 +12753,10 @@ msgid "execution.openSession"
 msgstr "Open subtask conversation"
 
 #. js-lingui-explicit-id
+msgid "execution.order"
+msgstr "Order"
+
+#. js-lingui-explicit-id
 msgid "execution.output"
 msgstr "Output"
 
@@ -12891,6 +12895,10 @@ msgstr "Search all recorded events"
 #. js-lingui-explicit-id
 msgid "execution.searchContent"
 msgstr "Search this entire content"
+
+#. js-lingui-explicit-id
+msgid "execution.searchShort"
+msgstr "Search records"
 
 #. js-lingui-explicit-id
 msgid "execution.sections"

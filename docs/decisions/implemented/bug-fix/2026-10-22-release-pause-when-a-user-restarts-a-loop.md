@@ -14,6 +14,8 @@ The same class existed on two more paths. `SessionInvoke` started a turn against
 
 Take-back has one definition in `SessionLifecycle`, because the steps and their order are the same for every caller: drain the stopping turn, decide the interrupted rollout run, then clear the latch. Draining comes first because clearing the latch while the stopping turn still holds its lease lets its next iteration observe "not paused" and continue the work the user stopped.
 
+Both take-back entries tolerate an absent Session only when storage reports `Storage.NotFoundError`. Busy, integrity and read failures propagate before any further lifecycle transition; a failed read cannot establish that there is no pause to release. The lifecycle regression exercises this invariant for start and resume alongside the other latch operations.
+
 The two ways a user takes a session back differ only in the rollout run, and that difference is the caller's decision rather than an implementation detail. `startNewTask` leaves the interrupted run closed, because the new task root owns a fresh run. `resume` reopens that run so the next turn appends to it. Explicit continue and steering input use `resume`; new human input and a user-owned loop start use `startNewTask`. The local runtime keeps no private copy of either.
 
 `BlueprintLoopService.start` settles the latch before it writes anything, so a blocked start leaves neither a binding nor a `running` claim behind. A user-owned loop releases the pause, because the first prompt is a new task root and the user's explicit action is the take-back. A machine-owned loop throws `LoopError.SessionPaused`, because only the user releases a stop the user asked for; the owner decides what a blocked start means for its own lifecycle.

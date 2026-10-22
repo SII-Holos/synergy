@@ -88,3 +88,15 @@ describe("selection origin across the transcript's nested message containers", (
     expect(opensOnSelection(snapshot({ origin }))).toBe(false)
   })
 })
+
+test("selection menus stay within the viewport and flip below a top-edge selection", async () => {
+  const { placeTextActionSurface } = await import("../../../src/components/text-selection/position")
+  const surface = { width: 180, height: 40 },
+    viewport = { width: 375, height: 600 }
+  expect(placeTextActionSurface({ x: 100, y: 100, width: 40, height: 20 }, surface, viewport)).toEqual({ x: 30, y: 52 })
+  expect(placeTextActionSurface({ x: 0, y: 0, width: 20, height: 20 }, surface, viewport)).toEqual({ x: 8, y: 28 })
+  expect(placeTextActionSurface({ x: 370, y: 590, width: 20, height: 20 }, surface, viewport)).toEqual({
+    x: 187,
+    y: 542,
+  })
+})

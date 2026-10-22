@@ -617,7 +617,9 @@ test("the column grip stays hidden until the pointer or keyboard reaches it", as
   let reached = false
   for (let step = 0; step < 60 && !reached; step++) {
     await page.keyboard.press("Tab")
-    reached = await page.evaluate(() => document.activeElement?.classList.contains("conversation-column-resize-handle"))
+    reached = await page.evaluate(
+      () => document.activeElement?.classList.contains("conversation-column-resize-handle") ?? false,
+    )
   }
   expect(reached).toBe(true)
   expect(await handle.evaluate((element) => element.matches(":focus-visible"))).toBe(true)

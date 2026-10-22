@@ -67,6 +67,7 @@ export class PredictionRequest {
     const state = this.adapter.read()
     const key = `${state.sessionID}/${anchor.rootID}/${anchor.assistantID}`
     if (this.#consumed.has(key)) return
+    if (this.#consumed.size >= 512) this.#consumed.delete(this.#consumed.values().next().value!)
     this.#consumed.add(key)
     if (!state.automatic) return
     this.update()

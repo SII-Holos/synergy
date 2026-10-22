@@ -83,6 +83,37 @@ test("cache budget measures the retained snapshot and bounds oversized bodies", 
   expect(undersized.bytes).toBe(0)
 })
 
+test("returning to a backlog bounds body transports and cancels queued reads before dispatch", async () => {
+  const cache = createPartContentStore()
+  const controllers = Array.from({ length: 12 }, () => new AbortController())
+  const started: number[] = []
+  const finish: Array<() => void> = []
+  const reads = controllers.map((controller, index) =>
+    cache
+      .read(
+        { ...key, partID: String(index) },
+        () => {
+          started.push(index)
+          return new Promise((resolve) =>
+            finish.push(() => resolve({ part: { ...body(), id: String(index) }, version: "one" })),
+          )
+        },
+        controller.signal,
+      )
+      .catch(() => undefined),
+  )
+  await Bun.sleep(0)
+  expect(started).toEqual([0, 1, 2, 3])
+  controllers[4].abort()
+  finish.shift()!()
+  await Bun.sleep(0)
+  expect(started).toEqual([0, 1, 2, 3, 5])
+  for (const controller of controllers.slice(6)) controller.abort()
+  for (const resolve of finish) resolve()
+  await Promise.all(reads)
+  expect(started).toEqual([0, 1, 2, 3, 5])
+})
+
 function contentTransportFixture() {
   const cache = createPartContentStore()
   const transports: Array<{ request: Request; finish: (response: Response) => void }> = []
@@ -110,7 +141,7 @@ function contentTransportFixture() {
     let version = "one"
     const materializer = createPartMaterializer({
       wait: async () => {},
-      read: (part) =>
+      read: (part, signal) =>
         cache.read(
           { ...key, version: part.content.version },
           async (signal) => {
@@ -121,7 +152,7 @@ function contentTransportFixture() {
             if (!response.data) throw new Error("Missing content fixture")
             return response.data
           },
-          lifetime.signal,
+          AbortSignal.any([lifetime.signal, signal]),
         ),
       isCurrent: (part) => part.content.version === version,
       apply: (_, part) => applied.push(part.content.version),
@@ -172,6 +203,22 @@ test("four released materializer reads share one generated SDK transport across 
   peer.materializer.dispose()
 })
 
+test("releasing the last visible owner aborts its body transport without disposing the Scope", async () => {
+  const fixture = contentTransportFixture()
+  const owner = fixture.owner()
+  const lease = owner.materializer.retain(fixture.summary())
+  await Bun.sleep(0)
+  expect(fixture.transports).toHaveLength(1)
+  lease.release()
+  await lease.ready
+  expect(owner.lifetime.signal.aborted).toBe(false)
+  expect(fixture.transports[0].request.signal.aborted).toBe(true)
+  fixture.transports[0].finish(Response.json({ part: body(), version: "one" }))
+  await Bun.sleep(0)
+  expect(fixture.cache.get(key)).toBeUndefined()
+  owner.materializer.dispose()
+})
+
 test("failed and provider-aborted SDK transports leave the same version retryable without obsolete publication", async () => {
   const fixture = contentTransportFixture()
   const owner = fixture.owner()
@@ -194,7 +241,8 @@ test("failed and provider-aborted SDK transports leave the same version retryabl
   fixture.transports[2].finish(Response.json({ part: { ...body(), text: "New body" }, version: "two" }))
   await Promise.all([obsolete.ready, current.ready])
   expect(owner.applied).toEqual(["two"])
-  expect(fixture.cache.get(key)).toEqual(body())
+  expect(fixture.transports[1].request.signal.aborted).toBe(true)
+  expect(fixture.cache.get(key)).toBeUndefined()
   expect(fixture.cache.get({ ...key, version: "two" })).toEqual({ ...body(), text: "New body" })
   obsolete.release()
   current.release()

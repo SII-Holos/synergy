@@ -61,7 +61,7 @@ export function createMarkdownStreamSource(root: HTMLElement) {
         ?.find((segment) => segment.offset <= offset && offset < segment.offset + segment.length)
       return segment ? segment.source + offset - segment.offset : undefined
     },
-    capture(document: MarkdownDocument): MarkdownStreamLayout | undefined {
+    capture(document: MarkdownDocument, sourceLength: number): MarkdownStreamLayout | undefined {
       const width = root.clientWidth
       if (!width || !document.blocks.length) return
       const positions: Array<{ source: number; node: Text; segment: Segment } | { source: number; node: HTMLElement }> =
@@ -103,9 +103,12 @@ export function createMarkdownStreamSource(root: HTMLElement) {
         return range.getBoundingClientRect().top
       }
       const bounds = root.getBoundingClientRect()
-      const tops = document.blocks.map((block) => position(block.source.start))
-      const sizes = tops.map((top, index) => Math.max(1, (tops[index + 1] ?? bounds.bottom) - top))
-      sizes[0] += Math.max(0, tops[0] - bounds.top)
+      const measured = document.blocks.filter((block) => block.source.end <= sourceLength).length
+      const tops = document.blocks.slice(0, measured).map((block) => position(block.source.start))
+      const next = document.blocks[measured]
+      const bottom = next && next.source.start < sourceLength ? position(next.source.start) : bounds.bottom
+      const sizes = tops.map((top, index) => Math.max(1, (tops[index + 1] ?? bottom) - top))
+      if (sizes.length) sizes[0] += Math.max(0, tops[0] - bounds.top)
       const scroller = markdownScrollViewport(root)
       const viewportTop = scroller?.getBoundingClientRect().top ?? 0
       const viewportBottom = scroller ? viewportTop + scroller.clientHeight : window.innerHeight

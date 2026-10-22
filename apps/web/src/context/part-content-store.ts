@@ -26,6 +26,33 @@ export function createPartContentStore(limit = 64 * 1024 * 1024) {
   let bytes = 0
   const entries = new Map<string, Entry>()
   const pending = new Map<string, PendingRead>()
+  let active = 0
+  const waiting = new Set<() => void>()
+  const loadBody = async (signal: AbortSignal, load: (signal: AbortSignal) => Promise<SessionPartContent>) => {
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        waiting.delete(start)
+        reject(signal.reason)
+      }
+      const start = () => {
+        waiting.delete(start)
+        signal.removeEventListener("abort", abort)
+        active++
+        resolve()
+      }
+      if (signal.aborted) return reject(signal.reason)
+      if (active < 4) return start()
+      waiting.add(start)
+      signal.addEventListener("abort", abort, { once: true })
+    })
+    try {
+      signal.throwIfAborted()
+      return await load(signal)
+    } finally {
+      active--
+      waiting.values().next().value?.()
+    }
+  }
   const keyOf = (url: string, scopeKey: string, partID: string, version: string) =>
     `${url}\0${scopeKey}\0${partID}\0${version}`
   const trim = () => {
@@ -97,7 +124,7 @@ export function createPartContentStore(limit = 64 * 1024 * 1024) {
         const promise = Promise.resolve()
           .then(() => {
             controller.signal.throwIfAborted()
-            return load(controller.signal)
+            return loadBody(controller.signal, load)
           })
           .then((response) => {
             controller.signal.throwIfAborted()

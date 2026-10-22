@@ -246,6 +246,12 @@ export function createAutoScroll(options: AutoScrollOptions) {
     }
   }
 
+  const handleLayoutRestored = (event: Event) => {
+    if (!enabled() || !store.userScrolled || !(event.target instanceof Element)) return
+    if (!readingAnchor?.owner.contains(event.target)) return
+    preserveReadingAnchor()
+  }
+
   const handleInteraction = (event?: Event) => {
     navigating = false
     movementOffset = undefined
@@ -394,12 +400,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
       el.addEventListener("pointerdown", handlePointerDown)
       el.addEventListener("touchstart", handleTouchStart, { passive: true })
       el.addEventListener("keydown", handleKeyDown)
+      el.addEventListener("content-layout-restored", handleLayoutRestored)
 
       cleanup = () => {
         el.removeEventListener("wheel", handleWheel)
         el.removeEventListener("pointerdown", handlePointerDown)
         el.removeEventListener("touchstart", handleTouchStart)
         el.removeEventListener("keydown", handleKeyDown)
+        el.removeEventListener("content-layout-restored", handleLayoutRestored)
         window.removeEventListener("pointerup", handlePointerUp)
         window.removeEventListener("touchend", handleTouchEnd)
       }

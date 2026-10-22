@@ -16,6 +16,8 @@ import {
 import {
   ComponentProps,
   createEffect,
+  createMemo,
+  untrack,
   createResource,
   createSignal,
   onCleanup,
@@ -25,7 +27,7 @@ import {
 } from "solid-js"
 import { render } from "solid-js/web"
 import { MarkdownDocumentView } from "./markdown-document-view"
-import { createMarkdownFallbackDocument } from "../context/markdown-document"
+import { createMarkdownFallbackDocument, type MarkdownDocument } from "../context/markdown-document"
 import { copyTextToClipboard, type CopyState } from "./clipboard"
 import { sanitizeHtml } from "./markdown-sanitize"
 import { createMarkdownStreamController, type MarkdownStreamController } from "./markdown-stream"
@@ -192,8 +194,8 @@ export function Markdown(
      * When true, render incrementally with a streaming Markdown parser that
      * appends DOM nodes per chunk (#350 D5), instead of re-parsing the full text
      * through marked + shiki + katex on every delta (O(N²) main-thread cost).
-     * The high-fidelity render (syntax highlight, math, sanitize + enhance) runs
-     * once when this flips back to false at the end of the stream.
+     * Large live snapshots use the same worker and virtual blocks as completed
+     * text, with one parse in flight and coalesced updates.
      */
     streaming?: boolean
     cacheKey?: string
@@ -243,10 +245,17 @@ export function Markdown(
     })
   })
 
-  // Terminal (full-fidelity) HTML. Only computed when not streaming; a null
-  // source short-circuits the resource so no marked work happens mid-stream.
+  const incremental = createMemo(() => !!local.streaming && local.text.length <= 256 * 1024)
+  const [renderSource, setRenderSource] = createSignal<string | null>(null)
+  // Provenance: https://github.com/inokawa/virtua
+  // Local adaptation: reuse the mounted block virtualizer for coalesced live worker snapshots and source anchors.
+  const [virtualDocument, setVirtualDocument] = createSignal<MarkdownDocument>()
+  let documentKey: string | undefined
+  let snapshotTimer: ReturnType<typeof setTimeout> | undefined
+  let sourceKey = local.cacheKey
+
   const [html] = createResource(
-    () => (local.streaming ? null : local.text),
+    renderSource,
     async (markdown: string | null) => {
       renderController?.abort()
       renderController = new AbortController()
@@ -294,6 +303,24 @@ export function Markdown(
     { initialValue: null },
   )
 
+  createEffect(() => {
+    const text = local.text
+    const immediate = !local.streaming || incremental() || sourceKey !== local.cacheKey
+    sourceKey = local.cacheKey
+    if (immediate) {
+      clearTimeout(snapshotTimer)
+      snapshotTimer = undefined
+      setRenderSource(incremental() ? null : text)
+      return
+    }
+    if (html.loading || snapshotTimer || untrack(renderSource) === text) return
+    if (untrack(renderSource) === null) return void setRenderSource(text)
+    snapshotTimer = setTimeout(() => {
+      snapshotTimer = undefined
+      setRenderSource(local.text)
+    }, 250)
+  })
+
   // Streaming snapshots remain authoritative for recovery, while the renderer
   // consumes only the suffix after its offset. A shorter snapshot resets the
   // append-only parser without scanning the accumulated prefix.
@@ -306,7 +333,7 @@ export function Markdown(
   }
 
   createEffect(() => {
-    if (!local.streaming) return
+    if (!incremental()) return
     renderController?.abort()
     disposeDocument?.()
     disposeDocument = undefined
@@ -317,7 +344,7 @@ export function Markdown(
   })
 
   createEffect(() => {
-    if (local.streaming || stream || container.hasChildNodes()) return
+    if (incremental() || stream || container.hasChildNodes()) return
     const rendered = html.latest
     if (rendered && isCurrentMarkdownRender(rendered, local.text)) return
     stream = createMarkdownStreamController(container)
@@ -327,11 +354,13 @@ export function Markdown(
   })
 
   createEffect(() => {
-    if (local.streaming) return
+    if (incremental()) return
     const rendered = html()
     interaction()
     if (rendered?.hash === appliedHash) return
-    if (!rendered || !isCurrentMarkdownRender(rendered, local.text)) return
+    const source = untrack(renderSource)
+    if (!rendered || source === null || !isCurrentMarkdownRender(rendered, source)) return
+    if (!untrack(() => local.text).startsWith(source)) return
     if (
       readSelectionRanges(document).some(
         (range) => container.contains(range.startContainer) || container.contains(range.endContainer),
@@ -339,6 +368,11 @@ export function Markdown(
     )
       return
     if (document.activeElement !== document.body && container.contains(document.activeElement)) return
+    if (rendered.document && disposeDocument && documentKey === local.cacheKey) {
+      appliedHash = rendered.hash
+      setVirtualDocument(rendered.document)
+      return
+    }
     stream?.end()
     const streamLayout = rendered.document ? stream?.layout(rendered.document) : undefined
     endStream()
@@ -346,6 +380,8 @@ export function Markdown(
     disposeDocument = undefined
     appliedHash = rendered.hash
     if (rendered.document) {
+      documentKey = local.cacheKey
+      setVirtualDocument(rendered.document)
       terminalTransition.reset()
       const minimum = container.style.minHeight
       if (streamLayout) container.style.minHeight = streamLayout.sizes.reduce((sum, size) => sum + size, 0) + "px"
@@ -356,7 +392,7 @@ export function Markdown(
           () => (
             <MarkdownDocumentView
               root={container}
-              document={rendered.document!}
+              document={virtualDocument()!}
               cache={rendered.layout}
               initialLayout={streamLayout}
               cacheUpdated={(layout) => {
@@ -391,6 +427,7 @@ export function Markdown(
   })
 
   onCleanup(() => {
+    clearTimeout(snapshotTimer)
     renderController?.abort()
     disposeDocument?.()
     terminalTransition.reset()
@@ -401,7 +438,7 @@ export function Markdown(
     <>
       <div
         data-component="markdown"
-        data-markdown-pending={!local.streaming && html.loading ? "" : undefined}
+        data-markdown-pending={!incremental() && html.loading ? "" : undefined}
         ref={container}
         classList={{
           ...(local.classList ?? {}),

@@ -213,3 +213,25 @@ describe("TextSelectionController", () => {
     ])
   })
 })
+
+test("quoted selections target the active retained composer and release its registration", async () => {
+  const { registerQuoteTarget, quoteTarget } = await import("../../src/components/prompt-input/quote-target")
+  let active = "first"
+  const received: string[] = []
+  const release = ["first", "second"].map((name) =>
+    registerQuoteTarget({
+      available: () => active === name,
+      accept: (input) => received.push(name + ":" + input.text),
+    }),
+  )
+  try {
+    quoteTarget()!.accept({ text: "One", role: "assistant" })
+    active = "second"
+    quoteTarget()!.accept({ text: "Two", role: "user" })
+    expect(received).toEqual(["first:One", "second:Two"])
+    release[1]()
+    expect(quoteTarget()).toBeUndefined()
+  } finally {
+    for (const dispose of release) dispose()
+  }
+})

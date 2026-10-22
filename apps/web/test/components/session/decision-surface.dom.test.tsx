@@ -39,11 +39,13 @@ beforeAll(async () => {
       sdkStubPath,
       `
         export const SDKProvider = (props) => props.children
-        export const useGlobalSDK = () => ({ capabilities: { has: () => false } })
+        export const useGlobalSDK = () => ({ capabilities: { has: () => false, current: () => undefined } })
         export const useSDK = () => ({
+          capabilities: { has: () => false, current: () => undefined },
           connected: () => true,
           url: "http://fixture",
           scopeID: "scope-one",
+          scopeKey: "scope-one",
           event: { on: () => () => {} },
           client: {
             question: {
@@ -326,7 +328,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "scope-sync-stub.ts"),
       `export const SyncProvider = (props) => props.children
-       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
+       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, config: {}, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
     ),
     Bun.write(
       path.join(fixtureDirectory, "layout-boundary-stub.ts"),

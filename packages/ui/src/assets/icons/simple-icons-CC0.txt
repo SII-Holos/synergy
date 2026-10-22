@@ -1,6 +1,7 @@
 Site brand marks in ./site were vendored from Simple Icons 13.0.0.
 
-Simple Icons: https://github.com/simple-icons/simple-icons
+Provenance: https://github.com/simple-icons/simple-icons/tree/13.0.0
+Local adaptation: preserve upstream path geometry and adjust fills for the two theme surfaces as described below.
 License: CC0 1.0 Universal (public domain dedication)
 https://creativecommons.org/publicdomain/zero/1.0/
 

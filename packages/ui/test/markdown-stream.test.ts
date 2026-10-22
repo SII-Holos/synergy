@@ -24,6 +24,31 @@ function createRoot() {
 }
 
 describe("createMarkdownStreamController", () => {
+  test.each(["Background output remains intact. ", "后台输出保持完整。"])(
+    "a restored backlog keeps DOM writes bounded without replacing the reading anchor: %s",
+    (sentence) => {
+      const root = createRoot()
+      const stream = createMarkdownStreamController(root)
+      const prefix = "Accepted paragraph. "
+      stream.update(prefix)
+      const anchor = root.querySelector("p")!.firstChild!
+      const observer = new dom.window.MutationObserver(() => {})
+      observer.observe(root, { childList: true, characterData: true, subtree: true })
+      const snapshot = prefix + sentence.repeat(2048)
+      try {
+        stream.update(snapshot)
+        stream.end()
+        expect(root.textContent).toBe(snapshot)
+        expect(root.querySelector("p")!.firstChild).toBe(anchor)
+        expect(stream.sourceAt(anchor as Text, prefix.length + 16)).toBe(prefix.length + 16)
+        expect(observer.takeRecords().length).toBeLessThan(8)
+      } finally {
+        stream.end()
+        observer.disconnect()
+      }
+    },
+  )
+
   test("append settlement protects the DOM range without querying layout-dependent selection state", () => {
     const root = createRoot()
     document.body.append(root)

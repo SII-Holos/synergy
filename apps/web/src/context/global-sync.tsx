@@ -1851,7 +1851,6 @@ function createGlobalSync() {
     }
     if (scopeKey === "global") return
 
-    const [store, setStore] = ensureScopeState(scopeKey)
     switch (event.type) {
       case "scope.runtime.disposed": {
         requestTrackers.delete(scopeKey)
@@ -1862,8 +1861,116 @@ function createGlobalSync() {
           return next
         })
         scheduleBootstrap(scopeKey)
-        break
+        return
       }
+      case "session.status": {
+        // Handles busy, retry, paused, and idle statuses
+        globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
+        // The global index is shared by every Scope and holds only non-idle
+        // sessions, so an idle status deletes the key instead of storing it.
+        if (event.properties.status.type === "idle") {
+          setGlobalStore(
+            "sessionStatus",
+            produce((draft) => {
+              delete draft[event.properties.sessionID]
+            }),
+          )
+          if (children[scopeKey]?.[0].inbox[event.properties.sessionID]?.length)
+            refreshInbox(scopeKey, event.properties.sessionID)
+          if (
+            globalStore.cortex.some(
+              (task) =>
+                task.sessionID === event.properties.sessionID &&
+                (task.status === "running" || task.status === "queued"),
+            )
+          ) {
+            refreshCortex()
+          }
+        } else setGlobalStore("sessionStatus", event.properties.sessionID, reconcile(event.properties.status))
+        return
+      }
+      case "permission.asked": {
+        requestScopes.set(event.properties.sessionID, scopeKey)
+        setGlobalStore(
+          "permission",
+          produce((draft) => {
+            upsertPendingRequest(draft, event.properties)
+          }),
+        )
+        if (stamp) requestTracker(scopeKey).permissionWrite(stamp, event.properties.id)
+        return
+      }
+      case "permission.replied": {
+        setGlobalStore(
+          "permission",
+          produce((draft) => {
+            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
+          }),
+        )
+        if (stamp) requestTracker(scopeKey).permissionWrite(stamp, event.properties.requestID)
+        pruneRequestScopes()
+        return
+      }
+      case "question.asked": {
+        const request = event.properties
+        requestScopes.set(request.sessionID, scopeKey)
+        setGlobalStore(
+          "question",
+          produce((draft) => {
+            upsertPendingRequest(draft, request)
+          }),
+        )
+        if (stamp) requestTracker(scopeKey).questionWrite(stamp, request.id)
+        return
+      }
+      case "question.replied":
+      case "question.rejected":
+      case "question.timed_out": {
+        setGlobalStore(
+          "question",
+          produce((draft) => {
+            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
+          }),
+        )
+        if (stamp) requestTracker(scopeKey).questionWrite(stamp, event.properties.requestID)
+        pruneRequestScopes()
+        return
+      }
+      // Cortex events carry the whole visible task set (or one whole task), and
+      // `Cortex.listVisible()` is process-global, so they write the global index
+      // directly. A per-Scope copy would have to be rebuilt per Scope and would
+      // still be evicted.
+      case "cortex.task.created":
+      case "cortex.task.completed": {
+        const task = event.properties.task
+        const index = globalStore.cortex.findIndex((item) => item.id === task.id)
+        if (index < 0) setGlobalStore("cortex", (items) => [...items, task])
+        else setGlobalStore("cortex", index, reconcile(task))
+        if (stamp) globalRuntimeTracker.cortexWrite(stamp, task.id)
+        return
+      }
+      case "cortex.tasks.updated": {
+        setGlobalStore("cortex", reconcile(event.properties.tasks, { key: "id" }))
+        if (stamp) globalRuntimeTracker.cortexReplace(stamp)
+        return
+      }
+    }
+
+    if (event.type === "session.updated") {
+      const info = event.properties.info as Session
+      const touchedCortex = reconcileCortexFromSession(info)
+      if (stamp && touchedCortex) globalRuntimeTracker.cortexWrite(stamp, touchedCortex)
+      // A paused latch has no status event. An existing status event still wins.
+      if (info.working && globalStore.sessionStatus[info.id] === undefined) {
+        globalRuntimeTracker.statusWrite(stamp, info.id)
+        setGlobalStore("sessionStatus", info.id, reconcile(sessionStatusFromWorking(info.working)))
+      }
+    }
+
+    const state = children[scopeKey]
+    if (!state) return
+    const [store, setStore] = state
+    switch (event.type) {
       case "workspace.updated": {
         const record = event.properties as WorkspaceInfo
         if (store.scopeID && store.scopeID !== record.scopeID) break
@@ -1889,19 +1996,7 @@ function createGlobalSync() {
               ),
             }
           : incoming
-        const touchedCortex = reconcileCortexFromSession(info)
-        if (stamp) {
-          scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
-          if (touchedCortex) globalRuntimeTracker.cortexWrite(stamp, touchedCortex)
-        }
-        // A paused session reaches the client only through snapshots and this
-        // derived field, so fill a status the index holds no event for. A real
-        // status event always wins, mirroring SessionManager.listStatuses.
-        const working = info.working
-        if (working && globalStore.sessionStatus[info.id] === undefined) {
-          globalRuntimeTracker.statusWrite(stamp, info.id)
-          setGlobalStore("sessionStatus", info.id, reconcile(sessionStatusFromWorking(working)))
-        }
+        if (stamp) scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
         const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
           if (index !== -1) {
@@ -1949,31 +2044,6 @@ function createGlobalSync() {
         applyResourceEvent(scopeKey, properties.sessionID, "dag", event, () => {
           setStore("dag", properties.sessionID, reconcile(properties.nodes, { key: "id" }))
         })
-        break
-      }
-      case "session.status": {
-        // Handles busy, retry, paused, and idle statuses
-        globalRuntimeTracker.statusWrite(stamp, event.properties.sessionID)
-        // The global index is shared by every Scope and holds only non-idle
-        // sessions, so an idle status deletes the key instead of storing it.
-        if (event.properties.status.type === "idle") {
-          setGlobalStore(
-            "sessionStatus",
-            produce((draft) => {
-              delete draft[event.properties.sessionID]
-            }),
-          )
-          if (store.inbox[event.properties.sessionID]?.length) refreshInbox(scopeKey, event.properties.sessionID)
-          if (
-            globalStore.cortex.some(
-              (task) =>
-                task.sessionID === event.properties.sessionID &&
-                (task.status === "running" || task.status === "queued"),
-            )
-          ) {
-            refreshCortex()
-          }
-        } else setGlobalStore("sessionStatus", event.properties.sessionID, reconcile(event.properties.status))
         break
       }
       case "session.inbox.updated": {
@@ -2340,75 +2410,10 @@ function createGlobalSync() {
         setStore("vcs", { branch: event.properties.branch })
         break
       }
-      case "permission.asked": {
-        requestScopes.set(event.properties.sessionID, scopeKey)
-        setGlobalStore(
-          "permission",
-          produce((draft) => {
-            upsertPendingRequest(draft, event.properties)
-          }),
-        )
-        if (stamp) requestTracker(scopeKey).permissionWrite(stamp, event.properties.id)
-        break
-      }
-      case "permission.replied": {
-        setGlobalStore(
-          "permission",
-          produce((draft) => {
-            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
-          }),
-        )
-        if (stamp) requestTracker(scopeKey).permissionWrite(stamp, event.properties.requestID)
-        pruneRequestScopes()
-        break
-      }
-      case "question.asked": {
-        const request = event.properties
-        requestScopes.set(request.sessionID, scopeKey)
-        setGlobalStore(
-          "question",
-          produce((draft) => {
-            upsertPendingRequest(draft, request)
-          }),
-        )
-        if (stamp) requestTracker(scopeKey).questionWrite(stamp, request.id)
-        break
-      }
-      case "question.replied":
-      case "question.rejected":
-      case "question.timed_out": {
-        setGlobalStore(
-          "question",
-          produce((draft) => {
-            removePendingRequest(draft, event.properties.sessionID, event.properties.requestID)
-          }),
-        )
-        if (stamp) requestTracker(scopeKey).questionWrite(stamp, event.properties.requestID)
-        pruneRequestScopes()
-        break
-      }
       case "lsp.updated": {
         if (!globalSDK.capabilities.has("lsp")) break
         const sdk = createScopedClient(scopeKey)
         sdk.lsp.status().then((x) => setStore("lsp", x.data ?? []))
-        break
-      }
-      // Cortex events carry the whole visible task set (or one whole task), and
-      // `Cortex.listVisible()` is process-global, so they write the global index
-      // directly. A per-Scope copy would have to be rebuilt per Scope and would
-      // still be evicted.
-      case "cortex.task.created":
-      case "cortex.task.completed": {
-        const task = event.properties.task
-        const index = globalStore.cortex.findIndex((item) => item.id === task.id)
-        if (index < 0) setGlobalStore("cortex", (items) => [...items, task])
-        else setGlobalStore("cortex", index, reconcile(task))
-        if (stamp) globalRuntimeTracker.cortexWrite(stamp, task.id)
-        break
-      }
-      case "cortex.tasks.updated": {
-        setGlobalStore("cortex", reconcile(event.properties.tasks, { key: "id" }))
-        if (stamp) globalRuntimeTracker.cortexReplace(stamp)
         break
       }
       case "agenda.item.created":
@@ -2471,10 +2476,12 @@ function createGlobalSync() {
     })
     if (observed.next) watermarks.set(e.name, observed.next)
     if (observed.epochChanged || observed.gap) {
+      if (e.name !== "global") ensureScopeState(e.name)
       void replayOrResync(e.name, observed.replayFrom)
       return
     }
     if (e.details.type === "server.projection.reset") {
+      if (e.name !== "global") ensureScopeState(e.name)
       void resyncInstance(e.name)
       return
     }

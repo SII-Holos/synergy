@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js"
+import { createEffect, on, onCleanup } from "solid-js"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
@@ -16,16 +16,31 @@ export function DigitalTwinBackground() {
   const sync = useSync()
   const globalSDK = useGlobalSDK()
   const inflight = new Set<AbortController>()
+  createEffect(
+    on(
+      () => [
+        sdk.url,
+        sdk.scopeKey,
+        sdk.connected(),
+        sdk.capabilities.current(),
+        JSON.stringify(sync.data.config.digitalTwin),
+      ],
+      () => {
+        for (const controller of inflight) controller.abort()
+        inflight.clear()
+      },
+    ),
+  )
 
   const predict = async (sessionID: string, anchor: { rootID: string; assistantID: string }) => {
     if (sync.data.config.digitalTwin?.automatic !== true) return
-    if (!sdk.capabilities.has("digital-twin")) return
+    if (!sdk.connected() || !sdk.capabilities.has("digital-twin")) return
     const owner: DigitalTwinOwner = { url: sdk.url, scopeKey: sdk.scopeKey, sessionID }
     if (composerMounted(owner)) return
     const session = sync.data.session.find((value) => value.id === sessionID)
     if (!session || session.parentID) return
     if (globalSDK.drafts.hasDraftSession(sessionID)) return
-    if (!claimCompletion(sessionID, anchor.rootID, anchor.assistantID)) return
+    if (!claimCompletion(owner, anchor.rootID, anchor.assistantID)) return
     const controller = new AbortController()
     inflight.add(controller)
     try {

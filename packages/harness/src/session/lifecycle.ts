@@ -110,7 +110,10 @@ export namespace SessionLifecycle {
   export async function startNewTask(sessionID: string): Promise<boolean> {
     const { SessionManager } = await import("./manager")
     const { Session } = await import(".")
-    const session = await Session.get(sessionID).catch(() => undefined)
+    const session = await Session.get(sessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!session?.paused) return false
     await SessionManager.waitForIdle(sessionID)
     return clear(sessionID)
@@ -127,7 +130,10 @@ export namespace SessionLifecycle {
   export async function resume(sessionID: string): Promise<boolean> {
     const { Session } = await import(".")
     const { SessionManager } = await import("./manager")
-    const session = await Session.get(sessionID).catch(() => undefined)
+    const session = await Session.get(sessionID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
     if (!session?.paused) return false
     await SessionManager.waitForIdle(sessionID)
     const { SessionHistory } = await import("./history")

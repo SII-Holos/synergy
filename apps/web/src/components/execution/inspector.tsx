@@ -75,6 +75,16 @@ export function ExecutionInspector(props: {
   const isModel = () =>
     ["call", "attempt"].includes(detail()?.node.evidenceKind ?? "") ||
     ["model", "retry", "compaction"].includes(detail()?.node.kind ?? "")
+  // A message node records its own text as the node title, so that title repeats the body instead of naming the
+  // record. Such a node is identified by its kind; the text itself is read below as evidence.
+  const namedByKind = () => detail()?.node.source === "messages"
+  const heading = () => {
+    const value = detail()
+    if (!value) return _(E.loading)
+    if (namedByKind()) return _(K[value.node.kind])
+    if ((value.node.group?.callCount ?? 0) > 1) return value.node.group?.purpose || _(E.unclassified)
+    return value.node.tool || value.node.title || _(K[value.node.kind])
+  }
   const tabs = createMemo<Tab[]>(() => {
     const value = detail()
     if (!value || value.node.source === "messages") return []
@@ -252,12 +262,10 @@ export function ExecutionInspector(props: {
             <Show when={props.snapshot?.nodeID === props.nodeID}>
               {_({ ...D.request, values: { number: props.snapshot?.requestNumber ?? 0 } })} ·{" "}
             </Show>
-            {(detail()?.node.group?.callCount ?? 0) > 1
-              ? detail()?.node.group?.purpose || _(E.unclassified)
-              : detail()?.node.tool || detail()?.node.title || _(E.loading)}
+            {heading()}
           </strong>
           <small title={props.filtered ? _(E.filteredNode) : undefined}>
-            {detail() && _(K[detail()!.node.kind])} ·{" "}
+            <Show when={detail() && !namedByKind()}>{_(K[detail()!.node.kind])} · </Show>
             <span data-state={detail()?.execution?.status ?? detail()?.node.status}>
               {detail() && _(E[detail()!.execution?.status ?? detail()!.node.status])}
             </span>
@@ -449,15 +457,7 @@ export function ExecutionInspector(props: {
               )}
             </For>
             <Show when={detail()?.node.source === "messages"}>
-              <EvidenceBlock
-                label={_(K[detail()!.node.kind])}
-                text={
-                  typeof object(record().part).text === "string"
-                    ? (object(record().part).text as string)
-                    : JSON.stringify(record(), null, 2)
-                }
-                language={typeof object(record().part).text === "string" ? "text" : "json"}
-              />
+              <Reader name="message" label={_(E.message)} />
             </Show>
             <Show when={!results().length && !failure() && detail()?.node.source !== "messages"}>
               <Show when={sources().includes("initialHistory")} fallback={timing()}>
