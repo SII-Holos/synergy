@@ -1177,3 +1177,77 @@ test("a second touch cannot replace or cancel the gesture already controlling a 
     await touch.detach()
   }
 }, 20000)
+
+test("touch-first play never names a click or a keyboard key", async () => {
+  // The note's acceptance clause is about what the copy says under a coarse
+  // pointer: touch players have neither hover nor a keyboard, so the status and
+  // its help text must describe taps only. Both pointer kinds are exercised in
+  // the same test so a regression on either branch is visible.
+  for (const touch of [true, false]) {
+    const context = await browser.newContext({
+      viewport: { width: 375, height: 812 },
+      hasTouch: touch,
+      isMobile: touch,
+    })
+    const local = await context.newPage()
+    local.setDefaultTimeout(7000)
+    try {
+      await local.goto(`${url}?scene=stack`)
+      await local.locator(".welcome-game-canvas").waitFor()
+      await local.getByRole("button", { name: "Overlay", exact: true }).click()
+      const status = local.locator(".welcome-game-status")
+      const text = (await status.textContent()) ?? ""
+      const label = (await status.getAttribute("aria-label")) ?? ""
+      const help = (await local.locator(".welcome-game-status + .sr-only").textContent()) ?? ""
+      if (touch) {
+        expect(text).toContain("Tap to continue")
+        expect(text).not.toContain("Click")
+        expect(label).toContain("Tap to play or pause.")
+        expect(help).not.toContain("Escape")
+        expect(help).not.toContain("R restarts")
+      } else {
+        expect(text).toContain("Click to continue")
+        expect(text).not.toContain("Tap")
+        expect(label).toContain("Click to play or pause. Escape pauses; R restarts.")
+        expect(help).toContain("Escape pauses. R restarts.")
+      }
+    } finally {
+      await context.close()
+    }
+  }
+}, 40_000)
+
+test("a narrow greeting tightens its heading and drops the subtitle without touching desktop", async () => {
+  // The stage is its own container, so the breakpoints follow the space the
+  // greeting actually gets rather than the viewport alone. The desktop reading
+  // is asserted in the same test so a change that shrinks both cannot pass.
+  const measure = async (width: number, height: number) => {
+    await page.setViewportSize({ width, height })
+    await open("stack")
+    return page.evaluate(() => {
+      const stage = document.querySelector(".welcome-stage")!
+      const heading = stage.querySelector(".welcome-scene-heading h1")!
+      const subtitle = stage.querySelector(".welcome-scene-heading p")!
+      return {
+        stageWidth: Math.round(stage.getBoundingClientRect().width),
+        heading: Number.parseFloat(getComputedStyle(heading).fontSize),
+        subtitle: getComputedStyle(subtitle).display,
+      }
+    })
+  }
+
+  const phone = await measure(375, 812)
+  expect(phone.stageWidth).toBeLessThanOrEqual(767)
+  expect(phone.heading).toBeLessThanOrEqual(24)
+  expect(phone.subtitle).toBe("none")
+
+  const narrowest = await measure(320, 640)
+  expect(narrowest.heading).toBeLessThanOrEqual(22)
+  expect(narrowest.subtitle).toBe("none")
+
+  const desktop = await measure(1440, 900)
+  expect(desktop.stageWidth).toBeGreaterThan(767)
+  expect(desktop.heading).toBeGreaterThanOrEqual(42)
+  expect(desktop.subtitle).not.toBe("none")
+  expect(errors).toEqual([])
+}, 40_000)
