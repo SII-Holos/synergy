@@ -13,6 +13,7 @@ const playwrightIsolated = [
   "test/components/prompt-input/loop-status-entry.dom.test.ts",
   "test/components/prompt-input/plan-blueprint-offer.dom.test.ts",
   "test/components/session/conversation-hydration.test.ts",
+  "test/components/session/conversation-loading-placeholder.dom.test.ts",
   "test/components/session/retained-session-views.dom.test.ts",
   "test/components/session/project-directory-resource.dom.test.ts",
   "test/components/workspace/browser/native-browser-lifecycle.dom.test.ts",
