@@ -10,7 +10,7 @@ const parameters = z.object({
     .optional()
     .default("keep")
     .describe(
-      "Whether to remove the worktree after leaving. 'remove_if_clean' only removes when no uncommitted changes exist.",
+      "Whether to destroy the worktree after leaving. 'keep' (default) leaves it in place. 'remove_if_clean' permanently deletes it when it has no uncommitted changes: the registry entry is removed, the branch is deleted when its content is already on the target branch, and worktree_enter cannot restore it. Use worktree_archive instead when the checkout may be needed again.",
     ),
   reason: z.string().optional().describe("Optional short note about why the session is leaving the worktree"),
 })
@@ -26,8 +26,10 @@ interface WorktreeLeaveMetadata {
 
 export const WorktreeLeaveTool = Tool.define<typeof parameters, WorktreeLeaveMetadata>("worktree_leave", {
   description:
-    "Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree, " +
-    "restores the workspace to the main tree, and optionally removes the worktree if it has no uncommitted changes.",
+    "Leave the current git worktree and return to the main checkout. Unbinds the session from the worktree and " +
+    "restores the workspace to the main tree. The worktree stays on disk by default; the cleanup parameter can " +
+    "permanently delete it instead, and that deletion cannot be undone. Use worktree_archive when isolated work is " +
+    "finished and the checkout should stay restorable.",
   parameters,
   async execute(params, ctx) {
     const workspace = ScopeContext.current.workspace

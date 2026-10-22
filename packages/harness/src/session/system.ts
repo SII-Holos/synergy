@@ -147,7 +147,7 @@ export namespace SystemPrompt {
           envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
         }
         envLines.push(
-          `  Leaving: use worktree_leave to return to the original checkout without requesting reclamation. Use worktree_archive when isolated work is finished; it returns you to the original checkout and attempts safe reclamation while keeping this conversation running.`,
+          `  Leaving: worktree_leave returns you to the original checkout and keeps the worktree unless you pass cleanup: "remove_if_clean", which permanently deletes it. Use worktree_archive when isolated work is finished: it returns you to the original checkout, attempts safe reclamation while keeping this conversation running, and leaves the checkout restorable with worktree_enter.`,
         )
       }
     }
