@@ -1254,7 +1254,6 @@ export function createPromptInputController(props: PromptInputProps) {
                 {
                   id: "predict-next",
                   label: i18n._(twinCopy.predict),
-                  description: predictionApi()?.busy() ? i18n._(twinCopy.predicting) : i18n._(twinCopy.description),
                   icon: getSemanticIcon("action.predict"),
                   disabled: !predictionApi() || predictionApi()!.disabled(),
                   onSelect: () => predictionApi()?.predict(),
