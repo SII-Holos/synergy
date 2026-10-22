@@ -12089,7 +12089,7 @@ msgid "diff.preview-truncated"
 msgstr "⟦Preview truncated⟧"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.composer.abstained"
+msgid "digitalTwin.composer.dismiss"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12105,11 +12105,35 @@ msgid "digitalTwin.composer.unavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automatic"
+msgid "digitalTwin.reason.composing"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automaticHint"
+msgid "digitalTwin.reason.draft"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.mode"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.reply"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.view"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.settings.automatic"
 msgstr ""
 
 #. js-lingui-explicit-id

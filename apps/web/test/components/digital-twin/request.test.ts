@@ -11,7 +11,7 @@ test("only fresh successful events auto-predict; stale and dismissed sources do 
     automatic: true,
   }
   const replies: Array<
-    (value: { proposalID: string; candidate: string | null; stamp: { rootID: string; assistantID: string } }) => void
+    (value: { proposalID: string; candidate: string; stamp: { rootID: string; assistantID: string } }) => void
   > = []
   const signals: AbortSignal[] = []
   const applied: string[] = []
@@ -64,7 +64,7 @@ test("completion waits for the matching synchronized anchor without replaying a 
     read: () => state,
     call: async (input) => {
       calls.push(input.expected.rootID)
-      return { proposalID: "p", candidate: null, stamp: input.expected }
+      return { proposalID: "p", candidate: "candidate", stamp: input.expected }
     },
     apply: () => {},
     clearFeedback: () => {},

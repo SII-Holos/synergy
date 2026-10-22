@@ -30722,7 +30722,7 @@
         "summary": "Predict the next user input",
         "responses": {
           "200": {
-            "description": "One editable prediction or abstention",
+            "description": "One editable prediction",
             "content": {
               "application/json": {
                 "schema": {
@@ -77550,24 +77550,14 @@
             "type": "string"
           },
           "candidate": {
-            "type": ["string", "null"]
-          },
-          "abstention": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": ["insufficient-grounding", "no-clear-continuation"]
-              },
-              {
-                "type": "null"
-              }
-            ]
+            "type": "string",
+            "minLength": 1
           },
           "stamp": {
             "$ref": "#/components/schemas/DigitalTwinSourceStamp"
           }
         },
-        "required": ["proposalID", "candidate", "abstention", "stamp"]
+        "required": ["proposalID", "candidate", "stamp"]
       },
       "DigitalTwinFailure": {
         "type": "object",

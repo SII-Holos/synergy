@@ -25,7 +25,6 @@ export function DigitalTwinSettings(props: {
       <SettingsSection>
         <SettingRow
           title={_(twinCopy.automatic)}
-          description={_(twinCopy.automaticHint)}
           trailing={
             <Switch
               checked={props.value.automatic}

@@ -1,7 +1,7 @@
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type Anchor = { rootID: string; assistantID: string }
-type Result = { proposalID: string; candidate: string | null; stamp: Anchor }
+type Result = { proposalID: string; candidate: string; stamp: Anchor }
 export type PredictionState = {
   identity: string
   binding?: string
@@ -28,7 +28,7 @@ export class PredictionRequest {
       call(input: { sessionID: string; expected: Anchor; requestID: string }, signal: AbortSignal): Promise<Result>
       apply(result: Result): void
       clearFeedback(): void
-      failed(reason: "unavailable" | "abstained"): void
+      failed(): void
       changed(busy: boolean): void
     },
   ) {}
@@ -43,8 +43,11 @@ export class PredictionRequest {
     ) {
       this.#controller?.abort()
       this.#controller = undefined
-      if ((state.binding ?? state.identity) !== this.#binding || !state.eligible || !state.automatic)
-        this.#pending = undefined
+      // A pending automatic attempt survives readiness and eligibility churn:
+      // both flip while a finished turn settles, and dropping the attempt there
+      // meant a completed turn could produce no suggestion at all. Only another
+      // conversation or a disabled setting invalidates it.
+      if ((state.binding ?? state.identity) !== this.#binding || !state.automatic) this.#pending = undefined
       this.adapter.clearFeedback()
       this.adapter.changed(false)
     }
@@ -65,7 +68,7 @@ export class PredictionRequest {
     const key = `${state.sessionID}/${anchor.rootID}/${anchor.assistantID}`
     if (this.#consumed.has(key)) return
     this.#consumed.add(key)
-    if (!state.automatic || !state.eligible) return
+    if (!state.automatic) return
     this.update()
     this.#pending = anchor
     this.update()
@@ -86,23 +89,20 @@ export class PredictionRequest {
     void this.adapter
       .call({ sessionID: state.sessionID, expected: state.anchor, requestID: generateUUID() }, controller.signal)
       .then((result) => {
+        if (this.#disposed || controller.signal.aborted || this.#controller !== controller) return
         const latest = this.adapter.read()
-        if (
-          this.#disposed ||
-          controller.signal.aborted ||
-          this.#controller !== controller ||
-          latest.identity !== state.identity ||
-          !latest.eligible ||
-          !latest.ready ||
-          result.stamp.rootID !== latest.anchor?.rootID ||
-          result.stamp.assistantID !== latest.anchor.assistantID
-        )
+        // Only the finished turn this prediction describes still has to be the
+        // current one. Eligibility, readiness and the composer revision are
+        // recomputed on every composer revision, so they flip while a request is
+        // in flight; requiring them here discarded answers the server had
+        // already returned, which is why a click could produce neither a
+        // suggestion nor a failure.
+        if (result.stamp.rootID !== latest.anchor?.rootID || result.stamp.assistantID !== latest.anchor.assistantID)
           return
-        if (result.candidate) this.adapter.apply(result)
-        else if (manual) this.adapter.failed("abstained")
+        this.adapter.apply(result)
       })
       .catch(() => {
-        if (manual && !controller.signal.aborted) this.adapter.failed("unavailable")
+        if (manual && !controller.signal.aborted) this.adapter.failed()
       })
       .finally(() => {
         if (this.#controller === controller) {

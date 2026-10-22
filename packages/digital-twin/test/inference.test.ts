@@ -63,8 +63,7 @@ test("sensitive originals cannot enter selected historical evidence", () =>
           {
             name: "predict_next_input",
             input: {
-              candidate: null,
-              abstention: "no-clear-continuation",
+              candidate: "继续",
               grounding: ["current"],
               targets: [],
             },
@@ -157,7 +156,7 @@ test("native media and tool history reach inference without encoded bytes becomi
             toolCalls: [
               {
                 name: "predict_next_input",
-                input: { candidate: "再检查一下 API", abstention: null, grounding: ["current"], targets: ["API"] },
+                input: { candidate: "再检查一下 API", grounding: ["current"], targets: ["API"] },
               },
             ],
           }
@@ -196,7 +195,7 @@ test("credential changes during inference invalidate the result even when the ca
         toolCalls: [
           {
             name: "predict_next_input",
-            input: { candidate: "再检查一下", abstention: null, grounding: ["current"], targets: [] },
+            input: { candidate: "再检查一下", grounding: ["current"], targets: [] },
           },
         ],
       }
@@ -235,7 +234,6 @@ test("the output contract names exact supplied evidence IDs and rejects invented
                 name: "predict_next_input",
                 input: {
                   candidate: "再检查一下 API 的边界",
-                  abstention: null,
                   grounding: ["current"],
                   targets,
                 },

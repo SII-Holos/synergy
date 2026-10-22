@@ -15,7 +15,7 @@ export function DigitalTwinRoute() {
       operationId: "digitalTwin.predictNextInput",
       responses: {
         200: {
-          description: "One editable prediction or abstention",
+          description: "One editable prediction",
           content: { "application/json": { schema: resolver(DigitalTwinContract.Result) } },
         },
         ...Object.fromEntries(
