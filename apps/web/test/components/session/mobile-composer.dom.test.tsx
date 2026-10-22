@@ -258,6 +258,14 @@ test("320 pixels scrolls the chip line instead of overflowing the page", async (
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       await page.evaluate(() => window.innerWidth),
     )
+    // The review reproduced the sub-floor controls at 320 as well as 375, so the
+    // touch floor is asserted at the narrowest supported width too.
+    const heights = await chips
+      .locator("button")
+      .evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().height)))
+    expect(heights.length).toBeGreaterThan(0)
+    for (const height of heights) expect(height).toBeGreaterThanOrEqual(44)
+    for (const button of await shellButtons(page)) expect(button.height).toBeGreaterThanOrEqual(44)
     const card = (await page.locator(".prompt-input-shell").boundingBox())!
     expect(card.height).toBeLessThanOrEqual(160)
     expect(errors).toEqual([])
