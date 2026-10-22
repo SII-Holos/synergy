@@ -8770,12 +8770,24 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "项目"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr "搜索会话"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "工具"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "暂无会话"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr "更早"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr "今天"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"

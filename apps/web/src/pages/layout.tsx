@@ -491,7 +491,7 @@ function LayoutContent(
         "app-shell--sidebar-collapsed": !layout.sidebar.opened(),
       }}
     >
-      <MobileDrawer />
+      <MobileDrawer onSearchOpen={props.onSearchOpen} />
       <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />

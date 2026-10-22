@@ -29,15 +29,19 @@ import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import {
   MobileDrawerAddProjectButton,
+  MobileDrawerAccountRow,
   MobileDrawerRecent,
   MobileDrawerSettingsButton,
   type MobileDrawerRecentVisual,
 } from "./mobile-drawer-root"
 import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
+import { resolveAccountIdentity, type AccountIdentityLabels } from "@/components/holos/account-identity"
+import { useHolos } from "@/context/holos"
+import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { MobileDrawerDialog } from "./mobile-drawer-dialog"
 
-export function MobileDrawer() {
+export function MobileDrawer(props: { onSearchOpen: () => void }) {
   const layout = useLayout()
   const navigate = useNavigate()
   const params = useParams()
@@ -77,6 +81,18 @@ export function MobileDrawer() {
             </div>
           </A>
           <button
+            type="button"
+            data-action="search"
+            aria-label={_(appShell.search)}
+            class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
+            onClick={() => {
+              close()
+              props.onSearchOpen()
+            }}
+          >
+            <Icon name={getSemanticIcon("action.search")} size="normal" />
+          </button>
+          <button
             autofocus
             data-action="close"
             type="button"
@@ -96,6 +112,7 @@ export function MobileDrawer() {
                 currentDir={currentDir()}
                 onSelectScope={setDrilldown}
                 onNavigateHome={() => navigateAndClose(`/${base64Encode("home")}/session`)}
+                onNewSession={() => navigateAndClose(`/${base64Encode("home")}/session`)}
                 onClose={close}
               />
             }
@@ -144,11 +161,13 @@ function ScopeListView(props: {
   currentDir: string | undefined
   onSelectScope: (scope: LocalScope) => void
   onNavigateHome: () => void
+  onNewSession: () => void
   onClose: () => void
 }) {
   const layout = useLayout()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
+  const holos = useHolos()
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
@@ -156,6 +175,27 @@ function ScopeListView(props: {
   const { _ } = useLingui()
   const dialog = useDialog()
   const { pickProjectDirectories } = useProjectDirectoryPicker()
+  const accountLabels: AccountIdentityLabels = {
+    product: _({ id: "brand.workbench.synergy", message: "Synergy workspace" }),
+    holosAccount: _({ id: "sidebar.account.holos", message: "HOLOS account" }),
+    loading: _(sidebar.loadingIdentity),
+    signedOut: _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" }),
+    profileUnavailable: _(sidebar.profileUnavailable),
+    connectedToHolos: _(sidebar.connectedToHolos),
+    connecting: _(sidebar.connecting),
+    failed: _(sidebar.connectionFailed),
+    disconnected: _(sidebar.disconnected),
+    disabled: _(sidebar.disabled),
+    unavailable: _(sidebar.notAvailable),
+  }
+  const account = () =>
+    resolveAccountIdentity({
+      hasHolos: globalSDK.capabilities.has("holos"),
+      loaded: holos.loaded,
+      state: holos.state,
+      labels: accountLabels,
+    })
+  const accountAvatar = () => account().avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
   const toolLabel = (id: DrawerToolID) => {
     if (id === "agenda") return _(appShell.agenda)
     if (id === "library") return _(appShell.library)
@@ -229,6 +269,17 @@ function ScopeListView(props: {
 
   return (
     <div class="flex flex-col flex-1 min-h-0 py-2">
+      <div class="shrink-0 px-3 pb-2">
+        <button
+          type="button"
+          data-action="new-session"
+          class="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-icon-strong-base px-3 text-14-medium text-icon-invert-base transition-colors hover:bg-icon-strong-hover"
+          onClick={props.onNewSession}
+        >
+          <Icon name={getSemanticIcon("session.new")} size="normal" />
+          <span>{_(appShell.newSession)}</span>
+        </button>
+      </div>
       <Tabs defaultValue="recent" class="navigation-collections" variant="pill">
         <Tabs.List class="mx-3" aria-label={_(appShell.navLabel)}>
           <Tabs.Trigger value="recent">{_(sidebar.recent)}</Tabs.Trigger>
@@ -248,6 +299,7 @@ function ScopeListView(props: {
             hasMore={layout.nav.hasMoreRecent()}
             onSelect={selectRecentSession}
             onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}
+            groups={{ today: _(appShell.today), earlier: _(appShell.earlier) }}
           />
         </Tabs.Content>
         <Tabs.Content value="projects">
@@ -368,7 +420,13 @@ function ScopeListView(props: {
         </div>
 
         <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
-        <div class="px-2 pb-1">
+        <div class="flex items-center gap-1 px-2 pb-1">
+          <MobileDrawerAccountRow
+            name={account().name}
+            description={account().description}
+            avatarSrc={accountAvatar()}
+            onClick={openSettings}
+          />
           <MobileDrawerSettingsButton label={_(sidebar.settings)} onClick={openSettings} />
         </div>
       </div>

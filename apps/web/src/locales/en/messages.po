@@ -8770,12 +8770,24 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "Projects"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr "Search sessions"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "Tools"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "No sessions yet"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr "Earlier"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr "Today"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"

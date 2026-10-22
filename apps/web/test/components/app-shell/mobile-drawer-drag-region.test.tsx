@@ -115,6 +115,19 @@ const stubModules: Record<string, string> = {
       return { mode: () => "light" }
     }
   `,
+  "stub-holos.ts": `
+    export function useHolos() {
+      return {
+        loaded: false,
+        state: {
+          identity: { loggedIn: false, agentId: null, activeAccount: null, accounts: [] },
+          connection: { status: "disabled" },
+          readiness: { ready: false },
+          social: { profile: null, contacts: [], presence: {} },
+        },
+      }
+    }
+  `,
   "stub-dialog.ts": `
     export function useDialog() {
       return { show: () => {} }
@@ -209,7 +222,7 @@ beforeAll(async () => {
               <Router>
                 <Route path="*" component={() => (
                   <DialogProvider>
-                    <MobileDrawer />
+                    <MobileDrawer onSearchOpen={() => {}} />
                     <MobileToolsDrawer />
                     <DesktopWindowChrome />
                   </DialogProvider>
@@ -234,6 +247,7 @@ beforeAll(async () => {
         { find: "@/context/notification", replacement: path.join(fixtureDirectory, "stub-notification.ts") },
         { find: "@/context/global-sync", replacement: path.join(fixtureDirectory, "stub-global-sync.ts") },
         { find: "@/context/global-sdk", replacement: path.join(fixtureDirectory, "stub-global-sdk.ts") },
+        { find: "@/context/holos", replacement: path.join(fixtureDirectory, "stub-holos.ts") },
         { find: "@/context/workbench", replacement: path.join(fixtureDirectory, "stub-workbench.ts") },
         { find: "@/components/settings", replacement: path.join(fixtureDirectory, "stub-settings.ts") },
         {
