@@ -215,6 +215,7 @@ export const PI = {
   toolbarAddFiles: { id: "prompt.toolbar.addFiles", message: "Add files" },
   toolbarAttachFiles: { id: "prompt.toolbar.attachFiles", message: "Attach files or images" },
   toolbarWorkflow: { id: "prompt.toolbar.workflow", message: "Workflow" },
+  toolbarAssist: { id: "prompt.toolbar.assist", message: "Assist" },
   toolbarWorkspace: { id: "prompt.toolbar.workspace", message: "Workspace" },
   toolbarWorktree: { id: "prompt.toolbar.worktree", message: "Worktree" },
   toolbarWorktreeDesc: { id: "prompt.toolbar.worktreeDesc", message: "Isolated checkout" },

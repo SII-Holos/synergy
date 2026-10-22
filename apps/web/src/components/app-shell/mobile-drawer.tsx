@@ -309,7 +309,7 @@ function ScopeListView(props: {
             hasMore={layout.nav.hasMoreRecent()}
             onSelect={selectRecentSession}
             onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}
-            groups={{ today: _(appShell.today), earlier: _(appShell.earlier) }}
+            groups={{ pinned: _(appShell.pinned), today: _(appShell.today), earlier: _(appShell.earlier) }}
           />
         </Tabs.Content>
         <Tabs.Content value="projects">

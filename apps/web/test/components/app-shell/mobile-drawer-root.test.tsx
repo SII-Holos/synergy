@@ -17,7 +17,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><div id="grouped"></div><div id="account"></div><script type="module" src="/main.ts"></script>',
+      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><div id="grouped"></div><div id="mixed"></div><div id="account"></div><script type="module" src="/main.ts"></script>',
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
@@ -195,9 +195,35 @@ beforeAll(async () => {
               hasMore: false,
               onSelect: () => {},
               onLoadMore: () => {},
-              groups: { today: "Today", earlier: "Earlier" },
+              groups: { pinned: "Pinned", today: "Today", earlier: "Earlier" },
             }),
           document.querySelector("#grouped")!,
+        )
+
+        // Production order puts pinned sessions first regardless of age, so a
+        // pinned old session sits above a fresh unpinned one. Rendering that
+        // order must not split the date groups into Earlier/Today/Earlier.
+        render(
+          () =>
+            createComponent(MobileDrawerRecent, {
+              label: "Mixed",
+              emptyLabel: "No recent sessions",
+              loadMoreLabel: "Load more",
+              untitledLabel: "Untitled",
+              draftLabel: "Draft",
+              hasDraft: () => false,
+              entries: [
+                { ...entry("ses_pinned_old", "Pinned old"), pinned: 2, lastActivityAt: 1 },
+                { ...entry("ses_today_two", "Today unpinned"), lastActivityAt: Date.now() },
+                { ...entry("ses_earlier_two", "Earlier unpinned"), lastActivityAt: 2 },
+              ],
+              visualFor: () => homeVisual("", "home"),
+              hasMore: false,
+              onSelect: () => {},
+              onLoadMore: () => {},
+              groups: { pinned: "Pinned", today: "Today", earlier: "Earlier" },
+            }),
+          document.querySelector("#mixed")!,
         )
 
         render(
@@ -329,6 +355,18 @@ describe("mobile drawer root navigation", () => {
       const recent = page.locator("#recent")
       expect(await recent.locator("h3").count()).toBe(0)
       expect(await recent.locator("[data-session-id]").count()).toBe(2)
+    })
+  })
+
+  test("keeps pinned sessions in one group when production order interleaves them with dates", async () => {
+    await withFixture(async (page) => {
+      const mixed = page.locator("#mixed")
+      // Each heading appears once, in fixed order: pinned, today, earlier.
+      expect(await mixed.locator("h3").allTextContents()).toEqual(["Pinned", "Today", "Earlier"])
+      const order = await mixed
+        .locator("[data-session-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")))
+      expect(order).toEqual(["ses_pinned_old", "ses_today_two", "ses_earlier_two"])
     })
   })
 

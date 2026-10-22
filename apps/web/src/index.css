@@ -1976,7 +1976,15 @@ a {
   }
 
   .mobile-composer-chips .prompt-input-toolbar-button {
-    min-height: 36px;
+    min-height: 44px;
+  }
+
+  /* The work-context controls are 32px tall on desktop; on the narrow chip line
+     they are the only project entry point, so they take the touch floor. */
+  .composer-chips-row .session-work-context-button,
+  .composer-chips-row .session-work-context .prompt-input-toolbar-button {
+    height: auto;
+    min-height: 44px;
   }
 }
 
@@ -1995,11 +2003,21 @@ a {
 }
 
 @media (max-width: 767px), (pointer: coarse) {
-  /* A 24px drag grip is not a reliable touch target, and the corner control
-     already resizes the same editor. Dropping the grip on touch keeps one
-     sizing action per surface instead of two competing ones. */
-  .composer-resize-controls {
-    display: none;
+  /* The desktop grip is an 80x24 hit area straddling the card's top seam: too
+     small to grab with a finger. Keep the same control and the same gesture,
+     and move it into the card's top control band at 44x44 beside the expand
+     control, so dragging still resizes the editor on touch. */
+  .composer-resize-handle {
+    position: absolute;
+    inset-inline-end: 52px;
+    top: 0;
+    width: 44px;
+    height: 44px;
+    transform: none;
+  }
+
+  .composer-resize-handle span {
+    width: 18px;
   }
 }
 
@@ -2012,6 +2030,12 @@ a {
 
   .synergy-workbench-canvas .prompt-input-toolbar {
     padding: 0 8px 4px;
+  }
+
+  /* The greeting action row is the only project and file entry point on a new
+     task, so its buttons clear the touch floor; the desktop row keeps 36px. */
+  .session-starter-actions button {
+    min-height: 44px;
   }
 }
 

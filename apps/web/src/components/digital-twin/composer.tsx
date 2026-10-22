@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
 import { createStore } from "solid-js/store"
 import { z } from "zod"
 import type { Message, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
@@ -24,6 +24,18 @@ type Props = {
   parentID?: string
   blocked: boolean
   modelKey: string
+  /**
+   * Narrow layouts put prediction in the add menu rather than on the toolbar.
+   * Binding hands the same controller to that menu and renders no button, so
+   * one implementation drives both entry points.
+   */
+  bind?: (api: PredictionControlApi | undefined) => void
+}
+
+export type PredictionControlApi = {
+  predict(): void
+  busy(): boolean
+  disabled(): boolean
 }
 
 const SavedSuggestion = z.object({
@@ -255,8 +267,20 @@ function SessionPrediction(props: Props) {
     document.removeEventListener("visibilitychange", visibility)
   })
   const disabled = createMemo(() => !eligible() || !state().ready || busy())
+  if (props.bind) {
+    props.bind({
+      predict() {
+        props.focusEditor()
+        setSaved("suggestion", undefined)
+        requests.manual()
+      },
+      busy,
+      disabled,
+    })
+    onCleanup(() => props.bind!(undefined))
+  }
   return (
-    <>
+    <Show when={!props.bind}>
       <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
         <button
           type="button"
@@ -291,6 +315,6 @@ function SessionPrediction(props: Props) {
           </span>
         )}
       </Show>
-    </>
+    </Show>
   )
 }

@@ -115,6 +115,8 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
+import { twinCopy } from "../digital-twin/copy"
+import type { PredictionControlApi } from "../digital-twin/composer"
 import { BlueprintDraftEntry, LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
 import { resolveLoopDisplay } from "./loop-status"
 import { createLoopStatusResource } from "./loop-status-resource"
@@ -408,6 +410,7 @@ export function createPromptInputController(props: PromptInputProps) {
     setPending: setContinuePending,
   })
   const [abandonPending, setAbandonPending] = createSignal(false)
+  const [predictionApi, setPredictionApi] = createSignal<PredictionControlApi>()
   const abandonController = createAbortRequestController({
     setPending: setAbandonPending,
     request: async () => {
@@ -1242,6 +1245,24 @@ export function createPromptInputController(props: PromptInputProps) {
           },
         ],
       },
+      ...(!layout.isDesktop() && capabilities.has("digital-twin")
+        ? [
+            {
+              id: "prediction",
+              label: i18n._(PI.toolbarAssist),
+              items: [
+                {
+                  id: "predict-next",
+                  label: i18n._(twinCopy.predict),
+                  description: i18n._(twinCopy.description),
+                  icon: getSemanticIcon("action.predict"),
+                  disabled: !predictionApi() || predictionApi()!.disabled(),
+                  onSelect: () => predictionApi()?.predict(),
+                },
+              ],
+            },
+          ]
+        : []),
     ]
       .map((section) =>
         section.id === "workflow"
@@ -2247,26 +2268,24 @@ export function createPromptInputController(props: PromptInputProps) {
       </Show>
     </>
   )
-  const predictionControl = () => (
-          <Show when={capabilities.has("digital-twin")}>
-            <Suspense>
-              <DigitalTwinComposer
-                controller={composerDocument}
-                focusEditor={() => editorRef?.focus()}
-                sessionID={params.id}
-                parentID={info()?.parentID}
-                messages={view().messagesFor(params.id ?? "")}
-                status={status()}
-                blocked={
-                  isReadOnly() ||
-                  hasAttachments() ||
-                  attachmentsUploading() ||
-                  view().inboxFor(params.id ?? "").length > 0
-                }
-                modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
-              />
-            </Suspense>
-          </Show>
+  const predictionControl = (bind?: (api: PredictionControlApi | undefined) => void) => (
+    <Show when={capabilities.has("digital-twin")}>
+      <Suspense>
+        <DigitalTwinComposer
+          controller={composerDocument}
+          focusEditor={() => editorRef?.focus()}
+          sessionID={params.id}
+          parentID={info()?.parentID}
+          messages={view().messagesFor(params.id ?? "")}
+          status={status()}
+          blocked={
+            isReadOnly() || hasAttachments() || attachmentsUploading() || view().inboxFor(params.id ?? "").length > 0
+          }
+          modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
+          bind={bind}
+        />
+      </Suspense>
+    </Show>
   )
   const mobileChips = () => (
     <Show when={!layout.isDesktop()}>
@@ -2275,7 +2294,6 @@ export function createPromptInputController(props: PromptInputProps) {
           <AgentSelector hasMessages={sessionHasMessages} compact />
         </Show>
         {permissionSelector()}
-        {predictionControl()}
         {workflowChips()}
       </div>
     </Show>
@@ -2483,9 +2501,7 @@ export function createPromptInputController(props: PromptInputProps) {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
-            <Show when={layout.isDesktop()}>
-              {predictionControl()}
-            </Show>
+            <Show when={layout.isDesktop()}>{predictionControl()}</Show>
             <Show when={capabilities.has("media")}>
               <VoiceDictationButton
                 getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
@@ -2580,6 +2596,9 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
     trailing: () => (
       <>
+        {/* Narrow layouts reach prediction through the add menu, so the control
+            mounts without a button and hands its API to that item. */}
+        <Show when={!layout.isDesktop()}>{predictionControl(setPredictionApi)}</Show>
         <ComposerSlotOutlet slot="composer.below" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
       </>
     ),

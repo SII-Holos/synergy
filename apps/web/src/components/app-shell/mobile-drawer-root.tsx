@@ -83,6 +83,7 @@ export interface MobileDrawerRecentVisual {
 }
 
 export interface MobileDrawerRecentGroups {
+  pinned: string
   today: string
   earlier: string
 }
@@ -106,18 +107,29 @@ export function MobileDrawerRecent(props: {
 
   // Grouping is opt-in: the flat list stays the default so callers that do not
   // pass labels never render empty headings.
+  //
+  // Entries arrive in production order, where pinned sessions sort ahead of
+  // everything else and are therefore interleaved with `lastActivityAt`. Folding
+  // by run of equal heading would emit Earlier/Today/Earlier for a pinned old
+  // session above a fresh one, so buckets are keyed by heading and emitted in
+  // fixed order: pinned keeps its own heading, then today, then earlier.
   const grouped = createMemo(() => {
     const labels = props.groups
     if (!labels) return [{ heading: "", entries: props.entries }]
     const todayStart = new Date().setHours(0, 0, 0, 0)
-    const buckets: Array<{ heading: string; entries: NavEntry[] }> = []
+    const pinned: NavEntry[] = []
+    const today: NavEntry[] = []
+    const earlier: NavEntry[] = []
     for (const entry of props.entries) {
-      const heading = entry.lastActivityAt >= todayStart ? labels.today : labels.earlier
-      const last = buckets.at(-1)
-      if (last?.heading === heading) last.entries.push(entry)
-      else buckets.push({ heading, entries: [entry] })
+      if (entry.pinned) pinned.push(entry)
+      else if (entry.lastActivityAt >= todayStart) today.push(entry)
+      else earlier.push(entry)
     }
-    return buckets
+    return [
+      { heading: labels.pinned, entries: pinned },
+      { heading: labels.today, entries: today },
+      { heading: labels.earlier, entries: earlier },
+    ].filter((bucket) => bucket.entries.length > 0)
   })
 
   const row = (entry: NavEntry) => {

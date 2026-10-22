@@ -8786,6 +8786,10 @@ msgid "app.shell.mobile.session.group.earlier"
 msgstr "更早"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.pinned"
+msgstr "置顶"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.group.today"
 msgstr "今天"
 
@@ -15620,6 +15624,13 @@ msgstr "添加文件"
 #. prompt-input.tsx — toolbar / chips
 msgid "prompt.toolbar.agent"
 msgstr "智能体"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.toolbar.assist"
+msgstr "辅助"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
