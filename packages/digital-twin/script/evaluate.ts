@@ -141,7 +141,6 @@ type Prediction = {
   recipe: Recipe
   state: "pending" | "complete" | "failed"
   candidate: string | null
-  abstention?: string | null
   error?: string
   elapsedMs?: number
   selectedEvidence?: ReturnType<typeof temporalEvidence>["evidence"]
@@ -290,7 +289,6 @@ export function summarize(results: Result[], expectedCases: number, evidenceCurr
         covered: 0,
         ambiguous: 0,
         ambiguousEmitted: 0,
-        correctAbstentions: 0,
         failed: 0,
         emitted: 0,
         scored: 0,
@@ -310,7 +308,6 @@ export function summarize(results: Result[], expectedCases: number, evidenceCurr
         } else if (result.eligibility) {
           counts.ambiguous++
           if (prediction.candidate) counts.ambiguousEmitted++
-          else if (prediction.state === "complete" && prediction.abstention) counts.correctAbstentions++
         }
         const label = Object.keys(result.labels).find((label) => result.labels[label] === recipe)
         const score = result.judgment?.scores.find((score) => score.label === label)
@@ -337,7 +334,6 @@ export function summarize(results: Result[], expectedCases: number, evidenceCurr
       covered: number
       ambiguous: number
       ambiguousEmitted: number
-      correctAbstentions: number
       failed: number
       emitted: number
       scored: number
@@ -479,7 +475,7 @@ function report(results: Result[], summary: ReturnType<typeof summarize>, metada
         ? "supported by the measured gates; author confirmation remains separate."
         : "unresolved: one or more quality or evidence gates failed."),
     "",
-    "Current context comes from immutable model requests and terminal responses. The terminal reply must match its unchanged appearance in the next immutable request; unverifiable display transformations are excluded. Fork/child Sessions and copied runs/calls are excluded. No later examples or future-derived sketches are used. Predictability/category are frozen before candidate generation. Provider failures are distinct from abstentions and prevent acceptance. The paired interval resamples whole Session families and is widened by a weighted bounded-variable Hoeffding interval so a tiny all-win sample cannot imply certainty. Latencies and actual token/cache/first-token receipts are retained per call; missing fields mean unknown.",
+    "Current context comes from immutable model requests and terminal responses. The terminal reply must match its unchanged appearance in the next immutable request; unverifiable display transformations are excluded. Fork/child Sessions and copied runs/calls are excluded. No later examples or future-derived sketches are used. Predictability/category are frozen before candidate generation. Provider failures are distinct from emitted candidates and prevent acceptance. The paired interval resamples whole Session families and is widened by a weighted bounded-variable Hoeffding interval so a tiny all-win sample cannot imply certainty. Latencies and actual token/cache/first-token receipts are retained per call; missing fields mean unknown.",
     "",
     "## All cases (chronological)",
     "",
@@ -508,7 +504,7 @@ function report(results: Result[], summary: ReturnType<typeof summarize>, metada
         `**${prediction.recipe}** (${prediction.receipt ? `${Math.round(prediction.receipt.wallMs)} ms` : "unknown latency"})`,
         "",
         "```text",
-        prediction.candidate ?? prediction.error ?? `Abstained: ${prediction.abstention}`,
+        prediction.candidate ?? prediction.error ?? "No candidate recorded",
         "```",
         "",
         prediction.selectedEvidence
@@ -711,7 +707,6 @@ export async function evaluate(input: {
           Object.assign(prediction, {
             state: "complete",
             candidate: measurement.value.prediction.candidate,
-            abstention: measurement.value.prediction.abstention,
             elapsedMs: measurement.value.elapsedMs,
             selectedEvidence: measurement.value.selected,
           })
@@ -732,7 +727,7 @@ export async function evaluate(input: {
           "assess_predictions",
           item.current,
           {
-            task: "Score all blinded candidates independently, preserving the frozen eligibility label. A failed call is not abstention; score it 1 and never count it as a correct abstention.",
+            task: "Score all blinded candidates independently, preserving the frozen eligibility label. A failed call is a failure: score it 1 and never treat it as a valid answer.",
             eligibility: result.eligibility,
             authenticNextMessage: item.reference,
             authenticEarlierWriting: evidence.evidence
@@ -744,7 +739,6 @@ export async function evaluate(input: {
                 label,
                 state: prediction.state,
                 text: prediction.candidate,
-                abstention: prediction.abstention,
                 error: prediction.error,
               }
             }),

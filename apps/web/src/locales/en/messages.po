@@ -12089,8 +12089,8 @@ msgid "diff.preview-truncated"
 msgstr "Preview truncated"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.composer.abstained"
-msgstr "No clear continuation yet."
+msgid "digitalTwin.composer.dismiss"
+msgstr "Dismiss prediction message"
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.composer.predict"
@@ -12105,16 +12105,40 @@ msgid "digitalTwin.composer.unavailable"
 msgstr "Prediction unavailable. Try again."
 
 #. js-lingui-explicit-id
+msgid "digitalTwin.reason.composing"
+msgstr "Available after text input ends"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.draft"
+msgstr "Clear the draft to predict the next input"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.mode"
+msgstr "Available in normal write mode"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.pending"
+msgstr "Finish attachments and pending items first"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.reply"
+msgstr "Available once a reply finishes cleanly"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.turn"
+msgstr "Available once this turn finishes"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.view"
+msgstr "Prediction is unavailable in this view"
+
+#. js-lingui-explicit-id
 msgid "digitalTwin.settings.automatic"
 msgstr "Automatic next-input prediction"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automaticHint"
-msgstr "Show a suggestion after a task finishes. Tab inserts it; you choose when to send."
-
-#. js-lingui-explicit-id
 msgid "digitalTwin.settings.description"
-msgstr "Suggest your next message using the conversation and your earlier writing."
+msgstr "A living model of how you think and write."
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.settings.follow"

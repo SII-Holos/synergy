@@ -243,7 +243,7 @@ test("a successful evaluation prefix cannot satisfy the complete experiment gate
   expect(summarize(results, 101)).toMatchObject({ expectedCases: 101, finished: false, qualityResolved: false })
 })
 
-test("ablation reporting separates ambiguous abstention, failures and provider latency", () => {
+test("ablation reporting separates ambiguous candidates, failures and provider latency", () => {
   const result: Parameters<typeof summarize>[0][number] = {
     fingerprint: "case",
     item: { family: "family" } as ReplayCase,
@@ -253,7 +253,7 @@ test("ablation reporting separates ambiguous abstention, failures and provider l
     eligibility: { predictable: false, category: "ambiguous-new-task", reason: "new topic" },
     predictions: [
       { recipe: "context", state: "complete", candidate: "凭空编一个任务" },
-      { recipe: "voice", state: "complete", candidate: null, abstention: "no-clear-continuation" },
+      { recipe: "voice", state: "complete", candidate: null },
       {
         recipe: "full",
         state: "failed",
@@ -264,9 +264,9 @@ test("ablation reporting separates ambiguous abstention, failures and provider l
     ],
   }
   const summary = summarize([result], 1)
-  expect(summary.recipes.context).toMatchObject({ ambiguous: 1, ambiguousEmitted: 1, correctAbstentions: 0 })
-  expect(summary.recipes.voice).toMatchObject({ ambiguous: 1, correctAbstentions: 1 })
-  expect(summary.recipes.full).toMatchObject({ failed: 1, correctAbstentions: 0 })
+  expect(summary.recipes.context).toMatchObject({ ambiguous: 1, ambiguousEmitted: 1, emitted: 1 })
+  expect(summary.recipes.voice).toMatchObject({ ambiguous: 1, ambiguousEmitted: 0, emitted: 0 })
+  expect(summary.recipes.full).toMatchObject({ failed: 1, emitted: 0 })
   expect(summary.latency.full).toMatchObject({ successful: { count: 0 }, failed: { count: 1 } })
 })
 

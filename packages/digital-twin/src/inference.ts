@@ -13,8 +13,7 @@ import prompt from "./prompts/predict.txt"
 
 const Prediction = z
   .object({
-    candidate: z.string().min(1).nullable(),
-    abstention: z.enum(["insufficient-grounding", "no-clear-continuation"]).nullable(),
+    candidate: z.string().min(1),
     grounding: z.array(z.string()).min(1).describe('Exact evidence IDs, always including "current". No explanations.'),
     targets: z
       .array(z.string())
@@ -112,7 +111,7 @@ export async function infer(input: {
     outputTool: {
       name: "predict_next_input",
       force: false,
-      description: "Return one grounded editable next user message or abstain.",
+      description: "Return one grounded editable next user message.",
       schema,
     },
   })
@@ -124,18 +123,16 @@ export async function infer(input: {
   if (
     !prediction.grounding.includes("current") ||
     prediction.grounding.some((id) => !allowed.has(id)) ||
-    prediction.targets.some((target) => !currentText.includes(JSON.stringify(target).slice(1, -1))) ||
-    Boolean(prediction.candidate) === Boolean(prediction.abstention)
+    prediction.targets.some((target) => !currentText.includes(JSON.stringify(target).slice(1, -1)))
   )
     throw new PredictionError("invalid_prediction", "The prediction contains ungrounded references or targets")
   if (
-    prediction.candidate &&
-    (/⟦sec:/.test(prediction.candidate) ||
-      (await SecretMask.captureAndApply(
-        prediction.candidate,
-        { kind: "heuristic", context: "user_message" },
-        input.signal,
-      )) !== prediction.candidate)
+    /⟦sec:/.test(prediction.candidate) ||
+    (await SecretMask.captureAndApply(
+      prediction.candidate,
+      { kind: "heuristic", context: "user_message" },
+      input.signal,
+    )) !== prediction.candidate
   )
     throw new PredictionError("invalid_prediction", "The prediction contains protected content")
   if (maskRevision !== (await SecretMask.revision()))

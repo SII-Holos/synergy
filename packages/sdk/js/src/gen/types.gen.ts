@@ -12859,8 +12859,7 @@ export type DigitalTwinSourceStamp = {
 
 export type DigitalTwinPrediction = {
   proposalID: string
-  candidate: string | null
-  abstention: "insufficient-grounding" | "no-clear-continuation" | null
+  candidate: string
   stamp: DigitalTwinSourceStamp
 }
 
@@ -29357,7 +29356,7 @@ export type DigitalTwinPredictNextInputError =
 
 export type DigitalTwinPredictNextInputResponses = {
   /**
-   * One editable prediction or abstention
+   * One editable prediction
    */
   200: DigitalTwinPrediction
 }

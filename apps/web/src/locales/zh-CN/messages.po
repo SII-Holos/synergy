@@ -12089,8 +12089,8 @@ msgid "diff.preview-truncated"
 msgstr "预览已截断"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.composer.abstained"
-msgstr "暂时没有明确的后续输入建议。"
+msgid "digitalTwin.composer.dismiss"
+msgstr "关闭预测提示"
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.composer.predict"
@@ -12105,16 +12105,40 @@ msgid "digitalTwin.composer.unavailable"
 msgstr "预测暂不可用，请重试。"
 
 #. js-lingui-explicit-id
+msgid "digitalTwin.reason.composing"
+msgstr "输入结束后可用"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.draft"
+msgstr "清空草稿后可预测下一条输入"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.mode"
+msgstr "仅在普通写作模式下可用"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.pending"
+msgstr "请先完成附件与待处理项"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.reply"
+msgstr "回复正常结束后可用"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.turn"
+msgstr "本轮结束后可用"
+
+#. js-lingui-explicit-id
+msgid "digitalTwin.reason.view"
+msgstr "当前视图不支持预测"
+
+#. js-lingui-explicit-id
 msgid "digitalTwin.settings.automatic"
 msgstr "自动预测下一条输入"
 
 #. js-lingui-explicit-id
-msgid "digitalTwin.settings.automaticHint"
-msgstr "任务完成后显示建议。按 Tab 插入，由你决定何时发送。"
-
-#. js-lingui-explicit-id
 msgid "digitalTwin.settings.description"
-msgstr "根据当前对话和你以往的表达，建议下一条输入。"
+msgstr "持续学习你如何思考与表达。"
 
 #. js-lingui-explicit-id
 msgid "digitalTwin.settings.follow"

@@ -28,8 +28,7 @@ export namespace DigitalTwinContract {
   export const Result = z
     .object({
       proposalID: z.string(),
-      candidate: z.string().nullable(),
-      abstention: z.enum(["insufficient-grounding", "no-clear-continuation"]).nullable(),
+      candidate: z.string().min(1),
       stamp: Stamp,
     })
     .meta({ ref: "DigitalTwinPrediction" })

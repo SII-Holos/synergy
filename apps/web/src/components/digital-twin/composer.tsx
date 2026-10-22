@@ -14,6 +14,7 @@ import { Persist, persisted } from "@/utils/persist"
 import type { ComposerDocumentController } from "../prompt-input/composer-document"
 import { PredictionRequest } from "./request"
 import { twinCopy } from "./copy"
+import { registerComposer } from "./presence"
 
 type Props = {
   controller: ComposerDocumentController
@@ -53,6 +54,7 @@ function SessionPrediction(props: Props) {
   const sync = useSync()
   const active = useViewActivity()
   const { _ } = useLingui()
+  onCleanup(registerComposer({ url: sdk.url, scopeKey: sdk.scopeKey, sessionID: props.sessionID ?? "" }))
   const [saved, setSaved] = persisted(
     {
       ...Persist.scoped(Persist.scopeKey(sdk.url, sdk.scopeKey), props.sessionID, "digital-twin"),
@@ -68,7 +70,7 @@ function SessionPrediction(props: Props) {
   const [revision, setRevision] = createSignal(0)
   const [visible, setVisible] = createSignal(document.visibilityState === "visible")
   const [busy, setBusy] = createSignal(false)
-  const [failure, setFailure] = createSignal<"unavailable" | "abstained">()
+  const [failure, setFailure] = createSignal(false)
   const [completedRoot, setCompletedRoot] = createSignal<string>()
   const [sourceRevision, setSourceRevision] = createSignal(0)
   let connection = 0
@@ -105,14 +107,17 @@ function SessionPrediction(props: Props) {
       !props.parentID &&
       sdk.connected() &&
       sdk.capabilities.has("digital-twin") &&
-      active() &&
-      visible() &&
       !props.blocked &&
       !props.controller.composing() &&
       props.controller.current().mode === "normal" &&
       !props.controller.current().text
     )
   })
+  // Whether the user is looking at this Session decides whether the button can
+  // be used, not whether a finished turn may be predicted: a retained view
+  // stays mounted while the user works elsewhere, and the suggestion is meant to
+  // be waiting when they return.
+  const interactive = createMemo(() => eligible() && active() && visible())
   const state = () => {
     revision()
     const capabilities = sdk.capabilities.current()
@@ -127,7 +132,6 @@ function SessionPrediction(props: Props) {
       connection,
       props.modelKey,
       sync.data.config.digitalTwin?.model,
-      props.controller.current().revision,
       sourceRevision(),
     ])
     return {
@@ -149,12 +153,12 @@ function SessionPrediction(props: Props) {
       setSaved("suggestion", {
         rootID: result.stamp.rootID,
         assistantID: result.stamp.assistantID,
-        text: result.candidate!,
+        text: result.candidate,
         proposalID: result.proposalID,
       }),
-    clearFeedback: () => setFailure(undefined),
+    clearFeedback: () => setFailure(false),
     changed: setBusy,
-    failed: setFailure,
+    failed: () => setFailure(true),
   })
   createEffect(() => {
     revision()
@@ -189,9 +193,8 @@ function SessionPrediction(props: Props) {
     })
   })
   createEffect(() => {
-    if (!failure()) return
-    const timeout = setTimeout(() => setFailure(undefined), 4000)
-    onCleanup(() => clearTimeout(timeout))
+    revision()
+    if (failure() && props.controller.current().text) setFailure(false)
   })
   createEffect(() => {
     const snapshot = state()
@@ -202,15 +205,7 @@ function SessionPrediction(props: Props) {
     const source = anchor()
     const sessionID = props.sessionID
     const capability = sdk.capabilities.current()
-    if (
-      !source ||
-      !sessionID ||
-      !sdk.connected() ||
-      !capability ||
-      !eligible() ||
-      !active() ||
-      props.status.type !== "idle"
-    )
+    if (!source || !sessionID || !sdk.connected() || !capability || !interactive() || props.status.type !== "idle")
       return
     const controller = new AbortController()
     if (untrack(completedRoot) === source.rootID) return
@@ -238,11 +233,28 @@ function SessionPrediction(props: Props) {
   const sourceChanged = (sessionID: string) => {
     if (sessionID === props.sessionID) setSourceRevision((value) => value + 1)
   }
+  // Hydrating a Session replays a part summary for content that never changed.
+  // Treating every replay as an edit kept moving the request identity, which
+  // aborted the prediction the click had just started; only a part whose
+  // content version actually moved counts as an edit.
+  const versions = new Map<string, string>()
+  const partSummaryChanged = (summary: { sessionID: string; id?: string; content?: { version?: string } }) => {
+    if (summary.sessionID !== props.sessionID) return
+    const version = summary.id && summary.content?.version
+    if (!version) {
+      setSourceRevision((value) => value + 1)
+      return
+    }
+    const previous = versions.get(summary.id!)
+    versions.set(summary.id!, version)
+    if (previous === undefined || previous === version) return
+    setSourceRevision((value) => value + 1)
+  }
   const changes = [
     sdk.event.on("message.updated", ({ properties }) => sourceChanged(properties.info.sessionID)),
     sdk.event.on("message.removed", ({ properties }) => sourceChanged(properties.sessionID)),
     sdk.event.on("message.part.updated", ({ properties }) => sourceChanged(properties.part.sessionID)),
-    sdk.event.on("message.part.summary", ({ properties }) => sourceChanged(properties.summary.sessionID)),
+    sdk.event.on("message.part.summary", ({ properties }) => partSummaryChanged(properties.summary)),
     sdk.event.on("message.part.removed", ({ properties }) => sourceChanged(properties.sessionID)),
     sdk.event.on("session.updated", ({ properties }) => sourceChanged(properties.info.id)),
   ]
@@ -254,15 +266,53 @@ function SessionPrediction(props: Props) {
     service.dispose()
     document.removeEventListener("visibilitychange", visibility)
   })
-  const disabled = createMemo(() => !eligible() || !state().ready || busy())
+  // Naming the blocker is the difference between a button that looks broken and
+  // one the user knows how to enable.
+  const reason = createMemo(() => {
+    revision()
+    if (!props.sessionID || props.parentID || !sdk.connected() || !sdk.capabilities.has("digital-twin"))
+      return "view" as const
+    if (!active() || !visible()) return "view" as const
+    if (props.status.type !== "idle") return "turn" as const
+    if (props.controller.current().text) return "draft" as const
+    if (props.blocked) return "pending" as const
+    if (props.controller.composing()) return "composing" as const
+    if (props.controller.current().mode !== "normal") return "mode" as const
+    if (!anchor()) return "reply" as const
+    if (!state().ready) return "turn" as const
+    return
+  })
+  const reasonLabel = () => {
+    switch (reason()) {
+      case "view":
+        return _(twinCopy.reasonView)
+      case "turn":
+        return _(twinCopy.reasonTurn)
+      case "draft":
+        return _(twinCopy.reasonDraft)
+      case "pending":
+        return _(twinCopy.reasonPending)
+      case "composing":
+        return _(twinCopy.reasonComposing)
+      case "mode":
+        return _(twinCopy.reasonMode)
+      case "reply":
+        return _(twinCopy.reasonReply)
+      default:
+        return _(twinCopy.predict)
+    }
+  }
+  const disabled = createMemo(() => !!reason() || busy())
+  const label = createMemo(() => (busy() ? _(twinCopy.predicting) : reasonLabel()))
   return (
     <>
-      <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
+      <Tooltip value={label()} placement="top">
         <button
           type="button"
           class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
           aria-label={_(twinCopy.predict)}
           aria-busy={busy()}
+          aria-description={reason() ? reasonLabel() : undefined}
           disabled={disabled()}
           onClick={() => {
             props.focusEditor()
@@ -285,11 +335,18 @@ function SessionPrediction(props: Props) {
         </button>
       </Tooltip>
       <Show when={failure()}>
-        {(reason) => (
-          <span role="status" class="text-12-regular text-text-weak">
-            {_(twinCopy[reason()])}
-          </span>
-        )}
+        <span role="status" data-twin-notice class="flex items-center gap-1 text-12-regular text-text-base">
+          <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
+          {_(twinCopy.unavailable)}
+          <button
+            type="button"
+            class="flex cursor-pointer items-center text-text-weak hover:text-text-base"
+            aria-label={_(twinCopy.dismiss)}
+            onClick={() => setFailure(false)}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+          </button>
+        </span>
       </Show>
     </>
   )
