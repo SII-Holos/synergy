@@ -292,7 +292,7 @@
   min-width: 0;
   min-height: 36px;
   padding: 0 10px;
-  border: 1px solid var(--border-weaker-base);
+  border: 0;
   border-radius: 8px;
   background: var(--surface-inset-base);
   color: var(--icon-weak-base);
@@ -735,7 +735,7 @@
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  border: 1px solid var(--border-weaker-base);
+  border: 0;
   border-radius: var(--radius-lg);
   background: var(--surface-inset-base);
 }
