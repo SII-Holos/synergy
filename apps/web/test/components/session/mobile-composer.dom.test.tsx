@@ -55,7 +55,9 @@ beforeAll(async () => {
           </div>
           <form class="prompt-input-shell bg-input-base relative overflow-visible border border-border-base" style="width:343px;margin:0 auto">
             <div class="composer-resize-controls">
-              <button class="prompt-input-toolbar-icon-button" type="button" aria-label="Resize editor">R</button>
+              <div role="separator" tabindex="0" aria-label="Resize editor" class="composer-resize-handle">
+                <span aria-hidden="true" />
+              </div>
             </div>
             <div class="session-composer-context"></div>
             <div class="session-composer-editor" style="height:64px"></div>
@@ -167,10 +169,13 @@ test("a narrow composer keeps one toolbar row and one scrolling chip line", asyn
   }
 })
 
-test("coarse pointers drop the drag grip but keep 44px toolbar targets", async () => {
+test("coarse pointers keep a 44px drag grip and 44px toolbar targets", async () => {
   const { page, close } = await open({ width: 375, height: 812 }, true)
   try {
-    expect(await style(page, ".composer-resize-controls", "display")).toBe("none")
+    expect(await style(page, ".composer-resize-controls", "display")).not.toBe("none")
+    const grip = (await page.locator(".composer-resize-handle").boundingBox())!
+    expect(grip.width).toBeGreaterThanOrEqual(44)
+    expect(grip.height).toBeGreaterThanOrEqual(44)
     const heights = await page
       .locator(".prompt-input-toolbar button")
       .evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().height)))
