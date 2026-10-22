@@ -41,6 +41,7 @@ const playwrightIsolated = [
   "test/components/execution/delegation.dom.test.tsx",
   "test/components/execution/context-layout.dom.test.tsx",
   "test/components/session/welcome/stage.dom.test.tsx",
+  "test/components/session/mobile-composer.dom.test.tsx",
   "test/components/session/workbench-navigation.render.test.ts",
   "test/components/session/workbench-layout.dom.test.tsx",
   "test/components/session/work-context.dom.test.ts",
