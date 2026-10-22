@@ -456,6 +456,8 @@ describe("production conversation history", () => {
       type Probe = { frames: Frame[]; phase: Frame["phase"]; retainedViewport?: Element; stopped: boolean }
       try {
         const page = await browser.newPage({ viewport: { width: 960, height: 900 }, reducedMotion: "no-preference" })
+        const cdp = await page.context().newCDPSession(page)
+        await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
         page.setDefaultTimeout(20000)
         await page.routeWebSocket("**/global/event/ws*", (socket) => {
           const upstream = socket.connectToServer()
@@ -547,23 +549,21 @@ describe("production conversation history", () => {
                 opacity: Math.min(shown.opacity, ...items.map((element) => presentation(element).opacity)),
                 completeText: text.endsWith("End of paragraph 5.") && expectedText.includes(text),
                 textLength: text.length,
-                pending:
-                  [
-                    ...(viewport?.querySelectorAll<HTMLElement>("[data-markdown-pending],[data-content-pending]") ??
-                      []),
-                  ].some((element) => {
-                    const bounds = element.getBoundingClientRect()
-                    return (
-                      viewportBounds &&
-                      bounds.width > 0 &&
-                      bounds.height > 0 &&
-                      bounds.bottom > viewportBounds.top &&
-                      bounds.top < viewportBounds.bottom &&
-                      bounds.right > viewportBounds.left &&
-                      bounds.left < viewportBounds.right &&
-                      presentation(element).visible
-                    )
-                  }) || document.fonts.status === "loading",
+                pending: [
+                  ...(viewport?.querySelectorAll<HTMLElement>("[data-markdown-pending],[data-content-pending]") ?? []),
+                ].some((element) => {
+                  const bounds = element.getBoundingClientRect()
+                  return (
+                    viewportBounds &&
+                    bounds.width > 0 &&
+                    bounds.height > 0 &&
+                    bounds.bottom > viewportBounds.top &&
+                    bounds.top < viewportBounds.bottom &&
+                    bounds.right > viewportBounds.left &&
+                    bounds.left < viewportBounds.right &&
+                    presentation(element).visible
+                  )
+                }),
                 footerKey: footer?.dataset.displayRow,
                 footerState: footer
                   ? JSON.stringify({

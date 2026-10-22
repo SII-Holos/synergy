@@ -653,11 +653,12 @@ test("native state adopts canonical updates received while a save response is pe
     await page.waitForFunction(
       () => document.querySelector<HTMLInputElement>('[data-render-node="seats"] input')?.value === "12",
     )
+    expect(await slider.inputValue()).toBe("12")
     await page.getByRole("button", { name: "Expand visual" }).click()
     const viewer = page.locator('[data-component="render-viewer"]')
-    expect(await slider.inputValue()).toBe("12")
     expect(await viewer.getByRole("slider", { name: "Seats" }).inputValue()).toBe("12")
     await viewer.getByRole("button", { name: "Close dialog" }).click()
+    expect(await slider.inputValue()).toBe("12")
   } finally {
     await page.evaluate(() =>
       (window as unknown as { __renderTest: { releaseWrites(): void } }).__renderTest.releaseWrites(),

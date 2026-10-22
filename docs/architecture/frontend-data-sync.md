@@ -519,6 +519,7 @@ Composer snapshots, settled-draft notifications, selected-text snapshots, docume
   (binary-search insertion point) instead of re-merging and re-sorting the whole window; the window order and eviction semantics stay canonical.
 - The rendered turn tree is bounded: while pinned at the bottom in latest mode,
   `turnStart` advances so at most `MAX_RENDERED_TURNS` user turns are mounted; the trim re-pins the scroller after layout settles.
+- On reactivation, a virtual window following the latest content retains its last active, open activity group until hydration settles, so a background backlog cannot leave the visible tail unmounted. Initial mounting, history mode, detached or inner reading and explicit message navigation do not use this retention; inactive-view content leases still prevent hidden-session body reads.
 - The initial session pin re-arms when history readiness flips, so a cancelled init chain reruns on the next ready edge; a forced pin opens a settle window during which resize growth re-pins, and growth outside follow reports the bottom distance instead of relying on scroll events.
 - Part-row presentation adds the root message explicitly to its reply projection, so root-only history and search windows retain their user body.
 - Each `SessionTurn` consumes a precomputed projection of its turn members

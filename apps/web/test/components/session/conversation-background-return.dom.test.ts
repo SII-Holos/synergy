@@ -50,15 +50,20 @@ for (const manual of [false, true]) {
 
 for (const ended of [false, true]) {
   test(`background message backlog returns with stable ${ended ? "collected history" : "latest tools"} before summary page validation finishes`, async () => {
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 20 })
     await page.goto(`${url}?resident&scrolling&motion&content=background`)
     await page.waitForSelector('[data-slot="process-virtualizer"] [data-slot="activity-step"]')
     await page.evaluate(() => window.__conversationProcess.latest())
-    await frames()
+    await page.waitForFunction(
+      () => document.querySelector("[data-scroller]")?.getAttribute("data-hydrated") === "true",
+    )
     const result = await page.evaluate(async (ended) => {
       const fixture = window.__conversationProcess
       const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
       const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
       const before = fixture.contentStats()
+      const hydrated = viewport.dataset.hydrated
       fixture.select("peer")
       await settle()
       if (ended) fixture.execution("running")
@@ -90,6 +95,7 @@ for (const ended of [false, true]) {
       }
       return {
         before,
+        hydrated,
         hidden,
         samples,
         reads: fixture.contentStats(),
@@ -97,7 +103,11 @@ for (const ended of [false, true]) {
       }
     }, ended)
     expect(result.hidden).toEqual(result.before)
-    expect(result.samples.map((sample) => sample.open)).toEqual(Array(64).fill(ended ? 0 : 1))
+    expect(result.hydrated).toBe("true")
+    expect(
+      result.samples.map((sample) => sample.open),
+      JSON.stringify(result.samples.slice(0, 8)),
+    ).toEqual(Array(64).fill(ended ? 0 : 1))
     expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
     expect(result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
     if (ended) {
