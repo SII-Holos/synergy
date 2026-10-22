@@ -1044,6 +1044,10 @@ export namespace SessionInvoke {
                 const isTopSession = !session.parentID
                 const firstModelPreparation = recalledRootID !== R.id
 
+                // One write-root resolution feeds both the environment block and the permission
+                // profile: re-reading the Workspace catalog and re-acquiring shared roots for the
+                // second consumer repeated the same catalog reads on every model round.
+                const writeRootsPromise = SystemPrompt.resolveWriteRoots()
                 const turnPreparation = await Promise.all([
                   ToolResolver.availability({
                     agent,
@@ -1055,7 +1059,13 @@ export namespace SessionInvoke {
                     includeMCP: true,
                   }),
                   Promise.all([
-                    SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+                    writeRootsPromise.then((writeRoots) =>
+                      SystemPrompt.environment({
+                        endpointType: SessionEndpoint.type(session.endpoint),
+                        session,
+                        writeRoots,
+                      }),
+                    ),
                     SystemPrompt.custom(),
                   ]).then(([env, custom]) => [env, custom] as const),
                   buildCortexExecutionContext(sessionID),
@@ -1095,7 +1105,9 @@ export namespace SessionInvoke {
 
                 // Layered system prompt assembly: stable → semi-stable → dynamic
                 // This ordering maximizes prompt caching by keeping static content first.
-                let systemParts: string[] = [RuntimeAdvisory.protocol]
+                // Only the durable observation layout carries <context-source> entries, so the
+                // state semantics stay out of prompts that can never contain one.
+                let systemParts: string[] = RuntimeAdvisory.protocol(advisoryHistory)
                 let systemCacheBreakpoint: number | undefined
                 let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
                 const advisorySources: RuntimeAdvisory.Source[] = [
@@ -1122,16 +1134,20 @@ export namespace SessionInvoke {
                     sessionID: session?.id,
                     agentControlProfile: agent.controlProfile,
                   })
-                  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
-                  const resolved = await ControlProfileCompiler.resolve(profileId, {
-                    workspace,
-                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    trustedRoots,
-                  })
-                  if (resolved.valid) {
-                    const ctx = buildPermissionContext(resolved, trustedRoots)
-                    systemParts.push(ctx)
-                    systemCacheBreakpoint = systemParts.length - 1
+                  const writeRoots = await writeRootsPromise
+                  // The environment block already reports a failed write-root validation as an
+                  // explicit degradation. Compiling the profile from an empty root list would
+                  // instead advertise fewer capabilities with no explanation, so stay silent.
+                  if (writeRoots.failure.length === 0) {
+                    const resolved = await ControlProfileCompiler.resolve(profileId, {
+                      workspace,
+                      workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                      trustedRoots: writeRoots.roots,
+                    })
+                    if (resolved.valid) {
+                      systemParts.push(buildPermissionContext(resolved))
+                      systemCacheBreakpoint = systemParts.length - 1
+                    }
                   }
                 } catch {
                   // Profile resolution failure is non-fatal — skip permission context

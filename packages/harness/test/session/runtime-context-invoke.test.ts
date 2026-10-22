@@ -38,7 +38,11 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
           .filter((message) => message.role === "system")
           .map((message) => message.content)
           .join("\n")
-        expect(protocol.split("<runtime-context-protocol>")).toHaveLength(2)
+        // Only the durable observation layout emits <context-source> entries, so the state-semantics
+        // protocol is present exactly when one is in this prompt. The case below switches providers
+        // mid-session, so pair the two facts instead of assuming one profile for the whole test.
+        const carriesObservation = JSON.stringify(input.prompt).includes("<context-source ")
+        expect(protocol.split("<runtime-context-protocol>").length - 1).toBe(carriesObservation ? 1 : 0)
         expect(JSON.stringify(input.prompt.filter((message) => message.role !== "system"))).not.toContain(
           "<runtime-context-protocol>",
         )

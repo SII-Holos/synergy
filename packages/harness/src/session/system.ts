@@ -75,9 +75,36 @@ export namespace SystemPrompt {
     return ["<synergy-runtime>", ...lines, "</synergy-runtime>"].join("\n")
   }
 
+  export interface WorkspaceWriteRoots {
+    roots: string[]
+    failure: string[]
+  }
+
+  /** Resolved once per model round: the environment block states these roots, and the permission
+   *  profile resolves against the same list, so callers pass the result instead of re-reading the
+   *  Workspace catalog and re-acquiring shared roots for the second consumer. */
+  export async function resolveWriteRoots(): Promise<WorkspaceWriteRoots> {
+    const scope = ScopeContext.current.scope
+    const workspace = ScopeContext.current.workspace
+    const failure: string[] = []
+    const roots = await Scope.Root.executionRoots(scope, workspace).catch(async (error) => {
+      if (!WorkspaceCatalog.Unavailable.isInstance(error)) throw error
+      const [failedWorkspace] = await WorkspaceCatalog.readMany([error.data.workspaceID])
+      const failedPath = failedWorkspace?.scopeID === scope.id ? failedWorkspace.binding.path : undefined
+      const failedRole = error.data.workspaceID === workspace?.id ? "Selected Workspace" : "Shared writable Workspace"
+      failure.push(
+        "  Workspace write-root validation: failed. API-only work remains available; operations requiring these roots remain blocked until recovery.",
+        `  ${failedRole}: ${error.data.workspaceID}${failedPath ? ` (path: ${failedPath})` : ""}. Reason: ${error.data.reason ? `${error.data.reason}: ` : ""}${error.data.message}`,
+      )
+      return []
+    })
+    return { roots, failure }
+  }
+
   export async function environment(options?: {
     endpointType?: string
     session?: SessionEnvContributor.EnvSession & { id: string; title: string; time: { created: number } }
+    writeRoots?: WorkspaceWriteRoots
   }) {
     const scope = ScopeContext.current.scope
     const workspace = ScopeContext.current.workspace
@@ -99,23 +126,13 @@ export namespace SystemPrompt {
       `  Today's date: ${formatLocalDate(Date.now())}`,
     ]
 
-    const writeRoots = await Scope.Root.executionRoots(scope, workspace).catch(async (error) => {
-      if (!WorkspaceCatalog.Unavailable.isInstance(error)) throw error
-      const [failedWorkspace] = await WorkspaceCatalog.readMany([error.data.workspaceID])
-      const failedPath = failedWorkspace?.scopeID === scope.id ? failedWorkspace.binding.path : undefined
-      const failedRole = error.data.workspaceID === workspace?.id ? "Selected Workspace" : "Shared writable Workspace"
-      envLines.push(
-        "  Workspace write-root validation: failed. API-only work remains available; operations requiring these roots remain blocked until recovery.",
-        `  ${failedRole}: ${error.data.workspaceID}${failedPath ? ` (path: ${failedPath})` : ""}. Reason: ${error.data.reason ? `${error.data.reason}: ` : ""}${error.data.message}`,
-      )
-      return []
-    })
-    if (writeRoots.length) envLines.push(`  Writable workspace directories: ${writeRoots.join(", ")}`)
+    const writeRoots = options?.writeRoots ?? (await SystemPrompt.resolveWriteRoots())
+    envLines.push(...writeRoots.failure)
+    if (writeRoots.roots.length) envLines.push(`  Writable workspace directories: ${writeRoots.roots.join(", ")}`)
     if (session) envLines.push(`  Selected Environment: ${session.environmentID ?? "none"}`)
 
     if (workspace) {
       envLines.push(`  Workspace type: ${workspace.type}`)
-      envLines.push(`  Workspace path: ${workspace.path}`)
       if (workspace.type === "git_worktree") {
         if (workspace.name) envLines.push(`  Worktree name: ${workspace.name}`)
         if (workspace.branch) envLines.push(`  Worktree branch: ${workspace.branch}`)

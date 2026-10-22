@@ -406,7 +406,7 @@ describe("SessionInvoke workspace execution context", () => {
 
         expect(assistantPath).toEqual({ cwd: worktreePath, root: worktreePath })
         expect(lateSystemPrompt).toContain(`Working directory: ${worktreePath}`)
-        expect(lateSystemPrompt).toContain(`Workspace path: ${worktreePath}`)
+        expect(lateSystemPrompt).not.toContain("Workspace path:")
         expect(lateSystemPrompt).toContain(`Original checkout: ${tmp.path}`)
       } finally {
         restore()
