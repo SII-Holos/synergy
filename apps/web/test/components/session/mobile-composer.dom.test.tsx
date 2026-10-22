@@ -173,7 +173,7 @@ test("the chip line keeps the project, agent and permission controls at the touc
     for (const height of measures) expect(height).toBeGreaterThanOrEqual(44)
 
     const row = (await chips.boundingBox())!
-    expect(row.height).toBeLessThanOrEqual(52)
+    expect(row.height).toBeLessThanOrEqual(44)
     expect(errors).toEqual([])
   } finally {
     await close()
@@ -328,6 +328,64 @@ test("desktop keeps the original context line, one wrapping toolbar and its own 
     const handle = (await page.locator(".composer-resize-handle").boundingBox())!
     expect(handle.width).toBeGreaterThan(44)
     expect(handle.height).toBeLessThan(44)
+
+    // The desktop reading is pinned by number, not by "the wrapper is present":
+    // these are the shipped measurements of the card, editor, toolbar and
+    // corner control at this size.
+    const geometry = () =>
+      page.evaluate(() => {
+        const round = (value: number) => Math.round(value * 100) / 100
+        const box = (selector: string) => {
+          const element = document.querySelector(selector)
+          if (!element) return null
+          const rect = element.getBoundingClientRect()
+          return { x: round(rect.x), y: round(rect.y), w: round(rect.width), h: round(rect.height) }
+        }
+        const shell = document.querySelector(".prompt-input-shell") as HTMLElement
+        return {
+          shell: box(".prompt-input-shell"),
+          editor: box(".session-composer-editor"),
+          toolbar: box(".prompt-input-toolbar"),
+          expandControl: box(".composer-expand-control"),
+          toolbarPadding: getComputedStyle(document.querySelector(".prompt-input-toolbar")!).padding,
+          shellPaddingTop: getComputedStyle(shell).paddingTop,
+          controls: [...shell.querySelectorAll("button, [role=separator]")].filter(
+            (element) => element.getClientRects().length > 0,
+          ).length,
+        }
+      })
+
+    const desktop = await geometry()
+    expect(desktop.shell).toEqual({ x: 344, y: 778, w: 752, h: 122 })
+    expect(desktop.editor?.h).toBe(64)
+    expect(desktop.toolbar?.h).toBe(48)
+    expect(desktop.expandControl).toEqual({ x: 1055, y: 783, w: 32, h: 32 })
+    expect(desktop.toolbarPadding).toBe("6px 12px 8px")
+    expect(desktop.shellPaddingTop).toBe("8px")
+    expect(desktop.controls).toBe(8)
+
+    // The chip wrapper is `display: contents`, so removing it must not move a
+    // single pixel. This is the "desktop is unchanged by construction" claim,
+    // measured in one page instead of compared against a remembered baseline.
+    const withoutWrapper = await page.evaluate(() => {
+      const shell = document.querySelector(".prompt-input-shell")!
+      const wrapper = shell.parentElement?.querySelector(".composer-chips-row")
+      wrapper?.remove()
+      const round = (value: number) => Math.round(value * 100) / 100
+      const rect = shell.getBoundingClientRect()
+      const editor = document.querySelector(".session-composer-editor")!.getBoundingClientRect()
+      const toolbar = document.querySelector(".prompt-input-toolbar")!.getBoundingClientRect()
+      return {
+        shell: { x: round(rect.x), y: round(rect.y), w: round(rect.width), h: round(rect.height) },
+        editorHeight: round(editor.height),
+        toolbarHeight: round(toolbar.height),
+        wrapperPresent: !!document.querySelector(".composer-chips-row"),
+      }
+    })
+    expect(withoutWrapper.wrapperPresent).toBe(false)
+    expect(withoutWrapper.shell).toEqual(desktop.shell!)
+    expect(withoutWrapper.editorHeight).toBe(desktop.editor!.h)
+    expect(withoutWrapper.toolbarHeight).toBe(desktop.toolbar!.h)
     expect(errors).toEqual([])
   } finally {
     await close()
