@@ -1,123 +1,90 @@
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
+import { rm } from "node:fs/promises"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import tailwind from "@tailwindcss/vite"
 import { lingui } from "@lingui/vite-plugin"
 
-// Narrow layouts must keep the Composer on one toolbar row by moving agent,
-// permission and workflow state onto a single scrolling chip line, and desktop
-// layouts must keep the original context line untouched. Both outcomes are
-// properties of the shipped stylesheet against the shipped class names, so this
-// suite loads the real `index.css` and measures the real selectors at each
-// breakpoint instead of asserting a copy of the numbers.
+// The narrow Composer contract is structural and geometric at the same time:
+// the card must hold at most four controls, the chip line must carry the state
+// controls, the resize separator must stay draggable on touch, and none of that
+// may change the desktop layout. This suite therefore mounts the real
+// `DefaultComposer` around the real `createPromptInputController` and loads the
+// real stylesheet, so the assertions describe shipped code rather than a copy
+// of its markup.
+const root = path.resolve(import.meta.dir, "../../fixtures/mobile-composer")
+const source = path.resolve(import.meta.dir, "../../../src")
+const stubs = path.join(root, "stubs.tsx")
+
+// `resolve.alias` runs before `resolveId`, so the plugin sees `/…/src/…` for
+// every `@/…` import. Matching both forms is what keeps the real context
+// providers out of the fixture.
+const stubbed = [
+  /(?:^@\/|\/src\/)context\/(?:sdk|global-sdk|global-sync|sync|local|input|prompt|command|server|platform|workbench|session-transition|session-data-view|session-route|plan-blueprint-offer|view-residency|file)(?:\/index)?(?:\.tsx?)?$/,
+  /(?:^@\/|\/src\/)context\/layout(?:\/index)?(?:\.tsx?)?$/,
+  /(?:^@\/|\/src\/)context\/locale(?:\/index)?(?:\.tsx?)?$/,
+  /(?:^@\/|\/src\/)components\/settings(?:\/index)?(?:\.tsx?)?$/,
+  /(?:^@\/|\/src\/)components\/lattice\/lattice-config-dialog(?:\.tsx?)?$/,
+  /^@solidjs\/router$/,
+]
+
 let browser: Browser
 let server: ViteDevServer
-let directory: string
 let baseUrl: string
 const errors: string[] = []
-const source = path.resolve(import.meta.dir, "../../../src")
 
 beforeAll(async () => {
-  directory = await mkdtemp(path.join(import.meta.dir, ".mobile-composer-"))
-  await Bun.write(
-    path.join(directory, "index.html"),
-    '<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
-  )
-  await Bun.write(
-    path.join(directory, "main.tsx"),
-    `
-    import { render } from "solid-js/web"
-    import "@ericsanchezok/synergy-ui/styles"
-    import ${JSON.stringify(`/@fs/${source}/index.css`)}
-
-    // Markup mirrors the shipped Composer tree: default-composer.tsx renders
-    // the leading slot as a sibling of the shell form, and prompt-controller.tsx
-    // puts the chip line in that slot and the toolbar inside the form. The
-    // inline sheet restates only the Tailwind utilities those elements carry in
-    // production (display, wrapping, gaps) because the fixture is not scanned by
-    // the Tailwind content pipeline; every assertion below is about a
-    // declaration that index.css owns.
-    function Fixture() {
-      return <div class="synergy-workbench-canvas" style="min-height:100dvh;display:flex;flex-direction:column;justify-content:flex-end">
-        <div class="session-composer" style="width:100%">
-          <div class="composer-chips-row">
-            <div class="session-work-context">
-              <button class="prompt-input-toolbar-button" type="button" aria-label="Choose project">Project</button>
-            </div>
-            <div class="mobile-composer-chips" role="group" aria-label="Composer options">
-              <button class="prompt-input-toolbar-button" type="button" aria-label="Select agent: Pico">Agent</button>
-              <button class="prompt-input-toolbar-button" type="button" aria-label="Guarded permission mode">Guarded</button>
-            </div>
-          </div>
-          <form class="prompt-input-shell bg-input-base relative overflow-visible border border-border-base" style="width:343px;margin:0 auto">
-            <div class="composer-resize-controls">
-              <div role="separator" tabindex="0" aria-label="Resize editor" class="composer-resize-handle">
-                <span aria-hidden="true" />
-              </div>
-            </div>
-            <div class="session-composer-context"></div>
-            <div class="session-composer-editor" style="height:64px"></div>
-            <div class="prompt-input-toolbar">
-              <div class="prompt-input-toolbar-main">
-                <button class="prompt-input-toolbar-button" type="button" aria-label="Add">Add</button>
-              </div>
-              <div class="prompt-input-toolbar-actions">
-                <button class="prompt-input-toolbar-icon-button" type="button" aria-label="Voice input">Voice</button>
-                <button class="prompt-input-submit" type="button" aria-label="Send message">Send</button>
-              </div>
-            </div>
-          </form>
-        </div>
-        <style>{\`
-          .prompt-input-toolbar,.prompt-input-toolbar-main,.prompt-input-toolbar-actions{display:flex;align-items:center}
-          .prompt-input-toolbar,.prompt-input-toolbar-main{flex-wrap:wrap}
-          .prompt-input-toolbar{justify-content:space-between;gap:8px}
-          .prompt-input-toolbar-main{gap:4px;min-width:0}
-          .prompt-input-toolbar-actions{margin-left:auto;gap:6px;min-width:0;flex-shrink:0;justify-content:flex-end}
-        \`}</style>
-      </div>
-    }
-
-    render(() => <Fixture />, document.getElementById("root")!)
-  `,
-  )
   server = await createServer({
     configFile: false,
-    root: directory,
-    cacheDir: path.join(directory, ".vite"),
-    plugins: [solid(), tailwind(), ...lingui()],
+    root,
+    cacheDir: path.join(root, ".vite"),
+    plugins: [
+      {
+        name: "mobile-composer-stubs",
+        enforce: "pre",
+        resolveId(id) {
+          if (stubbed.some((pattern) => pattern.test(id))) return stubs
+        },
+      },
+      solid(),
+      tailwind(),
+      ...lingui(),
+    ],
+    resolve: { alias: { "@": source } },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/jsx-runtime", "@lingui/core", "@lingui/solid"],
+      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "zod", "fuzzysort"],
     },
     server: {
       host: "127.0.0.1",
       port: await fixturePort(),
-      fs: { allow: [path.resolve(source, "../../..")] },
+      strictPort: true,
+      fs: { allow: [path.resolve(source, "../../.."), root] },
     },
   })
   await server.listen()
-  await server.warmupRequest("/main.tsx")
   baseUrl = server.resolvedUrls!.local[0]!
+  await server.warmupRequest("/main.tsx")
   browser = await chromium.launch({ headless: true })
-}, 120_000)
+}, 180_000)
 
 afterAll(async () => {
   await browser?.close()
   await server?.close()
-  if (directory) await rm(directory, { recursive: true, force: true })
+  await rm(path.join(root, ".vite"), { recursive: true, force: true })
 })
 
 async function open(viewport: { width: number; height: number }, touch: boolean) {
   errors.length = 0
   const context = await browser.newContext({ viewport, deviceScaleFactor: 2, isMobile: touch, hasTouch: touch })
   const page = await context.newPage()
+  page.setDefaultTimeout(8_000)
   page.on("pageerror", (error) => errors.push(error.message))
-  await page.goto(baseUrl)
+  await page.goto(baseUrl, { timeout: 90_000 })
+  await page.locator(".prompt-input-shell").waitFor()
   await page.locator(".prompt-input-toolbar").waitFor()
   return { page, close: () => context.close() }
 }
@@ -125,41 +92,52 @@ async function open(viewport: { width: number; height: number }, touch: boolean)
 const style = (page: Page, selector: string, property: string) =>
   page.locator(selector).evaluate((element, name) => getComputedStyle(element).getPropertyValue(name), property)
 
+// Only controls a user can reach count towards the card budget. The model
+// trigger is rendered inside `.prompt-input-mobile-model`, which the shipped
+// sheet hides under the default shell, so it must not be counted — and must not
+// be used to smuggle in a fifth reachable control either.
+const shellButtons = (page: Page) =>
+  page.locator(".prompt-input-shell button").evaluateAll((elements) =>
+    elements
+      .filter((element) => element.getClientRects().length > 0)
+      .map((element) => ({
+        label: element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "",
+        width: Math.round(element.getBoundingClientRect().width),
+        height: Math.round(element.getBoundingClientRect().height),
+      })),
+  )
+
 const rowBands = (page: Page, selector: string) =>
   page
     .locator(selector)
     .evaluateAll((elements) =>
-      [...new Set(elements.map((element) => Math.round(element.getBoundingClientRect().y)))].sort((a, b) => a - b),
+      [
+        ...new Set(
+          elements
+            .filter((element) => element.getClientRects().length > 0)
+            .map((element) => Math.round(element.getBoundingClientRect().y)),
+        ),
+      ].sort((a, b) => a - b),
     )
 
-// Centered rows mix 44px and 36px controls, so equal `y` is the wrong test for
-// "one row". The promise is one row, which means the vertical centers of that
-// row's controls stay inside a single 8px band.
-const centeringSpread = (page: Page, selector: string) =>
-  page.locator(selector).evaluateAll((elements) => {
-    const centers = elements.map((element) => {
-      const rect = element.getBoundingClientRect()
-      return rect.y + rect.height / 2
-    })
-    return Math.max(...centers) - Math.min(...centers)
-  })
-
-test("a narrow composer keeps one toolbar row and one scrolling chip line", async () => {
+test("the shipped narrow card holds four controls on one row above a single chip line", async () => {
   const { page, close } = await open({ width: 375, height: 812 }, true)
   try {
+    const buttons = await shellButtons(page)
+    expect(buttons.map((button) => button.label).sort()).toEqual([
+      "Add",
+      "Expand editor",
+      "Send message",
+      "Voice input",
+    ])
+
+    const card = (await page.locator(".prompt-input-shell").boundingBox())!
+    expect(card.height).toBeLessThanOrEqual(160)
+    expect(await rowBands(page, ".prompt-input-toolbar button")).toHaveLength(1)
     expect(await style(page, ".composer-chips-row", "display")).toBe("flex")
     expect(await style(page, ".composer-chips-row", "overflow-x")).toBe("auto")
-    expect(await style(page, ".composer-chips-row", "flex-wrap")).toBe("nowrap")
     expect(await style(page, ".prompt-input-toolbar", "flex-wrap")).toBe("nowrap")
-    expect(await style(page, ".prompt-input-toolbar-main", "flex-wrap")).toBe("nowrap")
 
-    // The card's toolbar controls share one band, and the chip line is a single
-    // row of its own above the editor.
-    expect(await rowBands(page, ".prompt-input-toolbar button")).toHaveLength(1)
-    expect(await centeringSpread(page, ".composer-chips-row button")).toBeLessThanOrEqual(8)
-
-    const toolbar = (await page.locator(".prompt-input-toolbar").boundingBox())!
-    expect(toolbar.height).toBeLessThan(56)
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
       await page.evaluate(() => window.innerWidth),
     )
@@ -167,38 +145,143 @@ test("a narrow composer keeps one toolbar row and one scrolling chip line", asyn
   } finally {
     await close()
   }
-})
+}, 120_000)
 
-test("coarse pointers keep a 44px drag grip and 44px toolbar targets", async () => {
+test("the chip line keeps the project, agent and permission controls at the touch floor", async () => {
   const { page, close } = await open({ width: 375, height: 812 }, true)
   try {
-    expect(await style(page, ".composer-resize-controls", "display")).not.toBe("none")
-    const grip = (await page.locator(".composer-resize-handle").boundingBox())!
-    expect(grip.width).toBeGreaterThanOrEqual(44)
-    expect(grip.height).toBeGreaterThanOrEqual(44)
-    const heights = await page
-      .locator(".prompt-input-toolbar button")
+    const chips = page.locator(".composer-chips-row")
+    await chips.locator("[data-computer-selector]").waitFor()
+    await chips.locator("[data-project-task-selector]").waitFor()
+    const labels = await chips
+      .locator("button")
+      .evaluateAll((elements) => elements.map((element) => element.getAttribute("aria-label") ?? ""))
+    expect(labels.some((label) => label.startsWith("Computer"))).toBe(true)
+    expect(labels.some((label) => label.includes("permission mode"))).toBe(true)
+    expect(labels.some((label) => label.startsWith("Select agent"))).toBe(true)
+
+    const measures = await chips
+      .locator("button")
       .evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().height)))
-    expect(heights.length).toBeGreaterThan(0)
-    for (const height of heights) expect(height).toBeGreaterThanOrEqual(44)
+    expect(measures.length).toBeGreaterThan(0)
+    for (const height of measures) expect(height).toBeGreaterThanOrEqual(44)
+
+    const row = (await chips.boundingBox())!
+    expect(row.height).toBeLessThanOrEqual(52)
     expect(errors).toEqual([])
   } finally {
     await close()
   }
-})
+}, 120_000)
 
-test("the chip wrapper participates as if absent at desktop width", async () => {
+test("dragging the separator on touch still resizes the editor", async () => {
+  const { page, close } = await open({ width: 375, height: 812 }, true)
+  try {
+    const handle = page.locator(".composer-resize-handle")
+    const box = (await handle.boundingBox())!
+    expect(box.width).toBeGreaterThanOrEqual(44)
+    expect(box.height).toBeGreaterThanOrEqual(44)
+    expect(await handle.getAttribute("role")).toBe("separator")
+    expect(await page.locator(".prompt-input-shell").getAttribute("data-resized")).toBeNull()
+    const before = (await page.locator(".session-composer-editor").boundingBox())!.height
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 60, { steps: 12 })
+    await page.mouse.up()
+
+    expect(await page.locator(".session-composer").getAttribute("data-resized")).not.toBeNull()
+    const after = (await page.locator(".session-composer-editor").boundingBox())!.height
+    expect(after).toBeGreaterThan(before)
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
+test("every extracted control still opens from the shipped surfaces", async () => {
+  const { page, close } = await open({ width: 375, height: 812 }, true)
+  try {
+    const menu = async (trigger: string, title: string, item: string) => {
+      await page.locator(trigger).click()
+      const dialog = page.getByRole("dialog", { name: title, exact: true })
+      await dialog.waitFor()
+      const found = dialog.getByText(item, { exact: false }).first()
+      await found.waitFor()
+      await page.keyboard.press("Escape")
+      await dialog.waitFor({ state: "detached" })
+    }
+
+    await menu(".prompt-input-add-button", "Add", "Predict next input")
+    await menu("[data-computer-selector]", "Computer", "127.0.0.1:1")
+    await menu("[data-project-task-selector]", "Choose project", "Fixture project")
+    await menu('.mobile-composer-chips button[aria-label^="Select agent"]', "Select agent", "Pico")
+    await menu('.mobile-composer-chips button[aria-label*="permission mode"]', "Permission mode", "Guarded")
+    await page.locator(".composer-expand-control").click()
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
+    await page.locator(".composer-expand-control").click()
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
+test("the composer.above plugin slot keeps rendering above the chip line", async () => {
+  const { page, close } = await open({ width: 375, height: 812 }, true)
+  try {
+    const slot = page.locator('[data-slot="composer.above"]')
+    await slot.waitFor()
+    expect(await slot.innerText()).toContain("Plugin contribution")
+    expect(await page.locator(".composer-chips-row").count()).toBe(1)
+    expect(
+      await page.evaluate(
+        () =>
+          document
+            .querySelector('[data-slot="composer.above"]')
+            ?.compareDocumentPosition(document.querySelector(".composer-chips-row")!) ===
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ),
+    ).toBe(true)
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
+test("320 pixels scrolls the chip line instead of overflowing the page", async () => {
+  const { page, close } = await open({ width: 320, height: 640 }, true)
+  try {
+    const chips = page.locator(".composer-chips-row")
+    await chips.locator("[data-computer-selector]").waitFor()
+    expect(await style(page, ".composer-chips-row", "flex-wrap")).toBe("nowrap")
+    expect(await chips.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      await page.evaluate(() => window.innerWidth),
+    )
+    const card = (await page.locator(".prompt-input-shell").boundingBox())!
+    expect(card.height).toBeLessThanOrEqual(160)
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
+test("desktop keeps the original context line, one wrapping toolbar and its own control set", async () => {
   const { page, close } = await open({ width: 1440, height: 900 }, false)
   try {
     expect(await style(page, ".composer-chips-row", "display")).toBe("contents")
     expect(await style(page, ".prompt-input-toolbar", "flex-wrap")).toBe("wrap")
-    expect(await style(page, ".composer-resize-controls", "display")).not.toBe("none")
-    const heights = await page
-      .locator(".prompt-input-toolbar button")
-      .evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().height)))
-    for (const height of heights) expect(height).toBeLessThan(44)
+    expect(await page.locator(".mobile-composer-chips").count()).toBe(0)
+
+    const buttons = await shellButtons(page)
+    expect(buttons.map((button) => button.label)).toContain("Predict next input")
+    for (const button of buttons) expect(button.height).toBeLessThan(44)
+
+    const handle = (await page.locator(".composer-resize-handle").boundingBox())!
+    expect(handle.width).toBeGreaterThan(44)
+    expect(handle.height).toBeLessThan(44)
     expect(errors).toEqual([])
   } finally {
     await close()
   }
-})
+}, 120_000)
