@@ -64,7 +64,8 @@ describe("Electron Browser Host broker contract", () => {
         const child = Bun.spawn(
           [
             electron,
-            ...(process.platform === "linux" ? ["--no-sandbox"] : []),
+            // Xvfb capture needs software rendering; see docs/decisions/implemented/testing/2026-10-23-linux-native-browser-smoke-rendering.md.
+            ...(process.platform === "linux" ? ["--no-sandbox", "--disable-gpu"] : []),
             await isolatedElectronEntry(directory, path.join(directory, `${fixture}.js`)),
           ],
           { cwd: path.resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" },
