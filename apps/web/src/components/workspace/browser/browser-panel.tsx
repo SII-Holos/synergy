@@ -4,12 +4,14 @@ import { useBrowserDraft } from "./browser-draft"
 import { BrowserDataDialog } from "./browser-data-settings"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { BrowserNewTab } from "./browser-new-tab"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createResource, createSignal, lazy, Show, onCleanup } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
+import type { MessageDescriptor } from "@lingui/core"
 import { useParams } from "@/context/session-route"
 import { BrowserStoreProvider } from "./browser-store"
 import { useBrowserCatalog, type BrowserCatalog } from "./browser-catalog"
@@ -23,12 +25,13 @@ import { useWorkbenchPanels } from "@/context/workbench"
 import { useViewActivity } from "@/context/view-residency"
 import { browserPageTab, browserWorkbenchRoute, type BrowserWorkbenchRoute } from "./browser-workbench-model"
 import { createBrowserCommandId } from "./browser-command"
-import { normalizeBrowserError } from "./browser-error"
+import { browserErrorPresentation, normalizeBrowserError } from "./browser-error"
+import { failedBrowserNavigation } from "./browser-presentation"
 import { browser as B } from "@/locales/messages"
 import { resolveBrowserClientPresentation, type BrowserClientPresentationMode } from "./native-presentation-coordinator"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import { resolvePendingBrowserNavigation } from "./browser-view-command"
-import { BrowserErrorMessage } from "./browser-error-message"
+import { BrowserErrorDetails } from "./browser-error-message"
 import { BrowserPreparingPanel } from "./browser-preparing"
 import { useBrowserImportEntry } from "./browser-import"
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
@@ -100,6 +103,7 @@ function BrowserPanelInner(props: {
     () => params.id,
   )
   const { _ } = useLingui()
+  const translate = (message: MessageDescriptor) => _(message)
   const route = props.catalog.route
   const draft = useBrowserDraft(() => params.id)
   const ownerKey = props.catalog.initial.ownerKey
@@ -143,6 +147,20 @@ function BrowserPanelInner(props: {
   }
 
   const page = browser.page
+  const navigationFailure = () => failedBrowserNavigation(page())
+  const pageError = () => navigationFailure() ?? browser.browserError()
+  const showPageNotice = () => page()?.status === "active" && browser.hostStatus() === "ready" && !navigationFailure()
+  const inlineError = () => (showPageNotice() ? browser.browserError() : undefined)
+  const retryNavigation = () => {
+    const current = page()
+    if (!current || current.isLoading) return
+    browser.setBrowserError(null)
+    browser.navigate(current.navigation?.requestedURL ?? current.url)
+  }
+  const openErrorDetails = () => {
+    const error = pageError()
+    if (error) dialog.show(() => <BrowserErrorDetails error={error} />)
+  }
   const autoFocusAddress = () => {
     const state = props.tab.state
     return !(state && typeof state === "object" && "focusAddress" in state && state.focusAddress === false)
@@ -305,12 +323,15 @@ function BrowserPanelInner(props: {
           autoFocus={autoFocusAddress()}
           recent={recent}
           activeUrl={() =>
-            page()?.isLoading ? (page()?.navigation?.requestedURL ?? page()?.url ?? "") : (page()?.url ?? "")
+            page()?.isLoading || navigationFailure()
+              ? (page()?.navigation?.requestedURL ?? page()?.url ?? "")
+              : (page()?.url ?? "")
           }
           isLoading={() => page()?.isLoading ?? false}
           hasPage={() => Boolean(page())}
           onHistory={(direction) => sendPageCommand({ type: "history", direction })}
-          onReload={() => sendPageCommand({ type: "reload" })}
+          onReload={() => (navigationFailure() ? retryNavigation() : sendPageCommand({ type: "reload" }))}
+          onErrorDetails={pageError() ? openErrorDetails : undefined}
           onStop={() => sendPageCommand({ type: "stop" })}
           onNavigate={browser.navigate}
           onImport={() => openData("import")}
@@ -358,7 +379,7 @@ function BrowserPanelInner(props: {
             ))
           }
         />
-        <Show when={browser.session.connectionStatus === "failed"}>
+        <Show when={showPageNotice() && browser.session.connectionStatus === "failed"}>
           <div role="status" class="flex items-center justify-between gap-2 px-3 py-2 text-text-weak">
             <Trans id={B.disconnected.id} message={B.disconnected.message} />
             <Button size="small" disabled={recovering()} onClick={retryNative}>
@@ -366,7 +387,7 @@ function BrowserPanelInner(props: {
             </Button>
           </div>
         </Show>
-        <Show when={page()?.navigation?.slow}>
+        <Show when={showPageNotice() && page()?.navigation?.slow}>
           <div role="status" class="flex items-center gap-2 px-3 py-2 text-text-weak">
             <span class="flex-1">
               {_({
@@ -386,40 +407,26 @@ function BrowserPanelInner(props: {
             </Button>
           </div>
         </Show>
-        <Show when={browser.browserError()}>
+        <Show when={inlineError()}>
           {(error) => (
-            <div
-              role="status"
-              class="flex shrink-0 items-center gap-2 border-b border-border-weak-base bg-surface-raised-base px-3 py-2 text-12 text-text-strong"
-            >
-              <span class="font-medium">{error().severity === "critical" ? _(B.unavailable.id) : _(B.issue.id)}</span>
-              <BrowserErrorMessage error={error()} />
-              <Show when={page()?.navigation?.phase === "failed"}>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    browser.setBrowserError(null)
-                    if (page()?.status === "suspended") retryNative()
-                    else browser.navigate(page()?.navigation?.requestedURL ?? page()?.url ?? "about:blank")
-                  }}
-                >
-                  <Trans id={B.retry.id} message={B.retry.message} />
-                </Button>
-              </Show>
-              <Show
-                when={
-                  error().code?.startsWith("browser_native_") &&
-                  browser.hostStatus() !== "failed" &&
-                  platform.browserNative
-                }
-              >
+            <div role="status" class="browser-error-notice">
+              <span class="min-w-0 flex-1 break-words">
+                {browserErrorPresentation(error()).id === "browser.failure.request"
+                  ? _(B.actionFailed)
+                  : translate(browserErrorPresentation(error()))}
+              </span>
+              <Show when={error().code?.startsWith("browser_native_") && platform.browserNative}>
                 <Button size="small" disabled={recovering()} onClick={retryNative}>
                   <Trans id={B.retry.id} message={B.retry.message} />
                 </Button>
               </Show>
-              <Button size="small" variant="ghost" onClick={() => browser.setBrowserError(null)}>
-                <Trans id={B.dismiss.id} message={B.dismiss.message} />
-              </Button>
+              <IconButton
+                class="browser-nav-button"
+                variant="ghost"
+                icon={getSemanticIcon("action.close")}
+                aria-label={_(B.dismissMessage)}
+                onClick={() => browser.setBrowserError(null)}
+              />
             </div>
           )}
         </Show>
@@ -440,6 +447,7 @@ function BrowserPanelInner(props: {
                   ownerKey={ownerKey}
                   clientPresentation={props.clientPresentation}
                   onRetryNative={retryNative}
+                  onRetryNavigation={retryNavigation}
                 />
               </Show>
             }

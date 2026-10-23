@@ -48,38 +48,40 @@ export function ReviewVersionPreview(props: { file: string; before: ReviewFileVe
           />
         </Show>
       </div>
-      <Switch>
-        <Match when={value().kind === "missing"}>
-          <p role="status">{_(C.missing)}</p>
-        </Match>
-        <Match when={value().kind === "oversized"}>
-          <p role="status">{_(C.oversized)}</p>
-        </Match>
-        <Match when={value().kind === "symlink"}>
-          <p role="status">{_(C.symlink)}</p>
-        </Match>
-        <Match when={value().kind === "binary" && mime()}>
-          <img alt={props.file} src={`data:${mime()};base64,${value().base64 ?? ""}`} />
-        </Match>
-        <Match when={value().kind === "binary"}>
-          <p>
-            {_({
-              id: "review.file.binaryBytes",
-              message: "Binary file · {bytes} bytes",
-              values: { bytes: value().bytes },
-            })}
-          </p>
-        </Match>
-        <Match when={markdown() && mode() === "preview"}>
-          <UserMarkdown text={value().content ?? ""} />
-        </Match>
-        <Match when={html() && mode() === "preview"}>
-          <RenderHtml html={sanitizeAttachmentHtml(value().content ?? "")} />
-        </Match>
-        <Match when={true}>
-          <pre tabIndex={0}>{value().content}</pre>
-        </Match>
-      </Switch>
+      <div class="review-version-content" role="region" aria-label={_(C.preview)} tabIndex={0}>
+        <Switch>
+          <Match when={value().kind === "missing"}>
+            <p role="status">{_(C.missing)}</p>
+          </Match>
+          <Match when={value().kind === "oversized"}>
+            <p role="status">{_(C.oversized)}</p>
+          </Match>
+          <Match when={value().kind === "symlink"}>
+            <p role="status">{_(C.symlink)}</p>
+          </Match>
+          <Match when={value().kind === "binary" && mime()}>
+            <img alt={props.file} src={`data:${mime()};base64,${value().base64 ?? ""}`} />
+          </Match>
+          <Match when={value().kind === "binary"}>
+            <p>
+              {_({
+                id: "review.file.binaryBytes",
+                message: "Binary file · {bytes} bytes",
+                values: { bytes: value().bytes },
+              })}
+            </p>
+          </Match>
+          <Match when={markdown() && mode() === "preview"}>
+            <UserMarkdown text={value().content ?? ""} />
+          </Match>
+          <Match when={html() && mode() === "preview"}>
+            <RenderHtml html={sanitizeAttachmentHtml(value().content ?? "")} />
+          </Match>
+          <Match when={true}>
+            <pre>{value().content}</pre>
+          </Match>
+        </Switch>
+      </div>
     </div>
   )
 }

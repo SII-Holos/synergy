@@ -96,6 +96,11 @@ beforeAll(async () => {
           setPageStatus: (status: string) =>
             browserCatalog.replacePages([{ ...pageState, profileId: "personal", status } as any]),
 
+          setNavigationFailure: (enabled: boolean) => browserCatalog.upsertPage({
+            ...pageState, profileId: "personal", status: "active",
+            navigation: enabled ? {id: "failed", generation: 1, revision: 1, phase: "failed", slow: false,
+              requestedURL: pageState.url, error: {code: "browser_load_-324", message: "ERR_EMPTY_RESPONSE"}} : undefined,
+          }),
           retryCalls,
         }
 
@@ -179,6 +184,7 @@ describe("Browser native recovery surface", () => {
       const state = (window as any).__browserRecovery
       state.setPresentation(false)
       state.setHostStatus("failed")
+      state.setNavigationFailure(true)
 
       state.setBrowserError({
         severity: "error",
@@ -195,6 +201,7 @@ describe("Browser native recovery surface", () => {
     await page.evaluate(() => {
       const state = (window as any).__browserRecovery
       state.clearBrowserError()
+      state.setNavigationFailure(false)
       state.setPresentation(true)
       state.setHostStatus("ready")
     })

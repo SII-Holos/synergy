@@ -10676,12 +10676,20 @@ msgstr "⟦Save as…⟧"
 msgid "browser.downloads.waiting"
 msgstr "⟦Waiting⟧"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.action"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "browser.failure.address"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.failure.certificate"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.copyDetails"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -10692,12 +10700,28 @@ msgstr ""
 msgid "browser.failure.details"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.dismiss"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.errorDetails"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "browser.failure.offline"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.page"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "browser.failure.proxy"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.reload"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -18245,10 +18269,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.records"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
