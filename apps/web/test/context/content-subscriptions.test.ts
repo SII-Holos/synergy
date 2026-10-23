@@ -1,6 +1,23 @@
 import { expect, test } from "bun:test"
 import { createContentSubscriptions, projectContentSummary } from "../../src/context/content-subscriptions"
 
+test("execution demands merge dependencies and downgrade after the final detail reader leaves", () => {
+  const subscriptions = createContentSubscriptions(() => {})
+  const root = subscriptions.view({ kind: "execution", scopeID: "scope", sessionID: "session", demands: ["root"] })
+  const detail = subscriptions.view({
+    kind: "execution",
+    scopeID: "scope",
+    sessionID: "session",
+    demands: ["trajectory"],
+  })
+  expect(subscriptions.current().details[0].demands).toEqual(["root", "summary", "trajectory"])
+  const generation = subscriptions.current().details[0].generation
+  detail()
+  expect(subscriptions.current().details[0].demands).toEqual(["root"])
+  expect(subscriptions.current().details[0].generation).toBeGreaterThan(generation)
+  root()
+})
+
 test("retained content waits for the current checkpoint to reach consumers without publishing another interest", () => {
   const requests: unknown[] = []
   const subscriptions = createContentSubscriptions((value) => requests.push(value))

@@ -69,7 +69,7 @@ export namespace RolloutRecovery {
       () =>
         record(async () => {
           await RolloutJournal.recover(identity, onProgress)
-          const snapshot = await RolloutSnapshot.read(identity, { onProgress })
+          const snapshot = await RolloutSnapshot.projected(identity, undefined, onProgress)
           for (const interval of snapshot.intervals) {
             await RolloutExecution.recover(interval)
             onProgress?.()

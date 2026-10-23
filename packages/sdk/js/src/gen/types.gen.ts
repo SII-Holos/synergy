@@ -18,6 +18,7 @@ export type RuntimeCapabilities = {
   transports?: {
     displayManifest: 1
     projection?: "projection-v2"
+    viewDemand?: 1
   }
 }
 
@@ -8061,6 +8062,99 @@ export type ReviewStateResult = {
   state: ReviewStateValue
 }
 
+export type ContextUsageEstimate = {
+  modelID: string
+  providerID: string
+  contextLimit?: number
+  usableInputLimit?: number
+  categories: {
+    [key: string]: {
+      estimatedTokens: number
+      items: number
+      precision?: "source" | "role"
+    }
+  }
+  estimator:
+    | {
+        kind: "model-tokenizer"
+        encoding?: string
+      }
+    | {
+        kind: "bounded-utf8"
+        sampledCharacters: number
+        truncated: boolean
+      }
+  version: 1
+  capturedAt: number
+}
+
+export type ExecutionContextSnapshot = {
+  sessionID: string
+  callID: string
+  nodeID: string
+  runID: string
+  started: number
+  requestNumber: number
+  roundNumber: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  modelID: string
+  providerID: string
+  inputTokens: number | null
+  contextLimit: number | null
+  outputTokens: number | null
+  cacheHit: number | null
+  elapsedMs: number | null
+  retries: number
+  usage: {
+    version: 2
+    callID?: string
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  estimate?: ContextUsageEstimate
+  compactedBefore: boolean
+  requestAvailable: boolean
+}
+
 export type ExecutionTask = {
   sessionID: string
   nodeID: string | null
@@ -8339,7 +8433,7 @@ export type ExecutionSummary = {
   coverage: {
     recorded: number
     messages: number
-    gaps: number
+    gaps: number | null
     partial: boolean
   }
   lanes: Array<{
@@ -8361,98 +8455,56 @@ export type ExecutionSummary = {
   taskInstructions: number
 }
 
-export type ContextUsageEstimate = {
-  modelID: string
-  providerID: string
-  contextLimit?: number
-  usableInputLimit?: number
-  categories: {
-    [key: string]: {
-      estimatedTokens: number
-      items: number
-      precision?: "source" | "role"
+export type ExecutionProjection =
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "root"
     }
-  }
-  estimator:
-    | {
-        kind: "model-tokenizer"
-        encoding?: string
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "preparing"
+      progress: {
+        stage: "metadata" | "messages" | "parts"
+        prepared: number
+        total?: number
       }
-    | {
-        kind: "bounded-utf8"
-        sampledCharacters: number
-        truncated: boolean
+    }
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "failed"
+      error: {
+        kind: string
+        message: string
+        retryable: boolean
       }
-  version: 1
-  capturedAt: number
-}
-
-export type ExecutionContextSnapshot = {
-  sessionID: string
-  callID: string
-  nodeID: string
-  runID: string
-  started: number
-  requestNumber: number
-  roundNumber: number
-  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
-  modelID: string
-  providerID: string
-  inputTokens: number | null
-  contextLimit: number | null
-  outputTokens: number | null
-  cacheHit: number | null
-  elapsedMs: number | null
-  retries: number
-  usage: {
-    version: 2
-    callID?: string
-    modelID: string
-    providerID: string
-    totalInput: number
-    contextLimit?: number
-    usableInputLimit?: number
-    categories: Array<{
-      category:
-        | "systemInstructions"
-        | "toolDefinitions"
-        | "userMessages"
-        | "injectedContext"
-        | "skills"
-        | "assistantMessages"
-        | "toolResults"
-        | "attachments"
-        | "legacyConversation"
-        | "legacyTools"
-        | "legacyInstructions"
-      precision: "source" | "role" | "legacy"
-      estimatedTokens: number
-      attributedTokens: number
-      items?: number
-    }>
-    overhead: {
-      attributedTokens: number
     }
-    estimator:
-      | {
-          kind: "model-tokenizer"
-          encoding?: string
-        }
-      | {
-          kind: "bounded-utf8"
-          sampledCharacters: number
-          truncated: boolean
-        }
-    reconciliation: {
-      mode: "residual" | "scaled-down"
-      factor: number
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "ready"
+      summary: ExecutionSummary
+      detailPreviousRevision: number
+      roundSummaries: Array<ExecutionSummary>
+      upserts: Array<ExecutionTrajectoryNode>
+      processUpserts: Array<ExecutionTrajectoryNode>
+      processRemoved: Array<string>
+      removed: Array<string>
     }
-    capturedAt: number
-  } | null
-  estimate?: ContextUsageEstimate
-  compactedBefore: boolean
-  requestAvailable: boolean
-}
 
 export type ExecutionContextHistory = {
   sessionID: string
@@ -15295,6 +15347,11 @@ export type EventExecutionUpdated = {
   }
 }
 
+export type EventExecutionProjection = {
+  type: "execution.projection"
+  properties: ExecutionProjection
+}
+
 export type Event =
   | EventConfigUpdated
   | EventScopeUpdated
@@ -15396,6 +15453,7 @@ export type Event =
   | EventIdeInstalled
   | EventReviewStateUpdated
   | EventExecutionUpdated
+  | EventExecutionProjection
 
 export type RenderTarget2 = string
 
@@ -19795,6 +19853,50 @@ export type ReviewStateUpdateResponses = {
 }
 
 export type ReviewStateUpdateResponse = ReviewStateUpdateResponses[keyof ReviewStateUpdateResponses]
+
+export type SessionExecutionProjectionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    token: string
+  }
+  url: "/session/{sessionID}/execution/projection"
+}
+
+export type SessionExecutionProjectionErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionProjectionError = SessionExecutionProjectionErrors[keyof SessionExecutionProjectionErrors]
+
+export type SessionExecutionProjectionResponses = {
+  /**
+   * Read a captured execution projection
+   */
+  200: ExecutionProjection
+}
+
+export type SessionExecutionProjectionResponse =
+  SessionExecutionProjectionResponses[keyof SessionExecutionProjectionResponses]
 
 export type SessionExecutionSummaryData = {
   body?: never

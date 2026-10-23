@@ -198,7 +198,6 @@ export namespace RolloutLedger {
     owner: Owner
     runID: string
     input: z.infer<ReturnType<typeof z.json>>
-    initialHistory?: RolloutSchema.RunRecord["initialHistory"]
     parent?: RolloutSchema.RunRecord["parent"]
   }) {
     using lock = await writeLock(input.owner, input.runID)
@@ -229,7 +228,6 @@ export namespace RolloutLedger {
           ...run,
           input: artifact,
           parent: input.parent,
-          initialHistory: input.initialHistory,
         }),
       )
     }

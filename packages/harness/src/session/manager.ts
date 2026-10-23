@@ -74,6 +74,7 @@ export namespace SessionManager {
 
   export type LoopPhase = "starting" | "running" | "stopping"
   export type ExecutionPhase =
+    | "preparing"
     | "queued_agent"
     | "running_agent"
     | "authorizing_tools"
@@ -549,7 +550,7 @@ export namespace SessionManager {
     }
     runtime.owner = { lease, controller, phase: "starting" }
     runtimeState().leaseReleases.set(lease, Promise.withResolvers<void>())
-    transitionExecutionPhase(runtime, "queued_agent")
+    transitionExecutionPhase(runtime, "preparing")
     runtime.status = { type: "busy", activity: { phase: "materializing_input", startedAt: Date.now() } }
     return lease
   }

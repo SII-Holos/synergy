@@ -26,6 +26,11 @@ export namespace RolloutSnapshot {
     .meta({ ref: "RolloutSnapshot" })
   export type Info = z.infer<typeof Info>
 
+  async function settleTail(owner: RolloutSchema.Owner, onProgress?: () => void) {
+    const pending = await RolloutJournal.head(owner)
+    if (pending.allocated !== pending.committed) await RolloutJournal.recover(owner, onProgress)
+  }
+
   export async function read(
     owner: RolloutSchema.Owner,
     options: { revision?: number; runID?: string; onProgress?: () => void } = {},
@@ -35,27 +40,36 @@ export namespace RolloutSnapshot {
     return fold(owner, revision, options)
   }
 
-  /** Current records share the journal commit; historical revisions still require strict replay. */
-  export async function projected(owner: RolloutSchema.Owner, runID: string): Promise<Info> {
-    await RolloutJournal.prepare(owner)
+  /** Current records share the journal commit. This view does not audit historical gaps; use read() for that. */
+  export async function projected(owner: RolloutSchema.Owner, runID?: string, onProgress?: () => void): Promise<Info> {
+    await settleTail(owner, onProgress)
     return Storage.snapshot(async () => {
       const head = await RolloutJournal.head(owner)
       if (head.allocated !== head.committed) throw new Error("Rollout owner requires recovery")
       const base = RolloutArtifact.root(owner)
       const records = new Map<string, { key: string[]; value: unknown }>()
-      for await (const row of Storage.records({ prefix: [...base, "runs", runID], limit: 128 })) {
-        const key = row.key.slice(base.length)
-        records.set(key.join("/"), { key, value: row.value })
+      const keys = await Storage.list([...base, "runs", ...(runID === undefined ? [] : [runID])])
+      for (let offset = 0; offset < keys.length; offset += 512) {
+        onProgress?.()
+        const page = keys.slice(offset, offset + 512)
+        const values = await Storage.readMany(page)
+        for (const [index, fullKey] of page.entries()) {
+          if (values[index] === undefined) continue
+          const key = fullKey.slice(base.length)
+          records.set(key.join("/"), { key, value: values[index] })
+        }
       }
-      return decode(empty(owner, head.committed), records)
+      return decode(empty(owner, head.committed), records, onProgress)
     })
   }
 
   export async function modelCalls(
     owner: RolloutSchema.Owner,
+    signal?: AbortSignal,
   ): Promise<Pick<Info, "owner" | "revision" | "runs" | "calls">> {
-    await RolloutJournal.prepare(owner)
-    await prepareOwnerMigrations(owner)
+    signal?.throwIfAborted()
+    // This is recorded request metadata, not execution admission or elapsed-time migration.
+    await settleTail(owner, () => signal?.throwIfAborted())
     return Storage.snapshot(async () => {
       const head = await RolloutJournal.head(owner)
       if (head.allocated !== head.committed) throw new Error("Rollout owner requires recovery")
@@ -68,6 +82,7 @@ export namespace RolloutSnapshot {
       }
       const keys = (await Storage.scan([...base, "runs"])).map((id) => [...base, "runs", id])
       for (let offset = 0; offset < keys.length; offset += 128) {
+        signal?.throwIfAborted()
         const page = keys.slice(offset, offset + 128)
         const runs = await Storage.readMany(page.map((key) => [...key, "info"]))
         for (const [index, key] of page.entries()) {
@@ -76,11 +91,18 @@ export namespace RolloutSnapshot {
             check(result.owner, run, [...key.slice(base.length), "info"])
             result.runs.push(run)
           }
-          for await (const row of Storage.records({ prefix: [...key, "calls"], limit: 128 })) {
-            const call = RolloutSchema.CallRecord.parse(row.value)
-            check(result.owner, call, row.key.slice(base.length))
-            result.calls.push(call)
-          }
+          let after: string | undefined
+          do {
+            signal?.throwIfAborted()
+            const page = await Storage.childKeys({ prefix: [...key, "calls"], after, limit: 512 })
+            const values = await Storage.readMany(page.keys)
+            for (const [index, callKey] of page.keys.entries()) {
+              const call = RolloutSchema.CallRecord.parse(values[index])
+              check(result.owner, call, callKey.slice(base.length))
+              result.calls.push(call)
+            }
+            after = page.after
+          } while (after)
         }
       }
       return result
@@ -97,7 +119,34 @@ export namespace RolloutSnapshot {
   }
 
   export function currentAll(owners: RolloutSchema.Owner[], signal?: AbortSignal) {
-    return workMap(8, owners, (owner) => current(owner, signal))
+    return withStorageQueueOptions({ priority: "background", signal }, () =>
+      workMap(2, owners, (owner) => current(owner, signal)),
+    )
+  }
+
+  export function presentationAll(owners: RolloutSchema.Owner[], signal?: AbortSignal) {
+    return withStorageQueueOptions({ priority: "background", signal }, () =>
+      workMap(2, owners, (owner) => presentation(owner, signal)),
+    )
+  }
+
+  export async function presentation(owner: RolloutSchema.Owner, signal?: AbortSignal) {
+    signal?.throwIfAborted()
+    await RolloutJournal.prepare(owner)
+    await prepareOwnerMigrations(owner)
+    const root = RolloutArtifact.root(owner)
+    const checkpoint = await Storage.snapshot(async () => {
+      const head = await RolloutJournal.head(owner)
+      const saved = Checkpoint.safeParse((await optional([...root, "snapshot-v1"]))?.value)
+      if (!saved.success || saved.data.snapshot.revision !== head.committed || head.allocated !== head.committed) return
+      if (JSON.stringify(saved.data.snapshot.owner) !== JSON.stringify(RolloutSchema.Owner.parse(owner))) return
+      const boundary = await optional([...root, "journal", "events", String(head.committed).padStart(12, "0")])
+      if (boundary?.revision.toString() !== saved.data.boundary) return
+      return saved.data.snapshot
+    })
+    if (checkpoint) return { snapshot: checkpoint, verified: true }
+    const snapshot = await projected(owner, undefined, () => signal?.throwIfAborted())
+    return { snapshot, verified: snapshot.revision === 0 }
   }
 
   /** Discardable presentation checkpoint; recovery and archives use strict read(). */

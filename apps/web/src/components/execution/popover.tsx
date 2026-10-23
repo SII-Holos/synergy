@@ -9,6 +9,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useExecution } from "@/context/execution"
 import { useSDK } from "@/context/sdk"
 import { E } from "./i18n"
+import { ExecutionPreparation } from "./preparation"
 import { CompactExecutionOverview, TaskStatusIcon } from "./compact-overview"
 import { compactTasks, compactTaskStatus, cancellableTask, type TaskDetailsTask } from "./task-details-model"
 import "./execution.css"
@@ -159,19 +160,14 @@ export function TaskDetailsPopover(props: {
             </Popover>
           </div>
           <Show when={execution.available()}>
-            <Show
-              when={execution.state.summary}
-              fallback={
-                <div class="execution-feedback" role="status">
-                  <span>{_(execution.state.error ? E.error : E.loading)}</span>
-                  <Show when={execution.state.error}>
-                    <button type="button" onClick={() => void execution.refresh()}>
-                      {_(E.retry)}
-                    </button>
-                  </Show>
-                </div>
-              }
-            >
+            <ExecutionPreparation
+              loading={execution.state.loading || !execution.state.summary}
+              error={execution.state.error}
+              progress={execution.state.progress}
+              retained={!!execution.state.summary}
+              retry={() => void execution.refresh()}
+            />
+            <Show when={execution.state.summary}>
               {(summary) => <CompactExecutionOverview summary={summary()} now={now()} />}
             </Show>
           </Show>

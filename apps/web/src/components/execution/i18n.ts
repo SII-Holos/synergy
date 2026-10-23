@@ -74,6 +74,20 @@ export const E = {
   trajectory: { id: "execution.trajectory", message: "Execution trajectory" },
   full: { id: "execution.full", message: "View full trajectory" },
   loading: { id: "execution.loading", message: "Loading execution records…" },
+  preparing: { id: "execution.preparing", message: "Preparing execution records…" },
+  preparingParts: {
+    id: "execution.preparingParts",
+    message: "Preparing current message: {count, plural, one {# content record} other {# content records}} processed…",
+  },
+  preparingMessages: {
+    id: "execution.preparingMessages",
+    message: "Preparing execution records: {count, plural, one {# message} other {# messages}} processed…",
+  },
+  preparingMessagesTotal: {
+    id: "execution.preparingMessagesTotal",
+    message: "Preparing execution records: {count} of {total, plural, one {# message} other {# messages}} processed…",
+  },
+  showingPrevious: { id: "execution.showingPrevious", message: "Showing the previous complete summary." },
   error: { id: "execution.error", message: "Could not load execution records." },
   retry: { id: "execution.retry", message: "Retry" },
   empty: { id: "execution.empty", message: "No recorded events match these filters." },

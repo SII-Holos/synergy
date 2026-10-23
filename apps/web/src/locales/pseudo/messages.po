@@ -12789,6 +12789,22 @@ msgid "execution.paused"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessages"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessagesTotal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.preparingParts"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr ""
 
@@ -12906,6 +12922,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.sectionsTruncated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.showingPrevious"
 msgstr ""
 
 #. js-lingui-explicit-id

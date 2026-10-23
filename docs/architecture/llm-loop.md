@@ -6,6 +6,8 @@ The session LLM loop turns one root task into an ordered sequence of model calls
 
 The loop is not an in-memory conversation object. Durable messages and session state remain authoritative; the runtime is a single-writer execution window over that state.
 
+Execution admission and per-turn input preparation use the internal `preparing` phase. The `queued_agent` phase begins only at AgentTurn enqueue, and `running_agent` begins at its actual start callback. Repair, file-baseline and model-input spans measure preparation separately from worker wait; historical phase samples are not rewritten.
+
 ## Entry and Ownership
 
 New direct input is either materialized as a root user message or queued in `SessionInbox`. When a reply is required, the session enters `SessionManager.run()`. Sending new input is also how a paused session resumes, so the send path clears the pause latch through `SessionLifecycle.clear` rather than requiring a separate action.

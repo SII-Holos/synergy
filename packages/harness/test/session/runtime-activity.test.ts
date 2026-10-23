@@ -18,6 +18,7 @@ test("activity snapshots retain the real phase and reject obsolete root, lease a
       fn: async () => {
         const session = await Session.create({ title: "Activity" })
         const first = SessionManager.acquire(session.id)!
+        expect(SessionManager.getRuntime(session.id)?.executionPhase).toBe("preparing")
         SessionManager.bindRootTask(first, "root-1")
         const owner = { generation: first.generation, rootID: "root-1" }
         expect(SessionManager.setActivity(session.id, { phase: "preparing_files" }, owner)).toBe(true)

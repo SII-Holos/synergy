@@ -221,7 +221,12 @@ export namespace ExecutionSchema {
           elapsedLowerBound: z.boolean(),
         }),
       ),
-      coverage: z.object({ recorded: z.number(), messages: z.number(), gaps: z.number(), partial: z.boolean() }),
+      coverage: z.object({
+        recorded: z.number(),
+        messages: z.number(),
+        gaps: z.number().nullable(),
+        partial: z.boolean(),
+      }),
       lanes: z.array(
         z.object({
           kind: z.enum(["input", "model", "tool"]),
@@ -292,4 +297,40 @@ export namespace ExecutionSchema {
       removed: z.array(z.string()),
     }),
   )
+  const ProjectionBase = z.object({
+    sessionID: z.string(),
+    revision: z.number().int().nonnegative(),
+    previousRevision: z.number().int().nonnegative(),
+    contexts: z.array(ContextSnapshot),
+    contextTotal: z.number().int().nonnegative(),
+  })
+  export const Projection = z
+    .discriminatedUnion("state", [
+      ProjectionBase.extend({ state: z.literal("root") }),
+      ProjectionBase.extend({
+        state: z.literal("preparing"),
+        progress: z.object({
+          stage: z.enum(["metadata", "messages", "parts"]),
+          prepared: z.number().int().nonnegative(),
+          total: z.number().int().nonnegative().optional(),
+        }),
+      }),
+      ProjectionBase.extend({
+        state: z.literal("failed"),
+        error: z.object({ kind: z.string(), message: z.string(), retryable: z.boolean() }),
+      }),
+      ProjectionBase.extend({
+        state: z.literal("ready"),
+        summary: Summary,
+        detailPreviousRevision: z.number().int().nonnegative(),
+        roundSummaries: z.array(Summary),
+        upserts: z.array(Node),
+        processUpserts: z.array(Node),
+        processRemoved: z.array(z.string()),
+        removed: z.array(z.string()),
+      }),
+    ])
+    .meta({ ref: "ExecutionProjection" })
+  export type Projection = z.infer<typeof Projection>
+  export const ProjectionUpdated = BusEvent.define("execution.projection", Projection)
 }

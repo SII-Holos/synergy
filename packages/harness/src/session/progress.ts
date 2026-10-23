@@ -15,7 +15,7 @@ export namespace SessionProgress {
     return !!assistant.finish && !["tool-calls", "unknown"].includes(assistant.finish)
   }
 
-  export function findTerminalReply(messages: MessageV2.WithParts[], userID: string) {
+  export function findTerminalReply<T extends { info: MessageV2.Info }>(messages: T[], userID: string) {
     for (let index = messages.length - 1; index >= 0; index--) {
       const msg = messages[index]
       if (msg.info.role !== "assistant") continue
@@ -86,7 +86,7 @@ export namespace SessionProgress {
    * Returns true if there exists a user message U with U.rootID === R.id
    * (or U itself if root) that does NOT have a terminal assistant after it.
    */
-  export function needsModelCall(msgs: MessageV2.WithParts[], rootID: string): boolean {
+  export function needsModelCall(msgs: { info: MessageV2.Info }[], rootID: string): boolean {
     let latestUserIndex = -1
     for (let index = 0; index < msgs.length; index++) {
       const info = msgs[index].info

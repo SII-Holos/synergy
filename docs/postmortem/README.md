@@ -8,16 +8,18 @@
 
 ## Format
 
-`NNNN-kebab-case-title.md` sections:
+`NNNN-kebab-case-title.md`:
 
 - **Executive summary** — failure, cause, lesson.
-- **Summary** — failure details.
+- **Summary** — details.
 - **Timeline** — observations.
 - **Root cause** — mechanism and missing safeguards.
 - **Guardrails** — tests, docs, gates.
 - **Lessons** — takeaways.
 
 ## Index
+
+- [0089](0089-session-observation-hydrated-unrequested-history.md)
 
 - [0088](0088-storage-admission-misclassified-as-session-preparation.md)
 

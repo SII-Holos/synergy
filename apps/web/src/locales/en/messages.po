@@ -12789,6 +12789,22 @@ msgid "execution.paused"
 msgstr "Paused"
 
 #. js-lingui-explicit-id
+msgid "execution.preparing"
+msgstr "Preparing execution records…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessages"
+msgstr "Preparing execution records: {count, plural, one {# message} other {# messages}} processed…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessagesTotal"
+msgstr "Preparing execution records: {count} of {total, plural, one {# message} other {# messages}} processed…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingParts"
+msgstr "Preparing current message: {count, plural, one {# content record} other {# content records}} processed…"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "Earlier events"
 
@@ -12907,6 +12923,10 @@ msgstr "Sections"
 #. js-lingui-explicit-id
 msgid "execution.sectionsTruncated"
 msgstr "Some sections are omitted from this directory. Raw JSON and download retain the recorded content."
+
+#. js-lingui-explicit-id
+msgid "execution.showingPrevious"
+msgstr "Showing the previous complete summary."
 
 #. js-lingui-explicit-id
 msgid "execution.start"

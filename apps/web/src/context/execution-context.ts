@@ -21,7 +21,13 @@ export function createExecutionContext(input: {
   active: Accessor<boolean>
   connectionVersion: Accessor<number>
   selected: Accessor<string>
-  subscribe: (receive: (event: EventExecutionUpdated["properties"]) => void) => () => void
+  subscribe: (
+    receive: (
+      event: Pick<EventExecutionUpdated["properties"], "sessionID" | "revision" | "contextUpserts"> & {
+        total?: number
+      },
+    ) => void,
+  ) => () => void
 }) {
   const [state, setState] = createStore<{
     items: ExecutionContextSnapshot[]
@@ -219,7 +225,7 @@ export function createExecutionContext(input: {
           { key: "callID" },
         ),
       )
-      setState({ revision: event.revision, total: state.total + added })
+      setState({ revision: event.revision, total: event.total ?? state.total + added })
     }),
   )
   onCleanup(() => {

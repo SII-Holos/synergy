@@ -57,6 +57,7 @@ export function workbench(): RuntimeComponent {
         ...Object.values(Ide.Event),
         ReviewState.Updated,
         ExecutionSchema.Updated,
+        ExecutionSchema.ProjectionUpdated,
       )
       registerConfig()
       registerProjectMigrations()

@@ -32,6 +32,13 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       connected: sdk.connected,
       visible: () => visible() && active() && consumers() > 0,
       subscribe: (receive) => sdk.event.on("execution.updated", (event) => receive(event.properties)),
+      projection: {
+        enabled: () => global.capabilities.current?.()?.transports?.viewDemand === 1,
+        renew: () => {
+          if (params.id) global.content.renewView(sdk.scopeID, params.id, "execution")
+        },
+        subscribe: (receive) => sdk.event.on("execution.projection", (event) => receive(event.properties)),
+      },
     })
     const advance = createExecutionClock(() => state.summary, connected)
     const currentConnection = () => connectionVersion() + restored()
@@ -41,6 +48,7 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       }),
     )
     const retain = (options?: {
+      demand?: "root" | "summary" | "trajectory"
       active?: Accessor<boolean>
       runID?: Accessor<string | undefined>
       nodeIDs?: Accessor<string[]>
@@ -57,11 +65,12 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
           sessionID,
           runID: options?.runID?.(),
           nodeIDs: options?.nodeIDs?.(),
+          demands: [options?.demand ?? "summary"],
         })
-        setConsumers((value) => value + 1)
+        if (options?.demand !== "root") setConsumers((value) => value + 1)
         onCleanup(() => {
           release()
-          setConsumers((value) => value - 1)
+          if (options?.demand !== "root") setConsumers((value) => value - 1)
         })
       })
       return consuming
@@ -78,7 +87,7 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       createContextHistory: (
         options: Pick<Parameters<typeof createExecutionContext>[0], "runID" | "active" | "selected">,
       ) => {
-        const consuming = retain({ active: options.active, runID: options.runID })
+        const consuming = retain({ active: options.active, runID: options.runID, demand: "root" })
         return createExecutionContext({
           ...options,
           active: consuming,
@@ -86,7 +95,23 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
           scopeID: () => sdk.scopeID,
           sessionID: () => params.id,
           connectionVersion: currentConnection,
-          subscribe: (receive) => sdk.event.on("execution.updated", (event) => receive(event.properties)),
+          subscribe: (receive) => {
+            const legacy = sdk.event.on("execution.updated", (event) => {
+              if (global.capabilities.current?.()?.transports?.viewDemand !== 1) receive(event.properties)
+            })
+            const root = sdk.event.on("execution.projection", (event) =>
+              receive({
+                sessionID: event.properties.sessionID,
+                revision: event.properties.revision,
+                contextUpserts: event.properties.contexts,
+                total: event.properties.contextTotal,
+              }),
+            )
+            return () => {
+              legacy()
+              root()
+            }
+          },
         })
       },
       round: (id: string) => {

@@ -12789,6 +12789,22 @@ msgid "execution.paused"
 msgstr "已暂停"
 
 #. js-lingui-explicit-id
+msgid "execution.preparing"
+msgstr "正在准备执行记录…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessages"
+msgstr "正在准备执行记录：已处理 {count} 条消息…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessagesTotal"
+msgstr "正在准备执行记录：已处理 {count} / {total} 条消息…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingParts"
+msgstr "正在准备当前消息：已处理 {count} 条内容记录…"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "较早记录"
 
@@ -12907,6 +12923,10 @@ msgstr "分节阅读"
 #. js-lingui-explicit-id
 msgid "execution.sectionsTruncated"
 msgstr "目录省略了部分章节。原始 JSON 和下载保留已记录的内容。"
+
+#. js-lingui-explicit-id
+msgid "execution.showingPrevious"
+msgstr "当前显示上一次完整摘要。"
 
 #. js-lingui-explicit-id
 msgid "execution.start"

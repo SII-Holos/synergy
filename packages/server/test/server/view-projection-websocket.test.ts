@@ -5,6 +5,7 @@ import { testRuntime } from "../support/runtime"
 
 test("capability negotiation, real multi-client projection and disconnect release agree", async () => {
   let leases = 0
+  const demands: Array<string[] | undefined> = []
   const runtime = await testRuntime(undefined, () =>
     Server.registerContributions({
       projections: [
@@ -12,6 +13,7 @@ test("capability negotiation, real multi-client projection and disconnect releas
           kind: "fixture",
           eventType: "execution.updated",
           async open(interest, send, signal) {
+            demands.push(interest.demands)
             leases++
             let released = false,
               revision = 0
@@ -57,6 +59,7 @@ test("capability negotiation, real multi-client projection and disconnect releas
       try {
         const capabilities = await fetch(new URL("/global/capabilities", server.url)).then((r) => r.json())
         expect(capabilities.transports.projection).toBe("projection-v2")
+        expect(capabilities.transports.viewDemand).toBe(1)
         const connect = async () => {
           const url = new URL("/global/event/ws?stream=projection-v2", server.url)
           url.protocol = "ws:"
@@ -79,12 +82,13 @@ test("capability negotiation, real multi-client projection and disconnect releas
               properties: {
                 generation: 1,
                 parts: [],
-                details: [{ kind: "fixture", scopeID: "home", sessionID: "session", generation: 1 }],
+                details: [{ kind: "fixture", scopeID: "home", sessionID: "session", generation: 1, demands: ["root"] }],
               },
             },
           }),
         )
         await wait(() => leases === 1)
+        expect(demands[0]).toEqual(["root"])
         const feed = GlobalBus()
         for (let seq = 1; seq <= 30; seq++)
           feed.emit("event", {

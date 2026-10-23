@@ -13,7 +13,7 @@ synergy export <sessionID> --format rollout --run <runID> --output trajectory.zi
 synergy import trajectory.zip
 ```
 
-`send` creates a session unless `--session` or `--continue` explicitly selects existing history. JSON events have a version, increasing sequence number and session/run identity. The final result reads durable execution status and accounting. Session idle alone does not complete the command: associated child tasks, workflows and auxiliary calls must settle. Continuing history records its initial message count and fingerprint; inspect that context before comparing runs.
+`send` creates a session unless `--session` or `--continue` explicitly selects existing history. JSON events have a version, increasing sequence number and session/run identity. The final result reads durable execution status and accounting. Session idle alone does not complete the command: associated child tasks, workflows and auxiliary calls must settle. Compare retained inputs and model request evidence when evaluating runs. Segment admission does not traverse historical bodies to produce an auxiliary fingerprint; historical records retain any previously recorded fingerprint.
 
 Exit codes are `0` for completed execution, `2` for execution/command failure, `3` for timeout, `4` for required interaction, `5` for failed authoritative recording and `130` for cancellation. The default timeout is six hours. Non-interactive execution rejects permission requests and questions instead of granting access. Cancellation targets the selected root and its descendants, drains auxiliary work and terminates its owned background processes.
 

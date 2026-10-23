@@ -115,6 +115,20 @@ async function result<T>(body: () => Promise<T>) {
 export const ExecutionRoute = () =>
   new Hono()
     .get(
+      "/:sessionID/execution/projection",
+      metadata("session.executionProjection", "Read a captured execution projection", ExecutionSchema.Projection),
+      validator("param", Params),
+      validator("query", z.object({ token: z.string().uuid() })),
+      async (c) => {
+        const response = await result(() =>
+          Promise.resolve(
+            ExecutionProjection.projectionCheckpoint(c.req.valid("param").sessionID, c.req.valid("query").token),
+          ),
+        )
+        return c.json(response.value, response.status)
+      },
+    )
+    .get(
       "/:sessionID/execution/summary",
       metadata("session.executionSummary", "Read a compact session execution summary", ExecutionSchema.Summary),
       validator("param", Params),
