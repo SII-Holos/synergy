@@ -20,7 +20,7 @@ export namespace SnapshotCapture {
   const MAX_DEPTH = 256
   const CAPTURE_CONCURRENCY = 16
   const CAPTURE_BYTES = 32 * 1024 * 1024
-  const EXCLUDED_DIRS = new Set([
+  export const excludedDirectories = [
     ".git",
     ".synergy",
     "node_modules",
@@ -31,7 +31,8 @@ export namespace SnapshotCapture {
     ".nuxt",
     ".cache",
     "coverage",
-  ])
+  ]
+  const EXCLUDED_DIRS = new Set(excludedDirectories)
   const EXCLUDED_EXTENSIONS = new Set([
     ".zip",
     ".7z",
@@ -104,11 +105,13 @@ export namespace SnapshotCapture {
   }
 
   export type Content = { tree: WorkspaceTree.Manifest; store: BlobStore }
+  export type Dirty = { paths: readonly string[]; omissions?: SnapshotSchema.Omission[] }
   export async function refresh(
     operation: SnapshotStore.Operation,
     signal?: AbortSignal,
     content?: Content,
     onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+    dirty?: Dirty,
   ) {
     const controller = new AbortController()
     const forward = () => controller.abort(signal?.reason)
@@ -119,7 +122,7 @@ export namespace SnapshotCapture {
       60_000,
     )
     try {
-      return await refreshImpl(operation, controller.signal, content, onOmissions)
+      return await refreshImpl(operation, controller.signal, content, onOmissions, dirty)
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener("abort", forward)
@@ -131,10 +134,21 @@ export namespace SnapshotCapture {
     abort: AbortSignal,
     content?: Content,
     onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+    dirty?: Dirty,
   ) {
     abort.throwIfAborted()
     const captureStarted = performance.now()
-    const omissions: SnapshotSchema.Omission[] = []
+    const paths = dirty?.paths.map((file) => {
+      if (file === "") return file
+      if (path.isAbsolute(file) || file.split("/").some((part) => part === ".." || part === ".") || file.includes("\0"))
+        throw new Error("Invalid snapshot dirty path")
+      return file
+    })
+    const incremental = paths && !content && !paths.some((file) => !file || path.posix.basename(file) === ".gitignore")
+    const affected = (name: string) =>
+      !incremental || paths.some((file) => name === file || name.startsWith(file + "/"))
+    const traversed = (name: string) => affected(name) || paths?.some((file) => file.startsWith(name + "/"))
+    const omissions: SnapshotSchema.Omission[] = (dirty?.omissions ?? []).filter((item) => !affected(item.file))
     const omit = (file: string, reason: SnapshotSchema.Omission["reason"]) => {
       if (!onOmissions) throw new Error(`Snapshot file could not be captured: ${file}`)
       omissions.push({ file, reason })
@@ -188,7 +202,7 @@ export namespace SnapshotCapture {
       if (!globalRules) throw new Error("Snapshot global ignore file exceeds limit")
       initial.push({ prefix: "", matcher: ignore({ ignorecase }).add(globalRules.toString("utf8")) })
     }
-    const current = new Map<string, Entry>()
+    const current = new Map<string, Entry>([...previous].filter(([name]) => !affected(name)))
     const available = new Set([...previous.values()].map((entry) => entry.hash))
     await using objects = SnapshotObjects.create(operation, abort, available)
     let count = 0
@@ -251,9 +265,10 @@ export namespace SnapshotCapture {
       try {
         for await (const entry of entries) {
           abort.throwIfAborted()
-          if (++count > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
           if (EXCLUDED_DIRS.has(entry.name) || EXCLUDED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue
           const name = relative ? relative + "/" + entry.name : entry.name
+          if (!traversed(name)) continue
+          if (++count > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
           const filename = path.join(root, name)
           const stat = await fs.lstat(filename)
           let ignored = ignoredParent
@@ -269,6 +284,7 @@ export namespace SnapshotCapture {
             continue
           }
           if (ignored && !previous.has(name)) continue
+          if (!affected(name)) continue
           const size = stat.isSymbolicLink()
             ? SnapshotLink.maximumBytes
             : stat.size <= MAX_FILE_BYTES
@@ -386,6 +402,7 @@ export namespace SnapshotCapture {
     try {
       if (content) await visitContent("", [], false, 0)
       else await visit("", initial, false, 0)
+      if (current.size > MAX_ENTRIES) throw new Error("Snapshot entry count exceeds limit")
       onOmissions?.(omissions)
       const finished = performance.now()
       await objects.finish()

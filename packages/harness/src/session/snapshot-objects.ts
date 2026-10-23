@@ -84,7 +84,7 @@ export namespace SnapshotObjects {
       signal.throwIfAborted()
       await lookup([...pending.values()].filter((blob) => !blob.missing))
       if (!pending.size) return
-      if (!writer && (pending.size > 64 || bufferedBytes >= BATCH_BYTES)) {
+      if (!operation.transient && !writer && (pending.size > 64 || bufferedBytes >= BATCH_BYTES)) {
         if (!lease) {
           const started = performance.now()
           lease = await importLease(operation.repository, signal)
@@ -99,7 +99,7 @@ export namespace SnapshotObjects {
         if (pending.size > 64 || bufferedBytes >= BATCH_BYTES)
           writer = await SnapshotGit.blobWriter(operation.repository, signal)
       }
-      if (!writer && !final) return
+      if (!writer && !final && !operation.transient) return
       const blobs = [...pending.values()]
       const started = performance.now()
       if (writer) await writer.write(blobs)

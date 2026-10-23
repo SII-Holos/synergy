@@ -60,6 +60,7 @@ export namespace SnapshotStore {
     temporary: string
     workspace: string
     source?: SnapshotSchema.Workspace
+    transient?: boolean
   }
   const context = Context.create<Operation>("snapshot")
   const batches = Context.create<{
@@ -172,6 +173,10 @@ export namespace SnapshotStore {
 
   export function current() {
     return context.use()
+  }
+
+  export function withOperation<T>(operation: Operation, action: () => Promise<T>) {
+    return context.provide(operation, action)
   }
 
   export async function parallel(sessionID: string, actions: Array<() => Promise<unknown>>) {
