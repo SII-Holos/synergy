@@ -272,10 +272,12 @@ test("negotiated preparation and failure preserve the last complete summary and 
     const base = { sessionID: "root", revision: 20, previousRevision: 19, contexts: [], contextTotal: 0 }
     project({ ...base, state: "preparing", progress: { stage: "parts", prepared: 32 } })
     expect(setup.summary.state.loading).toBe(true)
+    expect(setup.summary.state.progress).toEqual({ stage: "parts", prepared: 32 })
     expect(setup.summary.state.summary).toEqual(accepted)
     project({ ...base, state: "failed", error: { kind: "Error", message: "Preparation failed", retryable: true } })
     expect(setup.summary.state.loading).toBe(false)
     expect(setup.summary.state.error).toBe(true)
+    expect(setup.summary.state.progress).toBeUndefined()
     expect(setup.summary.state.summary).toEqual(accepted)
     await setup.summary.refresh()
     expect(renewals).toBe(1)

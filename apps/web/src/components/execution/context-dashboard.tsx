@@ -21,6 +21,7 @@ import { ContextActivity, type ExecutionRecordsTarget } from "./context-activity
 import { ContextTiming } from "./context-timing"
 import { ContextBrowser } from "./context-browser"
 import { E } from "./i18n"
+import { ExecutionPreparation } from "./preparation"
 import "./context-dashboard.css"
 
 const record = (value: unknown) => (value && typeof value === "object" ? (value as Record<string, unknown>) : {})
@@ -240,6 +241,13 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
           scroll = event.currentTarget.scrollTop
         }}
       >
+        <ExecutionPreparation
+          loading={execution.state.loading}
+          error={execution.state.error}
+          progress={execution.state.progress}
+          retained={!!execution.state.summary}
+          retry={() => void execution.refresh()}
+        />
         <div class="context-dashboard-toolbar">
           <MenuField
             value={runID()}

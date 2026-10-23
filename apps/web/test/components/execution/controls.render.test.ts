@@ -162,6 +162,7 @@ mock.module("../../../src/context/sdk", () => ({
 
 const { ExecutionProvider, useExecution } = await import("../../../src/context/execution")
 const { TaskDetailsPopover } = await import("../../../src/components/execution/popover")
+const { ExecutionPreparation } = await import("../../../src/components/execution/preparation")
 const { SessionTaskDetails } = await import("../../../src/components/execution/session-task-details")
 const { EvidenceBlock } = await import("../../../src/components/execution/block")
 const { configureClipboard } = await import("@ericsanchezok/synergy-ui/clipboard")
@@ -360,6 +361,48 @@ afterEach(() => {
   resources.length = 0
   savedTabs.length = 0
   sourceReads.length = 0
+})
+
+test("preparation shows actual units, preserves the previous summary notice and offers retry on failure", () => {
+  const [progress, advance] = createSignal<{
+    stage: "metadata" | "messages" | "parts"
+    prepared: number
+    total?: number
+  }>({ stage: "metadata", prepared: 0 })
+  const [error, fail] = createSignal(false)
+  const [loading, prepare] = createSignal(true)
+  let retries = 0
+  const root = mount(() =>
+    createComponent(ExecutionPreparation, {
+      get loading() {
+        return loading()
+      },
+      get error() {
+        return error()
+      },
+      get progress() {
+        return progress()
+      },
+      retained: true,
+      retry: () => {
+        retries++
+      },
+    }),
+  )
+  expect(root.querySelector('[role="status"]')?.textContent).toContain("Preparing execution records")
+  advance({ stage: "messages", prepared: 12, total: 40 })
+  expect(root.textContent).toContain("12 of 40 messages processed")
+  advance({ stage: "parts", prepared: 32 })
+  expect(root.textContent).toContain("current message: 32 content records processed")
+  expect(root.textContent).not.toContain("%")
+  expect(root.textContent).toContain("previous complete summary")
+  prepare(false)
+  fail(true)
+  expect(root.textContent).toContain("Could not load execution records")
+  root.querySelector<HTMLButtonElement>("button")!.click()
+  expect(retries).toBe(1)
+  fail(false)
+  expect(root.querySelector('[role="status"]')).toBeNull()
 })
 
 test("dashboard selection links the source browser while retaining latest context and accumulated metrics", async () => {
