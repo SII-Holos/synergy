@@ -111,6 +111,51 @@ export namespace SessionHistoryDisplay {
     return fact.success ? fact.data : undefined
   }
 
+  export async function currentExecutionParts(
+    scopeID: string,
+    sessionID: string,
+    messageID?: string,
+    signal?: AbortSignal,
+  ) {
+    const parts = new Map<string, ExecutionPart[]>()
+    const pending = new Set<string>()
+    let after: string[] | undefined
+    for (;;) {
+      signal?.throwIfAborted()
+      const records = await Storage.query<SessionPartContent.Stored>({
+        kind: "part",
+        scopeID,
+        sessionID,
+        messageID,
+        limit: 512,
+        after,
+      })
+      const missing: typeof records = []
+      const add = (fact: ExecutionPart) => {
+        const message = parts.get(fact.messageID) ?? []
+        message.push(fact)
+        parts.set(fact.messageID, message)
+      }
+      for (const record of records) {
+        const fact = SessionPartContent.executionFact(upgradeAccessRecord(record.key, record.value))
+        if (fact) add(fact)
+        else missing.push(record)
+      }
+      const saved = await Storage.readMany<StoredPartSummary>(
+        missing.map(({ value }) => StoragePath.sessionDisplayPart(scopeID, sessionID, value.messageID, value.id)),
+      )
+      for (const [index, record] of missing.entries()) {
+        const fact = executionFact(saved[index], record.revision)
+        if (fact) add(fact)
+        else pending.add(record.value.messageID)
+      }
+      if (records.length < 512) break
+      after = records.at(-1)!.key
+    }
+    for (const message of parts.values()) message.sort((a, b) => a.id.localeCompare(b.id))
+    return { parts, pending }
+  }
+
   export async function readExecutionParts(scopeID: string, sessionID: string, messageID: string) {
     const [saved] = await Storage.readMany<PartsState>([partStateKey(scopeID, sessionID, messageID)])
     if (saved?.execution?.version !== 1 || !saved.execution.ready || saved.execution.generation !== saved.generation)

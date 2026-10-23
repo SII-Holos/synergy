@@ -50,6 +50,18 @@ test("execution facts prepare only on demand and warm reads do not hydrate bodie
     expect(page.items[0]).not.toHaveProperty("execution")
   }))
 
+test("cold execution reads batch current headers without materializing display records", () =>
+  run(async () => {
+    const { session, part } = await fixture()
+    await Session.updatePart({ ...part, text: "ready from canonical header" })
+    const before = await Storage.query({ kind: "display_part", sessionID: session.id })
+    using bodies = spyOn(Storage, "readBinary")
+    const messages = await SessionHistory.executionMessages({ sessionID: session.id })
+    expect(messages[0].parts[0].preview).toBe("ready from canonical header")
+    expect(await Storage.query({ kind: "display_part", sessionID: session.id })).toEqual(before)
+    expect(bodies).not.toHaveBeenCalled()
+  }))
+
 test("facts publication is fenced against replacement and ordinary Part backfill", () =>
   run(async () => {
     const { session, part } = await fixture()

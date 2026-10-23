@@ -55,10 +55,26 @@ export namespace SessionHistory {
     const owner = { scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) }
     for (;;) {
       input.signal?.throwIfAborted()
-      const infos = input.messageID
-        ? [await MessageV2.readInfo({ ...owner, messageID: input.messageID })]
-        : await MessageV2.readInfoList({ ...owner, signal: input.signal })
-      for (const [index, info] of infos.entries()) {
+      const result = await Storage.snapshot(async () => {
+        const infos = input.messageID
+          ? [await MessageV2.readInfo({ ...owner, messageID: input.messageID })]
+          : await MessageV2.readInfoList({ ...owner, signal: input.signal })
+        const { parts, pending } = await SessionHistoryDisplay.currentExecutionParts(
+          owner.scopeID,
+          owner.sessionID,
+          input.messageID,
+          input.signal,
+        )
+        const missing = infos.filter((info) => pending.has(info.id))
+        return {
+          missing,
+          messages: missing.length
+            ? undefined
+            : MessageV2.deriveSemantics(infos.map((info) => ({ info, parts: parts.get(info.id) ?? [] }))),
+        }
+      })
+      if (result.messages) return result.messages
+      for (const [index, info] of result.missing.entries()) {
         try {
           await SessionHistoryDisplay.prepareExecutionParts(
             owner.scopeID,
@@ -72,22 +88,8 @@ export namespace SessionHistory {
           const current = await MessageV2.readInfoList({ ...owner, signal: input.signal })
           if (current.some((message) => message.id === info.id)) throw error
         }
-        input.progress?.({ stage: "messages", prepared: index + 1, total: infos.length })
+        input.progress?.({ stage: "messages", prepared: index + 1, total: result.missing.length })
       }
-      const result = await Storage.snapshot(async () => {
-        const current = input.messageID
-          ? [await MessageV2.readInfo({ ...owner, messageID: input.messageID })]
-          : await MessageV2.readInfoList(owner)
-        const messages: { info: MessageV2.Info; parts: ExecutionPart[] }[] = []
-        for (const info of current) {
-          input.signal?.throwIfAborted()
-          const parts = await SessionHistoryDisplay.readExecutionParts(owner.scopeID, owner.sessionID, info.id)
-          if (!parts) return
-          messages.push({ info, parts })
-        }
-        return MessageV2.deriveSemantics(messages)
-      })
-      if (result) return result
     }
   }
 
