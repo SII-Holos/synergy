@@ -1,6 +1,6 @@
 import type { ResolvedProfile } from "../control-profile/types"
 
-export function buildPermissionContext(profile: ResolvedProfile, workspaceRoots: string[]): string {
+export function buildPermissionContext(profile: ResolvedProfile): string {
   const denied = profile.ruleset.filter((rule) => rule.action === "deny")
   const deniedText = denied.length
     ? denied.map((rule) => `- ${rule.permission}`).join("\n")
@@ -20,7 +20,6 @@ export function buildPermissionContext(profile: ResolvedProfile, workspaceRoots:
     `- Allowed shell actions run directly. Sandbox failures are not used as a substitute for approval decisions.`,
     `- Profiles ask the user through the permission dock only for actions their rules mark as ask. Autonomous mode denies high-risk asks instead of prompting.`,
     ``,
-    `Workspace roots: ${workspaceRoots.length > 0 ? workspaceRoots.join(", ") : "(none)"}`,
     `Sandbox mode: ${profile.sandbox.mode}`,
     `Network mode: ${profile.network.mode}`,
     ``,

@@ -32,7 +32,7 @@ Stops any ongoing processing in the target session. Use when a delegated agent i
 Uses `worktreeTarget` as an existing worktree name/ID/branch/path when it matches; otherwise creates a new worktree using `worktreeTarget` as the name. Omit `worktreeTarget` to create a uniquely named worktree. Use `baseRef`, `baseRevision`, and `force` as needed.
 
 ### `worktree_leave` — Return the target session to the main checkout
-Use `cleanup: "keep"` or `cleanup: "remove_if_clean"` to control whether a clean managed worktree is removed after leaving.
+Use `cleanup: "keep"` (default) to keep the worktree, or `cleanup: "remove_if_clean"` to permanently delete it after leaving when it has no uncommitted changes. Permanent deletion drops the registry entry and cannot be undone; use `worktree_archive` when the checkout may be needed again.
 
 ### `set_agent` — Set the target session's agent override
 Requires `agent`. Future user messages without an explicit agent use this override.

@@ -3,7 +3,7 @@ import type { JSONSchema7 } from "ai"
 export namespace ToolIntent {
   export const description = "One short sentence stating this action’s purpose and target, in the task’s language."
   export const guidance =
-    "For tool calls, use workBrief to state the action’s purpose and target in the task’s language, using known context. Report outcomes after receiving the tool result."
+    "For tool calls, use workBrief to state the action’s purpose and target in the task’s language, using known context."
   export type Shape = "flat" | "envelope"
   export interface Binding {
     schema: JSONSchema7
