@@ -1,14 +1,12 @@
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let directory: string
 let baseUrl: string
 const errors: string[] = []
@@ -20,15 +18,15 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(directory, "index.html"),
-      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+      '<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
     ),
     Bun.write(
       context,
       `
       import { createSignal } from "solid-js"
-      import { createSessionPreparationCache } from ${JSON.stringify(`/@fs/${source}/context/session-preparation-cache.ts`)}
+      import { createSessionPreparationCache } from ${JSON.stringify(`${source}/context/session-preparation-cache.ts`)}
       import { setupI18n } from "@lingui/core"
-      import { createReactiveI18n } from ${JSON.stringify(`/@fs/${source}/context/locale/reactive-i18n.ts`)}
+      import { createReactiveI18n } from ${JSON.stringify(`${source}/context/locale/reactive-i18n.ts`)}
       const mode = new URLSearchParams(location.search).get("mode")
       const [id, setID] = createSignal(mode === "new" ? "" : "history")
       const [url, setURL] = createSignal("one")
@@ -80,10 +78,18 @@ beforeAll(async () => {
       import { createEffect, createSignal, Show, onMount } from "solid-js"
       import { render } from "solid-js/web"
       import { I18nProvider } from "@lingui/solid"
+      import { MetaProvider } from "@solidjs/meta"
+      import { Font } from "@ericsanchezok/synergy-ui/font"
+      import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme"
+      import { Button } from "@ericsanchezok/synergy-ui/button"
       import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
       import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
-      import { SessionPreparation, SessionPreparationNotice, useSessionPreparation } from ${JSON.stringify(`/@fs/${source}/components/session/session-preparation.tsx`)}
-      import { SessionTransitionProvider } from ${JSON.stringify(`/@fs/${source}/context/session-transition.tsx`)}
+      import { SessionPreparation, SessionPreparationNotice, useSessionPreparation } from ${JSON.stringify(`${source}/components/session/session-preparation.tsx`)}
+      import { SessionTransitionProvider } from ${JSON.stringify(`${source}/context/session-transition.tsx`)}
+      import "@ericsanchezok/synergy-ui/styles"
+      import "@/index.css"
+      import "@/components/settings/settings-panel.css"
+      import "@/components/settings/settings-controls.css"
       import { core, fixture } from "./context"
       window.mounts = 0
       function Transcript() {
@@ -91,57 +97,50 @@ beforeAll(async () => {
         const preparation = useSessionPreparation()
         const [seen,setSeen] = createSignal(!fixture.id())
         createEffect(() => { if(preparation.ready()) setSeen(true) })
-        return <><header>Session shell</header><input aria-label="composer" /><nav>Workspace navigation</nav><Show when={seen()} fallback={<SessionPreparationNotice />}><div data-transcript data-ready={preparation.ready()}>{fixture.id() || "workspace"}</div></Show></>
+        return <div class="synergy-workbench-canvas" style="height:100dvh;display:flex;flex-direction:column"><header>Session shell</header><input aria-label="composer" /><nav>Workspace navigation</nav><main style="flex:1;min-height:0"><Show when={seen()} fallback={<SessionPreparationNotice />}><div data-transcript data-ready={preparation.ready()}>{fixture.id() || "workspace"}</div></Show></main><div class="settings-control-scope"><Button data-settings-reference>Settings control</Button></div></div>
       }
       function Fixture() {
+        fixture.theme = useTheme().setColorScheme
         return <SessionPreparation><Transcript /></SessionPreparation>
       }
-      render(() => <I18nProvider i18n={core}><SessionTransitionProvider><DialogProvider><MarkedProvider><Fixture /></MarkedProvider></DialogProvider></SessionTransitionProvider></I18nProvider>, document.querySelector("#root")!)
+      render(() => <MetaProvider><Font /><ThemeProvider><I18nProvider i18n={core}><SessionTransitionProvider><DialogProvider><MarkedProvider><Fixture /></MarkedProvider></DialogProvider></SessionTransitionProvider></I18nProvider></ThemeProvider></MetaProvider>, document.querySelector("#root")!)
     `,
     ),
   ])
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, "vite-cache"),
-    plugins: [solidPlugin()],
-    resolve: {
-      alias: {
-        "@/context/global-sdk": context,
-        "@/context/server": context,
-        "@/context/locale": context,
-        "@solidjs/router": context,
-        "@/context/session-route": context,
-        "@": source,
-      },
-    },
-    optimizeDeps: {
-      noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"],
-    },
-    server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
+    styled: true,
+    aliases: [
+      ...[
+        "@/context/global-sdk",
+        "@/context/server",
+        "@/context/locale",
+        "@solidjs/router",
+        "@/context/session-route",
+      ].map((find) => ({ find, replacement: context })),
+      { find: "@", replacement: source },
+    ],
   })
-  await server.listen()
-  baseUrl = server.resolvedUrls!.local[0]!
-  await server.warmupRequest("/main.tsx")
+  baseUrl = server.url
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 375, height: 812 } })
   page.on("pageerror", (error) => errors.push(error.message))
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text())
   })
-}, 30000)
+}, 180_000)
 
 afterAll(async () => {
   await page?.close()
   await browser?.close()
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
-})
+}, 60_000)
 
 interface FixtureWindow extends Window {
   mounts: number
   fixture: {
+    theme(value: "light" | "dark"): void
     complete(): void
     locale(): void
     navigate(): void
@@ -152,6 +151,52 @@ interface FixtureWindow extends Window {
     requests(): Array<{ action: string; sessionID: string; aborted: boolean }>
   }
 }
+
+test.each(["light", "dark"] as const)(
+  "%s preparation actions share Settings surfaces and retain keyboard navigation",
+  async (theme) => {
+    await open()
+    await page.evaluate((theme) => (window as unknown as FixtureWindow).fixture.theme(theme), theme)
+    await page.waitForFunction((theme) => document.documentElement.dataset.colorScheme === theme, theme)
+    await page.evaluate(() => document.fonts.ready)
+    const back = page.getByRole("button", { name: "Back to workspace" })
+    const reference = page.locator("[data-settings-reference]")
+    await back.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    await reference.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    const appearance = (element: HTMLElement) => {
+      const style = getComputedStyle(element)
+      return {
+        background: style.backgroundColor,
+        color: style.color,
+        border: style.borderWidth,
+        shadow: style.boxShadow,
+      }
+    }
+    expect(await back.evaluate(appearance)).toEqual(await reference.evaluate(appearance))
+    expect(await back.evaluate((element) => element.getBoundingClientRect().height)).toBeGreaterThanOrEqual(32)
+    expect(await back.evaluate((element) => parseFloat(getComputedStyle(element).borderRadius))).toBeGreaterThanOrEqual(
+      8,
+    )
+    await back.hover()
+    await back.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    const hovered = await back.evaluate(appearance)
+    await reference.hover()
+    await reference.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    expect(hovered).toEqual(await reference.evaluate(appearance))
+    await page.mouse.move(0, 0)
+    await page.getByRole("textbox", { name: "composer" }).focus()
+    await page.keyboard.press("Tab")
+    expect(
+      await back.evaluate((element) => element === document.activeElement && element.matches(":focus-visible")),
+    ).toBe(true)
+    expect(await back.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe("none")
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(375)
+    await page.keyboard.press("Enter")
+    await page.locator("[data-transcript]").waitFor()
+    expect(await page.locator("[data-transcript]").textContent()).toBe("workspace")
+    expect(errors).toEqual([])
+  },
+)
 
 test("first-send navigation preserves the mounted page while its storage preparation is pending", async () => {
   await page.goto(`${baseUrl}?mode=new`)

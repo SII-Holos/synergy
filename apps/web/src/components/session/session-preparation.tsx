@@ -17,6 +17,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { useLocale } from "@/context/locale"
 import { createSessionPreparationController } from "./session-preparation-controller"
+import "./session-preparation.css"
 
 const SessionPreparationContext = createContext<{
   ready: Accessor<boolean>
@@ -135,7 +136,7 @@ export function SessionPreparationNotice() {
           </p>
         </Show>
       </div>
-      <div class="flex gap-2">
+      <div class="session-preparation-actions flex gap-2">
         <Button variant="secondary" onClick={() => navigate("../")}>
           {i18n._({ id: "app.upgrade.leave", message: "Back to workspace" })}
         </Button>

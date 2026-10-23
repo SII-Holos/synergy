@@ -22,6 +22,8 @@ beforeAll(async () => {
     `
     import {render} from "solid-js/web"
     import {createSignal} from "solid-js"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {messages as enMessages} from ${JSON.stringify(`${appSrc}/locales/en/messages.po`)}
@@ -36,15 +38,15 @@ beforeAll(async () => {
     const [workspace,setWorkspace]=createSignal({id:"wsp_a",generation:1,path:"/a"})
     const [open,setOpen]=createSignal([])
     const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
-    const h=window.fixture={calls:[],loads:[],reviews:0,undos:0,metadata:()=>setDiffs([{file:"compact.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},additions:1,deletions:0}]),pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),error:()=>setFailed(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
+    const h=window.fixture={calls:[],loads:[],reviews:0,metadata:()=>setDiffs([{file:"compact.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},additions:1,deletions:0}]),pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),error:()=>setFailed(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
     const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
     const i18n=setupI18n({locale:"en",messages:{en:enMessages,"zh-CN":zhMessages}})
     function Content(){
       const theme=useTheme()
       h.theme=theme.setColorScheme
-      return <><div style="height:360px;display:flex;flex-direction:column;min-height:0"><SessionReviewTab workspace={workspace} diffs={diffs} loadDiff={async(diff)=>{h.loads.push(diff.file);return {...diff,preview:"+complete historical content"}}} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/></div><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":failed()?"error":incomplete()?"partial":"ready"} onUndoRequested={()=>h.undos++} onReviewRequested={()=>h.reviews++} onFileSelected={file=>h.calls.push(file)}/></>
+      return <><div style="height:360px;display:flex;flex-direction:column;min-height:0"><SessionReviewTab workspace={workspace} diffs={diffs} loadDiff={async(diff)=>{h.loads.push(diff.file);return {...diff,preview:"+complete historical content"}}} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/></div><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":failed()?"error":incomplete()?"partial":"ready"} onReviewRequested={()=>h.reviews++} onFileSelected={file=>h.calls.push(file)}/></>
     }
-    render(()=><I18nProvider i18n={i18n}><ThemeProvider><Content/></ThemeProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><MetaProvider><Font/><I18nProvider i18n={i18n}><ThemeProvider><Content/></ThemeProvider></I18nProvider></MetaProvider>,document.getElementById("root"))
   `,
   )
   const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
@@ -195,7 +197,8 @@ test("settlement retains the file card, rows and actions without recording notic
     expect(await card.getByRole("status").count()).toBe(0)
     expect(await card.locator('[data-slot="review-recording-notice"]').count()).toBe(0)
     expect(await card.getAttribute("aria-busy")).toBe(transition === "pending" ? "true" : null)
-    expect(await card.getByRole("button", { name: "Undo", exact: true }).isEnabled()).toBe(transition !== "pending")
+    expect(await card.getByRole("button", { name: "Undo", exact: true }).count()).toBe(0)
+    expect(await card.getByRole("button", { name: "Review changes", exact: true }).isEnabled()).toBe(true)
     expect(await page.locator('[data-slot="turn-change-summary-row"]').first().getAttribute("data-retained")).toBe(
       "yes",
     )
@@ -253,6 +256,7 @@ test("the change card keeps a compact summary and reachable actions in both loca
       )
       await page.setViewportSize({ width: 960, height: 700 })
       expect(await card.getAttribute("aria-label")).toBe(locale === "en" ? "Changed 2 files" : "已更改 2 个文件")
+      expect(await card.getByRole("button", { name: locale === "en" ? "Undo" : "撤销", exact: true }).count()).toBe(0)
       const geometry = await card.evaluate((element) => {
         const bounds = (selector: string) => element.querySelector(selector)!.getBoundingClientRect()
         return {
@@ -278,15 +282,14 @@ test("the change card keeps a compact summary and reachable actions in both loca
     }
   }
   await page.evaluate(() => (window as unknown as { fixture: { locale(value: string): void } }).fixture.locale("en"))
-  const undo = card.getByRole("button", { name: "Undo", exact: true })
-  await undo.focus()
+  const review = card.getByRole("button", { name: "Review changes", exact: true })
+  await review.focus()
   await page.keyboard.press("Enter")
-  await card.getByRole("button", { name: "Review changes", exact: true }).click()
   expect(
     await page.evaluate(() => {
-      const fixture = (window as unknown as { fixture: { undos: number; reviews: number } }).fixture
-      return { undos: fixture.undos, reviews: fixture.reviews }
+      const fixture = (window as unknown as { fixture: { reviews: number } }).fixture
+      return fixture.reviews
     }),
-  ).toEqual({ undos: 1, reviews: 1 })
+  ).toBe(1)
   expect(errors).toEqual([])
 }, 30_000)

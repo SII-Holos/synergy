@@ -1,0 +1,17 @@
+.session-preparation-actions [data-component="button"] {
+  height: 36px;
+  padding-inline: 12px;
+  border: 0;
+  border-radius: 10px;
+  box-shadow: none;
+  background-color: var(--surface-inset-base);
+  color: var(--text-base);
+
+  &:hover:not(:disabled) {
+    background-color: var(--surface-inset-base-hover);
+  }
+
+  &:active:not(:disabled) {
+    background-color: var(--surface-interactive-selected);
+  }
+}

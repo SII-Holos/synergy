@@ -209,3 +209,33 @@ test("touch upload actions remain separate 44px targets with visible retry text"
     await touch.close()
   }
 })
+
+for (const theme of ["light", "dark"]) {
+  test(`${theme}: full image previews fit their clickable area and align with the gallery`, async () => {
+    await visit(theme)
+    await page.setViewportSize({ width: 1000, height: 1100 })
+    const galleries = page.locator('[data-example="large-images"] [data-component="attachment-gallery"]')
+    for (const gallery of await galleries.all()) {
+      await gallery.scrollIntoViewIfNeeded()
+      await gallery.locator("img").evaluate((image: HTMLImageElement) => image.decode())
+      const bounds = await gallery.evaluate((gallery) => {
+        const card = gallery.querySelector('[data-component="attachment-card"]')!.getBoundingClientRect()
+        const image = gallery.querySelector("img")!.getBoundingClientRect()
+        return {
+          start: gallery.getBoundingClientRect().x + parseFloat(getComputedStyle(gallery).paddingLeft),
+          cardX: card.x,
+          imageX: image.x,
+          cardWidth: card.width,
+          imageWidth: image.width,
+          ratio: image.width / image.height,
+          natural: gallery.querySelector("img")!.naturalWidth / gallery.querySelector("img")!.naturalHeight,
+        }
+      })
+      expect(bounds.imageX).toBeCloseTo(bounds.start, 0)
+      expect(bounds.cardX).toBeCloseTo(bounds.imageX, 0)
+      expect(bounds.cardWidth).toBeCloseTo(bounds.imageWidth, 0)
+      expect(bounds.ratio).toBeCloseTo(bounds.natural, 2)
+    }
+    expect(errors).toEqual([])
+  })
+}

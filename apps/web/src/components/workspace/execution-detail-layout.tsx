@@ -5,7 +5,7 @@ import { ErrorCard } from "@ericsanchezok/synergy-ui/error-card"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { requestErrorMessage } from "@/utils/error"
 
-export type ExecutionDetailView = "result" | "process" | "diagnostics"
+export type ExecutionDetailView = "result" | "attachments" | "process" | "diagnostics"
 
 export function ExecutionDetailLayout(props: {
   identity: string
@@ -18,6 +18,7 @@ export function ExecutionDetailLayout(props: {
   details?: JSX.Element
   actions?: JSX.Element
   views: ExecutionDetailView[]
+  attachmentCount?: number
   diagnosticsLabel?: string
   loading: boolean
   error?: unknown
@@ -29,6 +30,9 @@ export function ExecutionDetailLayout(props: {
   const { _ } = useLingui()
   const [selected, setSelected] = createSignal<ExecutionDetailView>("result")
   const view = () => (props.views.includes(selected()) ? selected() : "result")
+  createEffect(() => {
+    if (!props.views.includes(selected())) setSelected("result")
+  })
   createEffect(
     on(
       () => props.identity,
@@ -54,9 +58,15 @@ export function ExecutionDetailLayout(props: {
   const label = (name: ExecutionDetailView) =>
     name === "result"
       ? _({ id: "session.execution.result", message: "Result" })
-      : name === "process"
-        ? _({ id: "session.process.execution", message: "Execution process" })
-        : (props.diagnosticsLabel ?? _({ id: "session.execution.diagnosticsOnly", message: "Diagnostics" }))
+      : name === "attachments"
+        ? _({
+            id: "session.execution.attachments",
+            message: "Attachments ({count})",
+            values: { count: props.attachmentCount ?? 0 },
+          })
+        : name === "process"
+          ? _({ id: "session.process.execution", message: "Execution process" })
+          : (props.diagnosticsLabel ?? _({ id: "session.execution.diagnosticsOnly", message: "Diagnostics" }))
   return (
     <div data-component="execution-detail" data-kind={props.kind} aria-busy={props.loading}>
       <header data-slot="execution-detail-heading">

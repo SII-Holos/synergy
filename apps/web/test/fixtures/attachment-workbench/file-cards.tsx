@@ -31,13 +31,13 @@ const files: AttachmentFile[] = [
   },
   { filename: "measurements.csv", mime: "text/csv", size: 8704, url: "data:text/csv,value" },
 ]
-const image = (filename: string): AttachmentFile => ({
+const image = (filename: string, width = 240, height = 180): AttachmentFile => ({
   filename,
   mime: "image/svg+xml",
   url:
     "data:image/svg+xml," +
     encodeURIComponent(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="180"><rect width="240" height="180" fill="#edf1f4"/><path d="M40 130V80h35v50m20 0V45h35v85m20 0V65h35v65" fill="#8395a3"/></svg>',
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#edf1f4"/><path d="M40 130V80h35v50m20 0V45h35v85m20 0V65h35v65" fill="#8395a3"/></svg>`,
     ),
 })
 const opened: string[] = []
@@ -112,6 +112,20 @@ function Examples() {
           layout="rows"
           compact="user"
         />
+      </section>
+      <section data-example="large-images">
+        <h2>Full image previews</h2>
+        <For
+          each={[
+            [1600, 1000],
+            [600, 1200],
+            [1600, 200],
+          ]}
+        >
+          {([width, height]) => (
+            <AttachmentGallery files={[image(`${width}-${height}.svg`, width, height)]} serverUrl={location.origin} />
+          )}
+        </For>
       </section>
       <section data-example="narrow" class="file-cards-review-narrow">
         <h2>Narrow pane</h2>

@@ -17610,6 +17610,10 @@ msgid "session.dock.parentSession"
 msgstr "父会话"
 
 #. js-lingui-explicit-id
+msgid "session.execution.attachments"
+msgstr "附件（{count}）"
+
+#. js-lingui-explicit-id
 msgid "session.execution.background"
 msgstr "进程仍在运行"
 
@@ -27307,10 +27311,6 @@ msgstr "再显示 {count} 个文件"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "已更改 {fileCount, plural, one {# 个文件} other {# 个文件}}"
-
-#. js-lingui-explicit-id
-msgid "ui.turnChangeSummary.undo"
-msgstr "撤销"
 
 #. js-lingui-explicit-id
 msgid "ui.userMessage.markdown"

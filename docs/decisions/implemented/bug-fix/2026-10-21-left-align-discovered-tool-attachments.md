@@ -2,6 +2,8 @@
 
 Status: implemented
 
+The shared image geometry and ordinary tool gallery sizing are extended by [tool attachment views](../feature/2026-10-23-tool-attachment-views.md); this record retains the rationale for removing nested evidence insets.
+
 ## Problem
 
 Compact tool evidence inherits both an evidence inset and a nested gallery margin, with row padding adding another offset. Automatically discovered document cards therefore start 52 pixels to the right of surrounding assistant and tool rows. Separate deliverable galleries are already left-aligned and do not reproduce this defect.

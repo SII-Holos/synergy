@@ -24,7 +24,6 @@ export type TurnChangeSummaryPanelProps = {
   state?: Exclude<TurnDiffPanelState, "hidden">
   animateReady?: boolean
   previewLimit?: number
-  onUndoRequested?: () => void
   onReviewRequested: () => void
   onFileSelected: (file: string) => void
 }
@@ -65,16 +64,6 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </div>
           </div>
           <div data-slot="turn-change-summary-actions">
-            <Show when={props.onUndoRequested}>
-              <button
-                type="button"
-                data-slot="turn-change-summary-review"
-                disabled={state() === "pending"}
-                onClick={props.onUndoRequested}
-              >
-                {_({ id: "ui.turnChangeSummary.undo", message: "Undo" })}
-              </button>
-            </Show>
             <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
               {_(TURN_CHANGE_DESC.reviewChanges)}
             </button>

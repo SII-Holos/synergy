@@ -52,19 +52,23 @@ beforeAll(async () => {
     export const useFile=()=>({workspace:{...${JSON.stringify(workspace)},path:"/review"},openWorkspaceFile:()=>{}})
     export const useSync=()=>({session:{get:()=>undefined}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>[]})
-    export const useFileRestore=()=>()=>{}
+    export const restores: unknown[]=[]
+    export const useFileRestore=()=>(selection:unknown)=>restores.push(selection)
   `,
   )
   await Bun.write(
     path.join(fixture, "main.tsx"),
     `import {render} from "solid-js/web"
-    import {ErrorBoundary,Suspense} from "solid-js"
+    import {createSignal,ErrorBoundary,Suspense} from "solid-js"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {MetaProvider} from "@solidjs/meta"
     import {Font} from "@ericsanchezok/synergy-ui/font"
     import {ThemeProvider,useTheme} from "@ericsanchezok/synergy-ui/theme"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
+    import {ViewActivityProvider} from "@ericsanchezok/synergy-ui/context/view-activity"
     import {ensureSynergyHighlightTheme} from "@ericsanchezok/synergy-ui/context/marked"
     import {ReviewPanel} from ${JSON.stringify(`/@fs/${appSrc}/components/workspace/review-panel.tsx`)}
     import {messages as en} from ${JSON.stringify(`/@fs/${appSrc}/locales/en/messages.po`)}
@@ -72,16 +76,18 @@ beforeAll(async () => {
     import {messages as pseudo} from ${JSON.stringify(`/@fs/${appSrc}/locales/pseudo/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
-    import {switchSession} from "./contexts"
+    import {restores,switchSession} from "./contexts"
     const i18n=setupI18n({locale:"en",messages:{en,"zh-CN":zh,pseudo}})
     function App(){
       const theme=useTheme()
-      window.fixture={switchSession,theme:theme.setColorScheme,locale:(value)=>i18n.activate(value)}
-      return <ErrorBoundary fallback={error=><p data-testid="fatal">{String(error)}</p>}>
+      const [active,setActive]=createSignal(true)
+      window.fixture={restores,switchSession,theme:theme.setColorScheme,locale:(value)=>i18n.activate(value),active:setActive}
+      return <ViewActivityProvider active={active}><ErrorBoundary fallback={error=><p data-testid="fatal">{String(error)}</p>}>
+
         <Suspense fallback={<p data-testid="suspended">Suspended</p>}>
           <ReviewPanel tab={{id:"review",kind:"review",title:"Review"}}/>
         </Suspense>
-      </ErrorBoundary>
+      </ErrorBoundary></ViewActivityProvider>
     }
     ensureSynergyHighlightTheme().then(()=>render(()=><MetaProvider><Font/><I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><App/></DialogProvider></ThemeProvider></I18nProvider></MetaProvider>,document.getElementById("root")))
     document.head.insertAdjacentHTML("beforeend","<style>html,body,#root{margin:0;width:100%;height:100%;overflow:hidden}</style>")
@@ -240,6 +246,7 @@ async function mount(input = rows(), pendingFiles = false) {
     })
   await page.evaluate(() => document.fonts.ready)
   if (!pendingFiles) await page.getByRole("button", { name: "Select line 2 in after", exact: true }).first().waitFor()
+
 }
 
 test("loading glyphs rotate around their visible center and respect reduced motion", async () => {
@@ -712,6 +719,7 @@ test("global commands dismiss their menu while advanced toggles remain available
 
 test("file headers respond to native folding, version and menu actions", async () => {
   await mount()
+  await page.addStyleTag({ content: '[role="menu"][data-closed] { animation-duration: 1s; }' })
   const toggle = page.getByRole("button", { name: "src/first.ts", exact: true })
   const header = page.locator(".review-file-header").filter({ has: toggle })
   await toggle.click()
@@ -722,19 +730,33 @@ test("file headers respond to native folding, version and menu actions", async (
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
   await page.keyboard.press("Escape")
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
-  await header.getByRole("button", { name: "File options", exact: true }).click()
-  await page.getByRole("button", { name: "Copy path", exact: true }).click()
-  await page.getByRole("button", { name: "Copy path", exact: true }).waitFor({ state: "hidden" })
+  const options = header.getByRole("button", { name: "File options", exact: true })
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+  await options.click()
+  const copy = page.getByText("Copy path", { exact: true })
+  await copy.click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("src/first.ts")
+  await copy.waitFor({ state: "hidden" })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
-  await header.getByRole("button", { name: "File options", exact: true }).click()
-  await page
-    .locator('[data-component="popover-content"]')
-    .getByRole("button", { name: "File versions", exact: true })
-    .click()
+  await options.press("ArrowDown")
+  await page.waitForFunction(() => document.activeElement?.textContent === "Copy path")
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("Enter")
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
-  await page.getByRole("button", { name: "Copy path", exact: true }).waitFor({ state: "hidden" })
+  expect(await options.getAttribute("aria-expanded")).toBe("false")
   await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+  await options.press("ArrowUp")
+  await page.waitForFunction(() => document.activeElement?.textContent === "Undo this file")
+  await page.keyboard.press("Enter")
+  await page.getByRole("menu", { name: "File options", exact: true }).waitFor({ state: "hidden" })
+  expect(
+    await page.evaluate(() => (window as unknown as { fixture: { restores: unknown[] } }).fixture.restores),
+  ).toEqual([
+    { selectedFiles: [{ workspaceID: workspace.id, generation: workspace.generation, file: "src/first.ts" }] },
+  ])
+
   await header.locator('[data-slot="checkbox-checkbox-control"]').click()
   await header.locator('[data-component="checkbox"][data-checked]').waitFor()
   expect(await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).isChecked()).toBe(true)
@@ -793,13 +815,84 @@ test("file headers adapt to the reading width with both directory and comments o
   expect(geometry.clipped).toBe(false)
   expect(geometry.name).toBeGreaterThan(40)
   await header.getByRole("button", { name: "File options", exact: true }).click()
-  const menu = page.locator('[data-component="popover-content"]')
-  expect(await menu.getByRole("button", { name: "Open current file", exact: true }).isEnabled()).toBe(true)
-  await menu.getByRole("button", { name: "File versions", exact: true }).click()
+  const menu = page.getByRole("menu", { name: "File options", exact: true })
+  expect(await menu.getByRole("menuitem", { name: "Open current file", exact: true }).isEnabled()).toBe(true)
+  await menu.getByRole("menuitem", { name: "File versions", exact: true }).click()
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
   await page.keyboard.press("Escape")
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
 })
+
+test("file actions share choice-menu styling without preselecting a pointer-opened action", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await mount()
+  const options = page.getByRole("button", { name: "File options", exact: true }).first()
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(
+      (theme) => (window as unknown as { fixture: { theme(value: string): void } }).fixture.theme(theme),
+      theme,
+    )
+    await page.getByRole("button", { name: /^Diff layout:/ }).click()
+    const choice = page.getByRole("option", { name: "Unified", exact: true })
+    await choice.waitFor()
+    const appearance = await choice.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return [style.minHeight, style.padding, style.borderRadius, style.fontSize, style.fontWeight]
+    })
+    await page.keyboard.press("Escape")
+    await choice.waitFor({ state: "hidden" })
+    await options.click()
+    const copy = page.getByText("Copy path", { exact: true })
+    await copy.waitFor()
+    await page.mouse.move(0, 0)
+    expect(await copy.evaluate((element) => document.activeElement === element)).toBe(false)
+    expect(
+      await copy.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return [style.minHeight, style.padding, style.borderRadius, style.fontSize, style.fontWeight]
+      }),
+    ).toEqual(appearance)
+    expect(await copy.getAttribute("data-highlighted")).toBeNull()
+    expect(await page.getByRole("menu", { name: "File options", exact: true }).isVisible()).toBe(true)
+    await page.keyboard.press("Escape")
+    await copy.waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+  }
+  expect(errors).toEqual([])
+})
+
+test("file menus close with their view and preserve focus outside the menu", async () => {
+  await mount()
+  const options = page.getByRole("button", { name: "File options", exact: true }).first()
+  const menu = page.getByRole("menu", { name: "File options", exact: true })
+  const focusedMenu = () => page.waitForFunction(() => document.activeElement?.getAttribute("role") === "menu")
+  await options.click()
+  await menu.waitFor()
+  await focusedMenu()
+  const refresh = page.getByRole("button", { name: "Refresh comparison", exact: true })
+  await refresh.focus()
+  await menu.waitFor({ state: "hidden" })
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Refresh comparison")
+  await options.click()
+  await menu.waitFor()
+  await focusedMenu()
+  await page.evaluate(() => (window as unknown as { fixture: { active(value: boolean): void } }).fixture.active(false))
+  await refresh.focus()
+  await menu.waitFor({ state: "hidden" })
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  expect(await refresh.evaluate((element) => document.activeElement === element)).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: { active(value: boolean): void } }).fixture.active(true))
+  expect(await menu.count()).toBe(0)
+  await options.click()
+  await menu.waitFor()
+  await focusedMenu()
+  await page.evaluate(() => (window as unknown as { fixture: { switchSession(): void } }).fixture.switchSession())
+  await menu.waitFor({ state: "hidden" })
+  expect(errors).toEqual([])
+}, 30_000)
+
 
 test("compact touch controls fit phone panes and keep refresh and fold reachable", async () => {
   const desktop = page
@@ -863,6 +956,23 @@ test("compact touch controls fit phone panes and keep refresh and fold reachable
       expect(await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).isChecked()).toBe(true)
       await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).press("Space")
       await header.locator('[data-component="checkbox"]:not([data-checked])').waitFor()
+      await header.getByRole("button", { name: "File options", exact: true }).tap()
+      const fileMenu = page.getByRole("menu", { name: "File options", exact: true })
+      await fileMenu.waitFor()
+      await fileMenu.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+      const menuBox = await fileMenu.boundingBox()
+      expect(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= width).toBe(true)
+      expect(
+        await fileMenu
+          .getByRole("menuitem")
+          .evaluateAll((items) => items.every((item) => item.getBoundingClientRect().height >= 44)),
+      ).toBe(true)
+      const versions = fileMenu.getByRole("menuitem", { name: "File versions", exact: true })
+      await versions.tap()
+      await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
+      await fileMenu.waitFor({ state: "hidden" })
+      await page.keyboard.press("Escape")
+      await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
     }
     expect(errors).toEqual([])
   } finally {
