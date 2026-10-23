@@ -35,7 +35,8 @@
     "./performance/prompt/builder": "./src/performance/prompt/builder.ts",
     "./project/routes/git": "./src/project/routes/git.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -85,6 +86,28 @@
     "export": "workbench",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "workbench",
+          "owner": "workbench",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Workbench",
+          "description": "Projects, task presentation, reviews and activity.",
+          "component": "workbench"
+        },
+        {
+          "id": "kanban",
+          "owner": "workbench",
+          "maturity": "experimental",
+          "activation": "restart",
+          "name": "Kanban",
+          "description": "View and organize tasks on a board."
+        }
+      ]
     }
   }
 }

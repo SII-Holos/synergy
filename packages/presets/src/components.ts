@@ -1,3 +1,4 @@
+import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { channelBlueprint } from "@ericsanchezok/synergy-channel-blueprint/component"
 import { channelLightLoop } from "@ericsanchezok/synergy-channel-light-loop/component"
 import { channelLattice } from "@ericsanchezok/synergy-channel-lattice/component"
@@ -26,7 +27,7 @@ import { pluginKit } from "@ericsanchezok/synergy-plugin-kit/component"
 import { dataManagement } from "./component"
 import { server } from "@ericsanchezok/synergy-server/component"
 
-export function fullComponents() {
+export function fullComponents(): RuntimeComponent[] {
   return [
     acp(),
     codeTools(),

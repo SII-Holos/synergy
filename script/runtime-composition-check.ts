@@ -111,7 +111,7 @@ export async function checkRuntimeCompositions(
               }
             : {}),
           ...(mode === "full" || mode === "mcp" ? { pluginMarketplace: { enabled: false } } : {}),
-          ...(mode === "full" ? { boss: { enabled: false }, anima: { enabled: false } } : {}),
+          ...(mode === "full" ? { anima: { enabled: false } } : {}),
           ...(mode === "full" || mode === "library"
             ? {
                 library: {

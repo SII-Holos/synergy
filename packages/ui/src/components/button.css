@@ -69,8 +69,12 @@
     }
   }
 
+  /* The neutral inset fill alone defines this control. A resting perimeter made
+     the shared secondary button read as a heavy slab next to the borderless
+     controls that already use the same fill token. The border keeps its width so
+     the box, padding and hit target do not shift by a pixel. */
   &[data-variant="secondary"] {
-    border-color: var(--border-base);
+    border-color: transparent;
     background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
     box-shadow: none;
@@ -91,7 +95,7 @@
       background-color: var(--workbench-selected-bg, var(--button-secondary-base));
     }
     &:disabled {
-      border-color: var(--border-disabled);
+      border-color: transparent;
       background-color: var(--surface-disabled);
       color: var(--text-weak);
       cursor: not-allowed;

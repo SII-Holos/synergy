@@ -2,6 +2,8 @@
 
 Status: implemented
 
+The per-line breathing choice below is superseded by [conversation loading motion](2026-10-23-conversation-loading-motion.md). The shared component, geometry and static admission decisions remain in force.
+
 ## Problem
 
 A cold Session switch of a few hundred milliseconds painted three different shapes in sequence: the transcript, then a spinner and label centred in the viewport, then the transcript again. Each transition was instantaneous, and the middle shape had a different anchor and a different visual mass than the content around it. The reader's focus moved to the centre of the pane and was then pulled back out across a full column of text, which reads as a flash even when the wait itself is short.

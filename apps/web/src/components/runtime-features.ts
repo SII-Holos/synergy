@@ -23,7 +23,7 @@ const requirements: Record<
   },
   navigation: {
     agenda: "agenda",
-    kanban: "workbench",
+    kanban: "kanban",
     library: "library",
     performance: "workbench",
     plugins: "plugin-host",

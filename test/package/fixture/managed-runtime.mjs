@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import path from "node:path"
 import fs from "node:fs/promises"
+import { get } from "node:http"
 import { createSynergy } from "@ericsanchezok/synergy-sdk"
 
 const version = process.env.SYNERGY_FIXTURE_VERSION
@@ -67,9 +68,19 @@ try {
   await attached.server.close()
   assert.equal((await client.global.health({ throwOnError: true })).data.healthy, true)
   if (web) {
-    const response = await fetch(server.url, { headers: server.headers })
+    const response = await new Promise((resolve, reject) => {
+      get(server.url, { headers: { ...server.headers, Accept: "text/html" } }, async (response) => {
+        try {
+          const chunks = []
+          for await (const chunk of response) chunks.push(chunk)
+          resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString() })
+        } catch (error) {
+          reject(error)
+        }
+      }).on("error", reject)
+    })
     assert.equal(response.status, 200)
-    assert.match(await response.text(), /<!doctype html>/i)
+    assert.match(response.body, /<!doctype html>/i)
   }
 } finally {
   await server.close()

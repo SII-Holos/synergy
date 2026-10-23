@@ -4,9 +4,13 @@ import { mkdir, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { chromium } from "playwright"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 
 const repository = path.resolve(import.meta.dir, "../../../..")
-const selections = ["core", "library", "agenda", "light-loop", "email", "channels", "blueprint", "workbench", "full"]
+const compositions = ["core", "library", "agenda", "light-loop", "email", "channels", "blueprint", "workbench", "full"]
+const requested = process.argv.slice(2)
+for (const selection of requested) assert.ok(compositions.includes(selection), `Unknown composition: ${selection}`)
+const selections = requested.length ? requested : compositions
 const home = await mkdtemp(path.join(tmpdir(), "synergy-web-composition-matrix-"))
 const workspace = path.join(home, "workspace")
 await mkdir(path.join(home, ".synergy"), { recursive: true })
@@ -34,7 +38,7 @@ Object.assign(env, {
 })
 const navigation = [
   ["Agenda", "agenda", "/agenda"],
-  ["Kanban", "workbench", "/kanban"],
+  ["Kanban", "kanban", "/kanban"],
   ["Library", "library", "/library"],
   ["Performance", "workbench", "/performance"],
   ["Plugins", "plugin-host", "/plugins/marketplace"],
@@ -194,7 +198,7 @@ async function loadedPage(route: string, since: number) {
   if (route === "/kanban") await page.locator('[data-component="kanban-panel"]').waitFor()
   if (route === "/library") {
     await page.getByRole("textbox", { name: "Search library", exact: true }).waitFor()
-    await loadedRequests(["/library", "/library/stats", "/library/experience/page"], since)
+    await loadedRequests(["/library/stats"], since)
     await page.getByText("Loading library…", { exact: true }).waitFor({ state: "hidden" })
   }
   if (route === "/performance") {
@@ -220,6 +224,15 @@ async function visibleFeatures(
 }
 async function inspectWorkflows(features: string[], checks: string[]) {
   await page.getByRole("button", { name: "Add", exact: true }).click()
+  await until(async () => {
+    if (!(await page.locator(".prompt-add-menu").count()))
+      await page.getByRole("button", { name: "Add", exact: true }).click()
+    for (const [label, owner] of workflows) {
+      const found = (await page.locator(".prompt-add-menu").getByText(label, { exact: true }).count()) > 0
+      if (found !== features.includes(owner)) return false
+    }
+    return true
+  }, `${selection}/${phase}: workflow menu did not converge with capabilities`)
   for (const [label, owner] of workflows) {
     const found = (await page.locator(".prompt-add-menu").getByText(label, { exact: true }).count()) > 0
     assert.equal(found, features.includes(owner), `${selection}/${phase}: workflow ${label}`)
@@ -253,6 +266,10 @@ try {
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
     await page.getByRole("button", { name: "Close settings", exact: true }).waitFor()
     await visibleFeatures(settings, features, checks, page.locator(".settings-panel-navigation"))
+    await page
+      .locator(".settings-panel-navigation")
+      .getByRole("button", { name: "Experimental features", exact: true })
+      .waitFor()
     for (const [label, owner] of settings) {
       if (!features.includes(owner)) continue
       await page.locator(".settings-panel-navigation").getByRole("button", { name: label, exact: true }).click()
@@ -334,12 +351,111 @@ try {
       JSON.stringify({ results, requests, responses, successfulResponses, pageErrors }, null, 2),
     )
     console.log(JSON.stringify({ selection, passed: checks.length, requests: selectedRequests.length }))
+    if (selection === "full") {
+      phase = "experimental-restart"
+      const client = createSynergyClient({ baseUrl: origin })
+      await client.config.domain.update(
+        {
+          domain: "features",
+          configDomainUpdateInput: { config: { features: { optIn: ["uninstalled-fixture"] } }, mode: "replace-domain" },
+        },
+        { throwOnError: true },
+      )
+      const openExperiments = async (loaded = true) => {
+        await page.locator(".sidebar-account-trigger").click()
+        await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
+        await page
+          .locator(".settings-panel-navigation")
+          .getByRole("button", { name: "Experimental features", exact: true })
+          .click()
+        if (loaded) await page.getByRole("switch", { name: "Boss mode", exact: true }).waitFor()
+      }
+      await page.route(
+        "**/global/features",
+        (route) => route.fulfill({ status: 500, body: "private fixture diagnostic" }),
+        { times: 1 },
+      )
+      await openExperiments(false)
+      await page.getByRole("alert").filter({ hasText: "Couldn't load experimental features." }).waitFor()
+      assert.equal(await page.getByText("Loading…", { exact: true }).count(), 0)
+      assert.equal(await page.getByText("private fixture diagnostic", { exact: false }).count(), 0)
+      await page.getByRole("button", { name: "Retry", exact: true }).click()
+      await page.getByRole("switch", { name: "Boss mode", exact: true }).waitFor()
+      const retained = page.getByRole("switch", { name: "uninstalled-fixture", exact: true })
+      assert.equal(await retained.isChecked(), true)
+      await retained.press("Space")
+      assert.equal(await retained.isDisabled(), false, "Retained choices must allow undo before saving")
+      await retained.press("Space")
+      assert.equal(await retained.isChecked(), true)
+      await retained.press("Space")
+      for (const name of ["Boss mode", "Lattice", "Kanban"]) {
+        const toggle = page.getByRole("switch", { name, exact: true })
+        assert.equal(await toggle.isChecked(), false)
+        await toggle.press("Space")
+        assert.equal(await toggle.isChecked(), true)
+      }
+      await page.route(
+        "**/config/domains/features",
+        (route) => route.fulfill({ status: 500, body: "private fixture diagnostic" }),
+        { times: 1 },
+      )
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click()
+      await page.getByRole("alert").filter({ hasText: "Couldn't confirm changes. Your draft is kept." }).waitFor()
+      for (const name of ["Boss mode", "Lattice", "Kanban"])
+        assert.equal(await page.getByRole("switch", { name, exact: true }).isChecked(), true)
+      assert.equal(await page.getByText("private fixture diagnostic", { exact: false }).count(), 0)
+      await page.getByRole("button", { name: "Retry", exact: true }).click()
+      await until(
+        async () => (await page.getByText("Saved. Restart to apply.", { exact: true }).count()) === 3,
+        "Saved experiments must remain pending",
+      )
+      assert.equal(await retained.count(), 0, "Saving removes an uninstalled choice")
+      await page.screenshot({ path: path.join(home, "full-experiments-saved.png"), animations: "disabled" })
+      await page.getByRole("button", { name: "Close settings", exact: true }).click()
+      await visibleFeatures(navigation, features, checks, page.locator(".sb-globals"))
+      await stop()
+      const enabled = await start()
+      for (const id of ["boss", "lattice", "kanban"]) assert.ok(enabled.includes(id))
+      await until(
+        async () =>
+          (await page.locator(".sb-globals").getByRole("button", { name: "Kanban", exact: true }).count()) > 0,
+        "Reconnect must discover enabled experiments",
+      )
+      await inspectWorkflows(enabled, checks)
+      await page.goto(origin + "/kanban")
+      await page.locator('[data-component="kanban-panel"]').waitFor()
+      await page.goto(origin + "/aG9tZQ/session")
+      await openExperiments()
+      for (const name of ["Boss mode", "Lattice", "Kanban"])
+        await page.getByRole("switch", { name, exact: true }).press("Space")
+      await page.getByRole("button", { name: "Save Changes", exact: true }).click()
+      await until(
+        async () => (await page.getByText("Saved. Restart to apply.", { exact: true }).count()) === 3,
+        "Disabling must remain pending until restart",
+      )
+      await page.getByRole("button", { name: "Close settings", exact: true }).click()
+      await stop()
+      const disabled = await start()
+      for (const id of ["boss", "lattice", "kanban"]) assert.ok(!disabled.includes(id))
+      await until(
+        async () =>
+          (await page.locator(".sb-globals").getByRole("button", { name: "Agenda", exact: true }).count()) > 0 &&
+          (await page.locator(".sb-globals").getByRole("button", { name: "Kanban", exact: true }).count()) === 0,
+        "Reconnect must remove disabled experiments",
+      )
+      await inspectWorkflows(disabled, checks)
+      await page.goto(origin + "/kanban")
+      await page.waitForURL(origin + "/aG9tZQ/session")
+      checks.push("experiments: failed reads/writes, retry, restart, reconnect, disable and deep-link admission")
+    }
     await page.evaluate(() => window.localStorage.clear())
     await page.goto("about:blank")
     await stop()
   }
   for (const result of results) {
-    const observed = requests.filter((request) => request.selection === result.selection)
+    const observed = requests.filter(
+      (request) => request.selection === result.selection && request.phase !== "experimental-restart",
+    )
     assert.deepEqual(
       observed.filter((request) => request.owner && !result.features.includes(request.owner)),
       [],

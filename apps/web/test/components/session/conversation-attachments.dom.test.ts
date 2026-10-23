@@ -1,6 +1,76 @@
 import { expect, test } from "bun:test"
 import { errors, frames, page, url } from "../../support/conversation-process"
 
+for (const theme of ["light", "dark"] as const) {
+  for (const purpose of ["evidence", "deliverable"] as const) {
+    test(`${theme}: ${purpose} tool images share left-aligned, uncropped thumbnails`, async () => {
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
+      await page.goto(url)
+      await page.getByText("I will check the project first.", { exact: true }).waitFor()
+      await page.evaluate((purpose) => window.__conversationProcess.images(purpose), purpose)
+      for (const width of [375, 1000]) {
+        await page.setViewportSize({ width, height: 900 })
+        const cards = page.locator('[data-component="attachment-card"][data-type="image"]')
+        await cards.first().waitFor()
+        const expand = page.getByRole("button", { name: /Expand/ })
+        if (await expand.isVisible()) await expand.click()
+        await frames()
+        const bounds = await cards.evaluateAll((cards) =>
+          cards.map((card) => {
+            const image = card.querySelector("img")!
+            const rect = card.getBoundingClientRect()
+            const style = getComputedStyle(image)
+            return {
+              x: rect.x,
+              width: rect.width,
+              height: rect.height,
+              imageX: image.getBoundingClientRect().x,
+              fit: style.objectFit,
+              position: style.objectPosition,
+            }
+          }),
+        )
+        expect(bounds).toHaveLength(3)
+        const prose = await page.locator('[data-part-id="progress"] [data-component="text-part"]').boundingBox()
+        expect(bounds[0]!.x).toBeCloseTo(prose!.x, 0)
+        for (const card of bounds) {
+          expect(card.width).toBe(160)
+          expect(card.height).toBe(120)
+          expect(card.imageX).toBe(card.x)
+          expect(card.fit).toBe("contain")
+          expect(card.position).toBe("0% 50%")
+        }
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth),
+        ).toBe(false)
+      }
+      const first = page.locator('[data-component="attachment-card"]').first()
+      await first.focus()
+      await first.press("Enter")
+      expect(await page.evaluate(() => window.__processSelection)).toMatchObject({
+        kind: "attachment",
+        file: { filename: "capture-0.svg" },
+      })
+      expect(errors).toEqual([])
+    })
+  }
+}
+
+for (const purpose of ["final", "media"] as const) {
+  test(`${purpose} image deliveries retain large previews`, async () => {
+    await page.setViewportSize({ width: 1000, height: 900 })
+    await page.goto(url)
+    await page.getByText("I will check the project first.", { exact: true }).waitFor()
+    await page.evaluate((purpose) => window.__conversationProcess.images(purpose), purpose)
+    const card = page.locator('[data-component="attachment-card"][data-type="image"]').first()
+    await card.waitFor()
+    await frames()
+    expect(await card.getAttribute("data-compact")).toBeNull()
+    expect((await card.boundingBox())!.width).toBeGreaterThan(160)
+    expect(errors).toEqual([])
+  })
+}
+
 for (const width of [260, 375, 1000]) {
   for (const theme of ["light", "dark"] as const) {
     for (const count of width === 260 ? [2] : [1, 2]) {

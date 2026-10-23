@@ -837,7 +837,8 @@ export namespace ProviderTransform {
       result["store"] = false
     }
 
-    if (model.api.npm === "@ai-sdk/azure") {
+    if (model.api.npm === "@ai-sdk/azure" || (providerID === "grok" && model.api.npm === "@ai-sdk/xai")) {
+      // xAI Responses otherwise enables remote storage: https://ai-sdk.dev/providers/ai-sdk-providers/xai
       result["store"] = false
     }
 
@@ -883,7 +884,7 @@ export namespace ProviderTransform {
 
   export function smallOptions(model: Provider.Model, profileID?: string) {
     const providerID = profileID ?? model.providerID
-    if (providerID === "openai-codex") {
+    if (providerID === "openai-codex" || (providerID === "grok" && model.api.npm === "@ai-sdk/xai")) {
       return { store: false }
     }
     if (providerID === "openai" || model.api.npm === "@ai-sdk/openai") {

@@ -17,7 +17,8 @@
     "./email/tools/email.txt": "./src/email/tools/email.txt",
     "./http": "./src/http.ts",
     "./tool-group-email": "./src/tool-group-email.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -57,6 +58,20 @@
     "export": "email",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "email",
+          "owner": "email",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Email",
+          "description": "Provide email capabilities.",
+          "component": "email"
+        }
+      ]
     }
   },
   "peerDependencies": {

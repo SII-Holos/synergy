@@ -2,6 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
   "properties": {
+    "features": {
+      "description": "Global experimental feature opt-ins; empty by default. Component changes apply after restart.",
+      "type": "object",
+      "properties": { "optIn": { "type": "array", "items": { "type": "string", "pattern": "^[a-z][a-z0-9.-]*$" } } },
+      "required": ["optIn"],
+      "additionalProperties": false
+    },
     "$schema": { "description": "JSON schema reference for configuration validation", "type": "string" },
     "logLevel": {
       "description": "Log level",

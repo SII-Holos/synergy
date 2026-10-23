@@ -11,6 +11,8 @@ File review Git comparisons and revisioned session notes belong in `src/review`.
 
 Run bun run typecheck and the affected tests, then the root package and dependency checks.
 
+Keep stable Workbench availability separate from the default-off `kanban` restart experiment declared in `./features`. The board's UI and subscriptions use its own capability; statistics and other Workbench consumers remain independent. Follow [feature lifecycle](../../docs/architecture/feature-lifecycle.md).
+
 Project directory configuration, explicit sharing and the central migration belong to `src/project/directories.ts` and `src/project/migration.ts`. Preserve Scope identity and historical Worktree sources when changing the main folder. Run `bun test test/project/directories.test.ts` for creation, revision, busy-resource, migration and multi-repository behavior.
 
 Project task defaults belong to `src/project/task-defaults.ts` and its scoped HTTP adapter. Verify project-only writes and concurrent edits with `bun test test/project/task-defaults.test.ts`; regenerate the SDK after changing its schemas.

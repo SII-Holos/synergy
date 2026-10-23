@@ -20,6 +20,7 @@ import { StorageBusyError, StorageClosedError } from "../../storage/errors"
 import { RolloutExecution } from "./execution"
 import { Bus } from "../../bus"
 import { SessionEvent } from "../event"
+import { ObservabilitySpans } from "../../observability/spans"
 
 export namespace RolloutLifecycle {
   export function owner(session: Session.Info): RolloutSchema.Owner {
@@ -30,32 +31,29 @@ export namespace RolloutLifecycle {
     if (!session.cortex) return undefined
     const source = await Session.get(session.cortex.parentSessionID)
     const messageID = session.cortex.parentMessageID
-    const message = await MessageV2.get({ sessionID: source.id, messageID }).catch((error) => {
-      if (error instanceof Storage.NotFoundError) return undefined
-      throw error
-    })
+    const message = await MessageV2.readInfo({ scopeID: source.scope.id, sessionID: source.id, messageID }).catch(
+      (error) => {
+        if (error instanceof Storage.NotFoundError) return undefined
+        throw error
+      },
+    )
     if (!message) return { owner: owner(source), runID: null, messageID }
-    const runID = message.info.rootID ?? (message.info.role === "user" ? message.info.id : message.info.parentID)
+    const runID = message.rootID ?? (message.role === "user" ? message.id : message.parentID)
     return { owner: owner(source), runID, messageID }
   }
 
   export async function start(session: Session.Info, root: MessageV2.User, parts: MessageV2.Part[]) {
-    const hash = new Bun.CryptoHasher("sha256")
-    let messages = 0
-    for await (const message of MessageV2.stream({ sessionID: session.id })) {
-      if (message.info.id === root.id) continue
-      hash.update(Experiment.fingerprint(message))
-      messages++
-    }
     const segment = await RolloutLedger.beginSegment({
       owner: owner(session),
       runID: root.id,
       input: JSON.parse(JSON.stringify({ message: root, parts })),
       parent: await parent(session),
-      initialHistory: { messages, sha256: hash.digest("hex") },
     })
     const { SessionFileChanges } = await import("../file-changes")
-    await SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id })
+    await ObservabilitySpans.measure(
+      { name: "session.prepare.file_baseline", module: "session", kind: "session", sessionID: session.id },
+      () => SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id }),
+    )
     await RolloutExecution.start(segment)
     return segment
   }
@@ -146,11 +144,11 @@ export namespace RolloutLifecycle {
 
   export async function cancel(sessionID: string, runID: string) {
     const stored = await Session.get(sessionID)
-    const root = await MessageV2.get({ sessionID, messageID: runID }).catch((error) => {
+    const root = await MessageV2.readInfo({ scopeID: stored.scope.id, sessionID, messageID: runID }).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
-    const session = SessionExecutionOwners.forRoot(stored, root?.info)
+    const session = SessionExecutionOwners.forRoot(stored, root)
     const identity = owner(session)
     let run = await RolloutLedger.requestCancel(identity, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -233,11 +231,11 @@ export namespace RolloutLifecycle {
   export async function reconcile(sessionID: string, runID: string, outcome?: "failed" | "cancelled") {
     using lock = await Lock.write(`session-rollout:${sessionID}:${runID}`)
     const stored = await Session.get(sessionID)
-    const root = await MessageV2.get({ sessionID, messageID: runID }).catch((error) => {
+    const root = await MessageV2.readInfo({ scopeID: stored.scope.id, sessionID, messageID: runID }).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
-    const session = SessionExecutionOwners.forRoot(stored, root?.info)
+    const session = SessionExecutionOwners.forRoot(stored, root)
     const identity = owner(session)
     const run = await RolloutLedger.getRun(identity, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
@@ -264,7 +262,7 @@ export namespace RolloutLifecycle {
       (await SessionInbox.list(sessionID)).some((item) => item.mode === "steer" && item.status !== "failed")
     )
       return run
-    const messages = await SessionHistory.messages({ sessionID })
+    const messages = (await SessionHistory.effectiveMessageInfos(session)).map((info) => ({ info }))
     const terminal = SessionProgress.findTerminalReply(messages, runID)
     const latestRoot = messages.findLast((message) => message.info.role === "user" && message.info.isRoot)
     const answeredLater =

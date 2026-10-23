@@ -5,6 +5,7 @@ import { chromium, type Browser, type Page } from "playwright"
 import { build, preview, type InlineConfig, type PreviewServer } from "vite"
 import solid from "vite-plugin-solid"
 import tailwind from "@tailwindcss/vite"
+import { lingui } from "@lingui/vite-plugin"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import type { FileDiff, ReviewStateValue } from "@ericsanchezok/synergy-sdk/client"
 
@@ -21,6 +22,8 @@ let comparisonRows = rows()
 let failing = false
 let release: (() => void) | undefined
 let hold = false
+let holdFiles = false
+const fileReleases = new Set<() => void>()
 let reads = 0
 let compared: { from?: string; to?: string } = {}
 let fixture: string
@@ -46,35 +49,46 @@ beforeAll(async () => {
     export const switchSession=()=>setId("second")
     export const useParams=()=>({get id(){return id()}})
     export const useSDK=()=>({url:location.origin,scopeKey:"scope",client,event:{on:()=>()=>{}}})
-    export const useFile=()=>({workspace:{...${JSON.stringify(workspace)},path:"/review"},openWorkspaceFile:()=>{}})
+    export const openedFiles: string[]=[]
+    export const useFile=()=>({workspace:{...${JSON.stringify(workspace)},path:"/review"},openWorkspaceFile:(file:string)=>{openedFiles.push(file)}})
     export const useSync=()=>({session:{get:()=>undefined}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>[]})
-    export const useFileRestore=()=>()=>{}
+    export const restores: unknown[]=[]
+    export const useFileRestore=()=>(selection:unknown)=>restores.push(selection)
   `,
   )
   await Bun.write(
     path.join(fixture, "main.tsx"),
     `import {render} from "solid-js/web"
-    import {ErrorBoundary,Suspense} from "solid-js"
+    import {createSignal,ErrorBoundary,Suspense} from "solid-js"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
     import {ThemeProvider,useTheme} from "@ericsanchezok/synergy-ui/theme"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
+    import {ViewActivityProvider} from "@ericsanchezok/synergy-ui/context/view-activity"
     import {ensureSynergyHighlightTheme} from "@ericsanchezok/synergy-ui/context/marked"
     import {ReviewPanel} from ${JSON.stringify(`/@fs/${appSrc}/components/workspace/review-panel.tsx`)}
+    import {messages as en} from ${JSON.stringify(`/@fs/${appSrc}/locales/en/messages.po`)}
+    import {messages as zh} from ${JSON.stringify(`/@fs/${appSrc}/locales/zh-CN/messages.po`)}
+    import {messages as pseudo} from ${JSON.stringify(`/@fs/${appSrc}/locales/pseudo/messages.po`)}
+    import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
-    import {switchSession} from "./contexts"
-    const i18n=setupI18n({locale:"en",messages:{en:{}}})
+    import {openedFiles,restores,switchSession} from "./contexts"
+    const i18n=setupI18n({locale:"en",messages:{en,"zh-CN":zh,pseudo}})
     function App(){
       const theme=useTheme()
-      window.fixture={switchSession,theme:theme.setColorScheme}
-      return <ErrorBoundary fallback={error=><p data-testid="fatal">{String(error)}</p>}>
+      const [active,setActive]=createSignal(true)
+      window.fixture={openedFiles,restores,switchSession,theme:theme.setColorScheme,locale:(value)=>i18n.activate(value),active:setActive}
+      return <ViewActivityProvider active={active}><ErrorBoundary fallback={error=><p data-testid="fatal">{String(error)}</p>}>
+
         <Suspense fallback={<p data-testid="suspended">Suspended</p>}>
           <ReviewPanel tab={{id:"review",kind:"review",title:"Review"}}/>
         </Suspense>
-      </ErrorBoundary>
+      </ErrorBoundary></ViewActivityProvider>
     }
-    ensureSynergyHighlightTheme().then(()=>render(()=><I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><App/></DialogProvider></ThemeProvider></I18nProvider>,document.getElementById("root")))
+    ensureSynergyHighlightTheme().then(()=>render(()=><MetaProvider><Font/><I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><App/></DialogProvider></ThemeProvider></I18nProvider></MetaProvider>,document.getElementById("root")))
     document.head.insertAdjacentHTML("beforeend","<style>html,body,#root{margin:0;width:100%;height:100%;overflow:hidden}</style>")
   `,
   )
@@ -90,6 +104,7 @@ beforeAll(async () => {
       { name: "fixture-files", resolveId: (id) => (id.startsWith("/@fs/") ? id.slice(4) : undefined) },
       solid(),
       tailwind(),
+      ...lingui(),
       {
         name: "review-api-fixture",
         configurePreviewServer(vite) {
@@ -119,6 +134,10 @@ beforeAll(async () => {
               value = { revision: 1, state }
             } else if (url.pathname.endsWith("/files/versions")) {
               reads++
+              if (holdFiles)
+                await new Promise<void>((resolve) => {
+                  fileReleases.add(resolve)
+                })
               const before =
                 url.searchParams.get("file") === "huge.ts"
                   ? Array.from({ length: 20_000 }, (_, index) => `export const row${index} = ${index}\n`).join("")
@@ -194,6 +213,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   release?.()
+  for (const resolve of fileReleases) resolve()
   await browser?.close()
   if (server)
     await new Promise<void>((resolve, reject) =>
@@ -202,7 +222,10 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-async function mount(input = rows()) {
+async function mount(input = rows(), pendingFiles = false) {
+  for (const resolve of fileReleases) resolve()
+  fileReleases.clear()
+  holdFiles = pendingFiles
   comparisonRows = input
   state = { version: 1, viewed: {}, comments: [] }
   failing = false
@@ -220,8 +243,113 @@ async function mount(input = rows()) {
         { cause },
       )
     })
-  await page.getByRole("button", { name: "Select line 2 in after", exact: true }).first().waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  if (!pendingFiles) await page.getByRole("button", { name: "Select line 2 in after", exact: true }).first().waitFor()
 }
+
+test("loading glyphs rotate around their visible center and respect reduced motion", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  await mount(rows(), true)
+  const spinner = page.locator(".review-file-status .review-loading-icon").first()
+  await spinner.waitFor()
+  const centers = await spinner.evaluate((element) => {
+    const animation = element.getAnimations()[0]!
+    animation.pause()
+    return [0, 250, 500, 750].map((time) => {
+      animation.currentTime = time
+      const glyph = element.querySelector("svg")!.getBoundingClientRect()
+      return { x: glyph.x + glyph.width / 2, y: glyph.y + glyph.height / 2 }
+    })
+  })
+  expect(Math.max(...centers.map(({ x }) => x)) - Math.min(...centers.map(({ x }) => x))).toBeLessThan(0.5)
+  expect(Math.max(...centers.map(({ y }) => y)) - Math.min(...centers.map(({ y }) => y))).toBeLessThan(0.5)
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  expect(await spinner.evaluate((element) => element.getAnimations().length)).toBe(0)
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+})
+
+test("short navigation popovers keep search fixed while the virtual list owns scrolling", async () => {
+  const many = Array.from({ length: 100 }, (_, index) => ({ ...rows()[0]!, file: `file-${index}.ts` }))
+  for (const height of [320, 260]) {
+    await page.setViewportSize({ width: 700, height })
+    await mount(many)
+    for (const name of ["Show files", "Jump to file"]) {
+      await page.getByRole("button", { name, exact: true }).click()
+      const popup = page.locator('.review-popover[data-component="popover-content"]')
+      const input = popup.locator("input")
+      await input.waitFor()
+      await popup.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+      const top = (await input.boundingBox())!.y
+      const list = popup.getByRole(name === "Show files" ? "tree" : "listbox")
+      if (name === "Show files") await list.getByRole("treeitem").first().focus()
+      else await input.focus()
+      await page.keyboard.press("End")
+      await page
+        .waitForFunction(() => {
+          const popup = document.querySelector('.review-popover[data-component="popover-content"]')!
+          const input = popup.querySelector("input")!
+          const active = input.getAttribute("aria-activedescendant")
+          const item = active ? document.getElementById(active) : popup.querySelector('[role="treeitem"]:focus')
+          if (!item?.textContent?.includes("file-99.ts")) return false
+          const list = popup.querySelector('[role="tree"], [role="listbox"]')!.getBoundingClientRect()
+          const bounds = item.getBoundingClientRect()
+          return bounds.top >= list.top - 1 && bounds.bottom <= list.bottom + 1
+        })
+        .catch(async (cause) => {
+          throw new Error(
+            JSON.stringify({
+              name,
+              height,
+              geometry: await list.evaluate((element) => ({
+                top: element.getBoundingClientRect().top,
+                height: element.clientHeight,
+                scrollHeight: element.scrollHeight,
+                scrollTop: element.scrollTop,
+                active: document.activeElement?.outerHTML,
+                options: [...element.querySelectorAll('[aria-selected="true"]')].map((item) => ({
+                  text: item.textContent,
+                  top: item.getBoundingClientRect().top,
+                })),
+              })),
+            }),
+            { cause },
+          )
+        })
+      const geometry = await popup.evaluate((element) => {
+        const list = element.querySelector('[role="tree"], [role="listbox"]')!
+        const input = element.querySelector("input")!
+        const active = input.getAttribute("aria-activedescendant")
+        const item = active ? document.getElementById(active)! : list.querySelector('[role="treeitem"]:focus')!
+        const bounds = list.getBoundingClientRect()
+        const target = item.getBoundingClientRect()
+        return {
+          outer: [
+            ...element.querySelectorAll<HTMLElement>(
+              '[data-slot="popover-body"], .review-navigation, .review-file-picker',
+            ),
+          ].map((node) => node.scrollHeight - node.clientHeight),
+          bottom: element.getBoundingClientRect().bottom,
+          itemTop: target.top - bounds.top,
+          itemBottom: target.bottom - bounds.bottom,
+        }
+      })
+      expect(geometry.outer.every((overflow) => overflow <= 1)).toBe(true)
+      expect(geometry.bottom).toBeLessThanOrEqual(height)
+      expect(geometry.itemTop).toBeGreaterThanOrEqual(-1)
+      expect(geometry.itemBottom).toBeLessThanOrEqual(1)
+      expect(Math.abs((await input.boundingBox())!.y - top)).toBeLessThanOrEqual(1)
+      await input.fill("no-matching-file")
+      const empty = popup.getByRole("status")
+      await empty.waitFor()
+      const emptyBounds = (await empty.boundingBox())!
+      expect(emptyBounds.y + emptyBounds.height).toBeLessThanOrEqual(height)
+      await page.keyboard.press("Escape")
+      await popup.waitFor({ state: "hidden" })
+    }
+  }
+  await page.setViewportSize({ width: 1100, height: 850 })
+}, 30_000)
 
 test("jump search locates a file without filtering the diff or evicting loaded content", async () => {
   await mount()
@@ -475,12 +603,21 @@ test("late comparison responses cannot repopulate another session's empty review
 })
 
 test("initial loading and failure keep reading controls available for an explicit retry", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
   comparisonRows = rows()
   hold = true
   failing = false
   errors.length = 0
   await page.goto(base)
   await page.getByRole("status").getByText("Loading comparison…", { exact: true }).waitFor()
+  await page.locator("#root").evaluate((element) => (element.style.height = "120px"))
+  const clipped = await page.locator(".review-content").evaluate((element) => {
+    const content = element.getBoundingClientRect()
+    const state = element.querySelector(".review-state")!.getBoundingClientRect()
+    return state.top < content.top || state.bottom > content.bottom
+  })
+  expect(clipped).toBe(false)
+  await page.locator("#root").evaluate((element) => (element.style.height = "100%"))
   expect(await page.getByRole("button", { name: "Wrap lines", exact: true }).isEnabled()).toBe(true)
   expect(await page.getByRole("button", { name: "Jump to file", exact: true }).isEnabled()).toBe(false)
   failing = true
@@ -580,7 +717,8 @@ test("global commands dismiss their menu while advanced toggles remain available
 
 test("file headers respond to native folding, version and menu actions", async () => {
   await mount()
-  const toggle = page.getByRole("button", { name: "src/first.ts", exact: true })
+  await page.addStyleTag({ content: '[role="menu"][data-closed] { animation-duration: 1s; }' })
+  const toggle = page.getByRole("button", { name: "src/first.ts", exact: true, includeHidden: true })
   const header = page.locator(".review-file-header").filter({ has: toggle })
   await toggle.click()
   expect(await toggle.getAttribute("aria-expanded")).toBe("false")
@@ -590,12 +728,171 @@ test("file headers respond to native folding, version and menu actions", async (
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
   await page.keyboard.press("Escape")
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
-  await header.getByRole("button", { name: "File options", exact: true }).click()
-  await page.getByRole("button", { name: "Copy path", exact: true }).waitFor()
+  const options = header.getByRole("button", { name: "File options", exact: true, includeHidden: true })
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+  await options.click()
+  const copy = page.getByText("Copy path", { exact: true })
+  await copy.click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("src/first.ts")
+  await copy.waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+  await options.press("ArrowDown")
+  await page.waitForFunction(() => document.activeElement?.textContent === "Copy path")
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("Enter")
+  await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
+  expect(await options.getAttribute("aria-expanded")).toBe("false")
   await page.keyboard.press("Escape")
+  await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+  await options.press("ArrowUp")
+  await page.waitForFunction(() => document.activeElement?.textContent === "Undo this file")
+  await page.keyboard.press("Enter")
+  await page.getByRole("menu", { name: "File options", exact: true }).waitFor({ state: "hidden" })
+  expect(
+    await page.evaluate(() => (window as unknown as { fixture: { restores: unknown[] } }).fixture.restores),
+  ).toEqual([
+    { selectedFiles: [{ workspaceID: workspace.id, generation: workspace.generation, file: "src/first.ts" }] },
+  ])
+
   await header.locator('[data-slot="checkbox-checkbox-control"]').click()
   await header.locator('[data-component="checkbox"][data-checked]').waitFor()
   expect(await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).isChecked()).toBe(true)
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("short version dialogs keep version controls reachable with one content scroller", async () => {
+  await page.setViewportSize({ width: 700, height: 320 })
+  await mount([{ ...rows()[0]!, file: "huge.ts" }])
+  await page.getByRole("button", { name: "File versions", exact: true }).first().click()
+  const dialog = page.getByRole("dialog", { name: "huge.ts", exact: true })
+  await dialog.waitFor()
+  await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+  const geometry = await dialog.evaluate((element) => {
+    const body = element.querySelector('[data-slot="dialog-body"]')!
+    const controls = element.querySelector(".review-version-controls")!.getBoundingClientRect()
+    const bounds = element.getBoundingClientRect()
+    return {
+      overflow: body.scrollHeight - body.clientHeight,
+      top: bounds.top,
+      bottom: bounds.bottom,
+      controls: controls.top,
+    }
+  })
+  expect(geometry.overflow).toBeLessThanOrEqual(1)
+  expect(geometry.top).toBeGreaterThanOrEqual(0)
+  expect(geometry.bottom).toBeLessThanOrEqual(320)
+  await dialog.locator(".review-version-content").focus()
+  await page.keyboard.press("End")
+  await page.waitForFunction(() => document.querySelector(".review-version-content")!.scrollTop > 0)
+  expect(
+    Math.abs((await dialog.locator(".review-version-controls").boundingBox())!.y - geometry.controls),
+  ).toBeLessThanOrEqual(1)
+  await dialog.getByRole("button", { name: "Close dialog", exact: true }).click()
+  await dialog.waitFor({ state: "hidden" })
+  await page.setViewportSize({ width: 1100, height: 850 })
+})
+
+test("file headers adapt to the reading width with both directory and comments open", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await mount()
+  await page.locator("#root").evaluate((element) => (element.style.width = "800px"))
+  await page.getByRole("button", { name: "Review options", exact: true }).click()
+  await page.getByRole("button", { name: "Review comments", exact: true }).click()
+  await page.getByRole("complementary", { name: "Review comments", exact: true }).waitFor()
+  const header = page.locator(".review-file-header").first()
+  const geometry = await header.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return {
+      clipped: [...element.querySelectorAll<HTMLElement>('button, [data-component="checkbox"]')]
+        .filter((item) => item.checkVisibility())
+        .some((item) => item.getBoundingClientRect().right > bounds.right),
+      name: element.querySelector(".review-file-basename")!.getBoundingClientRect().width,
+    }
+  })
+  expect(geometry.clipped).toBe(false)
+  expect(geometry.name).toBeGreaterThan(40)
+  await header.getByRole("button", { name: "File options", exact: true }).click()
+  const menu = page.getByRole("menu", { name: "File options", exact: true })
+  await menu.getByRole("menuitem", { name: "Open current file", exact: true }).click()
+  await menu.waitFor({ state: "hidden" })
+  expect(
+    await page.evaluate(() => (window as unknown as { fixture: { openedFiles: string[] } }).fixture.openedFiles),
+  ).toEqual(["src/first.ts"])
+  await header.getByRole("button", { name: "File options", exact: true }).click()
+  await menu.getByRole("menuitem", { name: "File versions", exact: true }).click()
+  await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+})
+
+test("file actions share choice-menu styling without preselecting a pointer-opened action", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await mount()
+  const options = page.getByRole("button", { name: "File options", exact: true }).first()
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(
+      (theme) => (window as unknown as { fixture: { theme(value: string): void } }).fixture.theme(theme),
+      theme,
+    )
+    await page.getByRole("button", { name: /^Diff layout:/ }).click()
+    const choice = page.getByRole("option", { name: "Unified", exact: true })
+    await choice.waitFor()
+    const appearance = await choice.evaluate((element) => {
+      const style = getComputedStyle(element)
+      return [style.minHeight, style.padding, style.borderRadius, style.fontSize, style.fontWeight]
+    })
+    await page.keyboard.press("Escape")
+    await choice.waitFor({ state: "hidden" })
+    await options.click()
+    const copy = page.getByText("Copy path", { exact: true })
+    await copy.waitFor()
+    await page.mouse.move(0, 0)
+    expect(await copy.evaluate((element) => document.activeElement === element)).toBe(false)
+    expect(
+      await copy.evaluate((element) => {
+        const style = getComputedStyle(element)
+        return [style.minHeight, style.padding, style.borderRadius, style.fontSize, style.fontWeight]
+      }),
+    ).toEqual(appearance)
+    expect(await copy.getAttribute("data-highlighted")).toBeNull()
+    expect(await page.getByRole("menu", { name: "File options", exact: true }).isVisible()).toBe(true)
+    await page.keyboard.press("Escape")
+    await copy.waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+  }
+  expect(errors).toEqual([])
+})
+
+test("file menus close with their view and preserve focus outside the menu", async () => {
+  await mount()
+  const options = page.getByRole("button", { name: "File options", exact: true }).first()
+  const menu = page.getByRole("menu", { name: "File options", exact: true })
+  const focusedMenu = () => page.waitForFunction(() => document.activeElement?.getAttribute("role") === "menu")
+  await options.click()
+  await menu.waitFor()
+  await focusedMenu()
+  const refresh = page.getByRole("button", { name: "Refresh comparison", exact: true })
+  await refresh.focus()
+  await menu.waitFor({ state: "hidden" })
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("Refresh comparison")
+  await options.click()
+  await menu.waitFor()
+  await focusedMenu()
+  await page.evaluate(() => (window as unknown as { fixture: { active(value: boolean): void } }).fixture.active(false))
+  await refresh.focus()
+  await menu.waitFor({ state: "hidden" })
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  expect(await refresh.evaluate((element) => document.activeElement === element)).toBe(true)
+  await page.evaluate(() => (window as unknown as { fixture: { active(value: boolean): void } }).fixture.active(true))
+  expect(await menu.count()).toBe(0)
+  await options.click()
+  await menu.waitFor()
+  await focusedMenu()
+  await page.evaluate(() => (window as unknown as { fixture: { switchSession(): void } }).fixture.switchSession())
+  await menu.waitFor({ state: "hidden" })
   expect(errors).toEqual([])
 }, 30_000)
 
@@ -638,16 +935,90 @@ test("compact touch controls fit phone panes and keep refresh and fold reachable
       expect(disclosure && disclosure.height >= 44).toBe(true)
       const target = await viewed.boundingBox()
       expect(target && target.width >= 44 && target.height >= 44).toBe(true)
+      const geometry = await header.evaluate((element) => {
+        const bounds = element.getBoundingClientRect()
+        const targets = [...element.querySelectorAll<HTMLElement>('button, [data-component="checkbox"]')]
+          .filter((item) => item.checkVisibility())
+          .map((item) => item.getBoundingClientRect())
+        return {
+          clipped: targets.some(
+            (item) =>
+              item.left < bounds.left ||
+              item.right > bounds.right ||
+              item.top < bounds.top ||
+              item.bottom > bounds.bottom,
+          ),
+          name: element.querySelector(".review-file-basename")!.getBoundingClientRect().width,
+        }
+      })
+      expect(geometry.clipped).toBe(false)
+      expect(geometry.name).toBeGreaterThan(40)
       await viewed.tap({ position: { x: 3, y: 22 } })
       await header.locator('[data-component="checkbox"][data-checked]').waitFor()
       expect(await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).isChecked()).toBe(true)
       await header.getByRole("checkbox", { name: "Mark as viewed", exact: true }).press("Space")
       await header.locator('[data-component="checkbox"]:not([data-checked])').waitFor()
+      await header.getByRole("button", { name: "File options", exact: true }).tap()
+      const fileMenu = page.getByRole("menu", { name: "File options", exact: true })
+      await fileMenu.waitFor()
+      await fileMenu.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+      const menuBox = await fileMenu.boundingBox()
+      expect(menuBox && menuBox.x >= 0 && menuBox.x + menuBox.width <= width).toBe(true)
+      expect(
+        await fileMenu
+          .getByRole("menuitem")
+          .evaluateAll((items) => items.every((item) => item.getBoundingClientRect().height >= 44)),
+      ).toBe(true)
+      const versions = fileMenu.getByRole("menuitem", { name: "File versions", exact: true })
+      await versions.tap()
+      await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
+      await fileMenu.waitFor({ state: "hidden" })
+      await page.keyboard.press("Escape")
+      await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
     }
     expect(errors).toEqual([])
   } finally {
     await page.close()
     page = desktop
+  }
+})
+
+test("localized pending file headers retain names and actions in narrow reading panes", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
+  await mount([{ ...rows()[0]!, file: "src/components/a-long-component-filename.tsx" }], true)
+  for (const locale of ["en", "zh-CN", "pseudo"]) {
+    for (const theme of ["light", "dark"]) {
+      await page.evaluate(
+        ({ locale, theme }) => {
+          const fixture = (
+            window as unknown as { fixture: { locale(value: string): void; theme(value: string): void } }
+          ).fixture
+          fixture.locale(locale)
+          fixture.theme(theme)
+        },
+        { locale, theme },
+      )
+      for (const width of [320, 375, 800]) {
+        await page.locator("#root").evaluate((element, width) => (element.style.width = `${width}px`), width)
+        const geometry = await page
+          .locator(".review-file-header")
+          .first()
+          .evaluate((element) => {
+            const bounds = element.getBoundingClientRect()
+            const buttons = [...element.querySelectorAll<HTMLButtonElement>("button")].filter((item) =>
+              item.checkVisibility(),
+            )
+            return {
+              clipped: buttons.some((item) => item.getBoundingClientRect().right > bounds.right),
+              named: buttons.every((button) => !!button.getAttribute("aria-label")),
+              name: element.querySelector(".review-file-basename")!.getBoundingClientRect().width,
+            }
+          })
+        expect(geometry.clipped).toBe(false)
+        expect(geometry.named).toBe(true)
+        expect(geometry.name).toBeGreaterThan(40)
+      }
+    }
   }
 })
 
@@ -735,12 +1106,52 @@ test("large file collections bound jump options and navigate to a distant file",
   await page.getByRole("button", { name: "src/long-directory/file-4999.ts", exact: true }).waitFor()
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Jump to file")
   expect(await page.locator(".review-file-toggle").count()).toBeLessThan(60)
+  await page.getByRole("button", { name: "Show files", exact: true }).click()
+  const popupTree = page.getByRole("tree", { name: "Files", exact: true })
+  await popupTree.waitFor()
+  const popupBounds = (await page.locator(".review-files-popover").boundingBox())!
+  expect(popupBounds.y).toBeGreaterThanOrEqual(0)
+  expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(850)
+  await popupTree.getByRole("treeitem").first().press("End")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("title") === "src/long-directory/file-4999.ts")
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Show files")
   await page.setViewportSize({ width: 1100, height: 850 })
-  const tree = page.getByRole("tree", { name: "Files", exact: true })
+  const sidebar = page.getByRole("complementary", { name: "Files", exact: true })
+  const tree = sidebar.getByRole("tree", { name: "Files", exact: true })
   await tree.waitFor()
+  for (const height of [780, 500]) {
+    await page.locator("#root").evaluate((element, height) => (element.style.height = `${height}px`), height)
+    const geometry = await sidebar.evaluate((element) => {
+      const navigation = element.querySelector<HTMLElement>(".review-navigation")!
+      const tree = element.querySelector<HTMLElement>('[role="tree"]')!
+      return {
+        availableBottom:
+          element.getBoundingClientRect().bottom - parseFloat(getComputedStyle(navigation).paddingBottom),
+        treeBottom: tree.getBoundingClientRect().bottom,
+        sidebarOverflow: element.scrollHeight - element.clientHeight,
+        navigationOverflow: navigation.scrollHeight - navigation.clientHeight,
+      }
+    })
+    expect(Math.abs(geometry.treeBottom - geometry.availableBottom)).toBeLessThanOrEqual(1)
+    expect(geometry.sidebarOverflow).toBe(0)
+    expect(geometry.navigationOverflow).toBe(0)
+  }
   expect(await tree.getByRole("treeitem").count()).toBeLessThan(80)
+  const filter = sidebar.getByRole("textbox", { name: "Filter files…", exact: true })
+  const filterTop = (await filter.boundingBox())!.y
   await tree.getByRole("treeitem").first().press("End")
   await page.waitForFunction(() => document.activeElement?.getAttribute("title") === "src/long-directory/file-4999.ts")
+  const focused = await tree.evaluate((element) => {
+    const row = element.querySelector<HTMLElement>('[role="treeitem"]:focus')!
+    return { tree: element.getBoundingClientRect().toJSON(), row: row.getBoundingClientRect().toJSON() }
+  })
+  expect(focused.row.y).toBeGreaterThanOrEqual(focused.tree.y)
+  expect(focused.row.bottom).toBeLessThanOrEqual(focused.tree.bottom)
+  expect((await filter.boundingBox())!.y).toBe(filterTop)
+  await filter.fill("file-4999.ts")
+  await tree.getByRole("treeitem", { name: /file-4999/ }).waitFor()
+  expect((await filter.boundingBox())!.y).toBe(filterTop)
   expect(errors).toEqual([])
 }, 30_000)
 

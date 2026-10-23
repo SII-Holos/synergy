@@ -1,4 +1,6 @@
 import { registerLocalEvents } from "./register-events"
+import { WorkspaceObservation } from "@ericsanchezok/synergy-harness/workspace/observation"
+import { FileWatcher } from "./file/watcher"
 import { registerHarness } from "@ericsanchezok/synergy-harness/lifecycle"
 import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 import { Command } from "./command/command"
@@ -34,6 +36,7 @@ export function registerLocalRuntime(
   if (state.complete) return
   registerHarness()
   registerLocalEvents()
+  WorkspaceObservation.register(() => FileWatcher.observe())
   registerConfig()
   registerLocalSandboxHelper()
   registerLocalNativeRuntime()

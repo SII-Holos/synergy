@@ -1,3 +1,4 @@
+import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { ProjectionPatch } from "@ericsanchezok/synergy-util/projection-patch"
 import { projectionContent } from "./projection-content"
 import {
@@ -578,7 +579,7 @@ export namespace Server {
     return [
       ...new Set(
         [...runtimeState().contributionOwners].flatMap(([owner, contribution]) =>
-          selected.has(owner) ? (contribution.features ?? []) : [],
+          selected.has(owner) ? (contribution.features ?? []).filter((id) => Features.enabled(id)) : [],
         ),
       ),
     ].sort()
@@ -875,6 +876,38 @@ export namespace Server {
       .use(provideRequestScope)
       .use(cspMiddleware())
       .get(
+        "/global/features",
+        describeRoute({
+          summary: "Get feature catalog",
+          description:
+            "List feature declarations, saved opt-ins, active state and restart requirements for this instance.",
+          operationId: "global.features",
+          responses: {
+            200: {
+              description: "Runtime feature catalog",
+              content: { "application/json": { schema: resolver(z.array(Features.Status)) } },
+            },
+            503: {
+              description: "Runtime services are still starting or shutting down",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.union([
+                      z.object({ error: z.string() }).meta({ ref: "RuntimeNotReadyError" }),
+                      RuntimeShuttingDownError,
+                    ]),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          if (!RuntimeContext.isReady()) return c.json({ error: "Runtime services are not ready" }, 503)
+          return c.json(Features.catalog((await Config.global()).features?.optIn ?? []))
+        },
+      )
+      .get(
         "/global/capabilities",
         describeRoute({
           summary: "Get runtime capabilities",
@@ -894,7 +927,11 @@ export namespace Server {
                         components: z.array(RuntimeComponents.Info),
                         features: z.array(z.string()),
                         transports: z
-                          .object({ displayManifest: z.literal(1), projection: z.literal("projection-v2").optional() })
+                          .object({
+                            displayManifest: z.literal(1),
+                            projection: z.literal("projection-v2").optional(),
+                            viewDemand: z.literal(1).optional(),
+                          })
                           .optional(),
                       })
                       .meta({ ref: "RuntimeCapabilities" }),
@@ -924,7 +961,7 @@ export namespace Server {
             hostVersion: Installation.VERSION,
             components: RuntimeComponents.selected(),
             features: features(),
-            transports: { displayManifest: 1 as const, projection: "projection-v2" as const },
+            transports: { displayManifest: 1 as const, projection: "projection-v2" as const, viewDemand: 1 as const },
           })
         },
       )

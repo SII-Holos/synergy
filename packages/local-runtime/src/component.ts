@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { RuntimeReload } from "./reload"
 import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/reload-executor"
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -12,6 +13,7 @@ import { registerLocalRuntime } from "./register"
 export function localRuntime(options: { workers?: boolean; environment?: boolean } = {}): RuntimeComponent {
   return {
     id: "local-runtime",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: {},

@@ -244,6 +244,8 @@ import type {
   GlobalCapabilitiesResponses,
   GlobalDisposeErrors,
   GlobalDisposeResponses,
+  GlobalFeaturesErrors,
+  GlobalFeaturesResponses,
   GlobalFilesystemBrowseErrors,
   GlobalFilesystemBrowseResponses,
   GlobalFilesystemDirectoriesErrors,
@@ -735,6 +737,8 @@ import type {
   SessionExecutionContextSnapshotResponses,
   SessionExecutionNodeErrors,
   SessionExecutionNodeResponses,
+  SessionExecutionProjectionErrors,
+  SessionExecutionProjectionResponses,
   SessionExecutionSummaryErrors,
   SessionExecutionSummaryResponses,
   SessionExecutionTrajectoryErrors,
@@ -744,10 +748,16 @@ import type {
   SessionExportEstimateErrors,
   SessionExportEstimateResponses,
   SessionExportMode,
+  SessionFilesComparisonErrors,
+  SessionFilesComparisonResponses,
+  SessionFilesCurrentErrors,
+  SessionFilesCurrentResponses,
   SessionFilesDiffErrors,
   SessionFilesDiffResponses,
   SessionFilesPreviewErrors,
   SessionFilesPreviewResponses,
+  SessionFilesReleaseErrors,
+  SessionFilesReleaseResponses,
   SessionFilesRestoreErrors,
   SessionFilesRestoreResponses,
   SessionFilesVersionsErrors,
@@ -1918,6 +1928,110 @@ export class Files extends HeyApiClient {
   }
 
   /**
+   * Read the current turn file summary
+   */
+  public current<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionFilesCurrentResponses, SessionFilesCurrentErrors, ThrowOnError>({
+      url: "/session/{sessionID}/files/current",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Acquire an immutable turn comparison
+   */
+  public comparison<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageID: string
+      revision?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "messageID" },
+            { in: "query", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionFilesComparisonResponses,
+      SessionFilesComparisonErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/files/comparison",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Release a turn comparison reader
+   */
+  public release<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      revision: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "revision" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SessionFilesReleaseResponses,
+      SessionFilesReleaseErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/files/comparison/{revision}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Read a historical file diff
    *
    * Read captured file versions for a turn or session without reading the current workspace.
@@ -1931,6 +2045,7 @@ export class Files extends HeyApiClient {
       workspaceID: string
       generation: number
       file: string
+      revision?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1946,6 +2061,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "workspaceID" },
             { in: "query", key: "generation" },
             { in: "query", key: "file" },
+            { in: "query", key: "revision" },
           ],
         },
       ],
@@ -1969,6 +2085,7 @@ export class Files extends HeyApiClient {
       workspaceID: string
       generation: number
       file: string
+      revision?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1984,6 +2101,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "workspaceID" },
             { in: "query", key: "generation" },
             { in: "query", key: "file" },
+            { in: "query", key: "revision" },
           ],
         },
       ],
@@ -2867,6 +2985,42 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
       url: "/session/{sessionID}/agenda",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a captured execution projection
+   */
+  public executionProjection<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      token: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "token" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionProjectionResponses,
+      SessionExecutionProjectionErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/projection",
       ...options,
       ...params,
     })
@@ -4198,13 +4352,15 @@ export class Session extends HeyApiClient {
   /**
    * Continue a paused session
    *
-   * Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.
+   * Persist one recovery request for the current task, preserving prior failures. Returns after admission without waiting for model execution. Request identity and the observed pause protect duplicate and stale actions.
    */
   public continue<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
       scopeID?: string
+      requestID?: string
+      pausedSince?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4216,6 +4372,8 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "requestID" },
+            { in: "body", key: "pausedSince" },
           ],
         },
       ],
@@ -4224,6 +4382,11 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/continue",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -5775,6 +5938,18 @@ export class Nav extends HeyApiClient {
 }
 
 export class Global extends HeyApiClient {
+  /**
+   * Get feature catalog
+   *
+   * List feature declarations, saved opt-ins, active state and restart requirements for this instance.
+   */
+  public features<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalFeaturesResponses, GlobalFeaturesErrors, ThrowOnError>({
+      url: "/global/features",
+      ...options,
+    })
+  }
+
   /**
    * Get runtime capabilities
    *
@@ -8762,6 +8937,7 @@ export class Domain extends HeyApiClient {
   public get<ThrowOnError extends boolean = false>(
     parameters: {
       domain:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -8815,6 +8991,7 @@ export class Domain extends HeyApiClient {
   public update<ThrowOnError extends boolean = false>(
     parameters: {
       domain:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -8875,6 +9052,7 @@ export class Domain extends HeyApiClient {
   public open<ThrowOnError extends boolean = false>(
     parameters: {
       domain:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -9136,6 +9314,7 @@ export class Config extends HeyApiClient {
       scopeID?: string
       scope?: ConfigImportScope
       only?:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -9158,6 +9337,7 @@ export class Config extends HeyApiClient {
         | "mcp"
         | "voice"
         | Array<
+            | "features"
             | "general"
             | "models"
             | "providers"

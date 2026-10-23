@@ -46,7 +46,7 @@ if (mode === "blueprint") {
         (await import("@ericsanchezok/synergy-blueprint/component")).blueprint(),
       ],
     }),
-    /requires note/,
+    /Component is not installed: note/,
   )
   assert.equal(
     await fs.access(rejected).then(

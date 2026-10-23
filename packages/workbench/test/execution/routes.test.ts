@@ -21,6 +21,33 @@ const runtime = await testRuntime()
 afterAll(() => runtime.close())
 const app = new Hono().route("/session", ExecutionRoute())
 
+test("execution message nodes preserve compact titles without changing their original content", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const message = (await Session.messages({ sessionID: session.id })).find(
+        (item) => item.info.role === "assistant",
+      )!.info
+      const partID = Identifier.ascending("part")
+      const text = "  汉字\t\n" + "x".repeat(234) + "😀" + "suffix".repeat(1000)
+      const expected = text.replace(/\s+/g, " ").slice(0, 240)
+      await Session.updatePart({
+        id: partID,
+        sessionID: session.id,
+        messageID: message.id,
+        type: "text",
+        text,
+      })
+      const response = await app.request(`/session/${session.id}/execution/trajectory?mode=records&kind=output`)
+      expect(response.status).toBe(200)
+      const page = ExecutionSchema.Page.parse(await response.json())
+      const node = page.items.find((item) => item.messageID === message.id && item.preview === expected)
+      expect(node?.title).toBe(expected)
+      expect(node?.preview.length).toBe(240)
+      const stored = await MessageV2.get({ sessionID: session.id, messageID: message.id })
+      expect(stored.parts.find((part) => part.id === partID)).toMatchObject({ text })
+    }),
+  ))
+
 test("execution records remain readable while tool arguments are generating", () =>
   runtime.run(() =>
     fixture(async ({ session }) => {

@@ -142,14 +142,17 @@ export namespace RolloutLedger {
    * `recording` drops to `partial` because appending work genuinely invalidates
    * a previously complete recording.
    */
-  export async function resumeRun(owner: Owner, runID: string) {
+  export async function resumeRun(owner: Owner, runID: string, commit?: () => Promise<void>) {
     using lock = await writeLock(owner, runID)
     const run = await getRun(owner, runID).catch((error) => {
       if (error instanceof Storage.NotFoundError) return undefined
       throw error
     })
-    if (!run || run.recording === "failed" || run.status === "completed") return run
-    if (run.status === "running" && !run.cancelRequestedAt) return run
+    if (run?.recording === "failed" || run?.status === "completed") return run
+    if (!run || (run.status === "running" && !run.cancelRequestedAt)) {
+      if (commit) await Storage.transaction(commit)
+      return run
+    }
     const resumed = RolloutSchema.RunRecord.parse({
       ...run,
       ended: undefined,
@@ -158,7 +161,7 @@ export namespace RolloutLedger {
       cancelRequestedAt: undefined,
       execution: undefined,
     })
-    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], resumed))
+    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], resumed, commit))
     await SessionActivityEvent.execution(owner, runID)
     return resumed
   }
@@ -198,7 +201,6 @@ export namespace RolloutLedger {
     owner: Owner
     runID: string
     input: z.infer<ReturnType<typeof z.json>>
-    initialHistory?: RolloutSchema.RunRecord["initialHistory"]
     parent?: RolloutSchema.RunRecord["parent"]
   }) {
     using lock = await writeLock(input.owner, input.runID)
@@ -229,7 +231,6 @@ export namespace RolloutLedger {
           ...run,
           input: artifact,
           parent: input.parent,
-          initialHistory: input.initialHistory,
         }),
       )
     }

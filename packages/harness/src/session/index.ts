@@ -43,6 +43,7 @@ import { SessionHistory } from "./history"
 import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
 import { PartWriteBuffer } from "./part-write-buffer"
 import { PartContent } from "./part-content"
+import { SessionLastExchange } from "./last-exchange"
 import { SnapshotEvidence } from "./snapshot-evidence"
 import { SessionCompat } from "./compat-import"
 import { Config } from "../config/config"
@@ -832,7 +833,7 @@ export namespace Session {
         const messageMap = new Map(selected.map((msg) => [msg.info.id, Identifier.ascending("message")]))
         const prepared: MessageV2.WithParts[] = selected.map((msg) => ({
           info: {
-            ...msg.info,
+            ...SnapshotEvidence.portable(msg.info),
             ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
             sessionID,
             id: messageMap.get(msg.info.id)!,
@@ -1672,32 +1673,7 @@ export namespace Session {
   })
 
   export async function updateLastExchange(sessionID: string) {
-    await SessionCompat.requireImported(sessionID)
-    return Storage.transaction(async () => {
-      const session = await SessionManager.requireSession(sessionID)
-      const scopeID = asScopeID((session.scope as Scope).id)
-      const lastExchange: NonNullable<Info["lastExchange"]> = {}
-      const msgs = await SessionHistory.modelMessages({ sessionID })
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        const msg = msgs[i]
-        if (!lastExchange.assistant && msg.info.role === "assistant") {
-          const text = MessageV2.extractText(msg.parts, { maxLength: 200 })
-          if (text) lastExchange.assistant = text
-        }
-        if (!lastExchange.user && msg.info.role === "user") {
-          const text = MessageV2.extractText(msg.parts, { maxLength: 200 })
-          if (text) lastExchange.user = text
-        }
-        if (lastExchange.user && lastExchange.assistant) break
-      }
-      // Write lastExchange directly without bumping time.updated or republishing,
-      // since the caller (processor) already performs a proper Session.update().
-
-      const infoPath = StoragePath.sessionInfo(scopeID, asSessionID(sessionID))
-      await SessionRecords.update(infoPath, (draft) => {
-        draft.lastExchange = lastExchange
-      })
-    })
+    return SessionLastExchange.refresh(sessionID)
   }
 
   // A root user message written after a rollback invalidates redo, but that

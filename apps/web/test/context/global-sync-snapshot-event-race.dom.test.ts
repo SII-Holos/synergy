@@ -1,3 +1,4 @@
+import type { CurrentTurnChanges } from "@ericsanchezok/synergy-sdk/client"
 import { expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
@@ -10,6 +11,7 @@ type SnapshotVersion = { epoch: string; seq: number }
 type ScopeState = [
   {
     status: string
+    currentTurnChanges: Record<string, CurrentTurnChanges | undefined>
     session: Array<{ id: string; workspace?: { path: string; generation: number }; time?: { updated?: number } }>
     workspaces: Array<{ id: string; revision: number }>
     path: { workspace?: { path: string; generation: number } }
@@ -20,6 +22,7 @@ type ScopeState = [
 ]
 
 type ScopeApi = {
+  loadCurrentTurn(key: string, sessionID: string): Promise<void>
   retainScopeState(key: string): { state: ScopeState; release(): void }
   ensureScopeState(key: string): ScopeState
   peekScopeState(key: string): ScopeState | undefined
@@ -56,6 +59,8 @@ type Fixture = {
       key: string,
       events?: Array<{ type: string; properties: Record<string, unknown>; seq: number }>,
     ): void
+    waitForTurn(): Promise<void>
+    completeTurn(data: CurrentTurnChanges, version: SnapshotVersion): void
     holdStatuses(): void
     waitForStatusRequest(count?: number): Promise<void>
     completeStatuses(data: Record<string, unknown>, version: SnapshotVersion): void
@@ -77,6 +82,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     import { createSignal } from "solid-js"
     export const requests = []
     export const replays = []
+    export const turnRequests = []
     export const statusRequests = []
     let statusesHeld = false
     export const holdStatuses = () => { statusesHeld = true }
@@ -93,7 +99,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
         scope: { bootstrapCore: () => (options.scopeID === "home" || options.scopeID.startsWith("background.")) ? ok({scopeID:options.scopeID,provider:{all:[]},agent:[],config:{}}) : new Promise(resolve => requests.push({key:options.scopeID,resolve,done:false})) },
         permission: {list:()=>stamped(pending.get(options.scopeID)?.permissions??[])}, question: {list:()=>stamped(pending.get(options.scopeID)?.questions??[])},
         event:{replay:({since})=>new Promise(resolve=>replays.push({key:options.scopeID,since,resolve,done:false}))},
-        session:{list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
+        session:{files:{current:()=>new Promise(resolve=>turnRequests.push(resolve))},list:()=>ok({total:0,data:[]}),inbox:()=>ok([])},
       }
     }
     export const useGlobalSDK = () => ({capabilities:{load:async()=>{},has:()=>true,current:()=>({transports:{projection:"projection-v2"}})},prepareScopeState(){},connected,content:{active(){}},event:{listen:fn=>{listener=fn;return()=>{listener=undefined}}},url:'http://localhost/',client:{
@@ -121,7 +127,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     import { I18nProvider } from "@lingui/solid"
     import { setupI18n } from "@lingui/core"
     import { GlobalSyncProvider, useGlobalSync } from ${JSON.stringify(globalSync)}
-    import { requests, replays, emit, connect, setPending, statusRequests, holdStatuses } from ${JSON.stringify(stub)}
+    import { requests, replays, emit, connect, setPending, statusRequests, holdStatuses, turnRequests } from ${JSON.stringify(stub)}
     import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
     export function mount(root) {
       let api, ready
@@ -129,6 +135,8 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       function Child(){api=useGlobalSync();ready();return <div>ready</div>}
       const dispose=render(()=><I18nProvider i18n={setupI18n({locale:'en',messages:{en:{}}})}><GlobalSyncProvider><Child/></GlobalSyncProvider></I18nProvider>,root)
       return {started,dispose,emit,connect,setPending,holdStatuses,api:()=>api,
+        waitForTurn() {return new Promise(resolve=>{const check=()=>{if(turnRequests.length)return resolve();setTimeout(check,5)};check()})},
+        completeTurn(data,version) {const resolve=turnRequests.shift();if(!resolve)throw new Error("no pending turn snapshot");resolve({data,response:{headers:new Headers({"x-synergy-seq":String(version.seq),"x-synergy-epoch":version.epoch})}})},
         waitForStatusRequest(count = 1) {return new Promise(resolve=>{const check=()=>{if(statusRequests.length >= count)return resolve();setTimeout(check,5)};check()})},
         completeStatuses(data,version) {const resolve=statusRequests.shift();if(!resolve)throw new Error("no pending status snapshot");resolve({data,response:{headers:new Headers({"x-synergy-seq":String(version.seq),"x-synergy-epoch":version.epoch})}})},
         waitForReplay(key) {return new Promise(resolve=>{const check=()=>{if(replays.some(r=>!r.done&&r.key===key))return resolve();setTimeout(check,5)};check()})},
@@ -202,6 +210,100 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
     try {
       await h.started
       const api = h.api()
+
+      const live = api.retainScopeState("live-scope")
+      await h.waitForRequest("live-scope")
+      h.complete(
+        "live-scope",
+        { scopeID: "live-scope", provider: { all: [] }, agent: [], config: {}, sessions: { data: [], total: 0 } },
+        { epoch: "test-epoch", seq: 0 },
+      )
+      await h.waitComplete(live.state)
+      const current = api.loadCurrentTurn("live-scope", "live-session")
+      await h.waitForTurn()
+      const root = {
+        id: "root-new",
+        sessionID: "live-session",
+        role: "user",
+        isRoot: true,
+        time: { created: 20 },
+        agent: "test",
+        model: { providerID: "test", modelID: "test" },
+        summary: { diffs: [], diffState: { status: "live" }, diffTotals: { files: 300, additions: 900, deletions: 1 } },
+      }
+      h.emit("live-scope", 1, "message.updated", { info: root })
+      expect(live.state[0].currentTurnChanges["live-session"]?.summary?.diffTotals?.files).toBe(300)
+      h.completeTurn({ rootID: "root-old", createdAt: 10, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 0 })
+      await current
+      expect(live.state[0].currentTurnChanges["live-session"]?.rootID).toBe("root-new")
+      h.emit("live-scope", 2, "message.updated", {
+        info: { ...root, id: "non-root", isRoot: false, time: { created: 30 } },
+      })
+      h.emit("live-scope", 3, "message.updated", { info: { ...root, id: "root-old", time: { created: 10 } } })
+      expect(live.state[0].currentTurnChanges["live-session"]?.rootID).toBe("root-new")
+      const staleTurn = api.loadCurrentTurn("live-scope", "live-session")
+      await h.waitForTurn()
+      h.emit("live-scope", 4, "message.removed", { sessionID: "live-session", messageID: "root-new" })
+      h.completeTurn({ rootID: "root-new", createdAt: 20, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 3 })
+      await staleTurn
+      await h.waitForTurn()
+      h.completeTurn(null, { epoch: "test-epoch", seq: 4 })
+      await api.loadCurrentTurn("live-scope", "live-session")
+      expect(live.state[0].currentTurnChanges["live-session"]).toBeNull()
+      live.release()
+      const coldTurn = api.retainScopeState("cold-turn-scope")
+      await h.waitForRequest("cold-turn-scope")
+      h.complete(
+        "cold-turn-scope",
+        { scopeID: "cold-turn-scope", provider: { all: [] }, agent: [], config: {}, sessions: { data: [], total: 0 } },
+        { epoch: "test-epoch", seq: 10 },
+      )
+      await h.waitComplete(coldTurn.state)
+      const loadingTurn = api.loadCurrentTurn("cold-turn-scope", "cold-session")
+      await h.waitForTurn()
+      h.emit("cold-turn-scope", 11, "message.updated", {
+        info: { ...root, sessionID: "cold-session", id: "older-root", time: { created: 10 } },
+      })
+      h.completeTurn({ rootID: "latest-root", createdAt: 20, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 10 })
+      await Promise.race([
+        h.waitForTurn(),
+        Bun.sleep(500).then(() => {
+          throw new Error("A stale response identifying a newer root must trigger recovery")
+        }),
+      ])
+      h.completeTurn({ rootID: "latest-root", createdAt: 20, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 11 })
+      await loadingTurn
+      expect(coldTurn.state[0].currentTurnChanges["cold-session"]?.rootID).toBe("latest-root")
+      const session = { id: "cold-session", time: {}, scope: { id: "cold-turn-scope" } }
+      h.emit("cold-turn-scope", 12, "session.updated", { info: session })
+      h.emit("cold-turn-scope", 13, "session.updated", {
+        info: {
+          ...session,
+          history: {
+            rollback: {
+              id: "rollback",
+              numTurns: 1,
+              created: 40,
+              droppedMessageIDs: ["latest-root"],
+              droppedUserMessageIDs: ["latest-root"],
+              files: [],
+              patchPartIDs: [],
+              canUnrollback: true,
+            },
+          },
+        },
+      })
+      await h.waitForTurn()
+      h.emit("cold-turn-scope", 14, "message.updated", {
+        info: { ...root, sessionID: "cold-session", id: "latest-root", time: { created: 20 } },
+      })
+      h.completeTurn({ rootID: "older-root", createdAt: 10, summary: { diffs: [] } }, { epoch: "test-epoch", seq: 13 })
+      await api.loadCurrentTurn("cold-turn-scope", "cold-session")
+      h.emit("cold-turn-scope", 15, "message.updated", {
+        info: { ...root, sessionID: "cold-session", id: "latest-root", time: { created: 20 } },
+      })
+      expect(coldTurn.state[0].currentTurnChanges["cold-session"]?.rootID).toBe("older-root")
+      coldTurn.release()
 
       api.seedGlobalQuestions(
         [{ id: "scope-question", sessionID: "scope-request-session", questions: [] }],
@@ -513,7 +615,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       )
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      // A paused latch reaches the client only through the snapshot route or a
+      // A recovered latch reaches the client through a snapshot or a
       // session.updated `working` field, so the fallback fills a status the
       // index has no entry for and never overwrites one it does have — a real
       // status event always wins, mirroring SessionManager.listStatuses.
@@ -543,6 +645,11 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
       h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: paused } })
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
+      const queuedResume = { type: "busy", activity: { phase: "queued_agent", startedAt: 2, rootID: "saved-root" } }
+      h.emit("index-scope", 13, "session.status", { sessionID: "derived", status: queuedResume })
+      expect(api.sessionStatus["derived"]).toEqual(queuedResume)
+      h.emit("index-scope", 14, "session.status", { sessionID: "derived", status: { type: "idle" } })
+      expect(api.sessionStatus["derived"]).toBeUndefined()
       // Convergence across eviction. A Scope's bootstrap response used to be
       // authoritative for its whole status bucket *including omissions*, so a
       // status left stale by a missed idle could not survive a resync. A flat

@@ -123,4 +123,34 @@ describe("Web app static routing", () => {
       expect((await invalidScope.json()).name).toBe("ScopeNotFound")
     })
   })
+
+  test("absent APIs remain 404 with the Web app mounted while document navigation still loads", async () => {
+    await using tmp = await tmpdir()
+    await Bun.write(path.join(tmp.path, "index.html"), "<html><body>Web shell</body></html>")
+    await using runtime = await appRuntime(tmp.path)
+    await runtime.run(async () => {
+      Server.mountApp()
+      const app = Server.App()
+      const requestHeaders: HeadersInit[] = [
+        {},
+        { accept: "*/*" },
+        { accept: "application/json" },
+        { accept: "text/html;q=0,application/json" },
+        { accept: "text/html", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" },
+      ]
+      for (const route of ["/boss/session/ses_missing/tree", "/lattice/run/ltr_missing", "/kanban"]) {
+        for (const headers of requestHeaders) {
+          const response = await app.request(route, { headers })
+          expect(response.status).toBe(404)
+          expect(response.headers.get("content-type")).not.toContain("text/html")
+        }
+      }
+      for (const route of ["/", "/aG9tZQ/session/ses_history", "/kanban", "/plugins/example/settings"]) {
+        const response = await app.request(route, { headers: navigationHeaders })
+        expect(response.status).toBe(200)
+        expect(await response.text()).toContain("Web shell")
+        expect(response.headers.get("vary")).toContain("Accept")
+      }
+    })
+  })
 })

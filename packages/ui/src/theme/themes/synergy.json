@@ -19,6 +19,9 @@
       "syntaxProperty": "#2563EB"
     },
     "overrides": {
+      "brand-ribbon-start": "#92bf46",
+      "brand-ribbon-middle": "#4f9bb6",
+      "brand-ribbon-end": "#5e52b4",
       "text-permission-full-access": "#C4481C",
       "background-base": "#F8F8F7",
       "background-weak": "#F0F0F0",
@@ -134,6 +137,9 @@
       "syntaxProperty": "#60A5FA"
     },
     "overrides": {
+      "brand-ribbon-start": "#92bf46",
+      "brand-ribbon-middle": "#4f9bb6",
+      "brand-ribbon-end": "#5e52b4",
       "text-permission-full-access": "#FF8A50",
       "background-base": "#1B1B1B",
       "background-weak": "#202020",

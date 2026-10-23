@@ -23,7 +23,7 @@ await using runtime = await openAgentRuntime({
 const client = runtime.client({ directory: process.cwd() })
 ```
 
-`home` is the data directory itself. The required component list selects every capability, including Local Runtime and Plugin Host. An empty list has no default execution Environment. HTTP, Browser, Library and other optional domains require their component factories. The component graph validates versions and dependencies before opening storage. See the [Agent Runtime API](../../packages/agent-runtime/README.md) for session execution.
+`home` is the data directory itself. The component list supplies candidates, including Local Runtime and Plugin Host. Experimental candidates additionally require global opt-ins; the same resolver handles embedded and installed runtimes. An empty list has no default execution Environment. HTTP, Browser, Library and other optional domains require their component factories. The component graph validates versions and dependencies before opening storage. See the [Agent Runtime API](../../packages/agent-runtime/README.md) for session execution.
 
 Select `agenda()` from `@ericsanchezok/synergy-agenda/component`, `lightLoop()` from `@ericsanchezok/synergy-light-loop/component`, or other leaf factories independently. `blueprint()` requires `note()`; include both in the component array. `workflowComponents()` and `connectionComponents()` return explicit complete preset arrays. Integration factories such as `agendaBlueprint()` are separate selections; importing a factory does not register it. See the [package map](packages.md) for requirements and adapters.
 
@@ -66,7 +66,7 @@ try {
 }
 ```
 
-Supply the absolute installed executable path and exact host/component versions. Components must already be installed. The managed selection enables exactly those components plus their declared requirements and the core host; unselected installed mechanisms stay inactive. `args` supplies executable-prefix arguments when explicitly running a source or module entry. The SDK uses a dynamic loopback port by default, gives the child a private bearer credential through its environment, and checks the versioned readiness record's process ID, version, home, endpoint and requested components. It does not parse a human startup banner. Timeout, abort and failed readiness drain only the process it created; `close()` is asynchronous and idempotent.
+Supply the absolute installed executable path and exact host/component versions. Components must already be installed. The managed selection supplies those components plus their requirements and the core host; experimental modules still require saved global opt-ins and a restart. Unselected installed mechanisms stay inactive. `args` supplies executable-prefix arguments when explicitly running a source or module entry. The SDK uses a dynamic loopback port by default, gives the child a private bearer credential through its environment, and checks the versioned readiness record's process ID, version, home, endpoint and requested components. It does not parse a human startup banner. Timeout, abort and failed readiness drain only the process it created; `close()` is asynchronous and idempotent.
 
 To attach to a running service:
 
@@ -81,6 +81,8 @@ await server.close() // The attached service remains running.
 ```
 
 Caller fetch implementations, headers and Scope selectors remain supported. HTTP clients for other languages can consume [OpenAPI](../../packages/sdk/openapi.json); session-owned operations must keep the same explicit directory or Scope selector as the TypeScript client.
+
+Managed readiness protocol 2 distinguishes the validated candidate `selection` from active `components`. Requested experimental candidates may remain dormant until opted in; missing candidates or wrong versions still fail startup. Attach-mode component requirements refer to active capabilities. The SDK and runtime must use matching host versions.
 
 ## Python and other HTTP clients
 
@@ -112,7 +114,7 @@ This client does not own the service. For a filesystem project, resolve its Scop
 
 ## Runtime capabilities
 
-`GET /global/capabilities` reports stable `features` plus diagnostic component IDs, versions and component API versions for this Runtime. Use `features` from the generated `client.global.capabilities()` method before calling optional APIs. Features require selected owners, registered HTTP adapters and completed service initialization; discovery returns 503 while the Runtime is starting or shutting down. The endpoint requires no project Scope. Installed changes take effect at the next Runtime start. Component availability is distinct from permission approval.
+`GET /global/features` reports saved choices, effective state and restart requirements. `GET /global/capabilities` reports active `features` plus diagnostic component IDs, versions and component API versions for this Runtime. Use `features` from the generated `client.global.capabilities()` method before calling optional APIs. Features require selected owners, registered HTTP adapters and completed service initialization; discovery returns 503 while the Runtime is starting or shutting down. The endpoint requires no project Scope. Installed changes take effect at the next Runtime start. Component availability is distinct from permission approval.
 
 Managed SDK processes require the private bearer credential on HTTP requests. Existing service deployments retain their configured transport/authentication boundary; attaching does not create or replace credentials.
 

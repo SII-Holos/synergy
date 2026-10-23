@@ -14,7 +14,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import path from "path"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss"] })
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })

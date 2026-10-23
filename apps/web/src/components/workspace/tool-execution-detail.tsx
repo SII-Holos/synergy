@@ -26,7 +26,7 @@ import {
 } from "@/components/session/execution-detail-model"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { ToolResultBody } from "@ericsanchezok/synergy-ui/tool-result-body"
-import { AttachmentGallery } from "@ericsanchezok/synergy-ui/attachment-card"
+import { AttachmentGallery, resolveAttachmentPresentation } from "@ericsanchezok/synergy-ui/attachment-card"
 import {
   externalLookup,
   externalLoadNotify,
@@ -309,10 +309,12 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
     part()?.activityEvidence?.kind === "file-change" ||
     part()?.activityEvidence?.kind === "media" ||
     !!customResult()
-  const attachments = () => {
+  const attachments = createMemo(() => {
     const current = part()?.state
-    return current?.status === "completed" ? (current.attachments ?? []) : []
-  }
+    return current?.status === "completed"
+      ? (current.attachments ?? []).filter((file) => !resolveAttachmentPresentation(file).hidden)
+      : []
+  })
   const duration = () => {
     const current = part()
     if (!current || !("time" in current.state) || !("end" in current.state.time) || current.state.time.end == null)
@@ -359,7 +361,13 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
         loading={snapshot.loading}
         error={snapshot.error}
         retry={refetch}
-        views={taskOutput()?.report.trajectory ? ["result", "process", "diagnostics"] : ["result", "diagnostics"]}
+        views={[
+          "result",
+          ...(attachments().length ? ["attachments" as const] : []),
+          ...(taskOutput()?.report.trajectory ? ["process" as const] : []),
+          "diagnostics",
+        ]}
+        attachmentCount={attachments().length}
         diagnosticsLabel={_({ id: "session.execution.diagnostics", message: "Parameters and diagnostics" })}
         meta={
           <>
@@ -475,6 +483,9 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
                     )}
                   </Show>
                 </Match>
+                <Match when={view() === "attachments"}>
+                  <AttachmentGallery files={attachments()} serverUrl={sdk.url} details />
+                </Match>
                 <Match when={view() === "process"}>
                   <Show when={taskOutput()}>
                     {(task) => (
@@ -538,22 +549,19 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
                       <Show
                         when={richResult()}
                         fallback={
-                          <>
-                            <ExecutionCodeBlock
-                              identity={blockIdentity()}
-                              slot="execution-output"
-                              label={
-                                current().activityEvidence?.kind === "command" || captured()?.process
-                                  ? _({ id: "session.execution.commandOutput", message: "Command output" })
-                                  : _({ id: "session.execution.toolOutput", message: "Tool output" })
-                              }
-                              copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
-                              text={result().text}
-                              language={result().language}
-                              incomplete={incomplete()}
-                            />
-                            <AttachmentGallery files={attachments()} serverUrl={sdk.url} />
-                          </>
+                          <ExecutionCodeBlock
+                            identity={blockIdentity()}
+                            slot="execution-output"
+                            label={
+                              current().activityEvidence?.kind === "command" || captured()?.process
+                                ? _({ id: "session.execution.commandOutput", message: "Command output" })
+                                : _({ id: "session.execution.toolOutput", message: "Tool output" })
+                            }
+                            copyLabel={_({ id: "session.execution.copyOutput", message: "Copy tool output" })}
+                            text={result().text}
+                            language={result().language}
+                            incomplete={incomplete()}
+                          />
                         }
                       >
                         <section data-slot="execution-rich-result">
@@ -565,6 +573,7 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
                             messageId={current().messageID}
                             resultOnly
                             defaultOpen
+                            showAttachments={false}
                           />
                         </section>
                         <Show when={!fileChange()}>
@@ -578,12 +587,7 @@ function ToolExecutionDetailWorkbenchContent(props: WorkbenchPanelContentProps) 
                       </Show>
                     }
                   >
-                    {(task) => (
-                      <>
-                        <ExecutionReport identity={blockIdentity()} report={task().report} />
-                        <AttachmentGallery files={attachments()} serverUrl={sdk.url} />
-                      </>
-                    )}
+                    {(task) => <ExecutionReport identity={blockIdentity()} report={task().report} />}
                   </Show>
                 </Match>
               </Switch>

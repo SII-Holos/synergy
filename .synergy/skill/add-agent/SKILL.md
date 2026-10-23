@@ -29,6 +29,8 @@ description: Add or change a built-in Synergy primary agent, subagent, host-sele
 
 File-interface selection belongs solely to resolved Scope configuration. Grant semantic `read`/`edit` authority and preserve role restrictions; do not select syntax through Agent-specific tool denies or anchored permission profiles. Exercise each file group for writer, reader and no-file roles. Optional owners may contribute their existing capability grants; installing an owner does not select a file group. See [file tool interfaces](../../../docs/architecture/workspace-and-files.md#file-tool-interfaces).
 
+Keep MCP defaults in the MCP component's base permission contribution, following [MCP tool access](../../../docs/architecture/execution-boundaries.md#mcp-tool-access). When changing role templates, verify that a primary and a review child can discover and expand connected MCP tools, explicit configuration still restricts them, and invocation retains control-profile approval. Do not add per-Agent or per-profile MCP grants.
+
 ## Prompt Quality
 
 Apply [agent-facing design](../integrate-llm/references/agent-facing-design.md) to the assembled request, not just the edited prompt file.

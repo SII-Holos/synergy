@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { Server } from "./server/server"
@@ -6,6 +7,7 @@ import { registerHttp } from "./http"
 export function server(): RuntimeComponent {
   return {
     id: "server",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

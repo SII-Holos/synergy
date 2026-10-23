@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, spyOn, test } from "bun:test"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -32,7 +33,7 @@ const cases = [
 ] as const
 const within = <T>(fn: () => Promise<T>) => ScopeContext.provide({ scope: Scope.home(), fn })
 function open(home: string, selected: boolean) {
-  const composition = RuntimeComponents.compose([
+  const composition = composeWithExperiments([
     localRuntime({ workers: false, environment: false }),
     ...(selected ? [note(), blueprint(), lattice(), lightLoop()] : []),
   ])

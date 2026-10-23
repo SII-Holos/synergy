@@ -1,4 +1,8 @@
-import type { BrowserHostStatus } from "@ericsanchezok/synergy-browser-core"
+import type { BrowserHostStatus, BrowserNavigation } from "@ericsanchezok/synergy-browser-core"
+
+export function failedBrowserNavigation(page: { status: string; navigation?: BrowserNavigation } | null) {
+  return page?.status === "active" && page.navigation?.phase === "failed" ? page.navigation.error : undefined
+}
 
 export function shouldShowBrowserPresentationSurface(input: {
   presentation: "native" | undefined

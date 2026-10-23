@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/solid"
 import type { JSX } from "solid-js"
 import { For, Show } from "solid-js"
+import { useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"
 import { AP } from "@/app-i18n"
 import "./conversation-loading-placeholder.css"
 
@@ -23,8 +24,13 @@ const paragraphs = Array.from({ length: 32 }, (_, index) => rhythm[index % rhyth
 
 export function ConversationLoadingPlaceholder(props: { action?: JSX.Element }) {
   const { _ } = useLingui()
+  const active = useViewActivity()
   return (
-    <div data-conversation-loading class="absolute inset-0 pointer-events-none overflow-hidden md:pt-[58px]">
+    <div
+      data-conversation-loading
+      data-active={active()}
+      class="absolute inset-0 pointer-events-none overflow-hidden md:pt-[58px]"
+    >
       <div class="session-conversation-content session-content-column flex flex-col items-start gap-5">
         <span role="status" class="sr-only">
           {_(AP.sessionLoading)}
@@ -39,6 +45,7 @@ export function ConversationLoadingPlaceholder(props: { action?: JSX.Element }) 
           )}
         </For>
       </div>
+      <div data-conversation-loading-sheen aria-hidden="true" />
       <Show when={props.action}>
         {(action) => (
           <div class="pointer-events-auto absolute inset-x-0 bottom-6 flex justify-center md:bottom-[calc(var(--prompt-height,10rem)+16px)]">

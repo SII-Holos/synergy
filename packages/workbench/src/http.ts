@@ -17,7 +17,7 @@ import { WorkbenchPresentation } from "./presentation/service"
 export function registerHttp() {
   Server.registerContributions(
     {
-      features: ["workbench"],
+      features: ["workbench", "kanban"],
       projections: [ExecutionProjection.contribution()],
       eventClients: [WorkbenchPresentation.contribution()],
       routes: {

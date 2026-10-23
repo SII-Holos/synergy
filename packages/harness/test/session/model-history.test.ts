@@ -64,14 +64,20 @@ async function writeAssistant(
   return info
 }
 
-function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
   const history = SessionHistory as typeof SessionHistory & {
     modelMessages: (input: {
       sessionID: string
       onLoadParts?: (messageID: string) => void
     }) => Promise<MessageV2.WithParts[]>
   }
-  return history.modelMessages(input)
+  const result = await history.modelMessages(input)
+  expect(await SessionHistory.modelMessageInfos(input)).toEqual(result.map((message) => message.info))
+  const raw = await MessageV2.filterCompacted(MessageV2.stream(input))
+  expect(await SessionHistory.modelMessageInfos({ sessionID: input.sessionID, raw: true })).toEqual(
+    raw.map((message) => message.info),
+  )
+  return result
 }
 
 describe("SessionHistory.modelMessages", () => {

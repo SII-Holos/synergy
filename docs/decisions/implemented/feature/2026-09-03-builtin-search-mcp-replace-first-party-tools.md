@@ -32,7 +32,7 @@ Retire the three first-party tools end-to-end and ship the two remote search ser
 ## Consequences
 
 - New and existing installs get working web and academic search on first run with no configuration and no key; users can add API keys later by editing the same server name in `40-mcp.jsonc` (typed entry overrides, `enabled: false` opts out).
-- The permission surface shrinks: three first-party permission keys, two environment flags, and their capability/timeout entries are gone; `mcp_invoke` (permissioned through `"mcp__*": "allow"` for research subagents and default allow for primary agents) governs the replacement.
+- The permission surface shrinks: three first-party permission keys, two environment flags, and their capability/timeout entries are gone; `mcp_invoke` governs execution of the replacement. Agent access follows the [shared MCP default](../bug-fix/2026-10-23-share-mcp-default-access-across-agents.md).
 - Two outbound connections are attempted at MCP startup in non-test runtimes; connection failure is handled by the existing retry/failed state machinery and never blocks boot.
 - Search tools use compact `research-web` groups in balanced mode and individual cards in full mode; expanded steps preserve access to per-query results.
 - The shipped default points at remote third-party endpoints; the disable env var and per-name opt-out give users and CI an escape hatch, and a future product decision can change the catalog (schema-validated) without touching user config.

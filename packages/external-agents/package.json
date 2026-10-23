@@ -9,7 +9,8 @@
     "./agent-source": "./src/agent-source.ts",
     "./config-schema": "./src/config-schema.ts",
     ".": "./src/index.ts",
-    "./component": "./src/component.ts"
+    "./component": "./src/component.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -43,6 +44,20 @@
     "export": "externalAgents",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "external-agents",
+          "owner": "external-agents",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "External Agents",
+          "description": "Provide external agents capabilities.",
+          "component": "external-agents"
+        }
+      ]
     }
   }
 }

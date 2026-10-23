@@ -5,7 +5,7 @@ import { readPackedArchives, withInstalledPackages } from "./package-install-che
 
 export async function checkInstalledComposition(
   archiveDirectory: string,
-  scenario: "all" | "components" | "company" | "web" = "all",
+  scenario: "all" | "components" | "company" | "web" | "features" = "all",
 ) {
   const archives = await readPackedArchives(archiveDirectory)
   const prefix = "@ericsanchezok/synergy-"
@@ -22,7 +22,6 @@ export async function checkInstalledComposition(
       SYNERGY_CONFIG_CONTENT: JSON.stringify({
         execution: { agentWorkerMinIdle: 0 },
         pluginMarketplace: { enabled: false },
-        boss: { enabled: false },
         anima: { enabled: false },
       }),
     }
@@ -67,6 +66,19 @@ export async function checkInstalledComposition(
       path.join(directory, "managed-runtime.mjs"),
       await Bun.file(new URL("../test/package/fixture/managed-runtime.mjs", import.meta.url)).text(),
     )
+    if (scenario === "all" || scenario === "features") {
+      await cli("install", "server", "workbench", "boss-feishu", "channel-lattice", "--trust-host-code")
+      await Bun.write(
+        path.join(directory, "feature-runtime.mjs"),
+        await Bun.file(new URL("../test/package/fixture/feature-runtime.mjs", import.meta.url)).text(),
+      )
+      console.log((await run(["node", "feature-runtime.mjs"])).trim())
+      await cli("remove", "server", "workbench", "boss-feishu", "channel-lattice")
+      assert.deepEqual(
+        (await list()).map((pkg) => pkg.id),
+        [],
+      )
+    }
     if (scenario === "all" || scenario === "components") {
       console.log((await nativeInput()).trim())
       await cli("install", "mcp", "lsp", "server", "--trust-host-code")
@@ -220,7 +232,10 @@ export function companySettings() { return { id: "company-settings", version: "1
 
 if (import.meta.main) {
   const scenario = process.argv[3] ?? "all"
-  if (scenario !== "all" && scenario !== "components" && scenario !== "company" && scenario !== "web")
+  if (!["all", "components", "company", "web", "features"].includes(scenario))
     throw new Error("Unknown installed composition scenario")
-  await checkInstalledComposition(path.resolve(process.argv[2] ?? ".artifacts/packages"), scenario)
+  await checkInstalledComposition(
+    path.resolve(process.argv[2] ?? ".artifacts/packages"),
+    scenario as "all" | "components" | "company" | "web" | "features",
+  )
 }

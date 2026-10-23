@@ -553,6 +553,10 @@ export namespace MessageV2 {
         diffs: SnapshotSchema.FileDiff.array(),
         diffState: SnapshotSchema.DiffState.optional(),
         diffIssues: SnapshotSchema.Issue.array().optional(),
+        diffTotals: SnapshotSchema.Totals.optional(),
+        diffRevision: z.string().optional(),
+        diffObservedAt: z.number().optional(),
+        diffHasChanges: z.boolean().optional(),
       })
       .optional(),
     agent: z.string(),
@@ -1015,7 +1019,14 @@ export namespace MessageV2 {
    * that predate it. The single predicate all consumers should use instead of
    * reading `part.synthetic` directly.
    */
-  export function isSystemPart(part: Part | Omit<TextPart, "text">): boolean {
+  export type SemanticPart = {
+    type: Part["type"]
+    origin?: TextPart["origin"]
+    synthetic?: boolean
+    checkpoint?: unknown
+  }
+
+  export function isSystemPart(part: SemanticPart): boolean {
     if (part.type === "patch" && part.checkpoint) return true
     if (part.type === "compaction") return true
     if (part.type !== "text") return false
@@ -1027,11 +1038,11 @@ export namespace MessageV2 {
     return attachmentPurpose(attachment) === "deliverable"
   }
 
-  function partIsSystem(part: Part): boolean {
+  function partIsSystem(part: SemanticPart): boolean {
     return isSystemPart(part)
   }
 
-  function allPartsSystem(parts: Part[]): boolean {
+  function allPartsSystem(parts: SemanticPart[]): boolean {
     if (parts.length === 0) return true
     return parts.every(partIsSystem)
   }
@@ -1120,7 +1131,7 @@ export namespace MessageV2 {
   // existing task, never a task root.
   const NON_ROOT_ORIGIN_TYPES = new Set<OriginType>(["cortex", "compaction", "system"])
 
-  function deriveIsRoot(user: User, origin: OriginUser, parts: Part[]): boolean {
+  function deriveIsRoot(user: User, origin: OriginUser, parts: SemanticPart[]): boolean {
     const metadata = user.metadata
     if (metadata?.noReply === true) return false
     if (metadata?.guided === true) return false
@@ -1129,13 +1140,13 @@ export namespace MessageV2 {
     return !allPartsSystem(parts)
   }
 
-  function deriveVisible(user: User, origin: OriginUser, parts: Part[]): boolean {
+  function deriveVisible(user: User, origin: OriginUser, parts: SemanticPart[]): boolean {
     const synthetic = user.metadata?.synthetic === true || allPartsSystem(parts)
     if (!synthetic) return true
     return RENDERED_ORIGIN_TYPES.has(origin.type)
   }
 
-  function deriveParts(parts: Part[]): Part[] {
+  function deriveParts<P extends SemanticPart>(parts: P[]): P[] {
     let changed = false
     const next = parts.map((part) => {
       if (part.type !== "text" || part.origin !== undefined) return part
@@ -1150,7 +1161,9 @@ export namespace MessageV2 {
    * Enrich historical Cortex origins from their stable Inbox delivery key.
    * The projection is idempotent and leaves persisted input unchanged.
    */
-  export function deriveSemantics(messages: WithParts[]): WithParts[] {
+  export function deriveSemantics<P extends SemanticPart>(
+    messages: { info: Info; parts: P[] }[],
+  ): { info: Info; parts: P[] }[] {
     let rootID: string | undefined
     return messages.map((msg) => {
       const parts = deriveParts(msg.parts)
@@ -1951,6 +1964,7 @@ export namespace MessageV2 {
   export async function readInfoList(input: {
     scopeID: Identifier.ScopeID
     sessionID: Identifier.SessionID
+    signal?: AbortSignal
   }): Promise<Info[]> {
     const infos: Info[] = []
     for await (const record of Storage.records<Info>({
@@ -1958,9 +1972,69 @@ export namespace MessageV2 {
       scopeID: input.scopeID,
       sessionID: input.sessionID,
     })) {
+      input.signal?.throwIfAborted()
       infos.push(canonicalMessage(upgradeAccessRecord(record.key, record.value)))
     }
     return infos.sort(compareStorageOrder)
+  }
+
+  export async function readInfo(input: { scopeID: string; sessionID: string; messageID: string }) {
+    const key = StoragePath.messageInfo(
+      Identifier.asScopeID(input.scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
+    )
+    return canonicalMessage(upgradeAccessRecord(key, await Storage.read<Info>(key)))
+  }
+
+  export async function* partRecords(input: { scopeID: string; sessionID: string; messageID?: string }) {
+    for await (const record of Storage.records<PartContent.Stored>({ kind: "part", ...input }))
+      yield { ...record, value: upgradeAccessRecord(record.key, record.value) }
+  }
+
+  export async function hasCompactionPart(input: { scopeID: string; sessionID: string; messageID: string }) {
+    for await (const record of partRecords(input)) if (record.value.type === "compaction") return true
+    return false
+  }
+
+  export async function semanticParts(input: {
+    scopeID: string
+    sessionID: string
+    messageID: string
+  }): Promise<SemanticPart[]> {
+    const parts: SemanticPart[] = []
+    for await (const record of partRecords(input)) parts.push(record.value)
+    return parts
+  }
+
+  export async function unsettledToolParts(input: {
+    scopeID: string
+    sessionID: string
+    messageIDs: ReadonlySet<string>
+  }) {
+    if (!input.messageIDs.size) return []
+    const candidates: ToolPart[] = []
+    for await (const { value } of partRecords({ scopeID: input.scopeID, sessionID: input.sessionID })) {
+      if (value.type === "tool" && input.messageIDs.has(value.messageID) && isUnsettledToolState(value.state))
+        candidates.push(value)
+    }
+    const positions = new Map([...input.messageIDs].map((id, index) => [id, index]))
+    return candidates.sort(
+      (a, b) => positions.get(a.messageID)! - positions.get(b.messageID)! || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
+  }
+
+  export async function readToolPart(input: { scopeID: string; sessionID: string; messageID: string; partID: string }) {
+    const key = StoragePath.messagePart(
+      Identifier.asScopeID(input.scopeID),
+      Identifier.asSessionID(input.sessionID),
+      Identifier.asMessageID(input.messageID),
+      Identifier.asPartID(input.partID),
+    )
+    const [stored] = await Storage.readMany<PartContent.Stored>([key])
+    if (!stored) return
+    const part = upgradeAccessRecord(key, stored)
+    return part.type === "tool" ? part : undefined
   }
 
   export async function* readNewestInfos(input: {

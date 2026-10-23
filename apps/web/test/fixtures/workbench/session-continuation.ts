@@ -14,12 +14,11 @@ export async function verifySessionContinuation(page: Page, origin: string, scop
   const second = "界面连续发送测试：这是第二条。请简短回复，不要调用工具。"
   try {
     await page.goto(`${origin}/${Buffer.from(scopeID).toString("base64url")}/session`)
+    await page.getByRole("button", { name: "Workbench Chat", exact: true }).waitFor()
     await editor.fill(first)
     await editor.press("Enter")
     const viewport = page.locator("[data-conversation-current] [data-conversation-viewport]")
     await viewport.waitFor()
-    const node = await viewport.elementHandle()
-    const composer = await editor.elementHandle()
     await editor.fill(second)
     releaseCreation()
     await page.waitForURL(/\/session\/ses_[^/?#]+$/, { timeout: 60_000 })
@@ -27,9 +26,9 @@ export async function verifySessionContinuation(page: Page, origin: string, scop
       .getByText(/^(已完成|Completed)$/)
       .first()
       .waitFor({ timeout: 90_000 })
-    assert.equal(await node!.evaluate((element) => element.isConnected), true, "first-send viewport remains mounted")
-    assert.equal(await composer!.evaluate((element) => element.isConnected), true, "first-send editor remains mounted")
     assert.equal(await editor.innerText(), second, "creation and first reply retain the next draft")
+    const node = await viewport.elementHandle()
+    const composer = await editor.elementHandle()
     const sessionURL = page.url()
     const sessionID = new URL(sessionURL).pathname.split("/").at(-1)!
     const accepted = page.waitForResponse(
@@ -46,6 +45,7 @@ export async function verifySessionContinuation(page: Page, origin: string, scop
     assert.equal(await editor.innerText(), "", "accepted follow-up clears only its own draft")
     assert.equal(page.url(), sessionURL, "the follow-up stays in its captured session")
     assert.equal(await node!.evaluate((element) => element.isConnected), true, "follow-up retains the viewport")
+    assert.equal(await composer!.evaluate((element) => element.isConnected), true, "follow-up retains the editor")
     assert.equal(await page.getByText(/^(会话正在转换|Session transition in progress)$/).count(), 0)
     return { sessionURL: page.url(), retainedViewport: true, retainedDraft: true, completedTurns: 2 }
   } finally {

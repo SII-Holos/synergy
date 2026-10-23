@@ -1137,7 +1137,7 @@ export namespace SessionProcessor {
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
               })
-              executionPhase("queued_agent")
+              executionPhase("preparing")
               activity("preparing_context")
               const {
                 executionTools: _executionTools,
@@ -1160,7 +1160,10 @@ export namespace SessionProcessor {
                 ...agentTurnInput,
                 usageRole: streamInput.usageRole ?? "conversation",
                 retryIndex: attempt,
-                onPhase: runtime.bind((phase) => activity(phase)),
+                onPhase: runtime.bind((phase) => {
+                  executionPhase(phase === "queued_agent" ? "queued_agent" : "running_agent")
+                  activity(phase)
+                }),
                 recovery: { immediate: recovery.takeImmediate(), onWait: runtime.bind(recovery.providerWait) },
               })
               const rollout = stream.rollout
@@ -1172,7 +1175,6 @@ export namespace SessionProcessor {
                   callIDs: [...new Set([...(previous?.kind === "rollout" ? previous.callIDs : []), rollout.callID])],
                 }
               }
-              executionPhase("running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
                 sessionID: input.sessionID,

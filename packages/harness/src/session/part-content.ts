@@ -30,6 +30,71 @@ export namespace PartContent {
   })
   export type Checkpoint = z.infer<typeof Checkpoint>
   export type Stored = MessageV2.Part | (Header & { textContent: Checkpoint })
+  export const ExecutionFact = z.object({
+    id: z.string(),
+    sessionID: z.string(),
+    messageID: z.string(),
+    type: z.enum([
+      "text",
+      "reasoning",
+      "attachment",
+      "tool",
+      "step-start",
+      "step-finish",
+      "snapshot",
+      "patch",
+      "retry",
+      "compaction",
+      "compaction_recovery",
+    ]),
+    origin: z.enum(["user", "system"]).optional(),
+    checkpoint: z.literal(true).optional(),
+    preview: z.string().max(240),
+    tool: z.string().optional(),
+    callID: z.string().optional(),
+    status: z.enum(["pending", "generating", "running", "completed", "error"]).optional(),
+    time: z.object({ start: z.number(), end: z.number().optional() }).optional(),
+    accounting: z.object({ kind: z.literal("rollout"), callIDs: z.string().array() }).optional(),
+  })
+  export type ExecutionFact = z.infer<typeof ExecutionFact>
+
+  export function executionFact(value: Stored, preparedPreview?: string): ExecutionFact | undefined {
+    let text = ""
+    const content = checkpoint(value)
+    if (content && preparedPreview === undefined) {
+      if (content.inline !== undefined) text = content.inline
+      else {
+        const normalized = content.preview.replace(/\s+/g, " ")
+        if (normalized.length < 240 && content.preview.length < content.codeUnits) return
+        text = content.preview
+      }
+    } else if (!content && (value.type === "text" || value.type === "reasoning")) text = (value as Streaming).text
+    else if (value.type === "tool")
+      text = value.state.status === "completed" ? value.state.title : JSON.stringify(value.state.input ?? {})
+    else if (value.type === "attachment") text = value.filename ?? value.mime
+    const time =
+      value.type === "tool"
+        ? "time" in value.state
+          ? value.state.time
+          : undefined
+        : "time" in value
+          ? value.time
+          : undefined
+    return ExecutionFact.parse({
+      id: value.id,
+      sessionID: value.sessionID,
+      messageID: value.messageID,
+      type: value.type,
+      origin: value.type === "text" ? (MessageV2.isSystemPart(value) ? "system" : "user") : undefined,
+      checkpoint: value.type === "patch" && value.checkpoint ? true : undefined,
+      preview: preparedPreview ?? text.replace(/\s+/g, " ").slice(0, 240),
+      tool: value.type === "tool" ? value.tool : undefined,
+      callID: value.type === "tool" ? value.callID : undefined,
+      status: value.type === "tool" ? value.state.status : undefined,
+      time: time && "start" in time ? time : undefined,
+      accounting: value.type === "step-finish" && value.accounting?.kind === "rollout" ? value.accounting : undefined,
+    })
+  }
   export type Batch = {
     header: Header
     text: string
@@ -119,6 +184,79 @@ export namespace PartContent {
         checkpoint: checkpoint(record.value),
       }
     })
+  }
+
+  async function* textBlocks(key: string[], value: Stored, signal?: AbortSignal) {
+    const content = checkpoint(value)
+    if (!content) {
+      if (value.type === "text" || value.type === "reasoning") yield (value as Streaming).text
+      return
+    }
+    if (content.inline !== undefined) {
+      if (content.chunks !== 0 || content.inline.length !== content.codeUnits)
+        throw new StorageIntegrityError("Streaming Part inline content does not match its checkpoint")
+      yield content.inline
+      return
+    }
+    let codeUnits = 0
+    for (let sequence = 0; sequence < content.chunks; sequence++) {
+      signal?.throwIfAborted()
+      const bytes = await Storage.readBinary(StoragePath.partContentChunk(key, content.generation, sequence)).catch(
+        (error) => {
+          if (error instanceof Storage.NotFoundError)
+            throw new StorageIntegrityError("Streaming Part content is missing a committed chunk", { cause: error })
+          throw error
+        },
+      )
+      if (bytes.length % 2) throw new StorageIntegrityError("Streaming Part content has an incomplete UTF-16 code unit")
+      codeUnits += bytes.length / 2
+      if (codeUnits > content.codeUnits)
+        throw new StorageIntegrityError("Streaming Part content exceeds its checkpoint")
+      yield Buffer.from(bytes).toString("utf16le")
+    }
+    if (codeUnits !== content.codeUnits)
+      throw new StorageIntegrityError("Streaming Part content length does not match its checkpoint")
+  }
+
+  export async function prefix(
+    sources: ReadonlyArray<{ key: string[]; value: Stored }>,
+    options: {
+      maxLength: number
+      separator?: string
+      normalizeWhitespace?: boolean
+      trim?: boolean
+      signal?: AbortSignal
+    },
+  ) {
+    if (Storage.inTransaction())
+      throw new StorageConflictError("Part prefixes must be read outside a storage transaction")
+    if (!Number.isInteger(options.maxLength) || options.maxLength <= 0) throw new RangeError("Invalid prefix length")
+    let output = ""
+    let started = false
+    let whitespace = false
+    const append = (block: string) => {
+      if (options.normalizeWhitespace) {
+        const normalized = block.replace(/\s+/g, " ")
+        block = whitespace && normalized.startsWith(" ") ? normalized.slice(1) : normalized
+        if (normalized.length) whitespace = normalized.endsWith(" ")
+      }
+      if (!started && options.trim !== false) block = block.trimStart()
+      if (!block.length) return false
+      started = true
+      const remaining = options.maxLength - output.length
+      output += block.slice(0, remaining)
+      return (
+        output.length === options.maxLength &&
+        (options.trim === false || /\S$/.test(output) || /\S/.test(block.slice(remaining)))
+      )
+    }
+    for (let index = 0; index < sources.length; index++) {
+      options.signal?.throwIfAborted()
+      if (index && append(options.separator ?? "")) return output
+      const source = sources[index]
+      for await (const block of textBlocks(source.key, source.value, options.signal)) if (append(block)) return output
+    }
+    return options.trim === false ? output : output.trimEnd()
   }
 
   export async function assertOwner(tx: StoreTransaction, key: string[]) {

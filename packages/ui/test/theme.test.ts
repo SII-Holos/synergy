@@ -165,6 +165,17 @@ describe("color scheme helpers", () => {
 })
 
 describe("resolveTheme (synergy)", () => {
+  test("uses the approved SII ribbon colors in both modes", () => {
+    const resolved = resolveTheme(synergyTheme)
+    for (const mode of ["light", "dark"] as const) {
+      expect(resolved[mode]).toMatchObject({
+        "brand-ribbon-start": "#92bf46",
+        "brand-ribbon-middle": "#4f9bb6",
+        "brand-ribbon-end": "#5e52b4",
+      })
+    }
+  })
+
   test("gives Full Access its own readable foreground without recoloring warnings", () => {
     const fullAccessToken = "text-permission-full-access"
     const resolved = resolveTheme(synergyTheme)

@@ -37,7 +37,8 @@
     "./reload": "./src/reload.ts",
     "./script/holos-cli-assets": "./script/holos-cli-assets.ts",
     "./startup-status": "./src/startup-status.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -77,6 +78,20 @@
     "export": "holos",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "holos",
+          "owner": "holos",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Holos",
+          "description": "Provide holos capabilities.",
+          "component": "holos"
+        }
+      ]
     }
   },
   "peerDependencies": {

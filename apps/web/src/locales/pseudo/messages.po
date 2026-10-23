@@ -8770,12 +8770,32 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "⟦Projects⟧"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "⟦Tools⟧"
+
+#. js-lingui-explicit-id
+msgid "app.shell.mobile.panels.label"
+msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "⟦No sessions yet⟧"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.pinned"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"
@@ -10676,12 +10696,20 @@ msgstr "⟦Save as…⟧"
 msgid "browser.downloads.waiting"
 msgstr "⟦Waiting⟧"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.action"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "browser.failure.address"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "browser.failure.certificate"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.copyDetails"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -10692,12 +10720,28 @@ msgstr ""
 msgid "browser.failure.details"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.dismiss"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.errorDetails"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "browser.failure.offline"
 msgstr ""
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.page"
+msgstr ""
+
 #. js-lingui-explicit-id
 msgid "browser.failure.proxy"
+msgstr ""
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.reload"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -12789,6 +12833,22 @@ msgid "execution.paused"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "execution.preparing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessages"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessagesTotal"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.preparingParts"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr ""
 
@@ -12906,6 +12966,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "execution.sectionsTruncated"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "execution.showingPrevious"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13069,6 +13133,238 @@ msgid "execution.wrap"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "features.acp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.acp.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.agenda.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.agenda.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.anima.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.anima.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.boss.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.boss.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.browser.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.browser.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channels.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channels.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.computer.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.computer.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.email.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.email.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.formatter.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.formatter.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.holos.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.holos.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.kanban.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.kanban.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lattice.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lattice.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.library.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.library.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lsp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lsp.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.mcp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.mcp.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.media.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.media.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.note.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.note.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.workbench.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.workbench.name"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "files.close.description"
 msgstr ""
 
@@ -13221,12 +13517,12 @@ msgid "model.manager.empty.connected"
 msgstr "⟦No connected model results⟧"
 
 #. js-lingui-explicit-id
-msgid "model.manager.empty.quickSwitch"
-msgstr "⟦No quick-switch models⟧"
-
-#. js-lingui-explicit-id
 msgid "model.manager.quick"
 msgstr "⟦Quick switch⟧"
+
+#. js-lingui-explicit-id
+msgid "model.manager.recent"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -13239,18 +13535,6 @@ msgstr "⟦Free⟧"
 #. js-lingui-explicit-id
 msgid "model.manager.tag.latest"
 msgstr "⟦Latest⟧"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.close"
-msgstr "⟦Close tools⟧"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.section"
-msgstr "⟦Tools⟧"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.title"
-msgstr "⟦Tools⟧"
 
 #. js-lingui-explicit-id
 msgid "note.document.backupFailed"
@@ -13982,6 +14266,13 @@ msgstr "⟦Failed to send command⟧"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.composerControls"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
 msgstr "⟦Connection lost — responses may be delayed⟧"
 
@@ -14524,6 +14815,10 @@ msgid "prompt.long.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr ""
 
@@ -14951,6 +15246,13 @@ msgstr "⟦Enter shell command...⟧"
 #. js-lingui-explicit-id
 msgid "prompt.placeholder.task"
 msgstr "⟦Describe a task, or type / for commands⟧"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -15582,6 +15884,13 @@ msgstr "⟦Add files⟧"
 #. prompt-input.tsx — toolbar / chips
 msgid "prompt.toolbar.agent"
 msgstr "⟦Agent⟧"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.toolbar.assist"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -16292,6 +16601,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "review.panel.layoutState"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "review.panel.live"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -17133,6 +17446,30 @@ msgid "session.agenda.wake.unit.w"
 msgstr "⟦weeks⟧"
 
 #. js-lingui-explicit-id
+msgid "session.changes.fileCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.incompleteHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.recorded"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.reviewHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
 msgstr "⟦Agent⟧"
 
@@ -17531,6 +17868,10 @@ msgstr "⟦Loading prompt…⟧"
 #. js-lingui-explicit-id
 msgid "session.dock.parentSession"
 msgstr "⟦Parent session⟧"
+
+#. js-lingui-explicit-id
+msgid "session.execution.attachments"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.execution.background"
@@ -18225,10 +18566,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.process.records"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -20574,6 +20911,66 @@ msgstr "⟦On⟧"
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
 msgstr "⟦Paused⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.dependencyUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.live"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.notInstalled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.restart"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unselected"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.balanced"
@@ -27236,10 +27633,6 @@ msgid "ui.turnChangeSummary.title"
 msgstr "⟦Changed {fileCount, plural, one {# file} other {# files}}⟧"
 
 #. js-lingui-explicit-id
-msgid "ui.turnChangeSummary.undo"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "ui.userMessage.markdown"
 msgstr ""
 
@@ -27256,6 +27649,10 @@ msgid "welcome.blocks.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr ""
 
@@ -27268,11 +27665,19 @@ msgid "welcome.blocks.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27292,11 +27697,19 @@ msgid "welcome.common.statusControl"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27317,6 +27730,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27348,6 +27765,10 @@ msgid "welcome.flight.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr ""
 
@@ -27376,6 +27797,10 @@ msgid "welcome.slingshot.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr ""
 
@@ -27385,6 +27810,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27404,11 +27833,19 @@ msgid "welcome.stack.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
 msgstr ""
 
 #. js-lingui-explicit-id

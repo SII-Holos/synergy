@@ -1,3 +1,4 @@
+import { webAppFeatures } from "./features"
 import path from "node:path"
 import { version } from "../package.json" with { type: "json" }
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -8,6 +9,7 @@ export function webApp(options: { directory: string }): RuntimeComponent {
   const directory = path.resolve(options.directory)
   return {
     id: "web-app",
+    features: webAppFeatures,
     apiVersion: 1,
     version,
     requires: { server: version },

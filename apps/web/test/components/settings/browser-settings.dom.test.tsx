@@ -11,7 +11,7 @@ type State = "unknown" | "absent" | "selected" | "remote" | "restarting"
 interface FixtureWindow extends Window {
   fixture: {
     select(state: State): void
-    counts(): { requests: string[]; native: string[]; probes: number; settledImports: number }
+    counts(): { requests: string[]; native: string[]; probes: number; settledImports: number; instructions: string[] }
     deepLink(): void
     hold(value: boolean): void
     finish(): void
@@ -32,7 +32,7 @@ beforeAll(async () => {
     `
     import { batch, createSignal } from "solid-js"
     const [selection,setSelection]=createSignal(), [managed,setManaged]=createSignal(true), [status,setStatus]=createSignal("ready"), [serverUrl,setServerUrl]=createSignal("http://same-url.test")
-    const counts={requests:[],native:[],probes:0,settledImports:0};let hold=false,finish=()=>{},holdImport=false,finishImport=()=>{},importError=null
+    const counts={requests:[],native:[],probes:0,settledImports:0,instructions:[]};let hold=false,finish=()=>{},holdImport=false,finishImport=()=>{},importError=null
     const profile={id:"personal",name:"Personal",enabled:true,kind:"persistent",revision:1,createdAt:1,origins:{}}
     const other={...profile,id:"other",name:"Other"}
     export const sdk={get url(){return serverUrl()},capabilities:{current:selection,has:id=>id==="browser" && selection()?.features.includes(id)},client:{browser:{
@@ -52,7 +52,8 @@ beforeAll(async () => {
     export function fixture(){return {select,importError:value=>importError=value,counts:()=>structuredClone(counts),hold:value=>hold=value,finish:()=>{hold=false;finish()},changeServer:()=>batch(()=>{setServerUrl("http://another-server.test");select("selected")}),holdImport:()=>holdImport=true,finishImport:()=>{holdImport=false;finishImport()}}}
     sdk.capabilities.load=async ()=>selection()
     sdk.event={listen:()=>()=>{}}
-    sdk.client.config={global:async ()=>({data:{}}),diagnostics:async ()=>({data:{issues:[]}}),domain:{list:async ()=>({data:[]})},instructions:{get:async ()=>({data:{content:"saved instructions",maxBytes:100000,source:"global",filename:"AGENTS.md",hasOverride:false}})}}
+    let instructions={content:"saved instructions",maxBytes:100000,source:"global",filename:"AGENTS.md",hasOverride:false}
+    sdk.client.config={global:async ()=>({data:{}}),diagnostics:async ()=>({data:{issues:[]}}),domain:{list:async ()=>({data:[]})},instructions:{get:async ()=>({data:instructions}),update:async input=>{counts.instructions.push(input.configInstructionsUpdateInput.content);instructions={...instructions,content:input.configInstructionsUpdateInput.content,hasOverride:true};return {data:instructions}}}}
     export function useGlobalSync(){return {data:{config:{},provider:{all:[],connected:[],connections:{},profiles:{}},provider_auth:{}}}}
     export function useInput(){return {sendShortcut:()=>"enter"}}
     export function useLocale(){return {fmt:{number:value=>String(value),bytes:value=>String(value)},controller:{preview:()=>undefined},locale:()=>"en"}}
@@ -81,6 +82,7 @@ beforeAll(async () => {
     import {SettingsDialog} from "/@fs/${source}/components/settings/SettingsPanel.tsx"
     import {sdk,usePlatform,fixture,select} from "./services"
     import "@ericsanchezok/synergy-ui/styles"
+    import "/@fs/${source}/index.css"
     import "/@fs/${source}/components/settings/settings-panel.css"
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     function Harness(){
@@ -113,7 +115,7 @@ beforeAll(async () => {
   })
   url = server.url
   browser = await chromium.launch({ headless: true })
-}, 100000)
+}, 300000)
 afterEach(async () => {
   await page?.close()
 })
@@ -135,6 +137,119 @@ async function open(state: State) {
   }
 }
 const counts = () => page.evaluate(() => (window as unknown as FixtureWindow).fixture.counts())
+
+test("mobile settings search keeps its input and clear target inside one unchanged surface", async () => {
+  await open("selected")
+  for (const [width, height, colorScheme] of [
+    [320, 568, "light"],
+    [375, 812, "dark"],
+  ] as const) {
+    await page.setViewportSize({ width, height })
+    await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
+    await page.getByLabel("Global custom instructions", { exact: true }).waitFor({ state: "hidden" })
+    const input = page.getByRole("textbox", { name: "Search settings...", exact: true })
+    await input.fill("Personalize")
+    const search = page.locator(".ds-settings-search")
+    const layout = await search.evaluate((element) => {
+      const input = element.querySelector("input")!
+      const clear = element.querySelector("button")!
+      return {
+        search: element.getBoundingClientRect().toJSON(),
+        input: input.getBoundingClientRect().toJSON(),
+        clear: clear.getBoundingClientRect().toJSON(),
+        inputFill: getComputedStyle(input).backgroundColor,
+        focus: getComputedStyle(element).backgroundImage,
+      }
+    })
+    expect(layout.search.height).toBeGreaterThanOrEqual(44)
+    for (const target of [layout.input, layout.clear]) {
+      expect(target.height).toBeGreaterThanOrEqual(44)
+      expect(target.top).toBeGreaterThanOrEqual(layout.search.top - 0.5)
+      expect(target.bottom).toBeLessThanOrEqual(layout.search.bottom + 0.5)
+      expect(target.right).toBeLessThanOrEqual(layout.search.right + 0.5)
+    }
+    expect(layout.clear.width).toBeGreaterThanOrEqual(44)
+    expect(layout.inputFill).toBe("rgba(0, 0, 0, 0)")
+    expect(layout.focus).toBe("none")
+    await search.getByRole("button", { name: "Clear search", exact: true }).click()
+    expect(await input.inputValue()).toBe("")
+    expect(await input.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width)
+  }
+  expect(errors).toEqual([])
+})
+
+test("mobile category return keeps draft saving and discard protection reachable", async () => {
+  await open("selected")
+  await page.setViewportSize({ width: 320, height: 568 })
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.getByLabel("Global custom instructions", { exact: true }).waitFor({ state: "hidden" })
+  const search = page.getByRole("textbox", { name: "Search settings...", exact: true })
+  await search.fill("Personalize")
+  expect(await page.getByRole("button", { name: "Save Changes", exact: true }).isVisible()).toBe(false)
+  await page.getByRole("button", { name: "Personalize", exact: true }).click()
+  await page.getByLabel("Global custom instructions", { exact: true }).fill("Keep the mobile draft")
+  await page.getByRole("button", { name: "Back to settings categories", exact: true }).click()
+  expect(await search.inputValue()).toBe("Personalize")
+  const save = page.getByRole("button", { name: "Save Changes", exact: true })
+  expect(await save.isVisible()).toBe(true)
+  expect(await save.isEnabled()).toBe(true)
+  const footer = await page.locator(".settings-panel-footer").boundingBox()
+  expect(footer!.y + footer!.height).toBeLessThanOrEqual(568)
+  expect(footer!.x + footer!.width).toBeLessThanOrEqual(320)
+  expect((await counts()).instructions).toEqual([])
+
+  await page.getByRole("button", { name: "Cancel", exact: true }).click()
+  const confirmation = page.getByRole("dialog", { name: "Discard unsaved changes?", exact: true })
+  await confirmation.getByRole("button", { name: "Keep Editing", exact: true }).click()
+  await confirmation.waitFor({ state: "detached" })
+  await save.click()
+  await page.waitForFunction(() =>
+    (window as unknown as FixtureWindow).fixture.counts().instructions.includes("Keep the mobile draft"),
+  )
+  await page.locator(".settings-panel-footer").getByText("Changes saved", { exact: true }).waitFor()
+  expect(await save.isDisabled()).toBe(true)
+  expect(await search.isVisible()).toBe(true)
+  expect(await page.getByRole("dialog", { name: "Settings", exact: true }).count()).toBe(1)
+  await page.getByRole("button", { name: "Personalize", exact: true }).click()
+  expect(await page.getByLabel("Global custom instructions", { exact: true }).inputValue()).toBe(
+    "Keep the mobile draft",
+  )
+  expect(errors).toEqual([])
+})
+
+test("desktop settings retain separate navigation and aligned detail footer", async () => {
+  await open("selected")
+  for (const width of [768, 1280]) {
+    await page.setViewportSize({ width, height: 800 })
+    await page.getByLabel("Global custom instructions", { exact: true }).fill("Desktop draft")
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"))
+    const layout = await page.locator(".settings-panel-root").evaluate((root) => {
+      const rect = (selector: string) => root.querySelector(selector)!.getBoundingClientRect().toJSON()
+      return {
+        nav: rect(".settings-panel-navigation"),
+        content: rect(".settings-panel-content"),
+        footer: rect(".settings-panel-footer"),
+        status: rect(".settings-panel-footer-status"),
+        actions: rect(".settings-panel-footer-actions"),
+      }
+    })
+    expect(layout.nav.width).toBe(221)
+    expect(layout.content.left).toBe(layout.nav.right)
+    expect(layout.footer.left).toBe(layout.content.left)
+    expect(layout.footer.right).toBe(layout.content.right)
+    expect(layout.footer.bottom).toBe(layout.nav.bottom)
+    if (layout.content.width <= 600) {
+      expect(layout.status.bottom).toBeLessThanOrEqual(layout.actions.top)
+    } else {
+      expect(layout.status.top).toBeLessThan(layout.actions.bottom)
+      expect(layout.actions.top).toBeLessThan(layout.status.bottom)
+    }
+    expect(await page.getByRole("button", { name: "Back to settings categories", exact: true }).isVisible()).toBe(false)
+    expect(await page.getByRole("dialog", { name: "Settings", exact: true }).count()).toBe(1)
+  }
+  expect(errors).toEqual([])
+})
 
 test("Browser action rows open from their text and return keyboard focus when dismissed", async () => {
   await open("selected")

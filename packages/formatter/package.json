@@ -9,7 +9,8 @@
     "./config-schema": "./src/config-schema.ts",
     "./startup": "./src/startup.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -55,6 +56,20 @@
     "export": "formatter",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "formatter",
+          "owner": "formatter",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Formatter",
+          "description": "Provide formatter capabilities.",
+          "component": "formatter"
+        }
+      ]
     }
   }
 }

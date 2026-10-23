@@ -41,14 +41,64 @@ export namespace SessionHistory {
   export const summarizePart = SessionHistoryDisplay.summarizePart
   export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
   export const MessageDetails = SessionHistoryDisplay.MessageDetails
+  export type ExecutionPart = SessionHistoryDisplay.ExecutionPart
+  export type ExecutionProgress = SessionHistoryDisplay.ExecutionProgress
+
+  export async function executionMessages(input: {
+    sessionID: string
+    messageID?: string
+    signal?: AbortSignal
+    progress?: (value: ExecutionProgress) => void
+  }) {
+    if (Storage.inTransaction()) throw new Error("Execution preparation must run outside a storage transaction")
+    const session = await prepareInfoRead(input.sessionID)
+    const owner = { scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) }
+    for (;;) {
+      input.signal?.throwIfAborted()
+      const result = await Storage.snapshot(async () => {
+        const infos = input.messageID
+          ? [await MessageV2.readInfo({ ...owner, messageID: input.messageID })]
+          : await MessageV2.readInfoList({ ...owner, signal: input.signal })
+        const { parts, pending } = await SessionHistoryDisplay.currentExecutionParts(
+          owner.scopeID,
+          owner.sessionID,
+          input.messageID,
+          input.signal,
+        )
+        const missing = infos.filter((info) => pending.has(info.id))
+        return {
+          missing,
+          messages: missing.length
+            ? undefined
+            : MessageV2.deriveSemantics(infos.map((info) => ({ info, parts: parts.get(info.id) ?? [] }))),
+        }
+      })
+      if (result.messages) return result.messages
+      for (const [index, info] of result.missing.entries()) {
+        try {
+          await SessionHistoryDisplay.prepareExecutionParts(
+            owner.scopeID,
+            owner.sessionID,
+            info.id,
+            input.signal,
+            input.progress,
+          )
+        } catch (error) {
+          if (input.messageID || !(error instanceof Storage.NotFoundError)) throw error
+          const current = await MessageV2.readInfoList({ ...owner, signal: input.signal })
+          if (current.some((message) => message.id === info.id)) throw error
+        }
+        input.progress?.({ stage: "messages", prepared: index + 1, total: result.missing.length })
+      }
+    }
+  }
 
   export async function refreshDisplayPart(scopeID: string, part: MessageV2.Part) {
     await Storage.transaction(async () => {
       const key = StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id)
       const [display] = await Storage.readMany<Record<string, unknown>>([key])
       if (!display) return
-      await SessionHistoryDisplay.partWritten(scopeID, part)
-      await Storage.write(key, { ...display, ...summarizePart(part) })
+      await SessionHistoryDisplay.partWritten(scopeID, part, { ...display, ...MessageV2.summarizePart(part) })
     })
   }
 
@@ -644,6 +694,7 @@ export namespace SessionHistory {
     workspaceID: z.string(),
     generation: z.number().int().positive(),
     file: z.string().min(1),
+    revision: z.string().optional(),
   })
   export const fileDiff = fn(FileDiffInput, async (input) => {
     return fileDiffWithSignal(input)
@@ -664,6 +715,18 @@ export namespace SessionHistory {
     return range as typeof range & { from: string; to: string }
   }
   export async function fileDiffWithSignal(input: z.infer<typeof FileDiffInput>, signal?: AbortSignal) {
+    if (input.revision) {
+      const { SessionFileChangeView } = await import("./file-change-view")
+      return SessionFileChangeView.read({ ...input, revision: input.revision }, async (range) => {
+        const diff = range.live
+          ? await Snapshot.liveDiff(input.sessionID, range.live, input.file, signal)
+          : range.from && range.to
+            ? await Snapshot.fileDiff(range.from, range.to, input.file, input.sessionID, signal)
+            : undefined
+        if (!diff) throw new SnapshotRestore.Invalid({ message: "This file has no recorded difference" })
+        return { ...diff, workspace: range.workspace }
+      })
+    }
     const range = await fileRange(FileDiffInput.parse(input))
     const diff = await Snapshot.fileDiff(
       range.from,
@@ -676,6 +739,18 @@ export namespace SessionHistory {
     return { ...diff, workspace: range.workspace }
   }
   export async function fileVersions(input: z.infer<typeof FileDiffInput>, signal?: AbortSignal) {
+    if (input.revision) {
+      const { SessionFileChangeView } = await import("./file-change-view")
+      return SessionFileChangeView.read({ ...input, revision: input.revision }, async (range) => {
+        if (range.live) {
+          const value = await Snapshot.liveVersions(input.sessionID, range.live, input.file, signal)
+          return { before: value.before, after: value.after }
+        }
+        if (!range.from || !range.to)
+          throw new SnapshotRestore.Invalid({ message: "Historical file versions are unavailable" })
+        return Snapshot.fileVersions(range.from, range.to, input.file, input.sessionID, signal)
+      })
+    }
     const range = await fileRange(FileDiffInput.parse(input))
     return Snapshot.fileVersions(
       range.from,
@@ -807,9 +882,67 @@ export namespace SessionHistory {
   }
 
   export async function rawMessages(input: { sessionID: string; limit?: number }) {
+    if (input.limit) return finiteMessages({ ...input, raw: true })
     const raw = await loadRawFromDisk(input.sessionID)
     const derived = MessageV2.deriveSemantics(raw)
     return sliceWithReferencedRoots(derived, input.limit)
+  }
+
+  async function prepareInfoRead(sessionID: string) {
+    const session = await SessionManager.requireSession(sessionID)
+    if (!Storage.inTransaction()) await prepareSessionMigrations({ scopeID: session.scope.id, sessionID })
+    return session
+  }
+
+  export async function rawMessageInfos(session: Info) {
+    const infos = await MessageV2.readInfoList({
+      scopeID: asScopeID(session.scope.id),
+      sessionID: asSessionID(session.id),
+    })
+    return deriveInfoSemantics(infos, (messageID) =>
+      MessageV2.semanticParts({ scopeID: session.scope.id, sessionID: session.id, messageID }),
+    )
+  }
+
+  export async function modelMessageInfos(input: { sessionID: string; raw?: boolean }) {
+    const session = await prepareInfoRead(input.sessionID)
+    return Storage.snapshot(async () => {
+      const infos = input.raw
+        ? await MessageV2.readInfoList({ scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) })
+        : await effectiveMessageInfos(session)
+      const projection = modelWorkingSetProjection(infos)
+      if (
+        !projection ||
+        !(await MessageV2.hasCompactionPart({
+          scopeID: session.scope.id,
+          sessionID: session.id,
+          messageID: projection.boundaryUserID,
+        }))
+      )
+        return infos
+      return applyModelWorkingSetProjection(
+        infos,
+        projection,
+        (info) => info,
+        (info) => ({ ...info, includeInContext: false }),
+      )
+    })
+  }
+
+  async function finiteMessages(input: { sessionID: string; limit?: number; raw?: boolean }) {
+    const session = await prepareInfoRead(input.sessionID)
+    return Storage.snapshot(async () => {
+      const infos = input.raw ? await rawMessageInfos(session) : await effectiveMessageInfos(session)
+      const selected = sliceWithReferencedRoots(
+        infos.map((info) => ({ info })),
+        input.limit,
+      )
+      const messages = await mapWithConcurrency(selected, PAGE_HYDRATION_CONCURRENCY, async ({ info }) => ({
+        info,
+        parts: await MessageV2.parts({ scopeID: session.scope.id, sessionID: session.id, messageID: info.id }),
+      }))
+      return MessageV2.deriveSemantics(messages)
+    })
   }
 
   export async function turnInfos(input: { sessionID: string; rootID: string; signal?: AbortSignal }) {
@@ -927,6 +1060,7 @@ export namespace SessionHistory {
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {
+    if (input.limit) return finiteMessages(input)
     const raw = await rawMessages({ sessionID: input.sessionID })
     const result = input.raw ? raw : applyEvents(raw, await readEvents(input.sessionID))
     return sliceWithReferencedRoots(result, input.limit)
@@ -1005,7 +1139,7 @@ export namespace SessionHistory {
     }
   }
 
-  function sliceWithReferencedRoots(messages: MessageV2.WithParts[], limit: number | undefined) {
+  function sliceWithReferencedRoots<T extends { info: MessageV2.Info }>(messages: T[], limit: number | undefined) {
     if (!limit) return messages
     const window = messages.slice(-limit)
     if (window.length === messages.length) return window
@@ -1072,17 +1206,24 @@ export namespace SessionHistory {
 
   async function deriveInfoSemantics(
     messages: MessageV2.Info[],
-    loadParts: (messageID: string) => Promise<MessageV2.Part[]>,
+    loadParts: (messageID: string) => Promise<MessageV2.SemanticPart[]>,
   ) {
     const legacy = new Set(
       messages.flatMap((message) => {
         if (message.role !== "user") return []
-        if (message.isRoot !== undefined && message.rootID !== undefined) return []
+        if (
+          message.isRoot !== undefined &&
+          message.rootID !== undefined &&
+          message.origin !== undefined &&
+          message.visible !== undefined
+        )
+          return []
         return [message.id]
       }),
     )
     const needsDerivation = legacy.size > 0 || messages.some((message) => message.rootID === undefined)
-    if (!needsDerivation) return messages
+    if (!needsDerivation)
+      return MessageV2.deriveSemantics(messages.map((info) => ({ info, parts: [] }))).map((message) => message.info)
     const withParts = await mapWithConcurrency(messages, PAGE_HYDRATION_CONCURRENCY, async (info) => ({
       info,
       parts: legacy.has(info.id) ? await loadParts(info.id) : [],
@@ -1223,7 +1364,7 @@ export namespace SessionHistory {
       readSessionEvents(session),
     ])
     const canonical = await deriveInfoSemantics(infos, async (messageID) => {
-      return MessageV2.parts({ scopeID: session.scope.id, sessionID: session.id, messageID })
+      return MessageV2.semanticParts({ scopeID: session.scope.id, sessionID: session.id, messageID })
     })
     return applyEventsToInfo(canonical, events)
   }

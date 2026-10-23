@@ -103,33 +103,42 @@ export function resolveQuickSwitcherModels(
   return result
 }
 
-type QuickSwitcherDisplayModel = {
+type ModelSelectionDisplayModel = {
   id: string
   name: string
   provider: { id: string; name: string }
 }
 
-export function listQuickSwitcherEntries<T extends QuickSwitcherDisplayModel>(
-  configured: readonly T[],
+export function listModelSelectionEntries<T extends ModelSelectionDisplayModel>(
+  models: readonly T[],
+  quickSwitcher: readonly T[],
   recent: readonly T[],
   providerID?: string,
-): Array<T & { group: string; listKey: string }> {
+): Array<T & { section: "recent" | "quick" | "provider"; listKey: string }> {
   const matchesProvider = (model: T) => !providerID || model.provider.id === providerID
-  const configuredEntries = configured
+  const catalogEntries = models
     .filter(matchesProvider)
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((left, right) => left.name.localeCompare(right.name))
     .map((model) => ({
       ...model,
-      group: model.provider.name,
+      section: "provider" as const,
       listKey: `${model.provider.id}:${model.id}`,
+    }))
+  const quickEntries = quickSwitcher
+    .filter(matchesProvider)
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((model) => ({
+      ...model,
+      section: "quick" as const,
+      listKey: `quick:${model.provider.id}:${model.id}`,
     }))
   const recentEntries = recent.filter(matchesProvider).map((model) => ({
     ...model,
-    group: "Recent",
+    section: "recent" as const,
     listKey: `recent:${model.provider.id}:${model.id}`,
   }))
 
-  return [...recentEntries, ...configuredEntries]
+  return [...recentEntries, ...quickEntries, ...catalogEntries]
 }
 
 export function resolveSessionModel(providers: Provider[], ref: ModelRef | undefined) {

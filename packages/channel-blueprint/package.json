@@ -7,7 +7,8 @@
   "exports": {
     "./component": "./src/component.ts",
     "./register": "./src/register.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -48,6 +49,10 @@
     "packages": {
       "@ericsanchezok/synergy-channels": "1.1.26",
       "@ericsanchezok/synergy-blueprint": "1.1.26"
+    },
+    "features": {
+      "kind": "bridge",
+      "definitions": []
     }
   }
 }

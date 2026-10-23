@@ -2386,7 +2386,7 @@ msgstr "连接提供商"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.description"
-msgstr "为当前会话选择可快速切换的模型。"
+msgstr "为当前会话选择可用模型。"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.search"
@@ -8770,12 +8770,32 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "项目"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr "搜索会话"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "工具"
+
+#. js-lingui-explicit-id
+msgid "app.shell.mobile.panels.label"
+msgstr "工作区面板"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "暂无会话"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr "更早"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.pinned"
+msgstr "置顶"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr "今天"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"
@@ -10676,6 +10696,10 @@ msgstr "另存为…"
 msgid "browser.downloads.waiting"
 msgstr "待确认"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.action"
+msgstr "页面操作未完成"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.address"
 msgstr "无法找到该网站。请检查地址后重试。"
@@ -10683,6 +10707,10 @@ msgstr "无法找到该网站。请检查地址后重试。"
 #. js-lingui-explicit-id
 msgid "browser.failure.certificate"
 msgstr "无法建立安全连接。请检查网站地址以及设备的日期和时间。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.copyDetails"
+msgstr "复制错误详情"
 
 #. js-lingui-explicit-id
 msgid "browser.failure.denied"
@@ -10692,13 +10720,29 @@ msgstr "当前浏览器权限不允许打开此地址。"
 msgid "browser.failure.details"
 msgstr "诊断详情"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.dismiss"
+msgstr "关闭提示"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.errorDetails"
+msgstr "错误详情"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.offline"
 msgstr "网络似乎已断开。请检查连接后重试此页面。"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.page"
+msgstr "页面未能加载"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.proxy"
 msgstr "代理连接失败。请检查代理设置后重试。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.reload"
+msgstr "重新加载"
 
 #. js-lingui-explicit-id
 msgid "browser.failure.request"
@@ -12789,6 +12833,22 @@ msgid "execution.paused"
 msgstr "已暂停"
 
 #. js-lingui-explicit-id
+msgid "execution.preparing"
+msgstr "正在准备执行记录…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessages"
+msgstr "正在准备执行记录：已处理 {count} 条消息…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessagesTotal"
+msgstr "正在准备执行记录：已处理 {count} / {total} 条消息…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingParts"
+msgstr "正在准备当前消息：已处理 {count} 条内容记录…"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "较早记录"
 
@@ -12907,6 +12967,10 @@ msgstr "分节阅读"
 #. js-lingui-explicit-id
 msgid "execution.sectionsTruncated"
 msgstr "目录省略了部分章节。原始 JSON 和下载保留已记录的内容。"
+
+#. js-lingui-explicit-id
+msgid "execution.showingPrevious"
+msgstr "当前显示上一次完整摘要。"
 
 #. js-lingui-explicit-id
 msgid "execution.start"
@@ -13069,6 +13133,238 @@ msgid "execution.wrap"
 msgstr "自动换行"
 
 #. js-lingui-explicit-id
+msgid "features.acp.description"
+msgstr "提供ACP相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.acp.name"
+msgstr "ACP"
+
+#. js-lingui-explicit-id
+msgid "features.agenda.description"
+msgstr "提供日程相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.agenda.name"
+msgstr "日程"
+
+#. js-lingui-explicit-id
+msgid "features.anima.description"
+msgstr "提供Anima相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.anima.name"
+msgstr "Anima"
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.description"
+msgstr "提供Blueprint相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.name"
+msgstr "Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.boss.description"
+msgstr "分配任务并跟进进展。"
+
+#. js-lingui-explicit-id
+msgid "features.boss.name"
+msgstr "Boss 模式"
+
+#. js-lingui-explicit-id
+msgid "features.browser.description"
+msgstr "提供浏览器相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.browser.name"
+msgstr "浏览器"
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.description"
+msgstr "提供Clarus 渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.name"
+msgstr "Clarus 渠道"
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.description"
+msgstr "提供飞书渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.name"
+msgstr "飞书渠道"
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.description"
+msgstr "提供GitHub 渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.name"
+msgstr "GitHub 渠道"
+
+#. js-lingui-explicit-id
+msgid "features.channels.description"
+msgstr "提供渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channels.name"
+msgstr "渠道"
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.description"
+msgstr "提供代码工具相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.name"
+msgstr "代码工具"
+
+#. js-lingui-explicit-id
+msgid "features.computer.description"
+msgstr "提供电脑操作相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.computer.name"
+msgstr "电脑操作"
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.description"
+msgstr "提供数字分身相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.name"
+msgstr "数字分身"
+
+#. js-lingui-explicit-id
+msgid "features.email.description"
+msgstr "提供邮箱相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.email.name"
+msgstr "邮箱"
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.description"
+msgstr "提供外部 Agent相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.name"
+msgstr "外部 Agent"
+
+#. js-lingui-explicit-id
+msgid "features.formatter.description"
+msgstr "提供格式化相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.formatter.name"
+msgstr "格式化"
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.description"
+msgstr "提供GitHub 日程相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.name"
+msgstr "GitHub 日程"
+
+#. js-lingui-explicit-id
+msgid "features.github.description"
+msgstr "提供GitHub相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.github.name"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "features.holos.description"
+msgstr "提供Holos相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.holos.name"
+msgstr "Holos"
+
+#. js-lingui-explicit-id
+msgid "features.kanban.description"
+msgstr "在看板中查看和组织任务。"
+
+#. js-lingui-explicit-id
+msgid "features.kanban.name"
+msgstr "看板"
+
+#. js-lingui-explicit-id
+msgid "features.lattice.description"
+msgstr "组织并执行多步骤工作流。"
+
+#. js-lingui-explicit-id
+msgid "features.lattice.name"
+msgstr "Lattice"
+
+#. js-lingui-explicit-id
+msgid "features.library.description"
+msgstr "提供知识库相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.library.name"
+msgstr "知识库"
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.description"
+msgstr "提供轻量循环相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.name"
+msgstr "轻量循环"
+
+#. js-lingui-explicit-id
+msgid "features.lsp.description"
+msgstr "提供语言服务相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.lsp.name"
+msgstr "语言服务"
+
+#. js-lingui-explicit-id
+msgid "features.mcp.description"
+msgstr "提供MCP相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.mcp.name"
+msgstr "MCP"
+
+#. js-lingui-explicit-id
+msgid "features.media.description"
+msgstr "提供媒体相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.media.name"
+msgstr "媒体"
+
+#. js-lingui-explicit-id
+msgid "features.note.description"
+msgstr "提供笔记相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.note.name"
+msgstr "笔记"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.description"
+msgstr "提供插件 Blueprint相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.name"
+msgstr "插件 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.workbench.description"
+msgstr "项目、任务展示、代码审查和活动。"
+
+#. js-lingui-explicit-id
+msgid "features.workbench.name"
+msgstr "工作台"
+
+#. js-lingui-explicit-id
 msgid "files.close.description"
 msgstr "离开此文件前，保存 {name} 的更改。"
 
@@ -13221,12 +13517,12 @@ msgid "model.manager.empty.connected"
 msgstr "没有已连接的模型结果"
 
 #. js-lingui-explicit-id
-msgid "model.manager.empty.quickSwitch"
-msgstr "没有快速切换模型"
-
-#. js-lingui-explicit-id
 msgid "model.manager.quick"
 msgstr "快速切换"
+
+#. js-lingui-explicit-id
+msgid "model.manager.recent"
+msgstr "最近使用"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -13239,18 +13535,6 @@ msgstr "免费"
 #. js-lingui-explicit-id
 msgid "model.manager.tag.latest"
 msgstr "最新"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.close"
-msgstr "关闭工具"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.section"
-msgstr "工具"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.title"
-msgstr "工具"
 
 #. js-lingui-explicit-id
 msgid "note.document.backupFailed"
@@ -13982,6 +14266,13 @@ msgstr "发送命令失败"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.composerControls"
+msgstr "输入框选项"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
 msgstr "连接已断开——回复可能延迟"
 
@@ -14524,6 +14815,10 @@ msgid "prompt.long.expand"
 msgstr "展开编辑器"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr "向上或向下拖动可调整编辑器大小"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr "Markdown 格式"
 
@@ -14951,6 +15246,13 @@ msgstr "输入 Shell 命令…"
 #. js-lingui-explicit-id
 msgid "prompt.placeholder.task"
 msgstr "描述任务，或输入 / 查看命令"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr "描述任务"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -15582,6 +15884,13 @@ msgstr "添加文件"
 #. prompt-input.tsx — toolbar / chips
 msgid "prompt.toolbar.agent"
 msgstr "智能体"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.toolbar.assist"
+msgstr "辅助"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -16293,6 +16602,10 @@ msgstr "差异布局"
 #. js-lingui-explicit-id
 msgid "review.panel.layoutState"
 msgstr "差异布局：{layout}"
+
+#. js-lingui-explicit-id
+msgid "review.panel.live"
+msgstr "这是任务进行时记录的更改。刷新以加载最新更改。"
 
 #. js-lingui-explicit-id
 msgid "review.panel.loading"
@@ -17133,6 +17446,30 @@ msgid "session.agenda.wake.unit.w"
 msgstr "周"
 
 #. js-lingui-explicit-id
+msgid "session.changes.fileCount"
+msgstr "{count} 个文件"
+
+#. js-lingui-explicit-id
+msgid "session.changes.incompleteHint"
+msgstr "显示最近记录的更改。部分文件或更新可能暂不可用。"
+
+#. js-lingui-explicit-id
+msgid "session.changes.recorded"
+msgstr "已记录更改"
+
+#. js-lingui-explicit-id
+msgid "session.changes.reviewHint"
+msgstr "打开本轮任务记录的更改"
+
+#. js-lingui-explicit-id
+msgid "session.changes.turn"
+msgstr "本轮更改"
+
+#. js-lingui-explicit-id
+msgid "session.changes.unavailable"
+msgstr "暂不可用"
+
+#. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
 msgstr "智能体"
 
@@ -17531,6 +17868,10 @@ msgstr "正在加载提示…"
 #. js-lingui-explicit-id
 msgid "session.dock.parentSession"
 msgstr "父会话"
+
+#. js-lingui-explicit-id
+msgid "session.execution.attachments"
+msgstr "附件（{count}）"
 
 #. js-lingui-explicit-id
 msgid "session.execution.background"
@@ -18226,10 +18567,6 @@ msgstr "原始输出"
 #. js-lingui-explicit-id
 msgid "session.process.records"
 msgstr "执行过程"
-
-#. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
-msgstr "完整任务结果暂不可用，当前显示原始通知。"
 
 #. js-lingui-explicit-id
 msgid "session.process.statistics"
@@ -20576,6 +20913,66 @@ msgid "settings.email.state.paused"
 msgstr "已暂停"
 
 #. js-lingui-explicit-id
+msgid "settings.experiments.dependencyUnavailable"
+msgstr "所需功能不可用"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.description"
+msgstr "试用尚未完善的功能。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.empty"
+msgstr "暂无实验功能。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.live"
+msgstr "保存后，下次操作生效"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loadFailed"
+msgstr "无法加载实验功能。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loading"
+msgstr "加载中…"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.notInstalled"
+msgstr "未安装"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.pending"
+msgstr "已保存，重启后生效"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.restart"
+msgstr "重启后生效"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.saveFailed"
+msgstr "未能确认更改，已保留草稿。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.searchTerms"
+msgstr "实验 | 功能 | 看板 | boss | lattice | 预览"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.title"
+msgstr "实验功能"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unsaved"
+msgstr "尚未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unselected"
+msgstr "当前不可用"
+
+#. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.balanced"
 msgstr "平衡"
 
@@ -22681,7 +23078,7 @@ msgstr "模型"
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.description"
-msgstr "选择要显示在模型快速切换列表和命令快捷方式中的模型。"
+msgstr "将模型加入「快速切换」分组。所有可用模型仍可选择。"
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.title"
@@ -27236,10 +27633,6 @@ msgid "ui.turnChangeSummary.title"
 msgstr "已更改 {fileCount, plural, one {# 个文件} other {# 个文件}}"
 
 #. js-lingui-explicit-id
-msgid "ui.turnChangeSummary.undo"
-msgstr "撤销"
-
-#. js-lingui-explicit-id
 msgid "ui.userMessage.markdown"
 msgstr "Markdown"
 
@@ -27256,6 +27649,10 @@ msgid "welcome.blocks.help"
 msgstr "左右键移动，上键旋转，下键加速，空格直接落下；长按左右键可连续移动。触屏可连续横拖、轻点旋转、下划落下。"
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr "左右拖动移动方块，轻点旋转，下滑落下。按住拖动会持续移动。"
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr "俄罗斯方块"
 
@@ -27268,12 +27665,20 @@ msgid "welcome.blocks.ready"
 msgstr "点击开始 · ↑ 旋转 · 空格落下"
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr "轻点开始 · 滑动移动"
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr "{score} 分 · 已消 {lines} 行"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
 msgstr "点击继续"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
+msgstr "轻点继续"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
@@ -27292,12 +27697,20 @@ msgid "welcome.common.statusControl"
 msgstr "点击开始或暂停，Esc 暂停，R 重新开始。"
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr "轻点开始或暂停。"
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr "从一个念头，到真正做出来。你想创造什么？"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
 msgstr "让想法，动起来。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
+msgstr "移开焦点后游戏会继续。"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
@@ -27318,6 +27731,10 @@ msgstr "飞机大战游戏区域"
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
 msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取弹药获得十秒三向火力，气泡护罩抵挡一次碰撞，爱心补给箱恢复生命。"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
+msgstr "拖动转向，轻点开始自动射击。避开碰撞，漏掉敌人会中断连击。拾取弹药可获得十秒三连火力，泡泡可抵挡一次撞击，补给箱可恢复生命。"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -27348,6 +27765,10 @@ msgid "welcome.flight.ready"
 msgstr "移动操控 · 点击起飞"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr "拖动转向 · 轻点起飞"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr "生命已满 · +{points} 分"
 
@@ -27376,6 +27797,10 @@ msgid "welcome.slingshot.help"
 msgstr "向后拉小精灵，松手击倒守卫。击碎支撑，让结构倒塌。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr "向后拖拽小精灵并松手，击倒守卫。击碎支撑，让结构倒塌。"
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr "再试一次"
 
@@ -27386,6 +27811,10 @@ msgstr "像素弹弓"
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
 msgstr "第 {level} 关 · 向后拉，松开发射 · {shots} 发"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
+msgstr "第 {level} 关 · 向后拖动并松手 · {shots} 发"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
@@ -27404,12 +27833,20 @@ msgid "welcome.stack.help"
 msgstr "点击或按空格叠放移动的楼层，尽量对齐边缘。"
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr "轻点落下方块。对齐边缘。"
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr "叠叠高"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
 msgstr "点击落下"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
+msgstr "轻点落下"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.result"

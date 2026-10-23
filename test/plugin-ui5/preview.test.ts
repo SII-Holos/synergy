@@ -15,7 +15,9 @@ test("preview starts a real isolated host and removes only its owned home on clo
       command: [process.execPath, path.resolve(import.meta.dir, "../../packages/presets/src/index.ts")],
     })
     expect((await preview.client.global.health()).data?.healthy).toBe(true)
-    expect(await (await fetch(preview.url)).text()).toContain("<title>Synergy</title>")
+    expect(await (await fetch(preview.url, { headers: { Accept: "text/html" } })).text()).toContain(
+      "<title>Synergy</title>",
+    )
     const home = preview.home
     expect(home).not.toBe(process.env.SYNERGY_HOME)
     await preview.close()

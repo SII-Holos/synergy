@@ -1,9 +1,11 @@
+import { componentFeatures } from "./features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 
 export function acp(): RuntimeComponent {
   return {
     id: "acp",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version, server: version },

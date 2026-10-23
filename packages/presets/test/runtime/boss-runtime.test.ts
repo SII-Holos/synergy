@@ -11,7 +11,7 @@ import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss"] })
 
 const originalConfigCurrent = Config.current
 

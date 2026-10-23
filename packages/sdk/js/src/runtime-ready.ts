@@ -1,15 +1,16 @@
 import type { RuntimeComponentInfo } from "./gen/types.gen.js"
 
-export const RUNTIME_READY_PREFIX = "SYNERGY_READY_V1 "
+export const RUNTIME_READY_PREFIX = "SYNERGY_READY_V2 "
 export const RUNTIME_READY_MAX_LENGTH = 64 * 1024
 
 export interface RuntimeReady {
-  protocol: 1
+  protocol: 2
   pid: number
   version: string
   home: string
   url: string
   components: RuntimeComponentInfo[]
+  selection: Array<Pick<RuntimeComponentInfo, "id" | "version">>
 }
 
 export function runtimeReadyLine(value: RuntimeReady): string {
@@ -25,7 +26,7 @@ export function parseRuntimeReady(line: string): RuntimeReady | undefined {
   if (!data || typeof data !== "object") throw new Error("Invalid runtime readiness record")
   const value = data as Partial<RuntimeReady>
   if (
-    value.protocol !== 1 ||
+    value.protocol !== 2 ||
     !Number.isSafeInteger(value.pid) ||
     (value.pid ?? 0) <= 0 ||
     typeof value.version !== "string" ||
@@ -39,7 +40,15 @@ export function parseRuntimeReady(line: string): RuntimeReady | undefined {
         typeof component.version !== "string" ||
         component.apiVersion !== 1,
     ) ||
-    new Set(value.components.map((component) => component.id)).size !== value.components.length
+    new Set(value.components.map((component) => component.id)).size !== value.components.length ||
+    !Array.isArray(value.selection) ||
+    value.selection.some(
+      (component) => !component || typeof component.id !== "string" || typeof component.version !== "string",
+    ) ||
+    new Set(value.selection.map((component) => component.id)).size !== value.selection.length ||
+    value.components.some(
+      (component) => !value.selection!.some((item) => item.id === component.id && item.version === component.version),
+    )
   )
     throw new Error("Invalid runtime readiness record")
   return value as RuntimeReady

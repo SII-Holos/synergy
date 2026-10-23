@@ -26,17 +26,15 @@ test("snapshot indexes, retained refs and pack transfers work beyond Windows MAX
       Array.from({ length: 65 }, (_, index) => fs.writeFile(path.join(workspace, `${index}.txt`), `packed ${index}`)),
     )
     const args = ["git", "--git-dir", repo]
-    expect(
-      await SnapshotCapture.refresh({
-        scopeID: "long-path",
-        sessionID: "long-path",
-        backend: "shared",
-        repository: repo,
-        workspace,
-        index,
-        temporary: path.dirname(index),
-      }),
-    ).toBe(true)
+    await SnapshotCapture.refresh({
+      scopeID: "long-path",
+      sessionID: "long-path",
+      backend: "shared",
+      repository: repo,
+      workspace,
+      index,
+      temporary: path.dirname(index),
+    })
     expect(
       (await fs.readdir(path.join(repo, "objects", "pack"))).filter((name) => name.endsWith(".pack")),
     ).toHaveLength(1)

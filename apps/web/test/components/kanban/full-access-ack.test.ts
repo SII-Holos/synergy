@@ -4,7 +4,9 @@ import { afterAll, afterEach, describe, expect, mock, test } from "bun:test"
 import { plugin } from "bun"
 import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
-import { createComponent } from "solid-js"
+import { createComponent, createSignal, onCleanup } from "solid-js"
+import type { Accessor } from "solid-js"
+import type { BoardPane } from "../../../src/components/kanban/model/pane-selection"
 import { render } from "solid-js/web"
 
 // The kanban board gates its pane control-profile selector through the real
@@ -137,6 +139,7 @@ const navEntry = {
   archived: false,
   completionNotice: { unread: false, unreadCount: 0 },
 }
+const [recentEntries, setRecentEntries] = createSignal([navEntry])
 
 mock.module("../../../src/context/layout", () => ({
   useLayout: () => ({
@@ -161,7 +164,7 @@ mock.module("../../../src/context/layout", () => ({
       }
     },
     nav: {
-      recentEntries: () => [navEntry],
+      recentEntries,
       rootNavEntries: () => [],
       projectNavEntries: () => [],
     },
@@ -184,6 +187,8 @@ mock.module("../../../src/context/locale", () => ({
 // Static imports of `packages/ui` TSX would compile before this file's Bun
 // loader is registered, so the UI surfaces load dynamically after it.
 const { KanbanPanel } = await import("../../../src/components/kanban")
+const { KanbanGrid } = await import("../../../src/components/kanban/layout/grid")
+const { KanbanFocus } = await import("../../../src/components/kanban/layout/focus")
 const { DialogProvider } = await import("@ericsanchezok/synergy-ui/context/dialog")
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
@@ -241,6 +246,7 @@ async function selectProfile(label: string) {
 }
 
 afterEach(() => {
+  setRecentEntries([navEntry])
   config = {}
   navigations.length = 0
   surfaces.clear()
@@ -249,6 +255,89 @@ afterEach(() => {
   localStorage.clear()
   document.body.innerHTML = ""
 })
+
+test("recent sessions can replace visible panes without losing retained drafts", async () => {
+  const initial = Array.from({ length: 6 }, (_, index) => ({
+    ...navEntry,
+    id: `ses_board_${index}`,
+    lastActivityAt: 100 - index,
+  }))
+  setRecentEntries(initial)
+  const harness = mount()
+  try {
+    await settle()
+    const pane = (id: string) =>
+      [...harness.root.querySelectorAll<HTMLElement>("[data-pane-key]")].find(
+        (node) => node.dataset.paneKey === `home\n${id}`,
+      )
+    const retained = pane("ses_board_0")?.querySelector<HTMLInputElement>("input")
+    expect(retained).toBeInstanceOf(HTMLInputElement)
+    retained!.value = "Keep my draft"
+    retained!.dispatchEvent(new Event("input", { bubbles: true }))
+    expect(() => setRecentEntries([{ ...navEntry, id: "ses_new", lastActivityAt: 200 }, ...initial])).not.toThrow()
+    await settle()
+    expect(harness.root.querySelectorAll('[data-component="kanban-pane"]')).toHaveLength(6)
+    expect(pane("ses_board_5")).toBeUndefined()
+    expect(pane("ses_board_0")?.querySelector("input")).toBe(retained)
+    expect(retained!.value).toBe("Keep my draft")
+  } finally {
+    harness.dispose()
+  }
+})
+
+for (const mode of ["grid", "focus"] as const) {
+  test(`${mode} panes keep their owner available to cleanup when removed`, () => {
+    const initial: BoardPane[] = ["a", "b", "c"].map((id) => ({
+      key: id,
+      scopeKey: "home",
+      sessionID: id,
+      kind: "live",
+      pinned: false,
+    }))
+    const [panes, setPanes] = createSignal(initial)
+    const closed: string[] = []
+    const renderPane = (pane: Accessor<BoardPane>) => {
+      onCleanup(() => closed.push(pane().sessionID))
+      return document.createElement("div")
+    }
+    const root = document.createElement("div")
+    const dispose = render(
+      () =>
+        createComponent(I18nProvider, {
+          i18n,
+          get children() {
+            return mode === "grid"
+              ? createComponent(KanbanGrid, {
+                  get panes() {
+                    return panes()
+                  },
+                  renderPane,
+                  cols: 3,
+                  rows: 1,
+                  onReorder() {},
+                })
+              : createComponent(KanbanFocus, {
+                  get panes() {
+                    return panes()
+                  },
+                  renderPane,
+                  railWidth: () => 300,
+                  onRailResize() {},
+                })
+          },
+        }),
+      root,
+    )
+    try {
+      expect(() => setPanes(initial.slice(0, 2))).not.toThrow()
+      expect(closed).toContain("c")
+      expect(() => setPanes([])).not.toThrow()
+      expect(closed.toSorted()).toEqual(["a", "b", "c"])
+    } finally {
+      dispose()
+    }
+  })
+}
 
 describe("Full Access acknowledgement on the kanban pane selector", () => {
   test("prompts for the pane profile and does not change it when the risk is unrecorded", async () => {

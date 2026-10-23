@@ -315,14 +315,6 @@ export function ProcessEventDetailWorkbenchContent(
                   })}
                 </p>
               </Show>
-              <Show when={taskID() && captured() === undefined && saved()?.output === undefined}>
-                <p data-slot="execution-evidence-gap">
-                  {_({
-                    id: "session.process.resultUnavailable",
-                    message: "The full task result is not available. The original notification is shown.",
-                  })}
-                </p>
-              </Show>
             </Show>
           </Match>
         </Switch>

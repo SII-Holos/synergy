@@ -2,6 +2,7 @@ import { createSignal, onCleanup, onMount, Show, type JSX } from "solid-js"
 import { selectPromptDockControl } from "./prompt-dock-control-model"
 import { SubagentDock } from "./subagent-dock"
 import { SessionProgressPanel } from "./session-progress-panel"
+import { TurnChangeStatus } from "./turn-change-status"
 import "./prompt-dock-float-layer.css"
 
 export function PromptDockControlSlot(props: { priorityControl?: JSX.Element; fallback?: JSX.Element }) {
@@ -18,7 +19,11 @@ export function PromptDockControlSlot(props: { priorityControl?: JSX.Element; fa
   )
 }
 
-export function PromptDockFloatLayer(props: { sessionID: string; priorityControl?: JSX.Element }) {
+export function PromptDockFloatLayer(props: {
+  sessionID: string
+  priorityControl?: JSX.Element
+  onReview(rootID: string): void
+}) {
   const [anchor, setAnchor] = createSignal<HTMLDivElement>()
   const [editorExpanded, setEditorExpanded] = createSignal(false)
   onMount(() => {
@@ -31,8 +36,9 @@ export function PromptDockFloatLayer(props: { sessionID: string; priorityControl
     onCleanup(() => observer.disconnect())
   })
   return (
-    <div ref={setAnchor} class="prompt-dock-float-layer relative w-full flex flex-col items-center">
+    <div ref={setAnchor} class="prompt-dock-float-layer">
       <SubagentDock sessionID={props.sessionID} suppressed={editorExpanded()} />
+      <TurnChangeStatus sessionID={props.sessionID} onReview={props.onReview} />
       <PromptDockControlSlot priorityControl={props.priorityControl} />
       <SessionProgressPanel
         sessionID={props.sessionID}

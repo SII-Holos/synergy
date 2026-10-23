@@ -26,6 +26,7 @@ type Control = {
   reject(index: number): void
   requests(): boolean[]
   ghost(): string | undefined
+  prediction(): { busy: boolean; disabled: boolean } | undefined
 }
 declare global {
   interface Window {
@@ -47,6 +48,7 @@ beforeAll(async () => {
     `
     import {createSignal} from "solid-js"
     import {createStore} from "solid-js/store"
+    import {setupI18n} from "@lingui/core"
     export const [selection,setSelection]=createSignal({features:["digital-twin"]})
     export const [active,setActive]=createSignal(true)
     export const [session,setSession]=createSignal("session")
@@ -67,6 +69,8 @@ beforeAll(async () => {
     export const useSync=()=>({data:{config,session:[{id:session()}]}})
     export const useGlobalSDK=()=>({drafts:{hasDraftSession:()=>false}})
     export const useViewActivity=()=>active
+    const fixtureI18n=setupI18n({locale:"en",messages:{en:{}}})
+    export const useLocale=()=>({i18n:fixtureI18n,fmt:{relative:()=>"now",time:value=>String(value),date:value=>String(value),number:value=>String(value)},controller:{activeLocale:()=>"en",generation:()=>0}})
     export const controls={capability:value=>setSelection(value==="unknown"?undefined:{features:value==="selected"?["digital-twin"]:[]}),active:setActive,session:setSession,scope:setScope,connection:setConnection,model:setModel,running:setRunning,
       composer:setComposerShown,
       stored:()=>Object.keys(localStorage).filter(key=>key.endsWith(":digital-twin")).map(key=>JSON.parse(localStorage.getItem(key))),
@@ -83,7 +87,7 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import {render} from "solid-js/web"
-    import {createSignal,Show} from "solid-js"
+    import {createMemo,createSignal,Show} from "solid-js"
     import {setupI18n} from "@lingui/core"
     import {I18nProvider} from "@lingui/solid"
     import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
@@ -92,6 +96,8 @@ beforeAll(async () => {
     import {getSemanticIcon} from "@ericsanchezok/synergy-ui/semantic-icon"
     import {DigitalTwinComposer} from "@/components/digital-twin/composer"
     import {DigitalTwinBackground} from "@/components/digital-twin/background"
+    import {PromptAddMenu} from "@/components/prompt-input/add-menu"
+
     import {DigitalTwinSettings} from "@/components/digital-twin/settings"
     import {ComposerDocumentController} from "@/components/prompt-input/composer-document"
     import {DefaultComposer} from "@/plugin/default-composer"
@@ -102,7 +108,11 @@ beforeAll(async () => {
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     const [text,setText]=createSignal(""),[settings,setSettings]=createSignal({automatic:true,model:""})
     const controller=new ComposerDocumentController({read:()=>({sessionId:session(),text:text(),selection:{start:0,end:0},mode:"normal"}),applyEdits:edits=>{for(const edit of edits)setText(value=>value.slice(0,edit.range.start)+edit.text+value.slice(edit.range.end))}})
-    window.twinFixture={...controls,composing:value=>controller.setComposing(value),touch:()=>controller.changed(),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion()}
+    const bound=new URLSearchParams(location.search).has("bound")
+    const [predictionApi,setPredictionApi]=createSignal()
+    const addMenuSections=createMemo(()=>[{id:"prediction",label:"Assist",items:[{id:"predict-next",label:"Predict next input",icon:getSemanticIcon("action.predict"),disabled:!predictionApi()||predictionApi().disabled(),onSelect:()=>predictionApi()?.predict()}]}])
+    window.twinFixture={...controls,composing:value=>controller.setComposing(value),touch:()=>controller.changed(),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion(),prediction:()=>{const api=predictionApi();return api?{busy:api.busy(),disabled:api.disabled()}:undefined}}
+
     const messages=()=>[{id:"root",sessionID:session(),role:"user",isRoot:true,time:{created:1}},{id:"reply",sessionID:session(),role:"assistant",rootID:"root",time:{created:2,completed:3},finish:"stop"}]
     const [completionRevision,setCompletionRevision]=createSignal(0)
     controller.subscribe(()=>setCompletionRevision(value=>value+1))
@@ -111,14 +121,17 @@ beforeAll(async () => {
       label:()=>"Completion preview",mount:element=>{editor=element;return ()=>{editor=undefined}},beforeInput:()=>{},input:()=>{},paste:async()=>{},keyDown:()=>{},
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
-    },render:part=>part==="toolbar"?<div class="prompt-input-toolbar flex justify-end"><div class="prompt-input-toolbar-actions flex items-center gap-1.5">
+    },render:part=>part==="toolbar"?(bound?<div class="prompt-input-toolbar"><PromptAddMenu sections={addMenuSections()}/></div>:<div class="prompt-input-toolbar flex justify-end"><div class="prompt-input-toolbar-actions flex items-center gap-1.5">
       <Show when={sdk.capabilities.has("digital-twin")&&composerShown()}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()}/></Show>
+
       <button type="button" aria-label="Microphone" class="prompt-input-toolbar-icon-button flex items-center justify-center"><Icon name={getSemanticIcon("prompt.voice")} size="small"/></button>
-    </div></div>:null}
+    </div></div>):null}
     bindComposerPresentation(input,{state:new ComposerPresentation(),preview:()=>({text:text(),references:[]})})
     function Contents(){return <>
       <DigitalTwinSettings value={settings()} models={[{providerId:"fixture",providerName:"Fixture",modelId:"large",modelName:"Large"}]} change={value=>{setSettings(value);setConfig("digitalTwin","automatic",value.automatic)}}/>
       <DigitalTwinBackground/>
+      <Show when={bound}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()} bind={setPredictionApi}/></Show>
+
       <DefaultComposer context={{input}}/>
       <textarea aria-label="Draft" value={text()} onInput={event=>{setText(event.currentTarget.value);controller.changed()}}/>
     </>}
@@ -130,7 +143,7 @@ beforeAll(async () => {
     styled: true,
     localized: true,
     aliases: [
-      ...["sdk", "sync", "view-residency", "global-sdk"].map((name) => ({
+      ...["sdk", "sync", "view-residency", "global-sdk", "locale"].map((name) => ({
         find: new RegExp("^@/context/" + name + "$"),
         replacement: path.join(directory, "services.ts"),
       })),
@@ -580,6 +593,7 @@ test("automatic prediction still runs for a Session the user is not viewing", as
     })
     await page.evaluate(() => window.twinFixture.composer(true))
     await page.waitForFunction(() => !!window.twinFixture.ghost())
+
     expect(await page.getByText("再检查一下 API 的边界", { exact: true }).isVisible()).toBe(true)
     expect(errors).toEqual([])
   } finally {
@@ -639,3 +653,62 @@ test.each(["setting", "capability", "connection"] as const)(
     }
   },
 )
+
+test("a bound narrow menu keeps prediction busy, failure and success feedback on the page", async () => {
+  const page = await browser.newPage({ viewport: { width: 375, height: 812 } })
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    await page.goto(fixture.url + "?bound")
+    const add = page.getByRole("button", { name: "Add", exact: true })
+    await add.waitFor()
+    // In this layout the add menu is the only prediction entry, so the feedback
+    // it triggers has to be visible on the page instead of implied by the item.
+    expect(await page.getByRole("button", { name: "Predict next input", exact: true }).count()).toBe(0)
+    await page.evaluate(async () => {
+      window.twinFixture.automatic(undefined)
+      window.twinFixture.complete()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    })
+    expect(await page.evaluate(() => window.twinFixture.requests())).toEqual([])
+    await page.waitForFunction(() => window.twinFixture.prediction()?.disabled === false)
+    expect(await page.locator('[data-slot="twin-prediction-status"]').count()).toBe(0)
+
+    const choosePrediction = async () => {
+      await add.click()
+      const dialog = page.getByRole("dialog", { name: "Add", exact: true })
+      await dialog.waitFor()
+      await dialog.getByRole("button", { name: /Predict next input/ }).click()
+      await dialog.waitFor({ state: "detached" })
+    }
+
+    await choosePrediction()
+    await page.waitForFunction(() => window.twinFixture.requests().length === 1)
+    expect(await page.locator('[data-slot="twin-prediction-status"]').allInnerTexts()).toEqual([
+      "Predicting next input…",
+    ])
+    expect(await page.evaluate(() => window.twinFixture.prediction()?.busy)).toBe(true)
+
+    await page.evaluate(() => window.twinFixture.reject(0))
+    await page.waitForFunction(() => window.twinFixture.prediction()?.busy === false)
+    expect(await page.locator('[data-slot="twin-prediction-status"]').allInnerTexts()).toEqual([
+      "Prediction unavailable. Try again.",
+    ])
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+
+    await page.waitForFunction(() => window.twinFixture.prediction()?.disabled === false)
+    await choosePrediction()
+    await page.waitForFunction(() => window.twinFixture.requests().length === 2)
+    expect(await page.locator('[data-slot="twin-prediction-status"]').allInnerTexts()).toEqual([
+      "Predicting next input…",
+    ])
+    await page.evaluate(() => window.twinFixture.resolve(1))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+    expect(await page.locator('[data-slot="twin-prediction-status"]').count()).toBe(0)
+    expect(await page.getByText("再检查一下 API 的边界", { exact: true }).isVisible()).toBe(true)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})

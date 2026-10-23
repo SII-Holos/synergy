@@ -114,6 +114,7 @@
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-note": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

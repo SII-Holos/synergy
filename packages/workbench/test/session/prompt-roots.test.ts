@@ -46,18 +46,12 @@ function profile() {
   }
 }
 
-describe("buildPermissionContext with multiple roots", () => {
-  test("renders all workspace roots in the permission profile", () =>
+describe("buildPermissionContext", () => {
+  test("leaves the workspace write roots to the environment block", () =>
     runtime.run(() => {
-      const text = buildPermissionContext(profile() as any, ["/project/main", "/project/folder-a"])
-      expect(text).toContain("Workspace roots: /project/main, /project/folder-a")
+      const text = buildPermissionContext(profile() as any)
       expect(text).toContain('<permission_profile id="guarded"')
-    }))
-
-  test("renders a single root without commas", () =>
-    runtime.run(() => {
-      const text = buildPermissionContext(profile() as any, ["/project/main"])
-      expect(text).toContain("Workspace roots: /project/main")
+      expect(text).not.toContain("Workspace roots:")
     }))
 })
 

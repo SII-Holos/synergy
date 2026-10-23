@@ -1,3 +1,4 @@
+import { readFeaturePreferences } from "@ericsanchezok/synergy-util/feature-config"
 import fs from "node:fs/promises"
 import path from "node:path"
 import os from "node:os"
@@ -96,17 +97,20 @@ export async function launch() {
       return
     }
   }
-  const components =
+  const composition =
     runner && runner !== "__storage-maintenance-runner"
-      ? []
+      ? { components: [], features: undefined, maintenance: [] }
       : await loadInstalledComponents(
           generation,
           process.env.SYNERGY_COMPONENTS
             ? z.record(z.string(), z.string()).parse(JSON.parse(process.env.SYNERGY_COMPONENTS))
             : undefined,
-          { desktop: process.env.SYNERGY_DESKTOP_BROWSER === "1" },
+          {
+            desktop: process.env.SYNERGY_DESKTOP_BROWSER === "1",
+            ...(await readFeaturePreferences(path.join(root, "config"))),
+          },
         )
-  await cli.main(components, resumeWorker)
+  await cli.main(composition.components, resumeWorker, composition)
 }
 
 if (import.meta.main) {

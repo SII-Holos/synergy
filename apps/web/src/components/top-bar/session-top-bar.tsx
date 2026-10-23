@@ -22,7 +22,8 @@ import { useCommand } from "@/context/command"
 import { useSessionDataView } from "@/context/session-data-view"
 import { useSync } from "@/context/sync"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { useNewTaskNavigation } from "@/components/session/welcome/context"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { WorktreeEnterConfirmDialog } from "@/components/session/worktree-transition-dialog"
@@ -209,6 +210,7 @@ export function SessionTopBar(props: {
 
   const params = useParams()
   const navigate = useNavigate()
+  const newTask = useNewTaskNavigation(navigate)
   const dialog = useDialog()
   const confirm = useConfirm()
   const layout = useLayout()
@@ -445,37 +447,27 @@ export function SessionTopBar(props: {
     <>
       <div ref={header} class="stb-root" data-session-top-bar data-compact={compact() ? "" : undefined}>
         {/* Mobile layout */}
-        <div class="md:hidden flex w-full items-center justify-between pointer-events-auto">
-          <div class="flex items-center gap-1">
-            <button
-              type="button"
-              class="stb-icon-btn"
-              aria-label={_(topBar.openNavigation)}
-              onClick={() => layout.mobileSidebar.toggle()}
-            >
-              <Icon name={getSemanticIcon("app.sidebar.open")} size="small" />
-            </button>
-            <button
-              type="button"
-              class="stb-icon-btn"
-              aria-label={_(topBar.openTools)}
-              onClick={() => layout.rightSidebar.toggle()}
-            >
-              <Icon name={getSemanticIcon("app.toolsDrawer")} size="small" />
-            </button>
-          </div>
+        <div class="stb-mobile md:hidden flex w-full min-w-0 items-center pointer-events-auto">
+          <button
+            type="button"
+            class="stb-icon-btn"
+            aria-label={_(topBar.openNavigation)}
+            onClick={() => layout.mobileSidebar.toggle()}
+          >
+            <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" />
+          </button>
           <div class="stb-center flex min-w-0 flex-1 items-center justify-center">
             <ModelSelectorButton />
           </div>
-          <div class="flex items-center gap-1">
+          <div class="stb-mobile-actions">
             <SessionTaskDetails hasCanonicalRoot={props.hasCanonicalRoot} inboxFrozen={props.inboxFrozen} />
             <button
               type="button"
               class="stb-icon-btn"
               aria-label={_(topBar.newSession)}
-              onClick={() => navigate(`/${params.dir}/session`)}
+              onClick={() => newTask(params.dir ?? base64Encode("home"))}
             >
-              <Icon name={getSemanticIcon("action.add")} size="small" />
+              <Icon name={getSemanticIcon("session.new")} size="normal" />
             </button>
             <Show when={actionVisibility().menu}>
               <SessionActionMenu

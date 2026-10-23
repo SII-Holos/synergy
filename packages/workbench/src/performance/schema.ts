@@ -349,6 +349,7 @@ export namespace PerformanceSchema {
           executionPhases: z
             .partialRecord(
               z.enum([
+                "preparing",
                 "queued_agent",
                 "running_agent",
                 "authorizing_tools",

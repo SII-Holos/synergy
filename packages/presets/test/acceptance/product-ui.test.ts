@@ -32,7 +32,9 @@ test("the isolated product acceptance Runtime serves its explicitly selected Web
     http: true,
     webAppDirectory: web,
   })
-  const response = await fetch(`http://127.0.0.1:${host.runtime.server!.port}/aG9tZQ/session`)
+  const response = await fetch(`http://127.0.0.1:${host.runtime.server!.port}/aG9tZQ/session`, {
+    headers: { Accept: "text/html" },
+  })
   expect(response.status).toBe(200)
   expect(await response.text()).toContain("frozen product artifact")
 }, 30000)

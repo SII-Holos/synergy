@@ -4,6 +4,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { MessageV2 } from "./message-v2"
+import { SnapshotSchema } from "./snapshot-schema"
 import { PartContent as SessionPartContent } from "./part-content"
 import { UpgradeWork } from "../storage/upgrade-work"
 import { SessionHistorySearch } from "./history-search"
@@ -18,6 +19,7 @@ export namespace SessionHistoryDisplay {
     generation: z.number(),
     cursor: z.string().optional(),
     sourceGeneration: z.number().optional(),
+    executionVersion: z.literal(1).optional(),
   })
   type State = z.infer<typeof State>
   export const ContentReference = z
@@ -83,7 +85,209 @@ export namespace SessionHistoryDisplay {
   const digest = (text: string) => new Bun.CryptoHasher("sha256").update(text).digest("hex")
   const key = StoragePath.sessionDisplayState
   const partStateKey = StoragePath.sessionDisplayPartsState
-  type PartsState = { version?: 1; ready: boolean; generation: number; cursor?: string; sourceGeneration?: number }
+  type PartsState = {
+    version?: 1
+    ready: boolean
+    generation: number
+    cursor?: string
+    sourceGeneration?: number
+    execution?: { version: 1; generation: number; ready: boolean; cursor?: string[]; prepared: number }
+  }
+  export type ExecutionPart = SessionPartContent.ExecutionFact
+  type StoredPartSummary = PartSummary & {
+    execution?: { version: 1; revision: string; fact: ExecutionPart }
+  }
+  export type ExecutionProgress = { stage: "messages" | "parts"; prepared: number; total?: number }
+
+  export async function initializeExecution(scopeID: string, sessionID: string) {
+    const current = await state(scopeID, sessionID)
+    if (current.executionVersion !== 1)
+      await Storage.write(key(scopeID, sessionID), { ...current, executionVersion: 1 })
+  }
+
+  function executionFact(value: StoredPartSummary | undefined, revision?: bigint) {
+    if (value?.execution?.version !== 1 || (revision !== undefined && value.execution.revision !== String(revision)))
+      return
+    const fact = SessionPartContent.ExecutionFact.safeParse(value.execution.fact)
+    return fact.success ? fact.data : undefined
+  }
+
+  export async function currentExecutionParts(
+    scopeID: string,
+    sessionID: string,
+    messageID?: string,
+    signal?: AbortSignal,
+  ) {
+    const parts = new Map<string, ExecutionPart[]>()
+    const pending = new Set<string>()
+    let after: string[] | undefined
+    for (;;) {
+      signal?.throwIfAborted()
+      const records = await Storage.query<SessionPartContent.Stored>({
+        kind: "part",
+        scopeID,
+        sessionID,
+        messageID,
+        limit: 512,
+        after,
+      })
+      const missing: typeof records = []
+      const add = (fact: ExecutionPart) => {
+        const message = parts.get(fact.messageID) ?? []
+        message.push(fact)
+        parts.set(fact.messageID, message)
+      }
+      for (const record of records) {
+        const fact = SessionPartContent.executionFact(upgradeAccessRecord(record.key, record.value))
+        if (fact) add(fact)
+        else missing.push(record)
+      }
+      const saved = await Storage.readMany<StoredPartSummary>(
+        missing.map(({ value }) => StoragePath.sessionDisplayPart(scopeID, sessionID, value.messageID, value.id)),
+      )
+      for (const [index, record] of missing.entries()) {
+        const fact = executionFact(saved[index], record.revision)
+        if (fact) add(fact)
+        else pending.add(record.value.messageID)
+      }
+      if (records.length < 512) break
+      after = records.at(-1)!.key
+    }
+    for (const message of parts.values()) message.sort((a, b) => a.id.localeCompare(b.id))
+    return { parts, pending }
+  }
+
+  export async function readExecutionParts(scopeID: string, sessionID: string, messageID: string) {
+    const [saved] = await Storage.readMany<PartsState>([partStateKey(scopeID, sessionID, messageID)])
+    if (saved?.execution?.version !== 1 || !saved.execution.ready || saved.execution.generation !== saved.generation)
+      return
+    const facts: ExecutionPart[] = []
+    for await (const record of Storage.records<StoredPartSummary>({
+      kind: "display_part",
+      scopeID,
+      sessionID,
+      messageID,
+    })) {
+      const fact = executionFact(record.value)
+      if (fact) facts.push(fact)
+    }
+    if (facts.length !== saved.execution.prepared) return
+    return facts.sort((a, b) => (a.id > b.id ? 1 : -1))
+  }
+
+  export async function prepareExecutionParts(
+    scopeID: string,
+    sessionID: string,
+    messageID: string,
+    signal?: AbortSignal,
+    progress?: (value: ExecutionProgress) => void,
+  ) {
+    if (Storage.inTransaction()) throw new Error("Execution preparation must run outside a storage transaction")
+    const stateKey = partStateKey(scopeID, sessionID, messageID)
+    const messageKey = StoragePath.messageInfo(
+      Identifier.asScopeID(scopeID),
+      Identifier.asSessionID(sessionID),
+      Identifier.asMessageID(messageID),
+    )
+    for (;;) {
+      signal?.throwIfAborted()
+      const source = await Storage.snapshot(async (tx) => {
+        const [messageRevision] = await tx.revisions([messageKey])
+        if (messageRevision === undefined) throw new Storage.NotFoundError({ message: "Execution message was removed" })
+        const [saved] = await tx.readMany<PartsState>([stateKey])
+        const generation = saved?.generation ?? 0
+        let execution =
+          saved?.execution?.version === 1 && saved.execution.generation === generation ? saved.execution : undefined
+        if (execution?.ready) {
+          if (await readExecutionParts(scopeID, sessionID, messageID)) return undefined
+          execution = undefined
+        }
+        const records = await tx.query<SessionPartContent.Stored>({
+          kind: "part",
+          scopeID,
+          sessionID,
+          messageID,
+          after: execution?.cursor,
+          limit: 32,
+        })
+        const keys = records.map(({ value }) => StoragePath.sessionDisplayPart(scopeID, sessionID, messageID, value.id))
+        return {
+          generation,
+          execution,
+          records,
+          keys,
+          summaries: await tx.readMany<StoredPartSummary>(keys),
+          messageRevision,
+        }
+      })
+      if (!source) return
+      const valid = async () => {
+        const [saved] = await Storage.readMany<PartsState>([stateKey])
+        if ((saved?.generation ?? 0) !== source.generation) return false
+        const revisions = await Storage.revisions([messageKey, ...source.records.map((record) => record.key)])
+        return (
+          revisions[0] === source.messageRevision &&
+          source.records.every((record, index) => revisions[index + 1] === record.revision)
+        )
+      }
+      const values: StoredPartSummary[] = []
+      try {
+        for (const [index, record] of source.records.entries()) {
+          signal?.throwIfAborted()
+          const value = upgradeAccessRecord(record.key, record.value)
+          const fact =
+            executionFact(source.summaries[index], record.revision) ??
+            SessionPartContent.executionFact(value) ??
+            SessionPartContent.executionFact(
+              value,
+              await SessionPartContent.prefix([{ key: record.key, value }], {
+                maxLength: 240,
+                normalizeWhitespace: true,
+                trim: false,
+                signal,
+              }),
+            )!
+          const summary = SessionPartContent.summary(value)
+          values.push({
+            ...(source.summaries[index]?.content.version === summary.content.version ? source.summaries[index] : {}),
+            ...summary,
+            execution: { version: 1, revision: String(record.revision), fact },
+          })
+        }
+      } catch (error) {
+        signal?.throwIfAborted()
+        if (!(await Storage.snapshot(valid))) continue
+        throw error
+      }
+      signal?.throwIfAborted()
+      const published = await Storage.transaction(
+        async (tx) => {
+          if (!(await valid())) return false
+          const [current] = await tx.readMany<PartsState>([stateKey])
+          await tx.writeMany(values.map((value, index) => ({ key: source.keys[index], value })))
+          const prepared = (source.execution?.prepared ?? 0) + source.records.length
+          await tx.write(stateKey, {
+            ...current,
+            ready: current?.ready ?? false,
+            generation: source.generation,
+            execution: {
+              version: 1,
+              generation: source.generation,
+              ready: source.records.length < 32,
+              cursor: source.records.at(-1)?.key ?? source.execution?.cursor,
+              prepared,
+            },
+          } satisfies PartsState)
+          return prepared
+        },
+        { commitGuard: () => signal?.throwIfAborted() },
+      )
+      if (published === false) continue
+      progress?.({ stage: "parts", prepared: published })
+      if (source.records.length < 32) return
+      await new Promise<void>((resolve) => setTimeout(resolve, 0))
+    }
+  }
 
   export async function displayManifest(
     input: z.infer<typeof DisplayManifestInput> & { sessionID: string },
@@ -156,6 +360,7 @@ export namespace SessionHistoryDisplay {
         let bytes = 0
         projected.summary = {
           ...projected.summary,
+          diffIssues: SnapshotSchema.summarizeIssues(projected.summary.diffIssues),
           title: projected.summary.title?.slice(0, 256),
           body: projected.summary.body?.slice(0, 2048),
           diffs: projected.summary.diffs.flatMap((diff) => {
@@ -287,7 +492,18 @@ export namespace SessionHistoryDisplay {
       ),
     )
     await SessionHistorySearch.partWritten(scopeID, part)
-    await Storage.write(StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id), summary)
+    const partKey = StoragePath.messagePart(
+      Identifier.asScopeID(scopeID),
+      Identifier.asSessionID(part.sessionID),
+      Identifier.asMessageID(part.messageID),
+      Identifier.asPartID(part.id),
+    )
+    const [revision] = await Storage.revisions([partKey])
+    const fact = SessionPartContent.executionFact(part)
+    await Storage.write(StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id), {
+      ...summary,
+      execution: fact && revision !== undefined ? { version: 1, revision: String(revision), fact } : undefined,
+    } satisfies StoredPartSummary)
     const [previous] = await Storage.readMany<PartsState>([partStateKey(scopeID, part.sessionID, part.messageID)])
     await Storage.write(partStateKey(scopeID, part.sessionID, part.messageID), {
       ...previous,
@@ -616,7 +832,7 @@ export namespace SessionHistoryDisplay {
         })
     const projected = records.map((record) =>
       "content" in record.value
-        ? record.value
+        ? PartSummary.parse(record.value)
         : SessionPartContent.summary(upgradeAccessRecord(record.key, record.value)),
     )
     const selected: PartSummary[] = []
@@ -662,16 +878,26 @@ export namespace SessionHistoryDisplay {
         const [current] = await Storage.readMany<PartsState>([partStateKey(scopeID, input.sessionID, input.messageID)])
         const generation = current?.generation ?? 0
         if (generation !== (prepared?.generation ?? 0)) return
+        const old = await tx.readMany<StoredPartSummary>(
+          projected.map((summary) =>
+            StoragePath.sessionDisplayPart(scopeID, input.sessionID, input.messageID, summary.id),
+          ),
+        )
         await tx.writeMany(
-          projected.map((summary) => ({
+          projected.map((summary, index) => ({
             key: StoragePath.sessionDisplayPart(scopeID, input.sessionID, input.messageID, summary.id),
-            value: summary,
+            value: {
+              ...(old[index]?.content.version === summary.content.version ? old[index] : {}),
+              ...summary,
+              execution: executionFact(old[index], records[index].revision) ? old[index]?.execution : undefined,
+            },
           })),
         )
         const continuous =
           !descending && (!after || (current?.sourceGeneration === generation && current.cursor === after.at(-1)))
         if (continuous)
           await Storage.write(partStateKey(scopeID, input.sessionID, input.messageID), {
+            ...current,
             version: 1,
             ready: !hasMore,
             generation,

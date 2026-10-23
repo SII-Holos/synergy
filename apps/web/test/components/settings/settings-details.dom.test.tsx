@@ -65,6 +65,8 @@ beforeAll(async () => {
     import { EmailPanel } from "/@fs/${source}/components/settings/panels/EmailPanel.tsx"
     import { LearningPanel } from "/@fs/${source}/components/settings/panels/LibraryPanels.tsx"
     import { BossModePanel } from "/@fs/${source}/components/settings/panels/BossModePanel.tsx"
+    import { ExperimentsPanel } from "/@fs/${source}/components/settings/panels/ExperimentsPanel.tsx"
+    import { createExperimentsController } from "/@fs/${source}/components/settings/panels/experiments-controller.ts"
     import { ImportPanel } from "/@fs/${source}/components/settings/panels/ImportPanel.tsx"
     import { LanguageToolsPanel } from "/@fs/${source}/components/settings/panels/LanguageToolsPanel.tsx"
     import { ControlProfilePanel } from "/@fs/${source}/components/settings/panels/SafetyPanels.tsx"
@@ -89,6 +91,31 @@ beforeAll(async () => {
     function Fixture() {
       useTheme().setColorScheme(query.get("theme") || "light")
       const [view, setView] = createSignal("email")
+      const experimentState = { failLoad: false, failSave: true, empty: false, selected: ["retained"], writes: [] }
+      const experiments = createExperimentsController({
+        async get() {
+          if (experimentState.failLoad) throw new Error("private load diagnostic")
+          if (experimentState.empty) return []
+          return [
+            ["boss", "Boss", "experimental", "restart", true],
+            ["retained", "Retained feature", "experimental", "restart", false],
+            ["missing", "Missing feature", "experimental", "restart", false],
+            ["live-preview", "Live preview", "experimental", "live", true],
+            ["stable-feature", "Stable feature", "stable", "live", true],
+          ].map(([id, name, maturity, activation, available]) => ({
+            id, available, selected: experimentState.selected.includes(id), enabled: false,
+            pendingRestart: id === "boss" && experimentState.selected.includes(id),
+            reason: available ? undefined : id === "missing" ? "not-installed" : "dependency-unavailable",
+            definition: { id, name, maturity, activation, owner: "fixture", description: "Feature description" },
+          }))
+        },
+        async update(ids) {
+          experimentState.writes.push([...ids])
+          if (experimentState.failSave) throw new Error("private save diagnostic")
+          experimentState.selected = ids
+        },
+      }, { owner: () => "fixture", identity: () => "fixture", visible: () => view() === "experiments" })
+      window.experimentsFixture = Object.assign(experimentState, { reload: () => experiments.load() })
       const [email, setEmail] = createStore(defaultSettingsState().email)
       const [library, setLibrary] = createStore(defaultSettingsState().library)
       const [runtime, setRuntime] = createStore(defaultSettingsState().runtime)
@@ -105,6 +132,8 @@ beforeAll(async () => {
       const views = new Map()
       const expanded = new Map()
       return <OverlayLayerProvider layer={layer}><Button variant="secondary" data-testid="outside-settings">Outside Settings</Button><div class="settings-panel-frame"><nav><button onClick={() => setView("import")}>Import page</button><button onClick={() => setView("formatter")}>Formatter page</button><button onClick={() => setView("controls")}>Controls page</button><button onClick={() => setView("paths")}>Config files page</button><button onClick={() => setView("profiles")}>Permissions page</button><button onClick={() => setView("models")}>Models page</button><button onClick={() => setView("plugin")}>Plugin page</button><button onClick={() => setView("mcp")}>MCP page</button></nav><main class="settings-panel-content">
+        <button onClick={() => setView("experiments")}>Experiments page</button>
+        <Show when={view() === "experiments"}><ExperimentsPanel controller={experiments} onRetrySave={() => void experiments.save()} /><button onClick={() => void experiments.save()}>Save experiments</button></Show>
         <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
         <div><button onClick={() => setView("learning")}>Learning page</button><button onClick={() => setAnima(value => !value)}>Toggle Anima</button><button onClick={() => setView("boss")}>Boss page</button></div>
         <Show when={view() === "learning"}><LearningPanel library={library} showAutonomy={anima()} onLibraryChange={(key, value) => setLibrary(key, value)} /></Show>
@@ -182,6 +211,72 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
+})
+
+type ExperimentsFixture = {
+  failLoad: boolean
+  failSave: boolean
+  empty: boolean
+  writes: string[][]
+  reload(): Promise<void>
+}
+
+test("experimental controls retain failed drafts, allow disabling unavailable choices and report restart truthfully", async () => {
+  await page.getByRole("button", { name: "Experiments page", exact: true }).click()
+  const boss = page.getByRole("switch", { name: "Boss mode", exact: true })
+  await boss.waitFor()
+  expect(await page.getByRole("switch", { name: "Stable feature", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("switch", { name: "Missing feature", exact: true }).isDisabled()).toBe(true)
+  expect(await page.getByText("Applies to the next action after saving", { exact: true }).isVisible()).toBe(true)
+  const retained = page.getByRole("switch", { name: "Retained feature", exact: true })
+  expect(await retained.isChecked()).toBe(true)
+  expect(await retained.isEnabled()).toBe(true)
+  await retained.press("Space")
+  await boss.press("Space")
+  expect(await page.getByText("Not saved", { exact: true }).count()).toBe(2)
+  await page.getByRole("button", { name: "Save experiments", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.getByRole("alert").textContent()).toContain("Your draft is kept.")
+  expect(await boss.isChecked()).toBe(true)
+  expect(await retained.isChecked()).toBe(false)
+  await page.evaluate(() => {
+    ;(window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.failSave = false
+  })
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByText("Saved. Restart to apply.", { exact: true }).waitFor()
+  expect(await page.getByRole("alert").count()).toBe(0)
+  expect(await boss.isChecked()).toBe(true)
+  expect(await retained.isDisabled()).toBe(true)
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.writes,
+    ),
+  ).toEqual([["boss"], ["boss"]])
+  expect(errors).toEqual([])
+})
+
+test("experimental feature load failures retry without exposing diagnostics and empty catalogs stay usable", async () => {
+  await page.evaluate(() => {
+    ;(window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.failLoad = true
+  })
+  await page.getByRole("button", { name: "Experiments page", exact: true }).click()
+  await page.getByRole("alert").waitFor()
+  expect(await page.getByRole("alert").textContent()).toBe("Couldn't load experimental features.")
+  expect(await page.locator("body").textContent()).not.toContain("private load diagnostic")
+  await page.evaluate(() => {
+    ;(window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture.failLoad = false
+  })
+  await page.getByRole("button", { name: "Retry", exact: true }).click()
+  await page.getByRole("switch", { name: "Boss mode", exact: true }).waitFor()
+  expect(await page.getByRole("alert").count()).toBe(0)
+  await page.evaluate(async () => {
+    const fixture = (window as unknown as { experimentsFixture: ExperimentsFixture }).experimentsFixture
+    fixture.empty = true
+    await fixture.reload()
+  })
+  await page.getByText("No experimental features available.", { exact: true }).waitFor()
+  expect(await page.getByRole("switch").count()).toBe(0)
+  expect(errors).toEqual([])
 })
 
 test("Library learning hides Anima controls until selected and restores the retained draft", async () => {
@@ -416,6 +511,7 @@ test("settings actions, inputs and choices share the borderless menu surface wit
     }
     const outside = page.getByTestId("outside-settings")
     expect(await outside.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("1px")
+    expect(await outside.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe("rgba(0, 0, 0, 0)")
     const input = page.getByRole("textbox", { name: "Display name", exact: true })
     await input.focus()
     await input.fill("Edited gateway")

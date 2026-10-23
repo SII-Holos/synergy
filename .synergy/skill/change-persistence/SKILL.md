@@ -125,6 +125,8 @@ For snapshot lease changes, test metadata-gate contention separately from active
 
 ## Verify
 
+For history read optimizations, select finite windows and referenced roots before body hydration. Compare raw, effective and compacted semantics, including legacy metadata. Assert artifact reads as well as returned values; a smaller response does not prove bounded work. Keep canonical records authoritative for mutations and recheck ownership after asynchronous preparation.
+
 For durable external delivery, test a failure after an accepted prefix and a changed queue revision before acknowledgment. Keep network delivery outside transactions, preserve unaccepted records and verify the entire acknowledgment rolls back on revision conflict. Measure real PostgreSQL delivery batches separately from model and Session work before changing behavioral test deadlines.
 
 For indexed history reads, seed real SQL records and inject a targeted read failure at the first record, a later individual record, a batch and nested part hydration. Assert that injection was reached and the original error propagated; separately delete records after the reader captures its index snapshot and verify that only missing records are skipped. Register the regression in the PostgreSQL test inventory and run both engines.
@@ -132,6 +134,8 @@ For indexed history reads, seed real SQL records and inject a targeted read fail
 When adding a migration domain, update the complete-product registry contract in `packages/presets/test/migration/registry.test.ts` and run the Presets migration suite alongside the owning domain's upgrade tests.
 
 For hierarchical deletion, measure missing-key and batched-key cleanup beside a large unrelated namespace, and inspect real engine plans for namespace-only probes. Distinguish records, derived nodes and artifact references when admitting online retention. Exercise wide trees, deep ancestors, a newly active owner, a refreshed record and cancellation after deletion begins; a count of deleted records cannot establish that a bounded node traversal is exhausted. Pair SQLite format 2/3 fixtures with PostgreSQL. Keep whole-owner offline deletion atomic and require exclusive ownership after closing runtime admission.
+
+For artifact subtree changes, include large unrelated history inside the same owner, not only foreign owners. Check case-sensitive segment identity, JSON escapes, missing prefixes and prefixes shorter than an owner across enumeration, budgets and deletion. Inspect first and later page plans and apply limits before any materialization. A returned-row limit or an owner index alone does not bound work; preserve shared-pack collection intents and rollback while using the selected key range. Keep collation assumptions specific to the engine that guarantees them.
 
 For storage queues and worker changes, hold the preceding operation past the waiter's deadline and verify it never executes later. Check inherited cancellation, caller context and shutdown drain. Suspend or terminate owned reader and writer processes independently; two connections in a shared synchronous process do not establish read availability. Preserve the distinct ordinary-work and maintenance budgets.
 
@@ -240,3 +244,5 @@ Startup recovery is subject to the same historical-work budget as migrations. Us
 For a bounded catalog catch-up, measure the central runner as well as `up()`. Its global empty-input proof can traverse unrelated historical branches; prefer the domain's bounded query when that proof exceeds the upgrade scope, and test that installed startup does not enumerate storage roots.
 
 For frozen transfer sources, test both metadata access upgrades and per-owner historical preparation after removing a durable migration receipt. Central migration context may upgrade retained evidence; ordinary history handlers must not inherit that authority, release the transfer gate or start upgrades inside a business transaction.
+
+For current-state presentation, consume atomically committed current records rather than replaying the entire historical journal. Preserve strict revision replay for audit and export, and never report unknown audit coverage as zero. Enumerate required current keys once and batch owning reads; recursive subtree pagination can traverse the same history on every page. Verify cold large-owner reads, restart, cache eviction, unresolved-tail recovery and cancelled background audit independently.

@@ -5,6 +5,7 @@ import path from "node:path"
 import { workspaces, workspaceGraph } from "./workspace-dependencies"
 import { buildWorkspace } from "./build-workspace"
 import { createPublishablePackageJson, readCatalog } from "./release/shared/package-manifest"
+import { ComponentFeatures } from "../packages/util/src/features"
 
 import { nativeDependencies, packNativeWorkspace } from "./release/shared/native-package"
 import type { SandboxRuntimeTarget } from "./release/shared/build/sandbox-assets"
@@ -99,6 +100,10 @@ export async function packWorkspace(
     for (const dependency of graph[name] ?? []) await pack(dependency)
     const sourceDirectory = path.join(root, pkg.directory)
     const original = await Bun.file(path.join(sourceDirectory, "package.json")).json()
+    if (original.synergy?.kind === "component")
+      original.synergy.features = ComponentFeatures.parse(
+        (await import(path.join(sourceDirectory, "src/features.ts"))).componentFeatures,
+      )
     const version = options.version ?? original.version
     const isRuntime = runtimePackages.has(pkg.directory)
     const nested = ["packages/cli", "packages/presets"].includes(pkg.directory)

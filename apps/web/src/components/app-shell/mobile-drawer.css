@@ -22,14 +22,15 @@
   margin-left: 0;
 
   justify-content: flex-start;
-  &:has(.mobile-drawer-right) {
-    justify-content: flex-end;
-  }
   [data-slot="dialog-content"].mobile-drawer-overlay {
     height: 100dvh;
     border: 0;
     border-radius: 0;
     background: var(--background-stronger);
+    animation: mobile-drawer-enter var(--motion-duration-slow) var(--motion-ease-emphasized);
+    &.mobile-drawer-closing {
+      animation: mobile-drawer-exit var(--motion-duration-base) var(--motion-ease-standard) forwards;
+    }
   }
   .mobile-drawer-overlay [data-slot="dialog-body"] {
     padding: 0;
@@ -40,18 +41,247 @@
   }
 }
 
-.navigation-collections {
+[data-component="dialog-overlay"]:has(+ [data-component="dialog"] .mobile-drawer-closing) {
+  animation: overlayHide var(--motion-duration-base) var(--motion-ease-standard) forwards;
+}
+
+.mobile-drawer-content {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+}
+
+.mobile-drawer-root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-top: 8px;
+}
+
+.mobile-drawer-scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-height: 48px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--border-weaker-base);
+}
+
+.mobile-drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: var(--radius-md);
+}
+
+.mobile-drawer-action,
+.mobile-drawer-label,
+.mobile-drawer-section-label {
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--type-ui-row-title-line-height);
+}
+
+.mobile-drawer-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: var(--radius-md);
+  color: var(--text-base);
+  background-color: transparent;
+  text-align: start;
+  text-decoration: none;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.mobile-drawer-action [data-component="icon"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.mobile-drawer-action > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mobile-drawer-icon-action {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  justify-content: center;
+  color: var(--icon-base);
+}
+
+.mobile-drawer-action[aria-current="page"],
+.mobile-drawer-action[aria-pressed="true"] {
+  background-color: var(--surface-raised-base-hover);
+  color: var(--text-strong);
+}
+
+.mobile-drawer-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mobile-drawer-action:hover:not(:disabled) {
+    background-color: var(--surface-raised-base-hover);
+    color: var(--text-strong);
+  }
+}
+
+.mobile-drawer-action:active:not(:disabled) {
+  background-color: var(--surface-raised-base-active);
+  color: var(--text-strong);
+}
+
+.mobile-drawer-section-label {
+  padding-block: 8px 4px;
+  color: var(--text-weak);
+}
+
+.mobile-drawer-footer {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-weaker-base);
+}
+
+.mobile-drawer-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 8px;
+}
+
+.mobile-drawer-panels {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-weaker-base);
+}
+
+.mobile-drawer-account {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-weaker-base);
+}
+
+.mobile-drawer-overlay .navigation-collections {
+  flex: 1 0 auto;
+  height: auto;
+  overflow: visible;
   > [data-slot="tabs-list"] {
     flex-shrink: 0;
+    width: auto;
+    margin: 0 16px 8px;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    [data-slot="tabs-trigger-wrapper"] {
+      height: 44px;
+      flex: 1;
+      font-size: var(--font-size-small);
+      font-weight: var(--font-weight-regular);
+      box-shadow: none;
+      background: transparent;
+      transition: background-color var(--motion-duration-fast) var(--motion-ease-standard);
+      &:hover:not(:disabled):not(:has([data-selected])) {
+        background: transparent;
+        color: var(--text-base);
+      }
+      @media (hover: hover) and (pointer: fine) {
+        &:hover:not(:disabled):not(:has([data-selected])) {
+          background: var(--surface-raised-base-hover);
+          color: var(--text-strong);
+        }
+      }
+      &:has([data-selected]),
+      &:has([data-selected]):hover:not(:disabled) {
+        background: var(--surface-raised-base-hover);
+      }
+    }
+    [data-slot="tabs-trigger"] {
+      width: 100%;
+      min-height: 44px;
+      border-radius: var(--radius-md);
+    }
+    [data-slot="tabs-trigger"]:active {
+      background-color: var(--surface-raised-base-active);
+    }
   }
   > [data-slot="tabs-content"] {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    flex: none;
+    overflow: visible;
+  }
+}
+
+@keyframes mobile-drawer-enter {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes mobile-drawer-exit {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="dialog"]:has(.mobile-drawer-overlay) [data-slot="dialog-content"].mobile-drawer-overlay,
+  [data-component="dialog"]:has(.mobile-drawer-overlay)
+    [data-slot="dialog-content"].mobile-drawer-overlay.mobile-drawer-closing,
+  [data-component="dialog-overlay"]:has(+ [data-component="dialog"] .mobile-drawer-overlay) {
+    animation: none;
+  }
+  .mobile-drawer-overlay .mobile-drawer-action,
+  .mobile-drawer-overlay .navigation-collections > [data-slot="tabs-list"] [data-slot="tabs-trigger-wrapper"] {
+    transition: none;
+  }
+}
+
+/* The drawer only ever renders below the desktop breakpoint, so every control
+   inside it must meet the 44px touch floor; the header icons and the
+   Recent/Projects pills are smaller by default. */
+@media (max-width: 767px) {
+  .mobile-drawer-overlay [data-slot="dialog-body"] button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-drawer-overlay .navigation-collections > [data-slot="tabs-list"] [data-slot="tabs-trigger"] {
+    min-height: 44px;
   }
 }

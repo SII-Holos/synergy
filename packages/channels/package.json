@@ -41,7 +41,8 @@
     "./http": "./src/http.ts",
     "./reload": "./src/reload.ts",
     "./startup-status": "./src/startup-status.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -79,6 +80,20 @@
     "export": "channels",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "channels",
+          "owner": "channels",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Channels",
+          "description": "Provide channels capabilities.",
+          "component": "channels"
+        }
+      ]
     }
   },
   "peerDependencies": {

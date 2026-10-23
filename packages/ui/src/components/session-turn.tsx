@@ -83,6 +83,7 @@ import {
 } from "./session-turn-activity"
 import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 import { ExecutionCompletion, type TurnExecutionSummary } from "./execution-completion"
+import { createCompletionRibbon } from "./completion-ribbon"
 import { externalLoadNotify, externalLookup, resolveExternalToolRenderer } from "./tool-registry-lazy"
 export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
 export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
@@ -269,10 +270,11 @@ export function shouldShowTurnDiffs(
   const summary = message.summary
   const diffState = summary?.diffState
   if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
+  if (diffState.status === "live") return "hidden"
   if (diffState.status === "pending") return "pending"
   if (diffState.status === "error") return "error"
   if (diffState.status === "partial") return "partial"
-  return summary.diffs.length > 0 ? "ready" : "hidden"
+  return (summary.diffTotals?.files ?? summary.diffs.length) > 0 ? "ready" : "hidden"
 }
 
 export function shouldShowTurnUserChrome(
@@ -601,7 +603,7 @@ function TimelineItemDisplay(props: {
       </Show>
     )
   }
-  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} compact="process" layout="rows" />
 }
 
 function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
@@ -1035,7 +1037,6 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
-    onRestoreChanges?: (messageID: string) => void
     onForkMessage?: (messageID: string) => void
     executionSummary?: TurnExecutionSummary
     onExecutionDetails?: () => void
@@ -1327,7 +1328,10 @@ export function SessionTurn(
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
     })
-    return resolveTurnDiffPanelState(projected, (msg?.summary?.diffs.length ?? 0) > 0)
+    return resolveTurnDiffPanelState(
+      projected,
+      (msg?.summary?.diffTotals?.files ?? msg?.summary?.diffs.length ?? 0) > 0,
+    )
   })
   const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
     const state = diffPanelState()
@@ -1511,6 +1515,20 @@ export function SessionTurn(
     if (!paused() || summary?.status !== "running") return summary
     return { ...summary, status: paused()?.reason === "failed" ? "failed" : "interrupted" }
   }
+  let turnElement: HTMLDivElement | undefined
+  const completionSucceeded = () =>
+    executionSummary()?.status === "completed" &&
+    !paused() &&
+    (props.executionState ? props.executionState.status === "completed" : !error())
+  const completionRibbon = showFooter()
+    ? createCompletionRibbon({
+        root: () => turnElement,
+        replyID: () => lastAssistantMessage()?.id,
+        working: () => isLastUserMessage() && working(),
+        completed: () => showExecutionCompletion() && completionSucceeded(),
+        following,
+      })
+    : undefined
   const hasProcess = createMemo(
     () =>
       (props.segment?.process?.hasContent ?? (turnReasoning().length > 0 || timelineItems().some(isProcessItem))) ||
@@ -1603,6 +1621,7 @@ export function SessionTurn(
 
   return (
     <div
+      ref={turnElement}
       data-component="session-turn"
       data-segment-footer={props.segment?.footer ? "" : undefined}
       data-activity-body={props.segment?.activityBody ? "" : undefined}
@@ -1817,6 +1836,13 @@ export function SessionTurn(
                                         data-slot="session-turn-timeline-item"
                                         data-scroll-anchor={key}
                                         data-kind={displayItemVisualKind(current())}
+                                        data-completion-reply={
+                                          displayItemVisualKind(current()) === "text" &&
+                                          current().message.role === "assistant" &&
+                                          !isProcessItem(current())
+                                            ? current().message.id
+                                            : undefined
+                                        }
                                         data-activity-continues={activityContinues() ? "" : undefined}
                                         data-activity-follows={activityFollows() ? "" : undefined}
                                         ref={motionRef}
@@ -1880,7 +1906,12 @@ export function SessionTurn(
                         </For>
                         <Show when={showFooter() && showExecutionCompletion()}>
                           <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
-                            <ExecutionCompletion summary={executionSummary()} onDetails={props.onExecutionDetails} />
+                            <ExecutionCompletion
+                              summary={executionSummary()}
+                              onDetails={props.onExecutionDetails}
+                              showSignature={completionSucceeded()}
+                              ribbonRef={completionRibbon}
+                            />
                           </div>
                         </Show>
                         <Show when={showFooter() && showCopyActions()}>
@@ -1932,11 +1963,9 @@ export function SessionTurn(
                             >
                               <TurnChangeSummaryPanel
                                 diffs={msg().summary?.diffs ?? []}
+                                totals={msg().summary?.diffTotals}
                                 state={state()}
                                 animateReady={animateReadyDiffPanel()}
-                                onUndoRequested={
-                                  props.onRestoreChanges ? () => props.onRestoreChanges?.(msg().id) : undefined
-                                }
                                 onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
                                 onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
                               />

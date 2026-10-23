@@ -30,6 +30,7 @@ import { ExecutionInspector } from "./inspector"
 import { createExecutionTrajectory } from "./trajectory"
 import { mergeExecutionWindow } from "./window"
 import { E, K } from "./i18n"
+import { ExecutionPreparation } from "./preparation"
 import { D } from "./context-categories"
 import "./execution.css"
 
@@ -90,7 +91,7 @@ export function ExecutionPanelBody(
   const sdk = useSDK()
   const execution = useExecution()
   const viewActive = useViewActivity()
-  execution.retain()
+  execution.retain({ demand: "trajectory" })
   const { _, i18n } = useLingui()
   const initial = settings(props.tab.state)
   const runID = createMemo(() => props.runID)
@@ -733,6 +734,13 @@ export function ExecutionPanelBody(
           {_(E.error)}
         </p>
       </Show>
+      <ExecutionPreparation
+        loading={execution.state.loading}
+        error={execution.state.error}
+        progress={execution.state.progress}
+        retained={!!execution.state.summary}
+        retry={() => void execution.refresh()}
+      />
       <div class="execution-workspace">
         <div class="execution-trajectory-pane">
           <Show when={trajectory.state.error}>

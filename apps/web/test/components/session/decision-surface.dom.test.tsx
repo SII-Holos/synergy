@@ -328,7 +328,7 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "scope-sync-stub.ts"),
       `export const SyncProvider = (props) => props.children
-       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, config: {}, path: { directory: "/fixture" } }, session: { get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
+       export const useSync = () => ({ ready: true, data: { ...globalThis.__DECISION_SURFACE_DATA, config: {}, path: { directory: "/fixture" } }, session: { currentTurn: () => undefined, get: (id) => globalThis.__DECISION_SURFACE_DATA.session.find((session) => session.id === id) } })`,
     ),
     Bun.write(
       path.join(fixtureDirectory, "layout-boundary-stub.ts"),
@@ -851,7 +851,7 @@ test("bottom activity coexists with actual question and permission cards during 
     expect(box.y).toBeGreaterThanOrEqual(0)
     expect(box.y + box.height).toBeLessThanOrEqual(430)
   }
-  const resize = page.getByRole("separator", { name: "Resize editor" })
+  const resize = page.getByRole("button", { name: "Expand editor", exact: true })
   await resize.press("ArrowUp")
   await resize.press("ArrowUp")
   const action = page.getByRole("button", { name: "Allow once", exact: true })

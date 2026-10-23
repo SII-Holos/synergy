@@ -22,7 +22,8 @@
     "./document-kinds": "./src/document-kinds.ts",
     "./types": "./src/types.ts",
     "./tools/note-list": "./src/tools/note-list.ts",
-    "./tools/note-search": "./src/tools/note-search.ts"
+    "./tools/note-search": "./src/tools/note-search.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -70,6 +71,20 @@
     "export": "note",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "note",
+          "owner": "note",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Note",
+          "description": "Provide note capabilities.",
+          "component": "note"
+        }
+      ]
     }
   }
 }

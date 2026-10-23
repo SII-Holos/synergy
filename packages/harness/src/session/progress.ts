@@ -15,7 +15,7 @@ export namespace SessionProgress {
     return !!assistant.finish && !["tool-calls", "unknown"].includes(assistant.finish)
   }
 
-  export function findTerminalReply(messages: MessageV2.WithParts[], userID: string) {
+  export function findTerminalReply<T extends { info: MessageV2.Info }>(messages: T[], userID: string) {
     for (let index = messages.length - 1; index >= 0; index--) {
       const msg = messages[index]
       if (msg.info.role !== "assistant") continue
@@ -43,7 +43,11 @@ export namespace SessionProgress {
       if (lastReplyRequiredUser) break
     }
 
-    return !!lastReplyRequiredUser && !hasTerminalReply({ messages, userID: lastReplyRequiredUser.id })
+    return (
+      !!lastReplyRequiredUser &&
+      (!hasTerminalReply({ messages, userID: lastReplyRequiredUser.id }) ||
+        needsModelCall(messages, lastReplyRequiredUser.id))
+    )
   }
 
   /**
@@ -54,6 +58,7 @@ export namespace SessionProgress {
     const scopeID = Identifier.asScopeID(input.scopeID)
     const sessionID = Identifier.asSessionID(input.sessionID)
     const terminalRoots = new Set<string>()
+    const pendingContinuations = new Set<string>()
     let boundaryUserID: string | undefined
     let skippedReply: boolean | undefined
     let before: string | undefined
@@ -70,7 +75,11 @@ export namespace SessionProgress {
           if (!boundaryUserID && info.summary && info.finish) boundaryUserID = info.parentID
           continue
         }
-        const pending = isReplyRequiredUser(info) ? !terminalRoots.has(info.id) : undefined
+        if (!isReplyRequiredUser(info) && info.rootID && !terminalRoots.has(info.rootID))
+          pendingContinuations.add(info.rootID)
+        const pending = isReplyRequiredUser(info)
+          ? pendingContinuations.has(info.id) || !terminalRoots.has(info.id)
+          : undefined
         if (!boundaryUserID && pending !== undefined) return pending
         if (pending !== undefined && skippedReply === undefined) skippedReply = pending
         if (info.id !== boundaryUserID) continue
@@ -86,7 +95,7 @@ export namespace SessionProgress {
    * Returns true if there exists a user message U with U.rootID === R.id
    * (or U itself if root) that does NOT have a terminal assistant after it.
    */
-  export function needsModelCall(msgs: MessageV2.WithParts[], rootID: string): boolean {
+  export function needsModelCall(msgs: { info: MessageV2.Info }[], rootID: string): boolean {
     let latestUserIndex = -1
     for (let index = 0; index < msgs.length; index++) {
       const info = msgs[index].info

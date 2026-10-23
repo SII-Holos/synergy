@@ -43,6 +43,8 @@
     "./workspace": "./src/workspace/index.ts",
     "./workspace/state": "./src/workspace/state.ts",
     "./workspace/events": "./src/workspace/events.ts",
+    "./workspace/observation": "./src/workspace/observation.ts",
+    "./session/file-change-view": "./src/session/file-change-view.ts",
     "./workspace/access": "./src/workspace/access.ts",
     "./workspace/claim": "./src/workspace/claim.ts",
     "./workspace/file-import": "./src/workspace/file-import.ts",
@@ -130,6 +132,7 @@
     "./session/abort": "./src/session/abort.ts",
     "./util/crypto": "./src/util/crypto.ts",
     "./session/retry": "./src/session/retry.ts",
+    "./session/resume": "./src/session/resume.ts",
     "./session/managed-projects": "./src/session/managed-projects.ts",
     "./session/channel-endpoint": "./src/session/channel-endpoint.ts",
     "./provider/api-key": "./src/provider/api-key.ts",
@@ -401,7 +404,8 @@
     "./agent/prompt/types": "./src/agent/prompt/types.ts",
     "./agent/prompt-contributions": "./src/agent/prompt-contributions.ts",
     "./observability/resource-sources": "./src/observability/resource-sources.ts",
-    "./session/execution-owners": "./src/session/execution-owners.ts"
+    "./session/execution-owners": "./src/session/execution-owners.ts",
+    "./lifecycle/features": "./src/lifecycle/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

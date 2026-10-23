@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, test } from "bun:test"
 import type { Provider as SDK } from "ai"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -157,7 +158,7 @@ for (const materializeBeforeReinstall of [true, false]) {
       testRuntime({
         home: home.host.home,
         composition: {
-          register: RuntimeComponents.compose([
+          register: composeWithExperiments([
             localRuntime({ workers: false, environment: false }),
             server(),
             ...(installed ? [lightLoop()] : []),
@@ -431,7 +432,7 @@ for (const delivery of ["input", "message"] as const) {
       testRuntime({
         home: home.host.home,
         composition: {
-          register: RuntimeComponents.compose([
+          register: composeWithExperiments([
             localRuntime({ workers: false, environment: false }),
             ...(selected ? [library(), agenda(), boss()] : []),
           ]).register,
@@ -602,7 +603,7 @@ test("a materialized independent root without rollout evidence runs before a ret
     testRuntime({
       home: home.host.home,
       composition: {
-        register: RuntimeComponents.compose([
+        register: composeWithExperiments([
           localRuntime({ workers: false, environment: false }),
           ...(selected ? [lightLoop()] : []),
         ]).register,

@@ -9,7 +9,8 @@
     "./service": "./src/service.ts",
     "./contract": "./src/contract.ts",
     "./http": "./src/http.ts",
-    "./config-schema": "./src/config-schema.ts"
+    "./config-schema": "./src/config-schema.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -56,6 +57,20 @@
     "export": "digitalTwin",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "digital-twin",
+          "owner": "digital-twin",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Digital Twin",
+          "description": "Provide digital twin capabilities.",
+          "component": "digital-twin"
+        }
+      ]
     }
   }
 }

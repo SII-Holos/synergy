@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerResourceSource } from "./resource-source"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { PluginEvent } from "./plugin/event"
@@ -23,6 +24,7 @@ import { peekRuntimeEndpointGeneration } from "@ericsanchezok/synergy-harness/ut
 export function plugins(): RuntimeComponent {
   return {
     id: "plugin-host",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

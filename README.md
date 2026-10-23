@@ -331,6 +331,8 @@ Coding agents and LLM tools should begin with [llms.txt](llms.txt). Read [AGENTS
 
 🌐 [https://www.sii.edu.cn](https://www.sii.edu.cn)
 
+Kanban, Boss mode and Lattice are experimental and default off, including after upgrades. Enable them in Settings → Experimental features and restart Synergy. Disabling preserves their data and business settings. See [feature lifecycle](docs/architecture/feature-lifecycle.md).
+
 ## Contributing and Security
 
 Contributions, bug reports, and feature ideas are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and use the repository's [security reporting process](.github/SECURITY.md) for vulnerabilities rather than opening a public issue.

@@ -35,6 +35,7 @@ Architecture documents define current invariants, ownership boundaries, and the 
 
 - [Architecture overview](architecture/README.md)
 - [Runtime and Scope](architecture/runtime-and-scope.md)
+- [Feature lifecycle](architecture/feature-lifecycle.md) — experimental declarations, activation and graduation
 - [Host connections](architecture/host-connections.md) — provider discovery, device pairing and authenticated remote access
 - [Agent storage](architecture/agent-storage.md)
 - [Workspace and files](architecture/workspace-and-files.md)

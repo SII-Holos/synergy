@@ -1,5 +1,7 @@
+import { reduceCurrentTurnChanges } from "./current-turn-changes"
 import {
   type Message,
+  type CurrentTurnChanges,
   type AgentSummary,
   type Session,
   type Part,
@@ -148,6 +150,7 @@ type State = {
   path: Path
   workspaces: WorkspaceInfo[]
   session: Session[]
+  currentTurnChanges: { [sessionID: string]: CurrentTurnChanges | undefined }
   session_diff: {
     [sessionID: string]: FileDiff[]
   }
@@ -743,6 +746,7 @@ function createGlobalSync() {
         command: [],
         workspaces: [],
         session: [],
+        currentTurnChanges: {},
         session_diff: {},
         todo: {},
         dag: {},
@@ -1096,6 +1100,52 @@ function createGlobalSync() {
           showToast({ type: "error", title: `Failed to load sessions for ${project}`, description: err.message })
         }
       })
+  }
+
+  const turnRequests = new Map<string, { generation: number; revision: number; promise: Promise<void> }>()
+  function loadCurrentTurn(scopeKey: string, sessionID: string): Promise<void> {
+    const state = children[scopeKey]
+    if (!state) return Promise.resolve()
+    const key = JSON.stringify([scopeKey, sessionID])
+    const request = captureResourceRequest(scopeKey, sessionID, "current-turn")
+    const pending = turnRequests.get(key)
+    if (pending)
+      return pending.generation === request.generation && pending.revision === request.revision
+        ? pending.promise
+        : pending.promise.then(() => loadCurrentTurn(scopeKey, sessionID))
+    let recover = false
+    const promise = createScopedClient(scopeKey)
+      .session.files.current({ sessionID }, { throwOnError: true })
+      .then((result) => {
+        if (children[scopeKey] !== state) return
+        const accepted = applyResourceResponse(
+          scopeKey,
+          sessionID,
+          "current-turn",
+          request,
+          result.response?.headers,
+          () => {
+            state[1]("currentTurnChanges", sessionID, reconcile(result.data ?? null))
+          },
+        )
+        const current = state[0].currentTurnChanges[sessionID]
+        const incoming = result.data
+        recover =
+          !accepted &&
+          !!current &&
+          !!incoming &&
+          (incoming.createdAt > current.createdAt ||
+            (incoming.createdAt === current.createdAt && incoming.rootID > current.rootID))
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (turnRequests.get(key)?.promise === promise) turnRequests.delete(key)
+      })
+      .then(() => {
+        if (recover) return loadCurrentTurn(scopeKey, sessionID)
+      })
+    turnRequests.set(key, { generation: request.generation, revision: request.revision, promise })
+    return promise
   }
 
   const inboxRefreshTimers = new Map<string, Map<string, ReturnType<typeof setTimeout>>>()
@@ -1598,6 +1648,7 @@ function createGlobalSync() {
           delete draft.message[sessionID]
           delete draft.messageWindow[sessionID]
           delete draft.latestContextMessage[sessionID]
+          delete draft.currentTurnChanges[sessionID]
         }),
       )
     }
@@ -1998,7 +2049,13 @@ function createGlobalSync() {
           : incoming
         if (stamp) scopeWriteTracker(scopeKey).sessionWrite(stamp, info.id, !info.time.archived)
         const index = findSessionIndex(store.session, info.id)
+        if (index !== -1 && JSON.stringify(store.session[index]?.history) !== JSON.stringify(info.history)) {
+          setStore("currentTurnChanges", info.id, undefined)
+          invalidateResource(scopeKey, info.id, "current-turn")
+          void loadCurrentTurn(scopeKey, info.id)
+        }
         if (info.time.archived) {
+          setStore("currentTurnChanges", info.id, undefined)
           if (index !== -1) {
             setStore(
               "session",
@@ -2066,6 +2123,18 @@ function createGlobalSync() {
       case "message.updated": {
         const info = internMessage(event.properties.info as Message)
         const sessionID = info.sessionID
+        if (info.role === "user" && info.isRoot) {
+          const index = findSessionIndex(store.session, sessionID)
+          const next = reduceCurrentTurnChanges(
+            store.currentTurnChanges[sessionID],
+            info,
+            store.session[index]?.history,
+          )
+          if (next !== store.currentTurnChanges[sessionID])
+            applyResourceEvent(scopeKey, sessionID, "current-turn", event, () => {
+              setStore("currentTurnChanges", sessionID, reconcile(next))
+            })
+        }
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
           contextProjectionRevision.invalidate(scopeKey, sessionID)
           // A canonical user-message update proves its inbox item (pre-allocated
@@ -2131,6 +2200,15 @@ function createGlobalSync() {
       case "message.removed": {
         const sessionID = event.properties.sessionID as string
         const messageID = event.properties.messageID as string
+        if (
+          store.currentTurnChanges[sessionID]?.rootID === messageID ||
+          turnRequests.has(JSON.stringify([scopeKey, sessionID]))
+        ) {
+          applyResourceEvent(scopeKey, sessionID, "current-turn", event, () =>
+            setStore("currentTurnChanges", sessionID, undefined),
+          )
+          void loadCurrentTurn(scopeKey, sessionID)
+        }
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
           contextProjectionRevision.invalidate(scopeKey, sessionID)
           const latestContextMessage = invalidateLatestSessionContextUsageMessage(
@@ -2772,6 +2850,7 @@ function createGlobalSync() {
       (scopeRecoveryTargets[scopeKey] ?? 0) > (scopeReconnectVersions[scopeKey] ?? 0),
     captureResourceRequest,
     applyResourceResponse,
+    loadCurrentTurn,
     applyResourceMutationResponse,
     invalidateResource,
     capturePartSnapshotRequest,

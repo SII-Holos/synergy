@@ -50,6 +50,9 @@ beforeAll(async () => {
     import { createStore } from "solid-js/store"
     import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
     const query = new URLSearchParams(location.search)
+    const [changes,setChanges]=createSignal(query.has("changes") ? {rootID:"cold-root",createdAt:1,summary:{diffs:[],diffState:{status:"live"},diffTotals:{files:300,additions:900,deletions:2},diffHasChanges:true,diffRevision:"one"}} : undefined)
+    window.updateChanges=setChanges
+    window.reviewRoots=[]
     const [status, setStatus] = createSignal(query.has("ended") ? undefined : { type: "busy" })
     const [childStatus, setChildStatus] = createSignal()
     const [ready, setReady] = createSignal(true)
@@ -115,7 +118,7 @@ beforeAll(async () => {
       get:(parameters,options)=>new Promise((resolve,reject)=>footerRequests.push({parameters,signal:options.signal,resolve,reject,server:footerOwner.server,scopeID:footerOwner.scopeID,status:footerSession.cortex.status})),
       cancel: async ({ taskID }) => { window.cancellations.push(taskID); if (cancelFailure()) throw new Error("Temporary cancellation failure"); return { data: true } }
     } } })
-    export const useSync = () => ({ get ready() { return ready() } })
+    export const useSync = () => ({session:{currentTurn:()=>changes()}, get ready() { return ready() } })
     export const useLocale = () => ({ i18n: window.fixtureI18n })
     export const useNavigate = () => (url) => { window.navigation = url }
     export const useNavigateToSession = () => (id) => { window.navigation.push(id) }
@@ -197,8 +200,8 @@ beforeAll(async () => {
     render(() => <I18nProvider i18n={window.fixtureI18n}><ThemeProvider><MarkedProvider>
       <SessionSurfaceFocusProvider value={() => document.querySelector("#composer").focus()}>
         {new URLSearchParams(location.search).has("existingModal") ? <Dialog open><Dialog.Content aria-label="Existing modal"><button>Existing modal action</button></Dialog.Content></Dialog> : null}
-        <div class="session-prompt-dock-content" style={{ position: "relative", width: "100%", "max-width": "720px", margin: new URLSearchParams(location.search).has("compressed") ? "48px auto 0" : new URLSearchParams(location.search).has("limitedDag") ? "240px auto 0" : new URLSearchParams(location.search).has("nearTop") ? "140px auto 0" : "420px auto 0" }}>
-          {new URLSearchParams(location.search).has("selectionOnly") ? <DagGraph nodes={[{ id: "select", content: "Select task", status: "pending", deps: [] }]} enableInspector={false} onSelectNode={(node) => { (window.selectedNodes ??= []).push(node.id) }} /> : <PromptDockFloatLayer sessionID={currentSession()} priorityControl={offer() ? <button data-offer>Review workflow</button> : undefined} />}
+        <div class="session-prompt-dock-content" style={{ position: "relative", width: "100%", "max-width": new URLSearchParams(location.search).has("wide") ? "1200px" : "720px", margin: new URLSearchParams(location.search).has("compressed") ? "48px auto 0" : new URLSearchParams(location.search).has("limitedDag") ? "240px auto 0" : new URLSearchParams(location.search).has("nearTop") ? "140px auto 0" : "420px auto 0" }}>
+          {new URLSearchParams(location.search).has("selectionOnly") ? <DagGraph nodes={[{ id: "select", content: "Select task", status: "pending", deps: [] }]} enableInspector={false} onSelectNode={(node) => { (window.selectedNodes ??= []).push(node.id) }} /> : <PromptDockFloatLayer onReview={rootID=>window.reviewRoots.push(rootID)} sessionID={currentSession()} priorityControl={offer() ? <button data-offer>Review workflow</button> : undefined} />}
           <textarea id="composer" class="session-composer" data-expanded={editing() ? "" : undefined} aria-label="Composer" style={{ position: "relative", "z-index": 1, width: "100%", height: "160px" }} />
         </div>
         <Toast.Region />
@@ -1228,3 +1231,69 @@ test("retained attention never moves the Composer, flashes or requests data duri
   expect(await page.locator("#composer").inputValue()).toBe("Keep my draft")
   expect(requests).toEqual([])
 })
+
+test("live changes share activity rows, wrap above progress, retain zero and open the cold root by keyboard", async () => {
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await page.goto(baseURL + "?changes&wide&compressed")
+  const button = page.locator("[data-turn-change-status]")
+  await button.getByText("300 files").waitFor()
+  const rects = await page.locator(".prompt-dock-float-layer > *").evaluateAll((elements) =>
+    elements.map((el) => ({
+      class: el.className,
+      y: el.getBoundingClientRect().top,
+      height: el.getBoundingClientRect().height,
+      width: el.getBoundingClientRect().width,
+      display: getComputedStyle(el).display,
+      flex: getComputedStyle(el).flex,
+    })),
+  )
+  expect(rects.length).toBe(3)
+  expect(Math.max(...rects.map((r) => r.y)) - Math.min(...rects.map((r) => r.y))).toBeLessThan(12)
+  await button.focus()
+  await page.keyboard.press("Enter")
+  expect(await page.evaluate(() => (window as unknown as { reviewRoots: string[] }).reviewRoots)).toEqual(["cold-root"])
+  const column = page.locator(".session-prompt-dock-content")
+  const progress = page.locator(".session-progress-island-header")
+  for (const width of [720, 375]) {
+    if (width === 375) await change("child-ended")
+    await column.evaluate((el, width) => (el.style.maxWidth = `${width}px`), width)
+    const avatars = (await page.locator(".subagent-dock").boundingBox())!
+    const changes = (await button.boundingBox())!
+    const summary = (await progress.boundingBox())!
+    expect(Math.abs(avatars.y - changes.y)).toBeLessThan(2)
+    expect(summary.y).toBeGreaterThan(Math.max(avatars.y + avatars.height, changes.y + changes.height))
+    expect(summary.width).toBeGreaterThan(changes.x + changes.width - avatars.x)
+    expect(summary.x + summary.width).toBeLessThanOrEqual((await column.boundingBox())!.x + width)
+  }
+  await button.focus()
+  await page.keyboard.press("Tab")
+  expect(await progress.evaluate((el) => el === document.activeElement)).toBe(true)
+  await page.setViewportSize({ width: 375, height: 900 })
+  expect(await button.isVisible()).toBe(true)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.evaluate(() =>
+    (window as unknown as { changeProgress: (value: string) => void }).changeProgress("expand-editor"),
+  )
+  expect(await button.isVisible()).toBe(true)
+  expect(await page.locator(".session-progress-island").isVisible()).toBe(false)
+  await page.evaluate(() =>
+    (window as unknown as { updateChanges: (value: unknown) => void }).updateChanges({
+      rootID: "cold-root",
+      createdAt: 1,
+      summary: {
+        diffs: [],
+        diffState: { status: "live" },
+        diffTotals: { files: 0, additions: 0, deletions: 0 },
+        diffHasChanges: true,
+        diffRevision: "zero",
+      },
+    }),
+  )
+  await button.getByText("0 files").waitFor()
+  await page.evaluate(() =>
+    (window as unknown as { changeProgress: (value: string) => void }).changeProgress("disconnect"),
+  )
+  await button.getByText("Recorded changes").waitFor()
+  expect(await button.getByText("0 files").isVisible()).toBe(true)
+  expect(errors).toEqual([])
+}, 30_000)

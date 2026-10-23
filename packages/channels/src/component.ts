@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerConfig } from "./config-schema"
@@ -15,6 +16,7 @@ import { stopStatusPolling } from "./startup-status"
 export function channels(): RuntimeComponent {
   return {
     id: "channels",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

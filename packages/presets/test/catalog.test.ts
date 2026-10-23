@@ -24,7 +24,8 @@ test("published component metadata agrees with the source composition", async ()
       const dependency = await Bun.file(new URL(`../../${dependencyOwner}/package.json`, import.meta.url)).json()
       const dependencyMetadata = SynergyPackage.parse(dependency.synergy)
       expect(dependencyMetadata.version).toBe(version)
-      if (dependencyMetadata.kind === "component") expect(metadata.requires?.[dependencyMetadata.id]).toBe(version)
+      if (dependencyMetadata.kind === "component" && metadata.requires?.[dependencyMetadata.id] !== undefined)
+        expect(metadata.requires[dependencyMetadata.id]).toBe(version)
     }
     factories.delete(metadata.id)
   }
@@ -62,4 +63,13 @@ test("built-in shortcuts resolve to concrete versioned packages and preserve ext
 test("only the explicit Desktop composition includes browser hosting", async () => {
   expect(fullComponents().some((component) => component.id === "browser-runtime")).toBe(false)
   expect((await desktopComponents()).filter((component) => component.id === "browser-runtime")).toHaveLength(1)
+})
+
+test("offline data maintenance installs Lattice without requiring its runtime selection", async () => {
+  const metadata = SynergyPackage.parse((await Bun.file(new URL("../package.json", import.meta.url)).json()).synergy)
+  if (metadata.kind !== "component") throw new Error("Expected data maintenance component")
+  expect(metadata.packages?.["@ericsanchezok/synergy-lattice"]).toBe(metadata.version)
+  expect(metadata.requires?.lattice).toBeUndefined()
+  const lattice = await Bun.file(new URL("../../lattice/package.json", import.meta.url)).json()
+  expect(lattice.exports["./maintenance"]).toBeDefined()
 })

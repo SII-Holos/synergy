@@ -14,9 +14,11 @@ Pin `@ai-sdk/xai` to `2.0.98`, the latest release on the AI SDK 5 provider line.
 
 A focused regression constructs the chat model for every accepted effort, including `xhigh`, and asserts local schema validation passes. The injected fetch then fails the request, proving the historical `invalid xai provider options` rejection no longer happens before the network boundary.
 
+The later [explicit Responses factory decision](2026-10-23-explicit-grok-and-codex-responses.md) supersedes this record's SDK-version and chat-factory selection. This record retains the rationale for accepting the documented effort values; its direct-construction regression does not establish compatibility of the version-5 builtin profile or successful account inference.
+
 ## Alternatives considered
 
-**Upgrade to `@ai-sdk/xai` 3.x or later.** Rejected: those lines move to LanguageModelV3/V4 and require an AI SDK major upgrade. The current product pins `ai@5.0.212`.
+**Upgrade to `@ai-sdk/xai` 3.x or later.** Rejected for this bounded fix: those lines move to LanguageModelV3/V4 and require an AI SDK major upgrade from the accompanying `ai@5.0.212` pin.
 
 **Stop advertising `xhigh` until the SDK catches up.** Rejected: xAI accepts the value on Grok 4.6 and later. Hiding it preserves a local schema bug and removes a documented control.
 

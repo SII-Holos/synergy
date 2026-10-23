@@ -14,6 +14,7 @@ export const ViewInterest = z.object({
   generation: z.number().int().nonnegative(),
   runID: z.string().optional(),
   nodeIDs: z.array(z.string()).max(100).optional(),
+  demands: z.array(z.string().min(1).max(40)).min(1).max(8).optional(),
 })
 export const ViewInterests = ContentInterests.extend({
   generation: z.number().int().nonnegative(),

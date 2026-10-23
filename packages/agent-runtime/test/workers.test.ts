@@ -8,6 +8,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import { runtimeHome } from "@ericsanchezok/synergy-harness/test/support/runtime-home"
 import { registerWorkerComponents, workerPlan } from "../src/workers"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 
 test("real agent and policy workers start from the host's explicit component selection", async () => {
   await using fixture = await runtimeHome()
@@ -54,7 +55,8 @@ test("worker entrypoints refuse to guess a composition without the owning host's
 for (const invalid of ["version", "duplicate"] as const)
   test(`workers reject a ${invalid} mismatch in their pinned composition`, async () => {
     await using fixture = await runtimeHome()
-    const plan = workerPlan([lsp()])
+    const components = [localRuntime({ workers: false }), lsp()]
+    const plan = workerPlan(components, FeatureSelection.resolve(components))
     if (invalid === "version") plan.agent[0]!.version = "999.0.0"
     else plan.agent.push({ ...plan.agent[0]! })
     const context = RuntimeContext.create({
@@ -70,10 +72,29 @@ for (const invalid of ["version", "duplicate"] as const)
     }
   })
 
+for (const invalid of ["missing", "disabled"] as const)
+  test(`workers reject a ${invalid} feature selection before registering components`, async () => {
+    await using fixture = await runtimeHome()
+    const components = [localRuntime({ workers: false }), lsp()]
+    const plan = workerPlan(components, FeatureSelection.resolve(components))
+    const features = invalid === "missing" ? undefined : { ...plan.features!, components: [] }
+    const context = RuntimeContext.create({
+      ...fixture.host,
+      env: { ...fixture.host.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify({ ...plan, features }) },
+    })
+    try {
+      await expect(context.run(() => registerWorkerComponents("agent"))).rejects.toThrow()
+      expect(context.run(RuntimeComponents.selected)).toEqual([])
+    } finally {
+      context.dispose()
+    }
+  })
+
 for (const role of ["agent", "policy"] as const) {
   test(`verified ${role} worker selection is isolated and sealed`, async () => {
     await using fixture = await runtimeHome()
-    const plan = workerPlan([localRuntime({ workers: false }), lsp()])
+    const components = [localRuntime({ workers: false }), lsp()]
+    const plan = workerPlan(components, FeatureSelection.resolve(components))
     const context = RuntimeContext.create({
       ...fixture.host,
       env: { ...fixture.host.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(plan) },

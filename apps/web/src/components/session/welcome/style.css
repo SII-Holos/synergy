@@ -77,6 +77,10 @@
   min-height: 200px;
   position: relative;
   display: flex;
+  transition: opacity 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+.welcome-stage[data-covered] .welcome-game-space {
+  opacity: 0.5;
 }
 .welcome-game-canvas {
   display: block;
@@ -122,6 +126,9 @@
   .welcome-stage {
     animation: none;
   }
+  .welcome-game-space {
+    transition: none;
+  }
 }
 @container (max-width: 400px) {
   .welcome-stage {
@@ -134,5 +141,28 @@
   .welcome-game-status {
     font-size: 11px;
     margin-top: 16px;
+  }
+}
+
+/* The greeting shares a phone screen with the Composer and the game board, so
+   the heading tightens and the subtitle yields its space. The stage is its own
+   container, and a container query alone would also fire inside a narrow
+   desktop session pane (split view, sidebar open), shrinking a desktop heading.
+   Both rules are therefore gated on the agreed mobile viewport breakpoint as
+   well as the container width. */
+@media (max-width: 767px) {
+  @container (max-width: 767px) {
+    .welcome-scene-heading h1 {
+      font-size: 24px;
+      line-height: 1.25;
+    }
+  }
+  @container (max-width: 400px) {
+    .welcome-scene-heading h1 {
+      font-size: 22px;
+    }
+    .welcome-scene-heading p {
+      display: none;
+    }
   }
 }

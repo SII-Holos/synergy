@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { ProviderRetryCoordinator, providerRetryKey } from "../../src/provider/retry-coordinator"
+import type { AgentTurnStreamPart } from "../../src/session/agent-turn/worker-pool"
 
 function fixture() {
   let now = 0
@@ -39,6 +40,335 @@ function fixture() {
 
 const transient = () => Object.assign(new Error("getaddrinfo ETIMEOUT"), { code: "ETIMEOUT" })
 const signal = () => new AbortController().signal
+
+async function recoveryStream(
+  state: ReturnType<typeof fixture>,
+  fullStream: AsyncIterable<AgentTurnStreamPart>,
+  options: { signal?: AbortSignal; dispose?: () => Promise<void> } = {},
+) {
+  const first = await state.coordinator.acquire("connection", signal())
+  first.failure(transient())
+  first.release()
+  const opening = state.coordinator.acquire("connection", options.signal ?? signal()).then((lease) =>
+    lease.stream(async () => ({
+      fullStream,
+      usage: Promise.resolve(undefined),
+      dispose: options.dispose ?? (async () => {}),
+    })),
+  )
+  await state.advance(1000)
+  return opening
+}
+
+const progressEvents: AgentTurnStreamPart[] = [
+  { type: "text-delta", id: "answer", text: "First" },
+  { type: "reasoning-delta", id: "reasoning", text: "Thinking" },
+  { type: "tool-input-delta", id: "tool", delta: "{" },
+  { type: "tool-call", toolCallId: "tool", toolName: "fixture", input: {} },
+]
+
+test.each(progressEvents)("a long response with %j admits another request before completion", async (event) => {
+  const state = fixture()
+  const source = (async function* () {
+    yield event
+    yield { type: "text-delta" as const, id: "answer", text: "Last" }
+  })()
+  const stream = await recoveryStream(state, source)
+  const reader = stream.fullStream[Symbol.asyncIterator]()
+  let started = false
+  let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+  const waiting = state.coordinator.acquire("connection", signal()).then((value) => {
+    started = true
+    lease = value
+  })
+  try {
+    expect((await reader.next()).value).toEqual(event)
+    await state.advance(999)
+    expect(started).toBe(false)
+    await state.advance(1)
+    expect(started).toBe(true)
+    await state.advance(5 * 60_000)
+    expect((await reader.next()).value).toMatchObject({ text: "Last" })
+    expect(state.pending()).toBe(0)
+  } finally {
+    lease?.release()
+    state.coordinator.close()
+    await Promise.allSettled([waiting, reader.return?.()])
+  }
+})
+
+test("lifecycle events and empty deltas cannot release a recovery probe", async () => {
+  const state = fixture()
+  const events: AgentTurnStreamPart[] = [
+    { type: "start" },
+    { type: "start-step" },
+    { type: "text-start", id: "answer" },
+    { type: "reasoning-start", id: "reasoning" },
+    { type: "tool-input-start", id: "tool", toolName: "fixture" },
+    { type: "text-delta", id: "answer", text: "" },
+    { type: "reasoning-delta", id: "reasoning", text: "" },
+    { type: "tool-input-delta", id: "tool", delta: "" },
+    { type: "text-end", id: "answer" },
+    { type: "reasoning-end", id: "reasoning" },
+    { type: "tool-input-end", id: "tool" },
+    { type: "tool-result", toolCallId: "tool" },
+  ]
+  const stream = await recoveryStream(
+    state,
+    (async function* () {
+      yield* events
+    })(),
+  )
+  const reader = stream.fullStream[Symbol.asyncIterator]()
+  let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+  const waiting = state.coordinator.acquire("connection", signal()).then((value) => (lease = value))
+  try {
+    for (const event of events) {
+      expect((await reader.next()).value).toEqual(event)
+      await state.advance(200)
+      expect(lease).toBeUndefined()
+    }
+    await reader.next()
+    await state.advance(0)
+    expect(lease).toBeDefined()
+  } finally {
+    lease?.release()
+    state.coordinator.close()
+    await Promise.allSettled([waiting, reader.return?.()])
+  }
+})
+
+test("additional progress neither postpones admission nor lets immediate retry bypass pacing", async () => {
+  const state = fixture()
+  const stream = await recoveryStream(
+    state,
+    (async function* () {
+      yield* progressEvents
+    })(),
+  )
+  const reader = stream.fullStream[Symbol.asyncIterator]()
+  const controller = new AbortController()
+  let retry: (() => boolean) | undefined
+  let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+  await reader.next()
+  const waiting = state.coordinator
+    .acquire("connection", controller.signal, {
+      immediate: true,
+      onWait: (wait) => (retry = wait?.retry),
+    })
+    .then((value) => (lease = value))
+  try {
+    await state.advance(500)
+    expect(retry).toBeUndefined()
+    expect(lease).toBeUndefined()
+    await reader.next()
+    await state.advance(499)
+    expect(lease).toBeUndefined()
+    await state.advance(1)
+    expect(lease).toBeDefined()
+    controller.abort()
+    expect((await reader.next()).value).toEqual(progressEvents[2])
+  } finally {
+    state.coordinator.close()
+    await Promise.allSettled([waiting, reader.return?.()])
+  }
+})
+
+test.each([false, true])("progress and completion preserve a newer Retry-After, progressed: %s", async (progressed) => {
+  const state = fixture()
+  const older = await state.coordinator.acquire("connection", signal())
+  const stream = await recoveryStream(
+    state,
+    (async function* () {
+      yield* progressEvents
+    })(),
+  )
+  const reader = stream.fullStream[Symbol.asyncIterator]()
+  if (progressed) await reader.next()
+  const error = Object.assign(transient(), { responseHeaders: { "retry-after": "5" } })
+  older.failure(error)
+  older.release()
+  let retry: (() => boolean) | undefined
+  let reported: unknown
+  let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+  const waiting = state.coordinator
+    .acquire("connection", signal(), {
+      immediate: true,
+      onWait: (wait) => {
+        retry = wait?.retry
+        reported = wait?.error
+      },
+    })
+    .then((value) => (lease = value))
+  try {
+    while (!(await reader.next()).done) {}
+    await state.advance(1000)
+    expect(lease).toBeUndefined()
+    expect(retry).toBeUndefined()
+    expect(reported).toBe(error)
+    await state.advance(3999)
+    expect(lease).toBeUndefined()
+    await state.advance(1)
+    expect(lease).toBeDefined()
+  } finally {
+    lease?.release()
+    state.coordinator.close()
+    await Promise.allSettled([waiting, reader.return?.()])
+  }
+})
+
+test("a thrown body error restores cooldown before stream disposal settles", async () => {
+  const state = fixture()
+  const disposed = Promise.withResolvers<void>()
+  const error = transient()
+  const stream = await recoveryStream(
+    state,
+    (async function* () {
+      yield progressEvents[0]!
+      throw error
+    })(),
+    { dispose: () => disposed.promise },
+  )
+  const reader = stream.fullStream[Symbol.asyncIterator]()
+  await reader.next()
+  const ending = reader.next().catch((failure: unknown) => failure)
+  await state.advance(0)
+  let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+  const waiting = state.coordinator.acquire("connection", signal()).then((value) => (lease = value))
+  try {
+    await state.advance(1999)
+    expect(lease).toBeUndefined()
+    await state.advance(1)
+    expect(lease).toBeDefined()
+    disposed.resolve()
+    expect(await ending).toBe(error)
+  } finally {
+    disposed.resolve()
+    lease?.release()
+    state.coordinator.close()
+    await Promise.allSettled([waiting, ending])
+  }
+})
+
+test.each(["signal", "event", "dispose"] as const)(
+  "%s cancellation releases a probe before slow cleanup",
+  async (mode) => {
+    const state = fixture()
+    const controller = new AbortController()
+    const disposed = Promise.withResolvers<void>()
+    const stream = await recoveryStream(
+      state,
+      (async function* () {
+        yield { type: "abort" as const }
+      })(),
+      { signal: controller.signal, dispose: () => disposed.promise },
+    )
+    const reader = stream.fullStream[Symbol.asyncIterator]()
+    let cleanup: Promise<unknown> | undefined
+    let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+    const waiting = state.coordinator.acquire("connection", signal()).then((value) => (lease = value))
+    try {
+      if (mode === "signal") controller.abort()
+      if (mode === "event") await reader.next()
+      if (mode === "dispose") cleanup = stream.dispose()
+      await state.advance(0)
+      expect(lease).toBeDefined()
+      expect(state.pending()).toBe(0)
+    } finally {
+      disposed.resolve()
+      lease?.release()
+      state.coordinator.close()
+      await Promise.allSettled([waiting, cleanup, stream.dispose(), reader.return?.()])
+    }
+  },
+)
+
+test.each(["cancel", "throw"] as const)("%s during the admission callback does not strand the probe", async (mode) => {
+  const state = fixture()
+  const first = await state.coordinator.acquire("connection", signal())
+  first.failure(transient())
+  first.release()
+  const controller = new AbortController()
+  const reason = new Error("cancelled on admission")
+  const rejected = state.coordinator
+    .acquire("connection", controller.signal, {
+      immediate: true,
+      onWait: (wait) => {
+        if (wait) return
+        if (mode === "throw") throw reason
+        controller.abort(reason)
+      },
+    })
+    .catch((error: unknown) => error)
+  expect(await rejected).toBe(reason)
+  const next = await state.coordinator.acquire("connection", signal())
+  next.release()
+  state.coordinator.close()
+  expect(state.pending()).toBe(0)
+})
+
+test("recovery progress admits one request at a time and remains sensitive to body failures", async () => {
+  const state = fixture()
+  const disposed = Promise.withResolvers<void>()
+  const stream = await recoveryStream(
+    state,
+    (async function* () {
+      yield { type: "reasoning-delta" as const, id: "reasoning", text: "Working" }
+      yield { type: "error" as const, error: transient() }
+    })(),
+    { dispose: () => disposed.promise },
+  )
+  const reader = stream.fullStream[Symbol.asyncIterator]()
+  const leases: Array<Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>>> = []
+  const waiting = Array.from({ length: 2 }, () =>
+    state.coordinator.acquire("connection", signal()).then((lease) => leases.push(lease)),
+  )
+  try {
+    await reader.next()
+    await state.advance(1000)
+    expect(leases).toHaveLength(1)
+    expect((await reader.next()).value).toMatchObject({ type: "error" })
+    leases[0]!.release()
+    await state.advance(1999)
+    expect(leases).toHaveLength(1)
+    await state.advance(1)
+    expect(leases).toHaveLength(2)
+  } finally {
+    disposed.resolve()
+    for (const lease of leases) lease.release()
+    state.coordinator.close()
+    await Promise.allSettled([...waiting, reader.return?.()])
+  }
+})
+
+test.each([false, true])("completed probes release admission before disposal, cleanup failure: %s", async (fail) => {
+  const state = fixture()
+  const disposing = Promise.withResolvers<void>()
+  const disposed = Promise.withResolvers<void>()
+  const error = new Error("fixture disposal failed")
+  const stream = await recoveryStream(state, (async function* () {})(), {
+    dispose: async () => {
+      disposing.resolve()
+      await disposed.promise
+      if (fail) throw error
+    },
+  })
+  const consuming = Array.fromAsync(stream.fullStream).catch((failure: unknown) => failure)
+  await disposing.promise
+  let lease: Awaited<ReturnType<ProviderRetryCoordinator["acquire"]>> | undefined
+  const waiting = state.coordinator.acquire("connection", signal()).then((value) => (lease = value))
+  try {
+    await state.advance(0)
+    expect(lease).toBeDefined()
+    disposed.resolve()
+    expect(await consuming).toEqual(fail ? error : [])
+  } finally {
+    disposed.resolve()
+    state.coordinator.close()
+    lease?.release()
+    await Promise.allSettled([waiting, consuming])
+  }
+})
 
 test("a shared cooldown exposes one immediate wake and removes it while the probe runs", async () => {
   const { coordinator, advance } = fixture()
@@ -94,7 +424,7 @@ test("immediate recovery honors server cooldown", async () => {
   ;(await waiting).release()
 })
 
-test("a connection shares cooldown and admits only one recovery probe", async () => {
+test("a connection shares cooldown and admits only one probe without progress", async () => {
   const { coordinator, advance } = fixture()
   const first = await coordinator.acquire("connection", signal())
   first.failure(transient())
@@ -238,24 +568,26 @@ test("stream coordination observes startup and body failures without adding atte
   const { coordinator, advance } = fixture()
   let calls = 0
   await expect(
-    coordinator.stream("connection", signal(), async () => {
+    (await coordinator.acquire("connection", signal())).stream(async () => {
       calls++
       throw transient()
     }),
   ).rejects.toMatchObject({ code: "ETIMEOUT" })
   let disposed = 0
-  const next = coordinator.stream("connection", signal(), async () => {
-    calls++
-    return {
-      fullStream: (async function* () {
-        yield { type: "error" as const, error: transient() }
-      })(),
-      usage: Promise.resolve(undefined),
-      async dispose() {
-        disposed++
-      },
-    }
-  })
+  const next = coordinator.acquire("connection", signal()).then((lease) =>
+    lease.stream(async () => {
+      calls++
+      return {
+        fullStream: (async function* () {
+          yield { type: "error" as const, error: transient() }
+        })(),
+        usage: Promise.resolve(undefined),
+        async dispose() {
+          disposed++
+        },
+      }
+    }),
+  )
   await advance(1000)
   const stream = await next
   for await (const _ of stream.fullStream) {
@@ -279,11 +611,13 @@ test("disposing an unread recovery stream releases its probe for the next waiter
   const first = await coordinator.acquire("connection", signal())
   first.failure(transient())
   first.release()
-  const opening = coordinator.stream("connection", signal(), async () => ({
-    fullStream: (async function* () {})(),
-    usage: Promise.resolve(undefined),
-    async dispose() {},
-  }))
+  const opening = coordinator.acquire("connection", signal()).then((lease) =>
+    lease.stream(async () => ({
+      fullStream: (async function* () {})(),
+      usage: Promise.resolve(undefined),
+      async dispose() {},
+    })),
+  )
   await advance(1000)
   const stream = await opening
   const next = coordinator.acquire("connection", signal())

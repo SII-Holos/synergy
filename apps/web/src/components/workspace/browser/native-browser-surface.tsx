@@ -37,6 +37,8 @@ export function nativeBounds(rect: Pick<DOMRect, "x" | "y" | "width" | "height">
 const COVER_CAPTURE_TIMEOUT_MS = 400
 const COVER_SETTLE_MS = 250
 
+type BrowserCover = { pageId: string; url: string; dataUrl: string }
+
 export function shouldCaptureCover(input: {
   visible: boolean
   hostReady: boolean
@@ -61,13 +63,15 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   const dialog = useDialog()
   const platform = usePlatform()
   const workspaceMenuOpen = useContext(WorkbenchSurfaceOverlay)
-  const [cover, setCover] = createSignal<{ pageId: string; url: string; dataUrl: string }>()
+  const [cover, setCover] = createSignal<BrowserCover>()
+  const [coverPending, setCoverPending] = createSignal(false)
   const [bounds, setBounds] = createSignal<ReturnType<typeof nativeBounds>>(null, {
     equals: (left, right) =>
       left?.x === right?.x && left?.y === right?.y && left?.width === right?.width && left?.height === right?.height,
   })
   let disposed = false
   let captureSequence = 0
+  let activeCapture: { pageId: string; promise: Promise<boolean> } | undefined
 
   const bridge = () => {
     if (browser.presentation()?.kind !== "native") return null
@@ -86,6 +90,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
         workspaceMenuOpen: workspaceMenuOpen(),
       }),
   )
+  const nativeVisible = createMemo(() => visible() || coverPending())
 
   function syncBounds() {
     const container = props.container()
@@ -93,9 +98,9 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   }
 
   // Native views sit above the renderer; overlays reveal the decoded still already painted underneath.
-  async function captureCover(pageId: string) {
+  async function captureCover(pageId: string): Promise<boolean> {
     const pageAction = platform.browserNative?.pageAction
-    if (!pageAction) return
+    if (!pageAction) return false
     const sequence = ++captureSequence
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
@@ -118,11 +123,33 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
           timer = setTimeout(() => resolve(undefined), COVER_CAPTURE_TIMEOUT_MS)
         }),
       ])
-      if (disposed || sequence !== captureSequence || !coverMatchesPage(result, browser.page())) return
+      if (disposed || sequence !== captureSequence || !coverMatchesPage(result, browser.page())) return false
       setCover(result)
+      return true
     } finally {
       clearTimeout(timer)
     }
+  }
+
+  function requestCover(pageId: string) {
+    if (activeCapture?.pageId === pageId) return activeCapture.promise
+    const promise = captureCover(pageId).catch(() => false)
+    const capture = { pageId, promise }
+    activeCapture = capture
+    void promise.then(
+      () => {
+        if (activeCapture === capture) activeCapture = undefined
+      },
+      () => {
+        if (activeCapture === capture) activeCapture = undefined
+      },
+    )
+    return promise
+  }
+
+  function invalidateCapture(pageId: string) {
+    captureSequence++
+    if (activeCapture?.pageId === pageId) activeCapture = undefined
   }
 
   function reportNativeError(action: "attach" | "resize", pageId: string, error: unknown) {
@@ -164,6 +191,34 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
   })
 
   createEffect(() => {
+    const pageId = browser.pageId()
+    const page = browser.page()
+    const native = bridge()
+    if (
+      !active() ||
+      !native?.pageAction ||
+      browser.hostStatus() !== "ready" ||
+      !bounds() ||
+      !pageId ||
+      !page ||
+      visible() ||
+      coverMatchesPage(cover(), page)
+    )
+      return
+
+    let cancelled = false
+    setCoverPending(true)
+    void requestCover(pageId).then(() => {
+      if (!cancelled && browser.pageId() === pageId) setCoverPending(false)
+    })
+    onCleanup(() => {
+      cancelled = true
+      setCoverPending(false)
+      invalidateCapture(pageId)
+    })
+  })
+
+  createEffect(() => {
     const native = bridge()
     const pageId = browser.pageId()
     if (!active() || !native || !pageId) return
@@ -172,7 +227,7 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
     let shown = false
     createEffect(() => {
       const rect = bounds()
-      const nextShown = visible() && Boolean(rect)
+      const nextShown = nativeVisible() && Boolean(rect)
       if (!rect && !attached) return
       if (!attached || shown !== nextShown) {
         attached = true
@@ -222,13 +277,15 @@ export function NativeBrowserSurface(props: { container: () => HTMLDivElement | 
     })
     if (!ready) return
     if (coverMatchesPage(cover(), page)) return
+    let started = false
     const timer = setTimeout(() => {
       if (disposed || !visible() || browser.pageId() !== pageId) return
-      void captureCover(pageId)
+      started = true
+      void requestCover(pageId)
     }, COVER_SETTLE_MS)
     onCleanup(() => {
       clearTimeout(timer)
-      captureSequence++
+      if (started) invalidateCapture(pageId)
     })
   })
 

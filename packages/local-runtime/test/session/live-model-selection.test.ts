@@ -24,7 +24,8 @@ test(
         port: 0,
         async fetch(request) {
           const body = (await request.json()) as Record<string, unknown>
-          const index = requests.push(body) - 1
+          const main = Array.isArray(body.tools) && body.tools.some((tool) => tool.function?.name === "read")
+          const index = main ? requests.push(body) - 1 : 2
           if (index < 2) {
             received[index].resolve()
             await release[index].promise

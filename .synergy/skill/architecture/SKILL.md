@@ -10,6 +10,7 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
 1. Read [Architecture overview](../../../docs/architecture/README.md) and [Package map](../../../docs/reference/packages.md).
 2. Select only the relevant canonical documents:
    - runtime/Scope: `runtime-and-scope.md`
+   - experimental features, activation and graduation: `feature-lifecycle.md`
    - workspace and files: `workspace-and-files.md`
    - session/message/compaction: `session-and-messages.md`, `llm-loop.md`
    - Web state: `frontend-data-sync.md`

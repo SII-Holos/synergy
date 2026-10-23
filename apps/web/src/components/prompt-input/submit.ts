@@ -1003,15 +1003,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
       const getSessionPreviewData = async (attachment: SessionAttachmentPart) => {
         if (!attachment.scopeID) throw new Error("Session reference has not been migrated")
-        const [childStore] = globalSync.ensureScopeState(attachment.scopeID)
-        const cachedMessages = childStore.message[attachment.sessionId]
-        if (cachedMessages !== undefined) {
-          return {
-            messages: cachedMessages,
-            getParts: (messageID: string) => childStore.part[messageID] ?? [],
-          }
-        }
-
         const response = await client.session.messages({
           scopeID: attachment.scopeID,
           sessionID: attachment.sessionId,

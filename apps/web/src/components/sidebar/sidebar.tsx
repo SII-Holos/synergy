@@ -28,6 +28,7 @@ import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-asset
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { useHolos } from "@/context/holos"
+import { accountAgentID, resolveAccountIdentity, type AccountIdentityLabels } from "@/components/holos/account-identity"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { archiveProjectConfirm } from "@/components/dialog/confirm-copy"
@@ -1571,39 +1572,37 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const [holosStatusOpen, setHolosStatusOpen] = createSignal(false)
 
   const hasHolos = () => props.globalSDK.capabilities.has("holos")
-  const avatarSrc = () =>
-    (hasHolos() && holos.state.social.profile?.avatarUrl) || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
-  const activeAgentId = () => holos.state.identity.activeAccount?.agentId ?? holos.state.identity.agentId ?? undefined
+  const accountLabels = (): AccountIdentityLabels => ({
+    product: _({ id: "brand.workbench.synergy", message: "Synergy workspace" }),
+    holosAccount: _({ id: "sidebar.account.holos", message: "HOLOS account" }),
+    loading: _(sidebar.loadingIdentity),
+    signedOut: _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" }),
+    profileUnavailable: _(sidebar.profileUnavailable),
+    connectedToHolos: _(sidebar.connectedToHolos),
+    connecting: _(sidebar.connecting),
+    failed: _(sidebar.connectionFailed),
+    disconnected: _(sidebar.disconnected),
+    disabled: _(sidebar.disabled),
+    unavailable: _(sidebar.notAvailable),
+  })
+  // The name, description and tone come from the shared derivation so this
+  // surface and the mobile drawer cannot disagree about one identity, and the
+  // labels are translated inside the accessor rather than at mount so a locale
+  // switch recomputes the account row with the rest of the surface.
+  const account = () =>
+    resolveAccountIdentity({
+      hasHolos: hasHolos(),
+      loaded: holos.loaded,
+      state: holos.state,
+      labels: accountLabels(),
+    })
+  const avatarSrc = () => account().avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
+  const activeAgentId = () => accountAgentID(holos.state)
   const activeAgentShortID = () => activeAgentId()?.slice(0, 8)
 
-  const displayName = () => {
-    if (!hasHolos()) return "Synergy"
-    if (!holos.loaded) return "HOLOS"
-    const profileName = holos.state.social.profile?.name
-    if (holos.state.identity.loggedIn && profileName) return profileName
-    if (holos.state.identity.loggedIn && activeAgentShortID()) return `Agent ${activeAgentShortID()}`
-    return _({ id: "sidebar.account.holos", message: "HOLOS account" })
-  }
-
-  const displayDescription = () => {
-    if (!hasHolos()) return _({ id: "brand.workbench.synergy", message: "Synergy workspace" })
-    if (!holos.loaded) return _(sidebar.loadingIdentity)
-    if (!holos.state.identity.loggedIn)
-      return _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" })
-    if (holos.state.social.profileError) return _(sidebar.profileUnavailable)
-    const description = holos.state.social.profile?.description?.trim()
-    if (description) return description
-    return holos.state.connection.status === "connected" ? _(sidebar.connectedToHolos) : holosMenuRightLabel()
-  }
-
-  const connectionTone = () => {
-    if (!holos.loaded || !holos.state.identity.loggedIn) return "muted" as const
-    if (holos.state.connection.status === "connected") return "success" as const
-    if (holos.state.connection.status === "connecting") return "active" as const
-    if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
-      return "danger" as const
-    return "muted" as const
-  }
+  const displayName = () => account().name
+  const displayDescription = () => account().description
+  const connectionTone = () => account().tone
 
   const handleEscape = (e: KeyboardEvent) => {
     if (e.key === "Escape") setMenuOpen(false)

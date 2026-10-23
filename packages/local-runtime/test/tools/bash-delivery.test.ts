@@ -21,9 +21,9 @@ test("bash exposes only the selected host delivery instructions without allocati
           const tool = await BashTool.init()
           if (custom) {
             expect(tool.description).toContain("Deliver using $&host.")
-            expect(tool.description).not.toContain("captured as immutable attachments")
+            expect(tool.description).not.toContain("the tool captures it and returns its resource reference")
           } else {
-            expect(tool.description).toContain("captured as immutable attachments")
+            expect(tool.description).toContain("the tool captures it and returns its resource reference")
             expect(tool.description).not.toContain("Deliver using $&host.")
           }
           expect(tool.description).not.toContain("${artifactGuidance}")

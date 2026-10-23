@@ -484,9 +484,10 @@ test("mobile session toolbar keeps compact glyphs and reachable controls", async
         button.height >= 32 &&
         button.left >= 0 &&
         button.right <= 375 &&
-        icon.width === 16 &&
-        icon.height === 16,
+        icon.width === 20 &&
+        icon.height === 20,
     ),
+    JSON.stringify(bounds),
   ).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   expect(errors).toEqual([])

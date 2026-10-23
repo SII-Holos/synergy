@@ -10,14 +10,15 @@
     "./register": "./src/register.ts",
     "./tools/channel-push": "./src/tools/channel-push.ts",
     "./tools/channel-push.txt": "./src/tools/channel-push.txt",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun ../testing/script/test-ci.ts",
     "build": "bun ../../script/build-workspace.ts packages/boss-feishu",
     "test:ci": "bun ../testing/script/test-ci.ts",
-    "test:coverage": "bun ../testing/script/coverage-run.ts"
+    "test:coverage": "SYNERGY_BATCH_SHARDS=1 bun ../testing/script/coverage-run.ts"
   },
   "dependencies": {
     "@ericsanchezok/synergy-agenda": "workspace:*",
@@ -31,6 +32,7 @@
     "@ericsanchezok/synergy-library": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
@@ -54,6 +56,10 @@
     "packages": {
       "@ericsanchezok/synergy-boss": "1.1.26",
       "@ericsanchezok/synergy-channel-feishu": "1.1.26"
+    },
+    "features": {
+      "kind": "bridge",
+      "definitions": []
     }
   }
 }

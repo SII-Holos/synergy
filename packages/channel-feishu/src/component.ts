@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { ChannelSetup } from "@ericsanchezok/synergy-channels/channel/setup"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -8,6 +9,7 @@ import { Channel } from "@ericsanchezok/synergy-channels/channel"
 export function channelFeishu(): RuntimeComponent {
   return {
     id: "channel-feishu",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { channels: version },

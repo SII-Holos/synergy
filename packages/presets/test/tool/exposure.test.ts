@@ -789,7 +789,10 @@ describe("tool exposure", () => {
 
   test("restricted subagents cannot enumerate permission-hidden MCP groups", () =>
     runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir({
+        git: true,
+        config: { agent: { "code-cartographer": { permission: { "mcp__*": "deny" } } } },
+      })
       const originalToolEntries = MCP.toolEntries
       const serverName = "private-server"
       const groupID = ToolExposure.mcpGroupID(serverName)

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test"
 import { RuntimeComponents, type RuntimeComponent } from "../../src/lifecycle/components"
 import { RuntimeContext } from "../../src/lifecycle/context"
 import { runtimeHome } from "../support/runtime-home"
+import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 
 async function owner() {
   const home = await runtimeHome()
@@ -31,13 +32,48 @@ test("invalid component graphs fail before any component registers", () => {
   let registrations = 0
   const core = component("core", { register: () => registrations++ })
   expect(() => RuntimeComponents.compose([core, component("core")])).toThrow("Duplicate component")
-  expect(() => RuntimeComponents.compose([component("lsp", { requires: { core: "^1.0.0" } })])).toThrow("requires core")
+  expect(() => RuntimeComponents.compose([component("lsp", { requires: { core: "^1.0.0" } })])).toThrow("not installed")
   expect(() => RuntimeComponents.compose([core, component("lsp", { requires: { core: "^2.0.0" } })])).toThrow(
     "incompatible",
   )
   expect(() =>
     RuntimeComponents.compose([component("a", { requires: { b: "*" } }), component("b", { requires: { a: "*" } })]),
   ).toThrow("cycle")
+  expect(registrations).toBe(0)
+})
+
+test("a pinned feature plan requires the exact active factories before registration", () => {
+  let registrations = 0
+  const core = component("core", { register: () => registrations++ })
+  const plan = FeatureSelection.resolve([core])
+  expect(() => RuntimeComponents.compose([], plan)).toThrow("core")
+  expect(() => RuntimeComponents.compose([component("core", { version: "2.0.0" })], plan)).toThrow("version")
+  expect(registrations).toBe(0)
+})
+
+test("a contradictory pinned plan cannot register a disabled experiment", () => {
+  let registrations = 0
+  const experimental = component("experimental", {
+    features: {
+      kind: "product",
+      definitions: [
+        {
+          id: "experimental",
+          owner: "experimental",
+          component: "experimental",
+          maturity: "experimental",
+          activation: "restart",
+          name: "Fixture",
+          description: "Fixture",
+        },
+      ],
+    },
+    register: () => registrations++,
+  })
+  const plan = FeatureSelection.resolve([experimental])
+  expect(() => RuntimeComponents.compose([experimental], { ...plan, components: ["experimental"] })).toThrow(
+    "feature selection",
+  )
   expect(registrations).toBe(0)
 })
 

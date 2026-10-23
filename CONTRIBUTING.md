@@ -15,6 +15,8 @@ Open a [GitHub Issue](https://github.com/SII-Holos/synergy/issues) with:
 
 If you're not sure whether something is a bug or intended behavior, open the issue anyway. We'd rather triage a question than miss a real problem.
 
+Substantial product additions, prompt/context changes and risky optimizations should start as experimental features. Follow [Develop a feature](.synergy/skill/develop-feature/SKILL.md) for declaration, disabled-state verification and graduation cleanup; fixes and behavior-preserving refactors do not automatically need flags.
+
 ## Suggesting Features
 
 For feature ideas or design discussions, open a [GitHub Issue](https://github.com/SII-Holos/synergy/issues) or start a [Discussion](https://github.com/SII-Holos/synergy/discussions). A good suggestion explains the problem you're trying to solve, not just the solution you have in mind — that context helps us find the right approach.

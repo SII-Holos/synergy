@@ -15,7 +15,8 @@
     "./component": "./src/component.ts",
     "./server/app-static": "./src/server/app-static.ts",
     "./web-app": "./src/web-app.ts",
-    "./cli/generate": "./src/cli/generate.ts"
+    "./cli/generate": "./src/cli/generate.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -57,6 +58,10 @@
     "export": "server",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "foundation",
+      "definitions": []
     }
   }
 }

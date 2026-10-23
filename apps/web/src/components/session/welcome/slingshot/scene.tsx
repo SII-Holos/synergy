@@ -99,13 +99,22 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
         values: { stars: "★".repeat(s.stars) },
       })
     if (s.phase === "lost") return i18n._({ id: "welcome.slingshot.lost", message: "Try again" })
-    if (!props.active()) return i18n._({ id: "welcome.common.continue", message: "Click to continue" })
+    if (!props.active())
+      return props.coarsePointer()
+        ? i18n._({ id: "welcome.common.continueTouch", message: "Tap to continue" })
+        : i18n._({ id: "welcome.common.continue", message: "Click to continue" })
     if (s.phase === "aiming")
-      return i18n._({
-        id: "welcome.slingshot.ready",
-        message: "Level {level} · Pull back and release · {shots} shots",
-        values: { level: s.level + 1, shots: s.shots },
-      })
+      return props.coarsePointer()
+        ? i18n._({
+            id: "welcome.slingshot.readyTouch",
+            message: "Level {level} · Drag back and release · {shots} shots",
+            values: { level: s.level + 1, shots: s.shots },
+          })
+        : i18n._({
+            id: "welcome.slingshot.ready",
+            message: "Level {level} · Pull back and release · {shots} shots",
+            values: { level: s.level + 1, shots: s.shots },
+          })
     return i18n._({
       id: "welcome.slingshot.score",
       message: "Level {level} · {score} points",
@@ -268,11 +277,19 @@ export default function SlingshotScene(props: WelcomeSceneProps) {
         onAction={act}
         onReset={reset}
         onReleaseInput={cancel}
-        help={i18n._({
-          id: "welcome.slingshot.help",
-          message:
-            "Pull the courier back and release to topple the guards. Break supports to bring down the structure. Left and right aim, up and down set power, Space launches. Escape cancels the pull.",
-        })}
+        help={
+          props.coarsePointer()
+            ? i18n._({
+                id: "welcome.slingshot.helpTouch",
+                message:
+                  "Drag the courier back and release to topple the guards. Break supports to bring down the structure.",
+              })
+            : i18n._({
+                id: "welcome.slingshot.help",
+                message:
+                  "Pull the courier back and release to topple the guards. Break supports to bring down the structure. Left and right aim, up and down set power, Space launches. Escape cancels the pull.",
+              })
+        }
         onKey={(e) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Enter"].includes(e.key)) return
           e.preventDefault()

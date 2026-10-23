@@ -10,7 +10,8 @@
     "./github/identity": "./src/github/identity.ts",
     "./github/routes": "./src/github/routes.ts",
     "./http": "./src/http.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -47,6 +48,20 @@
     "export": "github",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "github",
+          "owner": "github",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Github",
+          "description": "Provide github capabilities.",
+          "component": "github"
+        }
+      ]
     }
   },
   "peerDependencies": {

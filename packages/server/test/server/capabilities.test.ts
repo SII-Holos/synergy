@@ -48,7 +48,29 @@ test("features require a selected service and its HTTP contribution in the same 
     testRuntime({
       composition: RuntimeComponents.compose([
         { id: "local-runtime", apiVersion: 1, version: "1.0.0", register: registerLocalRuntime },
-        ...(selected ? [{ id: "fixture", apiVersion: 1 as const, version: "1.0.0", register() {} }] : []),
+        ...(selected
+          ? [
+              {
+                id: "fixture",
+                apiVersion: 1 as const,
+                version: "1.0.0",
+                features: {
+                  kind: "product" as const,
+                  definitions: [
+                    {
+                      id: "fixture-ui",
+                      owner: "fixture",
+                      maturity: "stable" as const,
+                      activation: "restart" as const,
+                      name: "Fixture",
+                      description: "Test feature",
+                    },
+                  ],
+                },
+                register() {},
+              },
+            ]
+          : []),
         {
           id: "server",
           apiVersion: 1,

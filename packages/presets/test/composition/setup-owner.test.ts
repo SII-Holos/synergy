@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import yargs from "yargs"
@@ -41,7 +42,7 @@ for (const scenario of [
   failed: boolean
 }>) {
   test(`${scenario.name} setup only writes selected knowledge owners`, async () => {
-    const composition = RuntimeComponents.compose(
+    const composition = composeWithExperiments(
       RuntimeComponents.resolve([localRuntime({ workers: false, environment: false }), ...scenario.components]),
     )
     await using runtime = await testRuntime({
@@ -126,7 +127,7 @@ for (const scenario of [
 }
 
 test("registered Library accepts explicit vector discovery, validation and live probes", async () => {
-  const composition = RuntimeComponents.compose([localRuntime({ workers: false, environment: false }), library()])
+  const composition = composeWithExperiments([localRuntime({ workers: false, environment: false }), library()])
   await using runtime = await testRuntime({ composition: { register: () => composition.register() } })
   await runtime.run(() =>
     ScopeContext.provide({

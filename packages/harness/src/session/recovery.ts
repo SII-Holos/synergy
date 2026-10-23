@@ -92,7 +92,7 @@ export namespace SessionRecovery {
     const { resolve, toStatus } = await import("./working")
     const result: Record<string, StatusInfo> = {}
     for (const session of await sessionInfos(scopeID)) {
-      if (session.time.archived || !session.paused) continue
+      if (session.time.archived || (!session.paused && session.resume?.state !== "queued")) continue
       const working = await resolve(session.id, session).catch(() => undefined)
       if (working) result[session.id] = toStatus(working)
     }

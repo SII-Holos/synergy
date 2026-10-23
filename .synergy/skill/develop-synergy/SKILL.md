@@ -17,6 +17,8 @@ Check both `bun --version` and the executable selected by the current version ma
 
 ## Prepare an Isolated Home
 
+Boss, Lattice and Kanban default off, including source runtimes. Opt in through the isolated instance's Experimental features settings or its global features domain, then restart that instance. Do not use legacy experimental environment variables. See [develop-feature](../develop-feature/SKILL.md).
+
 1. Choose a dedicated parent directory and explicit free ports. Check listeners with `lsof -nP -iTCP -sTCP:LISTEN` or the platform equivalent; do not assume `4097` and `3001` are free.
 2. Create the required `.synergy` parent:
 

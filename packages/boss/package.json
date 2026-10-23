@@ -37,7 +37,8 @@
     "./session/register": "./src/session/register.ts",
     "./session/tool-mode-policy": "./src/session/tool-mode-policy.ts",
     "./session/workflow": "./src/session/workflow.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -57,6 +58,7 @@
   },
   "devDependencies": {
     "@ericsanchezok/synergy-testing": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
@@ -81,6 +83,20 @@
     "packages": {
       "@ericsanchezok/synergy-library": "1.1.26",
       "@ericsanchezok/synergy-agenda": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "boss",
+          "owner": "boss",
+          "maturity": "experimental",
+          "activation": "restart",
+          "name": "Boss mode",
+          "description": "Delegate tasks and follow progress.",
+          "component": "boss"
+        }
+      ]
     }
   },
   "peerDependencies": {

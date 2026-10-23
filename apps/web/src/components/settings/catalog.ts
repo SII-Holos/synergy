@@ -52,6 +52,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "lsp",
   "observability",
   "boss",
+  "experiments",
   "import",
   "config-files",
   "archived-sessions",
@@ -94,6 +95,17 @@ const SEARCH_TERMS_COMMENT =
   "Settings search aliases. The vertical bars separate aliases; preserve them in translation."
 
 const BUILTIN_SETTINGS_COPY = {
+  experiments: {
+    label: { id: "settings.experiments.title", message: "Experimental features" },
+    description: {
+      id: "settings.experiments.description",
+      message: "Try features still in development.",
+    },
+    searchTerms: {
+      id: "settings.experiments.searchTerms",
+      message: "experimental | features | kanban | boss | lattice | preview",
+    },
+  },
   "digital-twin": {
     label: twinCopy.title,
     description: twinCopy.description,
@@ -647,6 +659,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     visibility: "developer",
   }),
   section("boss", "runtime", 80, "prompt.boss", { domainIds: ["runtime"] }),
+  section("experiments", "system", 60, "settings.experiments", ["features"]),
   section("import", "system", 40, "settings.import"),
   section("config-files", "system", 50, "settings.configFiles"),
   section("archived-sessions", "system", 30, "session.archive"),

@@ -102,6 +102,13 @@ for (const version of ["2.0.0", "2.4.4", "3.0.21", "3.0.22"])
             ["home", homeSessionID],
             [project.id, projectSessionID],
           ]) {
+            let preparation = (await client.storage.prepareSession({ sessionID })).data!
+            const deadline = Date.now() + 10_000
+            while (["pending", "preparing"].includes(preparation.state) && Date.now() < deadline) {
+              await Bun.sleep(25)
+              preparation = (await client.storage.upgradeSession({ sessionID })).data!
+            }
+            expect(preparation.state).toBe("ready")
             const scope = await Scope.resolve({ scopeID })
             await ScopeContext.provide({
               scope,

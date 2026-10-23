@@ -26,6 +26,7 @@ export type AddressBarProps = {
   onReload: () => void
   onStop: () => void
   onSettings?: () => void
+  onErrorDetails?: () => void
   onImport?: () => void
   onPasswords?: () => void
   onNewTab?: () => void
@@ -398,6 +399,13 @@ export function AddressBar(props: AddressBarProps) {
           )}
         >
           <div class="browser-options-menu browser-workspace" onKeyDown={menuKey}>
+            <Show when={props.onErrorDetails}>
+              <div class="browser-menu-section">
+                <button class="browser-menu-row" onClick={() => menu(() => props.onErrorDetails?.())}>
+                  {_(B.errorDetails)}
+                </button>
+              </div>
+            </Show>
             <div class="browser-menu-section">
               <button class="browser-menu-row" disabled={!realPage()} onClick={() => menu(openFind)}>
                 <span>{_(B.find)}</span>

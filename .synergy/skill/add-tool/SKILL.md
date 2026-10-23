@@ -11,6 +11,8 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 2. Read [Execution boundaries](../../../docs/architecture/execution-boundaries.md) and inspect the nearest tool, its taxonomy entry, resolver path, renderer, and tests.
 3. Write the failing invariant test first. Cover the public result, permission/capability behavior, cancellation, and state change that matter to callers.
 
+Substantial new product capabilities also follow [develop-feature](../develop-feature/SKILL.md). Gate the owning module or operation once; tool exposure and capability permissions retain their own responsibilities.
+
 ## Implement the Backend
 
 1. Define the tool with `Tool.define(id, init, options?)` under the owning business package’s domain `tools/` directory. Harness owns generic definitions, discovery, execution and scheduling; concrete file/shell tools belong to `local-runtime`.

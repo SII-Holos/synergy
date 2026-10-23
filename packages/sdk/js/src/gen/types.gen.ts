@@ -10,15 +10,24 @@ export type RuntimeComponentInfo = {
   apiVersion: 1
 }
 
-export type RuntimeCapabilities = {
-  apiVersion: 1
-  hostVersion: string
-  components: Array<RuntimeComponentInfo>
-  features: Array<string>
-  transports?: {
-    displayManifest: 1
-    projection?: "projection-v2"
-  }
+export type FeatureDefinition = {
+  id: string
+  owner: string
+  maturity: "experimental" | "stable"
+  activation: "live" | "restart"
+  name: string
+  description: string
+  component?: string
+}
+
+export type FeatureStatus = {
+  id: string
+  definition?: FeatureDefinition
+  selected: boolean
+  available: boolean
+  enabled: boolean
+  pendingRestart: boolean
+  reason?: "not-installed" | "component-unselected" | "dependency-unavailable" | "restart-required"
 }
 
 export type RuntimeNotReadyError = {
@@ -29,6 +38,18 @@ export type RuntimeShuttingDownError = {
   name: "RuntimeShuttingDown"
   data: {
     message: string
+  }
+}
+
+export type RuntimeCapabilities = {
+  apiVersion: 1
+  hostVersion: string
+  components: Array<RuntimeComponentInfo>
+  features: Array<string>
+  transports?: {
+    displayManifest: 1
+    projection?: "projection-v2"
+    viewDemand?: 1
   }
 }
 
@@ -3651,6 +3672,10 @@ export type Session = {
     diffs?: Array<FileDiff>
     diffState?:
       | {
+          status: "live"
+          code?: "incomplete" | "unavailable"
+        }
+      | {
           status: "pending"
           deadlineAt: number
         }
@@ -3711,6 +3736,15 @@ export type Session = {
    */
   agentOverride?: string
   paused?: SessionPaused
+  resume?: {
+    requestID: string
+    rootID?: string
+    itemID: string
+    messageID: string
+    pausedSince?: number
+    created: number
+    state: "queued" | "consumed" | "cancelled"
+  }
   interaction?: SessionInteraction
   lastExchange?: {
     user?: string
@@ -4119,6 +4153,23 @@ export type QuickSwitcherConfig = {
   models?: Array<QuickSwitcherModelConfig>
 }
 
+/**
+ * Next-input prediction: automatic defaults to false; model defaults to the current Session model
+ */
+export type DigitalTwinSettings = {
+  /**
+   * Automatically predict the next input after a completed task (default: false)
+   */
+  automatic?: boolean
+  /**
+   * Prediction model; null or absent follows the current Session
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  } | null
+}
+
 export type ScopeUiPreferences = {
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
@@ -4169,6 +4220,7 @@ export type ScopeUiPreferences = {
    * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
    */
   fullAccessAcknowledged?: boolean
+  digitalTwin?: DigitalTwinSettings
   boss?: {
     enabled?: boolean
   }
@@ -5704,23 +5756,6 @@ export type GithubConfig = {
 }
 
 /**
- * Next-input prediction: automatic defaults to false; model defaults to the current Session model
- */
-export type DigitalTwinSettings = {
-  /**
-   * Automatically predict the next input after a completed task (default: false)
-   */
-  automatic?: boolean
-  /**
-   * Prediction model; null or absent follows the current Session
-   */
-  model?: {
-    providerID: string
-    modelID: string
-  } | null
-}
-
-/**
  * Sender identity for outgoing emails
  */
 export type EmailFromConfig = {
@@ -6683,6 +6718,12 @@ export type LayoutConfig = "auto" | "stretch"
 
 export type Config = {
   /**
+   * Global experimental feature opt-ins; empty by default. Component changes apply after restart.
+   */
+  features?: {
+    optIn: Array<string>
+  }
+  /**
    * JSON schema reference for configuration validation
    */
   $schema?: string
@@ -7464,6 +7505,7 @@ export type ConfigInstructionsUpdateInput = {
 
 export type ConfigDomainSummary = {
   id:
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7525,6 +7567,7 @@ export type ConfigExportResult = {
   scopeID: string
   secretsIncluded: boolean
   domains: Array<
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7586,6 +7629,7 @@ export type ConfigDomainImportChange = {
 
 export type ConfigDomainImportDomainPlan = {
   id:
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7644,6 +7688,7 @@ export type ConfigImportSourceTooLargeError = {
 export type ConfigDomainImportPlanInput = {
   config: Config
   only?: Array<
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7732,6 +7777,7 @@ export type ConfigImportRevisionConflictError = {
   data: {
     message: string
     domains: Array<
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -7768,6 +7814,7 @@ export type ConfigImportLockedError = {
 export type ConfigDomainImportApplyInput = {
   config: Config
   only?: Array<
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -8061,6 +8108,99 @@ export type ReviewStateResult = {
   state: ReviewStateValue
 }
 
+export type ContextUsageEstimate = {
+  modelID: string
+  providerID: string
+  contextLimit?: number
+  usableInputLimit?: number
+  categories: {
+    [key: string]: {
+      estimatedTokens: number
+      items: number
+      precision?: "source" | "role"
+    }
+  }
+  estimator:
+    | {
+        kind: "model-tokenizer"
+        encoding?: string
+      }
+    | {
+        kind: "bounded-utf8"
+        sampledCharacters: number
+        truncated: boolean
+      }
+  version: 1
+  capturedAt: number
+}
+
+export type ExecutionContextSnapshot = {
+  sessionID: string
+  callID: string
+  nodeID: string
+  runID: string
+  started: number
+  requestNumber: number
+  roundNumber: number
+  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
+  modelID: string
+  providerID: string
+  inputTokens: number | null
+  contextLimit: number | null
+  outputTokens: number | null
+  cacheHit: number | null
+  elapsedMs: number | null
+  retries: number
+  usage: {
+    version: 2
+    callID?: string
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: Array<{
+      category:
+        | "systemInstructions"
+        | "toolDefinitions"
+        | "userMessages"
+        | "injectedContext"
+        | "skills"
+        | "assistantMessages"
+        | "toolResults"
+        | "attachments"
+        | "legacyConversation"
+        | "legacyTools"
+        | "legacyInstructions"
+      precision: "source" | "role" | "legacy"
+      estimatedTokens: number
+      attributedTokens: number
+      items?: number
+    }>
+    overhead: {
+      attributedTokens: number
+    }
+    estimator:
+      | {
+          kind: "model-tokenizer"
+          encoding?: string
+        }
+      | {
+          kind: "bounded-utf8"
+          sampledCharacters: number
+          truncated: boolean
+        }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  } | null
+  estimate?: ContextUsageEstimate
+  compactedBefore: boolean
+  requestAvailable: boolean
+}
+
 export type ExecutionTask = {
   sessionID: string
   nodeID: string | null
@@ -8339,7 +8479,7 @@ export type ExecutionSummary = {
   coverage: {
     recorded: number
     messages: number
-    gaps: number
+    gaps: number | null
     partial: boolean
   }
   lanes: Array<{
@@ -8361,98 +8501,56 @@ export type ExecutionSummary = {
   taskInstructions: number
 }
 
-export type ContextUsageEstimate = {
-  modelID: string
-  providerID: string
-  contextLimit?: number
-  usableInputLimit?: number
-  categories: {
-    [key: string]: {
-      estimatedTokens: number
-      items: number
-      precision?: "source" | "role"
+export type ExecutionProjection =
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "root"
     }
-  }
-  estimator:
-    | {
-        kind: "model-tokenizer"
-        encoding?: string
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "preparing"
+      progress: {
+        stage: "metadata" | "messages" | "parts"
+        prepared: number
+        total?: number
       }
-    | {
-        kind: "bounded-utf8"
-        sampledCharacters: number
-        truncated: boolean
+    }
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "failed"
+      error: {
+        kind: string
+        message: string
+        retryable: boolean
       }
-  version: 1
-  capturedAt: number
-}
-
-export type ExecutionContextSnapshot = {
-  sessionID: string
-  callID: string
-  nodeID: string
-  runID: string
-  started: number
-  requestNumber: number
-  roundNumber: number
-  status: "running" | "completed" | "failed" | "cancelled" | "interrupted"
-  modelID: string
-  providerID: string
-  inputTokens: number | null
-  contextLimit: number | null
-  outputTokens: number | null
-  cacheHit: number | null
-  elapsedMs: number | null
-  retries: number
-  usage: {
-    version: 2
-    callID?: string
-    modelID: string
-    providerID: string
-    totalInput: number
-    contextLimit?: number
-    usableInputLimit?: number
-    categories: Array<{
-      category:
-        | "systemInstructions"
-        | "toolDefinitions"
-        | "userMessages"
-        | "injectedContext"
-        | "skills"
-        | "assistantMessages"
-        | "toolResults"
-        | "attachments"
-        | "legacyConversation"
-        | "legacyTools"
-        | "legacyInstructions"
-      precision: "source" | "role" | "legacy"
-      estimatedTokens: number
-      attributedTokens: number
-      items?: number
-    }>
-    overhead: {
-      attributedTokens: number
     }
-    estimator:
-      | {
-          kind: "model-tokenizer"
-          encoding?: string
-        }
-      | {
-          kind: "bounded-utf8"
-          sampledCharacters: number
-          truncated: boolean
-        }
-    reconciliation: {
-      mode: "residual" | "scaled-down"
-      factor: number
+  | {
+      sessionID: string
+      revision: number
+      previousRevision: number
+      contexts: Array<ExecutionContextSnapshot>
+      contextTotal: number
+      state: "ready"
+      summary: ExecutionSummary
+      detailPreviousRevision: number
+      roundSummaries: Array<ExecutionSummary>
+      upserts: Array<ExecutionTrajectoryNode>
+      processUpserts: Array<ExecutionTrajectoryNode>
+      processRemoved: Array<string>
+      removed: Array<string>
     }
-    capturedAt: number
-  } | null
-  estimate?: ContextUsageEstimate
-  compactedBefore: boolean
-  requestAvailable: boolean
-}
 
 export type ExecutionContextHistory = {
   sessionID: string
@@ -9835,10 +9933,19 @@ export type SessionForkPointMissingError = {
 }
 
 export type SessionContinueResult = {
-  /**
-   * Whether the drive accepted the session; a paused or already-running session reports false
-   */
   handled: boolean
+  outcome: "accepted" | "already_accepted" | "running" | "idle" | "stale" | "blocked"
+  receipt?: {
+    requestID: string
+    rootID?: string
+    itemID: string
+    messageID: string
+    pausedSince?: number
+    created: number
+    state: "queued" | "consumed" | "cancelled"
+  }
+  status: SessionStatus
+  reason?: string
 }
 
 export type SessionExecutionOwnerUnavailableError = {
@@ -10313,6 +10420,10 @@ export type UserMessage = {
     diffs: Array<FileDiff>
     diffState?:
       | {
+          status: "live"
+          code?: "incomplete" | "unavailable"
+        }
+      | {
           status: "pending"
           deadlineAt: number
         }
@@ -10339,6 +10450,14 @@ export type UserMessage = {
         | "size_limit"
         | "read_failed"
     }>
+    diffTotals?: {
+      files: number
+      additions: number
+      deletions: number
+    }
+    diffRevision?: string
+    diffObservedAt?: number
+    diffHasChanges?: boolean
   }
   agent: string
   model: {
@@ -10953,6 +11072,81 @@ export type SessionFileRestorePreview = {
     truncated: boolean
     binary: boolean
   }>
+}
+
+export type CurrentTurnChanges = {
+  rootID: string
+  createdAt: number
+  summary?: {
+    title?: string
+    body?: string
+    diffs: Array<FileDiff>
+    diffState?:
+      | {
+          status: "live"
+          code?: "incomplete" | "unavailable"
+        }
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "partial"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+    diffIssues?: Array<{
+      workspace?: SnapshotWorkspace
+      file?: string
+      code:
+        | "baseline_unavailable"
+        | "capture_failed"
+        | "interrupted"
+        | "legacy_range"
+        | "comparison_failed"
+        | "size_limit"
+        | "read_failed"
+    }>
+    diffTotals?: {
+      files: number
+      additions: number
+      deletions: number
+    }
+    diffRevision?: string
+    diffObservedAt?: number
+    diffHasChanges?: boolean
+  }
+} | null
+
+export type TurnFileComparison = {
+  revision: string
+  files: Array<FileDiff>
+  recording?:
+    | {
+        status: "live"
+        code?: "incomplete" | "unavailable"
+      }
+    | {
+        status: "pending"
+        deadlineAt: number
+      }
+    | {
+        status: "ready"
+      }
+    | {
+        status: "partial"
+        code: "timeout" | "git_failure" | "incomplete" | "unknown"
+      }
+    | {
+        status: "error"
+        code: "timeout" | "git_failure" | "incomplete" | "unknown"
+      }
 }
 
 export type ReviewFileVersions = {
@@ -15295,6 +15489,11 @@ export type EventExecutionUpdated = {
   }
 }
 
+export type EventExecutionProjection = {
+  type: "execution.projection"
+  properties: ExecutionProjection
+}
+
 export type Event =
   | EventConfigUpdated
   | EventScopeUpdated
@@ -15396,6 +15595,7 @@ export type Event =
   | EventIdeInstalled
   | EventReviewStateUpdated
   | EventExecutionUpdated
+  | EventExecutionProjection
 
 export type RenderTarget2 = string
 
@@ -15433,6 +15633,31 @@ export type HostConnectionPeersResponses = {
 }
 
 export type HostConnectionPeersResponse = HostConnectionPeersResponses[keyof HostConnectionPeersResponses]
+
+export type GlobalFeaturesData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/features"
+}
+
+export type GlobalFeaturesErrors = {
+  /**
+   * Runtime services are still starting or shutting down
+   */
+  503: RuntimeNotReadyError | RuntimeShuttingDownError
+}
+
+export type GlobalFeaturesError = GlobalFeaturesErrors[keyof GlobalFeaturesErrors]
+
+export type GlobalFeaturesResponses = {
+  /**
+   * Runtime feature catalog
+   */
+  200: Array<FeatureStatus>
+}
+
+export type GlobalFeaturesResponse = GlobalFeaturesResponses[keyof GlobalFeaturesResponses]
 
 export type GlobalCapabilitiesData = {
   body?: never
@@ -18546,6 +18771,7 @@ export type ConfigDomainGetData = {
   body?: never
   path: {
     domain:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18601,6 +18827,7 @@ export type ConfigDomainUpdateData = {
   body?: ConfigDomainUpdateInput
   path: {
     domain:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18656,6 +18883,7 @@ export type ConfigDomainOpenData = {
   body?: never
   path: {
     domain:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18719,6 +18947,7 @@ export type ConfigExportData = {
     scopeID?: string
     scope?: ConfigImportScope
     only?:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18741,6 +18970,7 @@ export type ConfigExportData = {
       | "mcp"
       | "voice"
       | Array<
+          | "features"
           | "general"
           | "models"
           | "providers"
@@ -19795,6 +20025,50 @@ export type ReviewStateUpdateResponses = {
 }
 
 export type ReviewStateUpdateResponse = ReviewStateUpdateResponses[keyof ReviewStateUpdateResponses]
+
+export type SessionExecutionProjectionData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    token: string
+  }
+  url: "/session/{sessionID}/execution/projection"
+}
+
+export type SessionExecutionProjectionErrors = {
+  /**
+   * Invalid execution query
+   */
+  400: unknown
+  /**
+   * Execution evidence was not found in the selected Scope and session
+   */
+  404: unknown
+  /**
+   * Execution computation failed
+   */
+  500: unknown
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionExecutionProjectionError = SessionExecutionProjectionErrors[keyof SessionExecutionProjectionErrors]
+
+export type SessionExecutionProjectionResponses = {
+  /**
+   * Read a captured execution projection
+   */
+  200: ExecutionProjection
+}
+
+export type SessionExecutionProjectionResponse =
+  SessionExecutionProjectionResponses[keyof SessionExecutionProjectionResponses]
 
 export type SessionExecutionSummaryData = {
   body?: never
@@ -21317,7 +21591,10 @@ export type SessionRetryRequestResponses = {
 export type SessionRetryRequestResponse = SessionRetryRequestResponses[keyof SessionRetryRequestResponses]
 
 export type SessionContinueData = {
-  body?: never
+  body?: {
+    requestID?: string
+    pausedSince?: number
+  }
   path: {
     /**
      * Session ID
@@ -22888,6 +23165,130 @@ export type SessionFilesPreviewResponses = {
 
 export type SessionFilesPreviewResponse = SessionFilesPreviewResponses[keyof SessionFilesPreviewResponses]
 
+export type SessionFilesCurrentData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/current"
+}
+
+export type SessionFilesCurrentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesCurrentError = SessionFilesCurrentErrors[keyof SessionFilesCurrentErrors]
+
+export type SessionFilesCurrentResponses = {
+  /**
+   * Current root summary
+   */
+  200: CurrentTurnChanges
+}
+
+export type SessionFilesCurrentResponse = SessionFilesCurrentResponses[keyof SessionFilesCurrentResponses]
+
+export type SessionFilesComparisonData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    messageID: string
+    revision?: string
+  }
+  url: "/session/{sessionID}/files/comparison"
+}
+
+export type SessionFilesComparisonErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesComparisonError = SessionFilesComparisonErrors[keyof SessionFilesComparisonErrors]
+
+export type SessionFilesComparisonResponses = {
+  /**
+   * Complete file metadata and leased revision
+   */
+  200: TurnFileComparison
+}
+
+export type SessionFilesComparisonResponse = SessionFilesComparisonResponses[keyof SessionFilesComparisonResponses]
+
+export type SessionFilesReleaseData = {
+  body?: never
+  path: {
+    sessionID: string
+    revision: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/comparison/{revision}"
+}
+
+export type SessionFilesReleaseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesReleaseError = SessionFilesReleaseErrors[keyof SessionFilesReleaseErrors]
+
+export type SessionFilesReleaseResponses = {
+  /**
+   * Reader released
+   */
+  200: boolean
+}
+
+export type SessionFilesReleaseResponse = SessionFilesReleaseResponses[keyof SessionFilesReleaseResponses]
+
 export type SessionFilesDiffData = {
   body?: never
   path: {
@@ -22900,6 +23301,7 @@ export type SessionFilesDiffData = {
     workspaceID: string
     generation: number
     file: string
+    revision?: string
   }
   url: "/session/{sessionID}/files/diff"
 }
@@ -22949,6 +23351,7 @@ export type SessionFilesVersionsData = {
     workspaceID: string
     generation: number
     file: string
+    revision?: string
   }
   url: "/session/{sessionID}/files/versions"
 }

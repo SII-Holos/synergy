@@ -1,6 +1,6 @@
 import { MonotonicKeySpace } from "./monotonic-key-space"
 
-export type SyncResource = "dag" | "todo" | "inbox" | "message"
+export type SyncResource = "dag" | "todo" | "inbox" | "message" | "current-turn"
 
 export type SyncVersion = {
   epoch: string

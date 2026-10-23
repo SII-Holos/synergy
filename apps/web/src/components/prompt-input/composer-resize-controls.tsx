@@ -18,7 +18,7 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
   const [progress, setProgress] = createSignal(0)
   const [pull, setPull] = createSignal(0)
   const [chromeHeight, setChromeHeight] = createSignal(80)
-  const [handle, setHandle] = createSignal<HTMLButtonElement>()
+  const [handle, setHandle] = createSignal<HTMLDivElement>()
   let gesture: ComposerResizeGesture | undefined
   let pointer: number | undefined
   let originalHeight: number | undefined
@@ -78,9 +78,12 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
         data-armed={armed() ? "" : undefined}
         style={{ "--composer-expand-progress": progress(), "--composer-expand-pull": `${pull()}px` }}
       >
-        <button
-          type="button"
+        {/* A separator is a splitter, not a button: modelling it as one keeps the
+            card's toolbar to its action controls while the splitter stays
+            focusable and draggable on both pointer and keyboard. */}
+        <div
           role="separator"
+          tabindex="0"
           aria-orientation="horizontal"
           ref={setHandle}
           aria-label={_({ id: "prompt.long.resize", message: "Resize editor" })}
@@ -144,7 +147,7 @@ export function ComposerResizeControls(props: { input: Pick<PluginInputService, 
           }}
         >
           <span aria-hidden="true" />
-        </button>
+        </div>
         <div class="composer-resize-cue" role="status">
           <Show when={progress() > 0}>
             <Icon name={getSemanticIcon("action.expand")} size="small" aria-hidden="true" />

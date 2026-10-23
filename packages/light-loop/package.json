@@ -19,7 +19,8 @@
     "./session/light-loop-state": "./src/session/light-loop-state.ts",
     "./session/register": "./src/session/register.ts",
     "./session/workflow": "./src/session/workflow.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -55,6 +56,20 @@
     "export": "lightLoop",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "light-loop",
+          "owner": "light-loop",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Light Loop",
+          "description": "Provide light loop capabilities.",
+          "component": "light-loop"
+        }
+      ]
     }
   },
   "peerDependencies": {

@@ -2,6 +2,7 @@ import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context
 import path from "path"
 import { AsyncLocalStorage } from "node:async_hooks"
 import { FileIgnore } from "./ignore"
+import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
 import { RuntimeReloadPath } from "@ericsanchezok/synergy-harness/config/reload-path"
 import { withTimeout } from "@ericsanchezok/synergy-harness/util/timeout"
 import { stat } from "node:fs/promises"
@@ -62,8 +63,13 @@ export namespace FileWatcherEvents {
     return directories.flatMap((directory) => [directory, `**/${directory}/**`])
   }
 
-  export function workspaceSubscriptionIgnores(extra: string[]) {
-    return [...new Set([...FileIgnore.PATTERNS, ...recursiveDirectoryIgnores([".synergy"]), ...extra])]
+  export function workspaceSubscriptionIgnores() {
+    return recursiveDirectoryIgnores(Snapshot.excludedDirectories)
+  }
+
+  export function visibleWorkspaceEvent(file: string, root: string, extra: Bun.Glob[]) {
+    const relative = path.relative(root, file).replaceAll(path.sep, "/")
+    return !relative.split("/").includes(".synergy") && !FileIgnore.match(relative, { extra })
   }
 
   export function projectRuntimeSubscriptionIgnores() {

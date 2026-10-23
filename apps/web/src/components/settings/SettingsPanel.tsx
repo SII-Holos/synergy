@@ -1,3 +1,5 @@
+import { ExperimentsPanel } from "./panels/ExperimentsPanel"
+import { createExperimentsController } from "./panels/experiments-controller"
 import { getBuiltinSettingsSection } from "./catalog"
 import { createBossNameController } from "./panels/boss-name-controller"
 import { validateSettingsDraft } from "./settings-draft-validation"
@@ -337,6 +339,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     isDesktop(),
   )
   let settingsNavigation: HTMLDivElement | undefined
+  let settingsSearch: HTMLInputElement | undefined
   const [navigation, setNavigation] = createSignal(initialNavigation)
   const activeTab = () => navigation().activeTab
   const mobileDetailOpen = () => navigation().detailOpen
@@ -415,6 +418,25 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (activeTab() === "boss" && globalSDK.capabilities.has("library") && !bossNameController.loaded())
       untrack(() => void bossNameController.load())
   })
+  const experimentsController = createExperimentsController(
+    {
+      get: async () => (await globalSDK.client.global.features({ throwOnError: true })).data!,
+      update: async (optIn) => {
+        await globalSDK.client.config.domain.update(
+          {
+            domain: "features",
+            configDomainUpdateInput: { config: { features: { optIn } }, mode: "replace-domain" },
+          },
+          { throwOnError: true },
+        )
+      },
+    },
+    {
+      owner: globalSDK.capabilities.current,
+      identity: () => globalSDK.url,
+      visible: () => activeTab() === "experiments",
+    },
+  )
   const voiceController = createVoiceController({
     get: async () =>
       (await globalSDK.client.config.domain.get({ domain: "voice" }, { throwOnError: true })).data?.voice,
@@ -847,6 +869,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       font.dirty() ||
       desktopUpdateDirty() ||
       voiceController.dirty() ||
+      experimentsController.dirty() ||
       (globalSDK.capabilities.has("library") && bossNameController.dirty()),
   )
   const draftFingerprint = createMemo(() =>
@@ -860,6 +883,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       font: [font.selected("sans"), font.selected("mono")],
       desktopUpdate: desktopUpdateDraft(),
       voice: voiceController.draft,
+      experiments: experimentsController.draft(),
       bossName: bossNameController.content(),
     }),
   )
@@ -873,6 +897,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     pluginDrafts.discard()
     personalizeController.discard()
     voiceController.discard()
+    experimentsController.discard()
     bossNameController.discard()
     font.discard()
     setDesktopUpdateDraft(undefined)
@@ -986,6 +1011,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const explicitSaveSources = () => [
     {
+      name: translateDescriptor(getBuiltinSettingsSection("experiments")!.copy.label, i18n()),
+      page: "experiments",
+      dirty: experimentsController.dirty,
+      save: experimentsController.save,
+    },
+    {
       name: serverValidation()[0]
         ? _(getBuiltinSettingsSection(serverValidation()[0]!.page)!.copy.label)
         : _(copy.globalConfig),
@@ -1030,6 +1061,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       saving() ||
       save.status() === "saving" ||
       personalizeController.busy() ||
+      experimentsController.status() === "saving" ||
       (hasServerChanges() && !domainSummariesResource.ready()),
   )
 
@@ -1211,6 +1243,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
     browser: BrowserPanel,
+    experiments: () => (
+      <ExperimentsPanel controller={experimentsController} onRetrySave={() => void saveExplicitChanges()} />
+    ),
     account: AccountPanel,
     personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
@@ -1678,6 +1713,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <div class="ds-settings-search">
                 <Icon name={getSemanticIcon("action.search")} size="small" />
                 <input
+                  ref={settingsSearch}
                   value={search()}
                   placeholder={_(copy.searchPlaceholder)}
                   aria-label={_(copy.searchPlaceholder)}
@@ -1687,7 +1723,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   <button
                     type="button"
                     aria-label={_({ id: "settings.search.clear", message: "Clear search" })}
-                    onClick={() => setSearch("")}
+                    onClick={() => {
+                      setSearch("")
+                      settingsSearch?.focus()
+                    }}
                   >
                     <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
@@ -1736,105 +1775,115 @@ export function SettingsPanel(props: SettingsPanelProps) {
             </div>
           </AppPanel.Nav>
 
-          <AppPanel.Content
-            class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
+          <div
+            class="settings-panel-main"
+            classList={{ "settings-panel-mobile-summary": !isDesktop() && !mobileDetailOpen() }}
           >
-            <div class="settings-panel-mobile-detail-header">
-              <button
-                ref={mobileBackButton}
-                type="button"
-                class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base"
-                aria-label={_(copy.backLabel)}
-                onClick={showMobileSectionList}
-              >
-                <Icon name={getSemanticIcon("navigation.back")} size="small" />
-              </button>
-              <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
-            </div>
-            <Show when={diagnosticsResource.error()}>
-              <div class="settings-resource-error" role="alert">
-                <div>{_(copy.diagnosticsLoadFailed)}</div>
-                <Button
-                  variant="secondary"
-                  disabled={diagnosticsResource.loading()}
-                  onClick={() => void diagnosticsResource.retry()}
-                >
-                  {_(copy.retrySection)}
-                </Button>
-              </div>
-            </Show>
-            <Show when={(configDiagnostics()?.length ?? 0) > 0}>
-              <div class="settings-config-diagnostics-banner" role="alert">
-                <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
-                <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
-                <ul class="settings-config-diagnostics-list">
-                  <For each={configDiagnostics()}>
-                    {(issue) => (
-                      <li>
-                        {_({
-                          ...copy.configDiagnosticsDetail,
-                          values: { path: issue.path, error: issue.error },
-                        })}
-                        <Show when={issue.quarantinedPath}>
-                          {_({
-                            ...copy.configDiagnosticsQuarantined,
-                            values: { path: issue.quarantinedPath! },
-                          })}
-                        </Show>
-                      </li>
-                    )}
-                  </For>
-                </ul>
-              </div>
-            </Show>
-            <AppPanel.Body
-              padding={false}
-              ref={(element) => {
-                settingsBody = element
-              }}
+            <AppPanel.Content
+              class={`settings-panel-content ${!isDesktop() && !mobileDetailOpen() ? "settings-panel-mobile-hidden" : ""}`}
             >
-              <Show when={failedResources().length > 0}>
+              <div class="settings-panel-mobile-detail-header">
+                <button
+                  ref={mobileBackButton}
+                  type="button"
+                  class="settings-panel-mobile-back flex shrink-0 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base"
+                  aria-label={_(copy.backLabel)}
+                  onClick={showMobileSectionList}
+                >
+                  <Icon name={getSemanticIcon("navigation.back")} size="small" />
+                </button>
+                <div class="min-w-0 truncate text-15-medium text-text-strong">{activeSection()?.label}</div>
+              </div>
+              <Show when={diagnosticsResource.error()}>
                 <div class="settings-resource-error" role="alert">
-                  <div>
-                    {_({ ...copy.sectionLoadFailed, values: { label: activeSection()?.label ?? _(copy.dialogLabel) } })}
-                  </div>
-                  <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                  <div>{_(copy.diagnosticsLoadFailed)}</div>
+                  <Button
+                    variant="secondary"
+                    disabled={diagnosticsResource.loading()}
+                    onClick={() => void diagnosticsResource.retry()}
+                  >
                     {_(copy.retrySection)}
                   </Button>
                 </div>
               </Show>
-              <Show
-                when={sectionReady()}
-                fallback={
-                  <Show when={failedResources().length === 0}>
-                    <div class="settings-panel-loading" role="status">
-                      {_(copy.loading)}
-                    </div>
-                  </Show>
-                }
-              >
-                <SettingsViewStateContext.Provider
-                  value={{
-                    view: (key) => settingsSubviews.get(`${activeTab()}:${key}`),
-                    setView: (key, view) => settingsSubviews.set(`${activeTab()}:${key}`, view),
-                    expanded: (key) => expandedSections.get(`${activeTab()}:${key}`),
-                    setExpanded: (key, open) => expandedSections.set(`${activeTab()}:${key}`, open),
-                    searchField: () => (searchTarget()?.section === activeTab() ? searchTarget()?.label : undefined),
-                  }}
-                >
-                  <Show keyed when={activeTab()}>
-                    {(id) => (
-                      <div ref={setContentRoot} class="settings-page-transition" data-settings-page={id}>
-                        {renderActiveContent()}
-                      </div>
-                    )}
-                  </Show>
-                </SettingsViewStateContext.Provider>
+              <Show when={(configDiagnostics()?.length ?? 0) > 0}>
+                <div class="settings-config-diagnostics-banner" role="alert">
+                  <div class="settings-config-diagnostics-title">{_(copy.configDiagnosticsTitle)}</div>
+                  <div class="settings-config-diagnostics-description">{_(copy.configDiagnosticsDescription)}</div>
+                  <ul class="settings-config-diagnostics-list">
+                    <For each={configDiagnostics()}>
+                      {(issue) => (
+                        <li>
+                          {_({
+                            ...copy.configDiagnosticsDetail,
+                            values: { path: issue.path, error: issue.error },
+                          })}
+                          <Show when={issue.quarantinedPath}>
+                            {_({
+                              ...copy.configDiagnosticsQuarantined,
+                              values: { path: issue.quarantinedPath! },
+                            })}
+                          </Show>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </div>
               </Show>
-              <SlotOutlet slot="settings.section" />
-            </AppPanel.Body>
+              <AppPanel.Body
+                padding={false}
+                ref={(element) => {
+                  settingsBody = element
+                }}
+              >
+                <Show when={failedResources().length > 0}>
+                  <div class="settings-resource-error" role="alert">
+                    <div>
+                      {_({
+                        ...copy.sectionLoadFailed,
+                        values: { label: activeSection()?.label ?? _(copy.dialogLabel) },
+                      })}
+                    </div>
+                    <Button variant="secondary" disabled={sectionLoading()} onClick={retrySection}>
+                      {_(copy.retrySection)}
+                    </Button>
+                  </div>
+                </Show>
+                <Show
+                  when={sectionReady()}
+                  fallback={
+                    <Show when={failedResources().length === 0}>
+                      <div class="settings-panel-loading" role="status">
+                        {_(copy.loading)}
+                      </div>
+                    </Show>
+                  }
+                >
+                  <SettingsViewStateContext.Provider
+                    value={{
+                      view: (key) => settingsSubviews.get(`${activeTab()}:${key}`),
+                      setView: (key, view) => settingsSubviews.set(`${activeTab()}:${key}`, view),
+                      expanded: (key) => expandedSections.get(`${activeTab()}:${key}`),
+                      setExpanded: (key, open) => expandedSections.set(`${activeTab()}:${key}`, open),
+                      searchField: () => (searchTarget()?.section === activeTab() ? searchTarget()?.label : undefined),
+                    }}
+                  >
+                    <Show keyed when={activeTab()}>
+                      {(id) => (
+                        <div ref={setContentRoot} class="settings-page-transition" data-settings-page={id}>
+                          {renderActiveContent()}
+                        </div>
+                      )}
+                    </Show>
+                  </SettingsViewStateContext.Provider>
+                </Show>
+                <SlotOutlet slot="settings.section" />
+              </AppPanel.Body>
+            </AppPanel.Content>
 
-            <AppPanel.Footer class="settings-panel-footer">
+            <AppPanel.Footer
+              class={`settings-panel-footer ${!isDesktop() && !mobileDetailOpen() && !hasExplicitChanges() && ["idle", "loading"].includes(saveFooterStatus()) ? "settings-panel-mobile-hidden" : ""}`}
+            >
               <div class="settings-panel-footer-status flex flex-1 items-center gap-3">
                 <SaveIndicator status={saveFooterStatus()} />
                 <Show
@@ -1935,7 +1984,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 </Button>
               </div>
             </AppPanel.Footer>
-          </AppPanel.Content>
+          </div>
         </AppPanel.Root>
       </OverlayLayerProvider>
       <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />

@@ -1,10 +1,11 @@
-import { For, Show, createMemo, createSignal } from "solid-js"
+import { For, createMemo, createSignal } from "solid-js"
 import type { Accessor, JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { kanbanPage } from "@/locales/messages"
 import { buildPaneSnapshot, type BoardPane } from "../model/pane-selection"
 import { FlipPanes } from "../flip"
 import { FOCUS_RAIL_MAX, FOCUS_RAIL_MIN } from "../model/preferences"
+import { createPaneAccessor } from "./pane-accessor"
 
 const KEYBOARD_RESIZE_STEP = 16
 
@@ -78,13 +79,16 @@ export function KanbanFocus(props: {
 
   return (
     <FlipPanes entries={props.panes} class="kanban-focus" style={focusStyle} rootRef={bindRoot}>
-      <Show when={active()}>
-        {(current) => (
-          <div class="kanban-focus-main" data-pane-key={current().key}>
-            {props.renderPane(current, "focus")}
-          </div>
-        )}
-      </Show>
+      <For each={active() ? [active()!.key] : []}>
+        {(key) => {
+          const pane = createPaneAccessor(snapshot, key)
+          return (
+            <div class="kanban-focus-main" data-pane-key={key}>
+              {props.renderPane(pane, "focus")}
+            </div>
+          )
+        }}
+      </For>
       <div
         class="kanban-focus-divider"
         role="separator"
@@ -98,11 +102,11 @@ export function KanbanFocus(props: {
       <div class="kanban-focus-rail">
         <For each={railKeys()}>
           {(key) => {
-            const pane = () => snapshot().map.get(key)
+            const pane = createPaneAccessor(snapshot, key)
             return (
               <div class="kanban-focus-promote">
                 <div class="kanban-focus-promote-inner" data-pane-key={key}>
-                  <Show when={pane()}>{(current) => props.renderPane(current, "rail", () => activate(key))}</Show>
+                  {props.renderPane(pane, "rail", () => activate(key))}
                 </div>
               </div>
             )

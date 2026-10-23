@@ -7,6 +7,8 @@ description: Design, write, run, and diagnose Synergy tests with Bun, temporary 
 
 ## Development Feedback Loop
 
+For Session recovery changes, cover ordinary tasks and selected workflow owners through the real Inbox and invocation path. Exercise duplicate and lost-response Continue requests, a newer pause racing an old request, transactional admission failure, event/snapshot parity, and restart before enqueue, after enqueue and after materialization. Retain terminal failure and completed-tool evidence. Use an isolated Home and deterministic provider transport; verify the built Web controls across refresh and an owned server restart without touching live Sessions.
+
 Start with `bun run verify plan` to inspect the working-tree impact, including uncommitted new files. Iterate with the narrow behavior test. Before publication, run `bun run verify local --test <repository-relative-test>` with every relevant test selected explicitly. The owning executor validates the selection, passes static gates, then runs selected tests with fresh coverage and checks new measurable source. Complete package coverage and platform matrices remain pending CI evidence.
 
 Use `bun run verify coverage --package <workspace>` when changing coverage policy, removing substantial test coverage or changing instrumentation. A focused LCOV report cannot establish package thresholds. Finish generation and self-review before this checkpoint. Collect all causal failures from one CI attempt before making the next focused correction; infrastructure retries retain the same SHA.

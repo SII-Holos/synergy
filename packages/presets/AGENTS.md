@@ -26,3 +26,5 @@ Review the owning Skill for CLI, persistence, execution, API, Browser or Channel
 Consume declarative core/full/Web/Desktop selections from Plugin Host’s public `installation/catalog` leaf. Full includes backend components, HTTP and authoring tools; Web adds the application payload and Desktop adds its signed shell. `dataManagement()` contributes cross-domain data commands through the same component API. Source development also selects the local Web assets explicitly.
 
 Public `PresetRuntimeHandle` embeds the backend without repository paths. Callers explicitly select Web assets with `webAppDirectory`; only the source CLI selects repository assets. Publish the active configuration schema through the shared lifecycle instead of copying an executable-adjacent schema. Verify both API-only and explicit-Web embedding outside the repository.
+
+Feature selection uses Util’s shared resolver before registration. Full contract generation explicitly includes all declarations. Offline maintenance loads dormant owner data contributions without runtime activation; follow [develop-feature](../../.synergy/skill/develop-feature/SKILL.md).

@@ -7,6 +7,7 @@ import { reconcileContextUsage } from "@ericsanchezok/synergy-harness/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEvent } from "@ericsanchezok/synergy-harness/session/event"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import {
   RolloutAccounting,
   RolloutExecution,
@@ -28,6 +29,7 @@ import { ExecutionActivity } from "./activity"
 import { ExecutionPresentation } from "./presentation"
 import { ExecutionContent } from "./content"
 import { ExecutionProcess } from "./process"
+import { preview } from "./preview"
 
 export namespace ExecutionService {
   const log = Log.create({ service: "execution" })
@@ -36,12 +38,15 @@ export namespace ExecutionService {
     root: Session.Info
     sessions: Session.Info[]
     snapshots: RolloutSnapshot.Info[]
+    verified: Set<string>
     nodes: ExecutionSchema.Node[]
-    nodePositions: Map<string, number>
     sessionsByID: Map<string, Session.Info>
     snapshotsByID: Map<string, RolloutSnapshot.Info>
-    evidence: Map<string, Evidence>
-    messages: Map<string, { sessionID: string; messageID: string; partID: string }>
+    detail?: {
+      evidence: Map<string, Evidence>
+      messages: Map<string, { sessionID: string; messageID: string; partID: string }>
+      nodePositions: Map<string, number>
+    }
     usage: Map<string, UsageSchema.Record>
     contexts: Map<string, NonNullable<MessageV2.Assistant["contextUsage"]>>
     inboxes: Map<string, SessionInbox.Item[]>
@@ -72,6 +77,31 @@ export namespace ExecutionService {
     controller: AbortController
     readers: number
   }
+  type RootData = Pick<Data, "root" | "usage" | "contexts" | "revision"> & {
+    snapshots: Awaited<ReturnType<typeof RolloutSnapshot.modelCalls>>[]
+    infos: Map<string, MessageV2.Info>
+    rows: ExecutionSchema.ContextSnapshot[]
+    changed: Set<string>
+    orderChanged: boolean
+    usageByCall: Map<string, UsageSchema.Record[]>
+    orderedCalls: RolloutSchema.CallRecord[]
+    pendingMessages: Set<string>
+  }
+  type RootLoading = { promise: Promise<RootData>; controller: AbortController; readers: number }
+  type Entry = {
+    root: Session.Info
+    touched: number
+    tree?: Data
+    audit?: Loading
+    metadata?: RootData
+    metadataLoading?: RootLoading
+    metadataChanges: Map<string, (value: RootData) => void>
+    metadataRepair: boolean
+    metadataListeners: Set<(value: RootData) => void>
+    progressListeners: Set<(value: SessionHistory.ExecutionProgress) => void>
+    metadataTimer?: ReturnType<typeof setTimeout>
+    trajectoryReaders: number
+  }
   const changesFor = (ids: Iterable<string>): Changes => ({
     owners: new Set(ids),
     events: new Map(),
@@ -90,8 +120,8 @@ export namespace ExecutionService {
     signal?.throwIfAborted()
   }
   const state = RuntimeContext.state(() => ({
-    entries: new Map<string, Data>(),
-    subscriptions: new Map<string, number>(),
+    entries: new Map<string, Entry>(),
+    subscriptions: new Map<string, { readers: number; trajectory: number }>(),
     legacyClients: 0,
     pending: new Map<string, Loading>(),
     timers: new Map<string, ReturnType<typeof setTimeout>>(),
@@ -100,13 +130,51 @@ export namespace ExecutionService {
     schedule: undefined as ((sessionID: string) => void) | undefined,
     dispose: undefined as (() => void) | undefined,
   }))
-  const preview = (value: string) => value.replace(/\s+/g, " ").slice(0, 240)
+  function entryFor(root: Session.Info) {
+    const cache = state()
+    let entry = cache.entries.get(root.id)
+    if (!entry) {
+      entry = {
+        root,
+        touched: Date.now(),
+        metadataChanges: new Map(),
+        metadataRepair: false,
+        metadataListeners: new Set(),
+        progressListeners: new Set(),
+        trajectoryReaders: cache.subscriptions.get(root.id)?.trajectory ?? 0,
+      }
+      cache.entries.set(root.id, entry)
+    }
+    return entry
+  }
+  function evict() {
+    const cache = state()
+    while (cache.entries.size > 8) {
+      const oldest = [...cache.entries.values()]
+        .filter(
+          (entry) =>
+            !cache.pending.has(entry.root.id) &&
+            !entry.audit?.readers &&
+            !entry.metadataLoading &&
+            !entry.metadataListeners.size &&
+            !cache.subscriptions.has(entry.root.id),
+        )
+        .sort((a, b) => a.touched - b.touched)[0]
+      if (!oldest) return
+      clearTimeout(oldest.metadataTimer)
+      oldest.audit?.controller.abort()
+      clearTimeout(cache.timers.get(oldest.root.id))
+      cache.entries.delete(oldest.root.id)
+      cache.dirty.delete(oldest.root.id)
+      cache.timers.delete(oldest.root.id)
+    }
+  }
   const nodeID = (sessionID: string, kind: string, id: string) =>
     Buffer.from(JSON.stringify([sessionID, kind, id])).toString("base64url")
   function rootID(record: RolloutEvents.Record) {
     return record.kind === "run" ? record.value.id : record.value.runID
   }
-  function nodesFor(snapshot: RolloutSnapshot.Info, session: Session.Info) {
+  function nodesFor(snapshot: RolloutSnapshot.Info, session: Session.Info, detail = false) {
     const result: ExecutionSchema.Node[] = []
     const evidence = new Map<string, Evidence>()
     const add = (record: RolloutEvents.Record) => {
@@ -202,7 +270,7 @@ export namespace ExecutionService {
           : {}),
       })
       result.push(node)
-      evidence.set(node.id, { owner: snapshot.owner, record })
+      if (detail) evidence.set(node.id, { owner: snapshot.owner, record })
     }
     for (const value of snapshot.runs) add({ kind: "run", value })
     for (const value of snapshot.calls) add({ kind: "call", value })
@@ -211,7 +279,7 @@ export namespace ExecutionService {
     for (const value of snapshot.processes) add({ kind: "process", value })
     return { nodes: result, evidence }
   }
-  function messageCalls(info: MessageV2.Info, parts: MessageV2.Part[]) {
+  function messageCalls(info: MessageV2.Info, parts: SessionHistory.ExecutionPart[]) {
     const calls = new Map<string, string>()
     if (info.role !== "assistant") return calls
     const fallback =
@@ -232,7 +300,7 @@ export namespace ExecutionService {
     }
     return calls
   }
-  function normalizedNode(info: MessageV2.Info, part: MessageV2.Part, revision: number, callID?: string) {
+  function normalizedNode(info: MessageV2.Info, part: SessionHistory.ExecutionPart, revision: number, callID?: string) {
     const tool = part.type === "tool" ? part : undefined
     const kind = tool
       ? "tool"
@@ -250,36 +318,15 @@ export namespace ExecutionService {
               ? "context"
               : undefined
     if (!kind) return
-    const text = tool
-      ? tool.state.status === "completed"
-        ? tool.state.title
-        : JSON.stringify(tool.state.input ?? {})
-      : part.type === "text" || part.type === "reasoning"
-        ? part.text
-        : part.type === "attachment"
-          ? (part.filename ?? part.mime)
-          : ""
     const runID = info.rootID ?? info.id
-    const started =
-      tool && "time" in tool.state
-        ? tool.state.time.start
-        : "time" in part && part.time && "start" in part.time
-          ? part.time.start
-          : info.time.created
-    const ended =
-      tool && "time" in tool.state && "end" in tool.state.time
-        ? tool.state.time.end
-        : "time" in part && part.time && "end" in part.time
-          ? part.time.end
-          : info.role === "assistant"
-            ? info.time.completed
-            : info.time.created
+    const started = part.time?.start ?? info.time.created
+    const ended = part.time?.end ?? (info.role === "assistant" ? info.time.completed : info.time.created)
     const status = tool
-      ? tool.state.status === "error"
+      ? tool.status === "error"
         ? "failed"
-        : tool.state.status === "pending" || tool.state.status === "generating"
+        : tool.status === "pending" || tool.status === "generating"
           ? "unknown"
-          : tool.state.status
+          : tool.status
       : info.role === "assistant" && info.error
         ? "failed"
         : info.role === "assistant" && !info.time.completed
@@ -291,8 +338,8 @@ export namespace ExecutionService {
       runID,
       parentID: callID ? nodeID(info.sessionID, "call", callID) : nodeID(info.sessionID, "run", runID),
       kind,
-      title: tool?.tool ?? preview(text),
-      preview: preview(text),
+      title: tool?.tool ?? part.preview,
+      preview: part.preview,
       started,
       ended,
       status,
@@ -302,6 +349,41 @@ export namespace ExecutionService {
       agent: info.agent,
       source: "messages",
     })
+  }
+  async function appendMessages(
+    session: Session.Info,
+    snapshot: RolloutSnapshot.Info,
+    raw: Awaited<ReturnType<typeof SessionHistory.executionMessages>>,
+    nodes: ExecutionSchema.Node[],
+    contexts: Data["contexts"],
+    signal?: AbortSignal,
+  ) {
+    const tools = toolIndex(nodes, [snapshot])
+    let processed = 0
+    for (const message of raw) {
+      rememberContext(contexts, message.info)
+      const calls = messageCalls(message.info, message.parts)
+      for (const part of message.parts) {
+        if (++processed % 256 === 0) {
+          await Bun.sleep(0)
+          checkpoint(signal)
+        }
+        if (part.type === "tool") {
+          const tool = tools.get(JSON.stringify([session.id, message.info.id, part.callID]))
+          if (tool) {
+            tool.preview = part.preview
+            const callID = calls.get(part.id)
+            if (callID && snapshot.calls.some((call) => call.id === callID))
+              tool.parentID = nodeID(session.id, "call", callID)
+            tool.agent = message.info.agent
+            continue
+          }
+        }
+        const node = normalizedNode(message.info, part, 0, calls.get(part.id))
+        if (!node) continue
+        nodes.push(node)
+      }
+    }
   }
   function rememberContext(contexts: Data["contexts"], info: MessageV2.Info, changed?: Set<string>) {
     if (info.role !== "assistant" || !info.contextUsage || info.accounting?.kind !== "rollout") return
@@ -351,10 +433,10 @@ export namespace ExecutionService {
       }
     }
     checkpoint(signal)
-    const snapshots = await ObservabilitySpans.measure(
+    const presentation = await ObservabilitySpans.measure(
       { name: "execution.snapshot", module: "session", kind: "session" },
       () =>
-        RolloutSnapshot.currentAll(
+        RolloutSnapshot.presentationAll(
           sessions.map((session) => ({
             kind: "session",
             scopeID: session.scope.id,
@@ -363,52 +445,26 @@ export namespace ExecutionService {
           signal,
         ),
     )
+    const snapshots = presentation.map((value) => value.snapshot)
     const nodes: ExecutionSchema.Node[] = []
-    const evidence = new Map<string, Evidence>()
-    const messages = new Map<string, { sessionID: string; messageID: string; partID: string }>()
     const contexts: Data["contexts"] = new Map()
     for (const [index, session] of sessions.entries()) {
       checkpoint(signal)
       const snapshot = snapshots[index]
       const projected = nodesFor(snapshot, session)
       nodes.push(...projected.nodes)
-      for (const [key, value] of projected.evidence) evidence.set(key, value)
-      const raw: MessageV2.WithParts[] = []
-      await ObservabilitySpans.measure({ name: "execution.messages", module: "session", kind: "session" }, async () => {
-        for await (const message of MessageV2.stream({ sessionID: session.id })) {
-          checkpoint(signal)
-          raw.push(message)
-        }
-      })
-      const tools = toolIndex(projected.nodes, evidence)
-      let processed = 0
-      for (const message of MessageV2.deriveSemantics(raw.toReversed())) {
-        rememberContext(contexts, message.info)
-        const calls = messageCalls(message.info, message.parts)
-        for (const part of message.parts) {
-          if (++processed % 256 === 0) {
-            await Bun.sleep(0)
-            checkpoint(signal)
-          }
-          if (part.type === "tool") {
-            const tool = tools.get(JSON.stringify([session.id, message.info.id, part.callID]))
-            if (tool) {
-              tool.preview = preview(
-                part.state.status === "completed" ? part.state.title : JSON.stringify(part.state.input ?? {}),
-              )
-              const callID = calls.get(part.id)
-              if (callID && evidence.get(nodeID(session.id, "call", callID))?.record.kind === "call")
-                tool.parentID = nodeID(session.id, "call", callID)
-              tool.agent = message.info.agent
-              continue
-            }
-          }
-          const node = normalizedNode(message.info, part, 0, calls.get(part.id))
-          if (!node) continue
-          nodes.push(node)
-          messages.set(node.id, { sessionID: session.id, messageID: message.info.id, partID: part.id })
-        }
-      }
+      const raw = await ObservabilitySpans.measure(
+        { name: "execution.messages", module: "session", kind: "session" },
+        () =>
+          SessionHistory.executionMessages({
+            sessionID: session.id,
+            signal,
+            progress: (value) => {
+              for (const listener of state().entries.get(root.id)?.progressListeners ?? []) listener(value)
+            },
+          }),
+      )
+      await appendMessages(session, snapshot, raw, nodes, contexts, signal)
     }
     nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
     const usage = new Map<string, UsageSchema.Record>()
@@ -418,7 +474,7 @@ export namespace ExecutionService {
         (
           await Promise.all(
             sessions.map((session) =>
-              Usage.collect({ scopeID: session.scope.id, sessionID: session.id, includeDescendants: false }),
+              Usage.collect({ scopeID: session.scope.id, sessionID: session.id, includeDescendants: false }, signal),
             ),
           )
         ).flat(),
@@ -432,10 +488,8 @@ export namespace ExecutionService {
       root,
       sessions,
       snapshots,
+      verified: new Set(sessions.filter((_, index) => presentation[index].verified).map((session) => session.id)),
       nodes,
-      evidence,
-      messages,
-      nodePositions: new Map(nodes.map((node, index) => [node.id, index])),
       sessionsByID: new Map(sessions.map((session) => [session.id, session])),
       snapshotsByID: new Map(
         snapshots.map((snapshot) => [snapshot.owner.kind === "session" ? snapshot.owner.sessionID : "", snapshot]),
@@ -452,8 +506,8 @@ export namespace ExecutionService {
       addedSessions: new Map<string, Session.Info>(),
       changes,
       selections: new Map<string, { summary: ExecutionSchema.Summary; touched: number }>(),
-      processRows: new Map(ExecutionProcess.project(nodes, "process", root.id).map((node) => [node.id, node])),
-      recordRows: new Map(ExecutionProcess.project(nodes, "records", root.id).map((node) => [node.id, node])),
+      processRows: new Map<string, ExecutionSchema.Node>(),
+      recordRows: new Map<string, ExecutionSchema.Node>(),
       contextRows: new Map<string, string>(),
       publishedRevision: revision,
     } as Omit<Data, "summary">
@@ -655,8 +709,14 @@ export namespace ExecutionService {
       coverage: {
         recorded: nodes.filter((node) => node.source === "recorded").length,
         messages: nodes.filter((node) => node.source === "messages").length,
-        gaps: data.snapshots.reduce((sum, snapshot) => sum + snapshot.gaps.length, 0),
-        partial: runs.some((run) => run.recording !== "complete") || (!runs.length && !!nodes.length),
+        gaps:
+          data.verified.size === data.sessions.length
+            ? data.snapshots.reduce((sum, snapshot) => sum + snapshot.gaps.length, 0)
+            : null,
+        partial:
+          data.verified.size !== data.sessions.length ||
+          runs.some((run) => run.recording !== "complete") ||
+          (!runs.length && !!nodes.length),
       },
       activityTotal: activities.length,
       humanInputs: activity.humanInputs,
@@ -725,12 +785,12 @@ export namespace ExecutionService {
       for (const id of replaced) repaired.add(id)
       for (const node of entry.nodes)
         if (replaced.has(node.sessionID)) {
-          entry.evidence.delete(node.id)
-          entry.messages.delete(node.id)
           entry.removed.add(node.id)
         }
       entry.nodes = entry.nodes.filter((node) => !replaced.has(node.sessionID))
       for (const [index, info] of branch.sessions.entries()) {
+        if (branch.verified.has(info.id)) entry.verified.add(info.id)
+        else entry.verified.delete(info.id)
         const position = entry.sessions.findIndex((item) => item.id === info.id)
         if (position < 0) {
           entry.sessions.push(info)
@@ -747,8 +807,6 @@ export namespace ExecutionService {
         entry.changed.add(node.id)
         entry.removed.delete(node.id)
       }
-      for (const [id, value] of branch.evidence) entry.evidence.set(id, value)
-      for (const [id, value] of branch.messages) entry.messages.set(id, value)
       for (const [id, value] of branch.usage) entry.usage.set(id, value)
       for (const [id, value] of branch.contexts) entry.contexts.set(id, value)
       for (const [id, value] of branch.inboxes) entry.inboxes.set(id, value)
@@ -766,8 +824,10 @@ export namespace ExecutionService {
     checkpoint(signal)
     init()
     const cache = state()
-    const existing = cache.entries.get(sessionID)
-    if (existing && access) existing.touched = Date.now()
+    const entry = entryFor(root)
+    const existing = entry.tree
+    if (access) entry.touched = Date.now()
+    if (existing && access) existing.touched = entry.touched
     const pending = cache.pending.get(sessionID)
     if (pending) {
       if (!pending.controller.signal.aborted) return consume(sessionID, pending, signal)
@@ -803,20 +863,10 @@ export namespace ExecutionService {
           await repair(value, controller.signal)
           if (existing || events.size || repairs.size) await flush(value, controller.signal)
           checkpoint(controller.signal)
-          cache.entries.set(sessionID, value)
+          entry.tree = value
           if (changes.events.size || changes.repair.size) cache.dirty.add(sessionID)
           else cache.dirty.delete(sessionID)
-          if (cache.entries.size > 8) {
-            const oldest = [...cache.entries.values()]
-              .filter((entry) => !cache.pending.has(entry.root.id))
-              .sort((a, b) => a.touched - b.touched)[0]
-            if (oldest) {
-              cache.entries.delete(oldest.root.id)
-              cache.dirty.delete(oldest.root.id)
-              clearTimeout(cache.timers.get(oldest.root.id))
-              cache.timers.delete(oldest.root.id)
-            }
-          }
+          evict()
           return value
         })
         .catch((error) => {
@@ -832,12 +882,18 @@ export namespace ExecutionService {
     cache.pending.set(sessionID, loading)
     return consume(sessionID, loading, signal)
   }
-  function toolIndex(nodes: ExecutionSchema.Node[], evidence: Data["evidence"]) {
+  function toolIndex(nodes: ExecutionSchema.Node[], snapshots: RolloutSnapshot.Info[]) {
     const result = new Map<string, ExecutionSchema.Node>()
+    const records = new Map(
+      snapshots.flatMap((snapshot) =>
+        snapshot.tools.map(
+          (tool) => [nodeID(tool.owner.kind === "session" ? tool.owner.sessionID : "", "tool", tool.id), tool] as const,
+        ),
+      ),
+    )
     for (const node of nodes) {
-      const record = evidence.get(node.id)?.record
-      if (record?.kind === "tool")
-        result.set(JSON.stringify([node.sessionID, record.value.messageID, record.value.toolCallID]), node)
+      const record = records.get(node.id)
+      if (record) result.set(JSON.stringify([node.sessionID, record.messageID, record.toolCallID]), node)
     }
     return result
   }
@@ -856,6 +912,7 @@ export namespace ExecutionService {
       return
     }
     snapshot.revision = revision
+    entry.detail = undefined
     if (record.kind === "run") update(snapshot.runs, record.value)
     if (record.kind === "call") update(snapshot.calls, record.value)
     if (record.kind === "attempt") update(snapshot.attempts, record.value)
@@ -867,8 +924,6 @@ export namespace ExecutionService {
     if (record.kind === "run" && record.value.admissionOnly) {
       const id = nodeID(session.id, "run", record.value.id)
       entry.nodes = entry.nodes.filter((node) => node.id !== id)
-      entry.evidence.delete(id)
-      entry.nodePositions = new Map(entry.nodes.map((node, index) => [node.id, index]))
       entry.removed.add(id)
     }
     if (record.kind === "tool") update(snapshot.tools, record.value)
@@ -885,37 +940,41 @@ export namespace ExecutionService {
       session,
     )
     for (const node of projected.nodes) {
-      const position = entry.nodePositions.get(node.id)
-      const old = position === undefined ? undefined : entry.nodes[position]
+      const position = entry.nodes.findIndex((value) => value.id === node.id)
+      const old = position < 0 ? undefined : entry.nodes[position]
       if (node.kind === "tool" && !node.preview && old?.preview) node.preview = old.preview
-      if (node.kind === "tool" && old?.parentID && entry.evidence.get(old.parentID)?.record.kind === "call")
+      if (
+        node.kind === "tool" &&
+        old?.parentID &&
+        snapshot.calls.some((call) => nodeID(session.id, "call", call.id) === old.parentID)
+      )
         node.parentID = old.parentID
       if (node.kind === "tool" && old?.agent) node.agent = old.agent
-      if (position === undefined) {
-        entry.nodePositions.set(node.id, entry.nodes.length)
+      if (position < 0) {
         entry.nodes.push(node)
       } else entry.nodes[position] = node
       entry.changed.add(node.id)
     }
-    for (const [id, value] of projected.evidence) entry.evidence.set(id, value)
   }
   async function flush(entry: Data, signal?: AbortSignal) {
+    entry.detail = undefined
     const messages = entry.pendingMessages
     entry.pendingMessages = new Map()
-    const tools = toolIndex(entry.nodes, entry.evidence)
+    const tools = toolIndex(entry.nodes, entry.snapshots)
     entry.nodes = entry.nodes.filter((node) => {
       if (node.source !== "messages" || !node.messageID || !messages.has(node.messageID)) return true
-      entry.messages.delete(node.id)
       entry.removed.add(node.id)
       return false
     })
     let processed = 0
     for (const [messageID, sessionID] of messages) {
       checkpoint(signal)
-      const message = await MessageV2.get({ sessionID, messageID }).catch((error) => {
-        if (error instanceof Storage.NotFoundError) return undefined
-        throw error
-      })
+      const message = await SessionHistory.executionMessages({ sessionID, messageID, signal })
+        .then((messages) => messages[0])
+        .catch((error) => {
+          if (error instanceof Storage.NotFoundError) return undefined
+          throw error
+        })
       if (!message) continue
       const info = MessageV2.deriveSemantics([message])[0].info
       rememberContext(entry.contexts, info, entry.changed)
@@ -928,11 +987,9 @@ export namespace ExecutionService {
         if (part.type === "tool") {
           const node = tools.get(JSON.stringify([sessionID, messageID, part.callID]))
           if (node) {
-            node.preview = preview(
-              part.state.status === "completed" ? part.state.title : JSON.stringify(part.state.input ?? {}),
-            )
+            node.preview = part.preview
             const callID = calls.get(part.id)
-            if (callID && entry.evidence.get(nodeID(sessionID, "call", callID))?.record.kind === "call")
+            if (callID && entry.snapshotsByID.get(sessionID)?.calls.some((call) => call.id === callID))
               node.parentID = nodeID(sessionID, "call", callID)
             node.agent = info.agent
             entry.changed.add(node.id)
@@ -942,14 +999,12 @@ export namespace ExecutionService {
         const node = normalizedNode(info, part, entry.revision + 1, calls.get(part.id))
         if (!node) continue
         entry.nodes.push(node)
-        entry.messages.set(node.id, { sessionID, messageID, partID: part.id })
         entry.changed.add(node.id)
         entry.removed.delete(node.id)
       }
     }
     checkpoint(signal)
     entry.nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
-    entry.nodePositions = new Map(entry.nodes.map((node, index) => [node.id, index]))
     entry.sessionsByID = new Map(entry.sessions.map((session) => [session.id, session]))
     entry.snapshotsByID = new Map(
       entry.snapshots.map((snapshot) => [snapshot.owner.kind === "session" ? snapshot.owner.sessionID : "", snapshot]),
@@ -961,15 +1016,24 @@ export namespace ExecutionService {
     }
     return entry
   }
-  export function subscribe(sessionID: string) {
+  export function subscribe(sessionID: string, options?: { trajectory?: boolean }) {
     const cache = state()
-    cache.subscriptions.set(sessionID, (cache.subscriptions.get(sessionID) ?? 0) + 1)
+    const entry = cache.entries.get(sessionID)
+    const trajectory = options?.trajectory !== false
+    if (entry && trajectory) entry.trajectoryReaders++
+    const subscription = cache.subscriptions.get(sessionID) ?? { readers: 0, trajectory: 0 }
+    subscription.readers++
+    if (trajectory) subscription.trajectory++
+    cache.subscriptions.set(sessionID, subscription)
     let released = false
     return () => {
       if (released) return
       released = true
-      const count = (cache.subscriptions.get(sessionID) ?? 1) - 1
-      if (count) cache.subscriptions.set(sessionID, count)
+      const retained = cache.entries.get(sessionID)
+      if (retained && trajectory) retained.trajectoryReaders--
+      subscription.readers--
+      if (trajectory) subscription.trajectory--
+      if (subscription.readers) cache.subscriptions.set(sessionID, subscription)
       else {
         cache.subscriptions.delete(sessionID)
         const loading = cache.pending.get(sessionID)
@@ -1002,7 +1066,9 @@ export namespace ExecutionService {
     const cache = state()
     if (cache.dispose) return cache.dispose
     const schedule = (sessionID: string) => {
-      for (const entry of cache.entries.values()) {
+      for (const owner of cache.entries.values()) {
+        const entry = owner.tree
+        if (!entry) continue
         if (!entry.changes.owners.has(sessionID)) continue
         cache.dirty.add(entry.root.id)
         if (!cache.subscriptions.has(entry.root.id) && !cache.legacyClients) continue
@@ -1019,7 +1085,8 @@ export namespace ExecutionService {
             fn: async () => {
               const previousRevision = entry.publishedRevision
               const next = await data(entry.root.id, false)
-              const process = ExecutionProcess.project(next.nodes, "process", entry.root.id)
+              const detail = owner.trajectoryReaders > 0 || cache.legacyClients > 0
+              const process = detail ? ExecutionProcess.project(next.nodes, "process", entry.root.id) : []
               const processUpserts = process.filter(
                 (node) =>
                   JSON.stringify({ ...node, revision: 0 }) !==
@@ -1028,7 +1095,7 @@ export namespace ExecutionService {
               const processIDs = new Set(process.map((node) => node.id))
               const processRemoved = [...entry.processRows.keys()].filter((id) => !processIDs.has(id))
               next.processRows = new Map(process.map((node) => [node.id, node]))
-              const records = ExecutionProcess.project(next.nodes, "records", entry.root.id)
+              const records = detail ? ExecutionProcess.project(next.nodes, "records", entry.root.id) : []
               const upserts = records.filter(
                 (node) =>
                   JSON.stringify({ ...node, revision: 0 }) !==
@@ -1069,7 +1136,7 @@ export namespace ExecutionService {
               return
             }
             log.warn("execution snapshot update failed", { error })
-            const current = cache.entries.get(entry.root.id)
+            const current = cache.entries.get(entry.root.id)?.tree
             if (current) for (const owner of current.changes.owners) current.changes.repair.add(owner)
             cache.dirty.add(entry.root.id)
           })
@@ -1081,7 +1148,7 @@ export namespace ExecutionService {
     cache.schedule = schedule
     const deliver = (ownerID: string, key: string, apply: (entry: Data) => void, parentID?: string) => {
       const buffers = new Set<Changes>([
-        ...[...cache.entries.values()].map((entry) => entry.changes),
+        ...[...cache.entries.values()].flatMap((entry) => (entry.tree ? [entry.tree.changes] : [])),
         ...[...cache.pending.values()].map((loading) => loading.changes),
       ])
       for (const changes of buffers) {
@@ -1097,6 +1164,28 @@ export namespace ExecutionService {
       Bus.subscribeGlobal(RolloutEvents.Updated, (event) => {
         const { owner, revision, record } = event.properties
         if (owner.kind !== "session") return
+        queueRoot(owner.sessionID, "rollout:" + revision, (value) => {
+          const snapshot = value.snapshots[0]
+          if (revision <= snapshot.revision) return
+          if (revision !== snapshot.revision + 1) {
+            const entry = cache.entries.get(owner.sessionID)
+            if (entry) entry.metadataRepair = true
+            return
+          }
+          snapshot.revision = revision
+          if (record.kind === "run") update(snapshot.runs, record.value)
+          if (record.kind === "call") {
+            const prior = snapshot.calls.find((call) => call.id === record.value.id)
+            value.orderChanged ||=
+              !prior ||
+              prior.started !== record.value.started ||
+              prior.runID !== record.value.runID ||
+              prior.usageRole !== record.value.usageRole ||
+              record.value.usageRole === "compaction"
+            update(snapshot.calls, record.value)
+            value.changed.add(record.value.id)
+          }
+        })
         deliver(owner.sessionID, `rollout:${owner.sessionID}:${revision}`, (entry) =>
           apply(entry, owner, revision, record),
         )
@@ -1108,23 +1197,57 @@ export namespace ExecutionService {
       Bus.subscribeGlobal(Usage.Updated, (event) => {
         const { owner, record } = event.properties
         if (owner.kind !== "session") return
+        queueRoot(owner.sessionID, "usage:" + record.id, (value) => {
+          if ((value.usage.get(record.id)?.revision ?? -1) >= record.revision) return
+          value.usage.set(record.id, record)
+          if (record.kind === "call" || record.kind === "attempt") {
+            const id = record.kind === "call" ? record.entityID : record.callID
+            value.changed.add(id)
+            const records = value.usageByCall.get(id) ?? []
+            update(records, record)
+            value.usageByCall.set(id, records)
+          }
+        })
         deliver(owner.sessionID, "usage:" + record.id, (entry) => {
           entry.usage.set(record.id, record)
           if (record.kind === "call" || record.kind === "attempt")
             entry.changed.add(nodeID(owner.sessionID, "call", record.kind === "call" ? record.entityID : record.callID))
         })
       }),
-      Bus.subscribeGlobal(MessageV2.Event.Updated, (event) =>
-        message(event.properties.info.sessionID, event.properties.info.id),
-      ),
+      Bus.subscribeGlobal(MessageV2.Event.Updated, (event) => {
+        const info = event.properties.info
+        queueRoot(info.sessionID, "message:" + info.id, (value) => {
+          value.pendingMessages.add(info.id)
+        })
+        message(info.sessionID, info.id)
+      }),
       Bus.subscribeGlobal(MessageV2.Event.PartUpdated, (event) =>
         message(event.properties.part.sessionID, event.properties.part.messageID),
       ),
-      Bus.subscribeGlobal(MessageV2.Event.Removed, (event) =>
-        message(event.properties.sessionID, event.properties.messageID),
-      ),
+      Bus.subscribeGlobal(MessageV2.Event.Removed, (event) => {
+        const { sessionID, messageID } = event.properties
+        queueRoot(sessionID, "message:" + messageID, (value) => {
+          value.pendingMessages.add(messageID)
+        })
+        message(sessionID, messageID)
+      }),
+      Bus.subscribeGlobal(SessionEvent.Deleted, (event) => {
+        const id = event.properties.info.id
+        const entry = cache.entries.get(id)
+        entry?.metadataLoading?.controller.abort()
+        entry?.audit?.controller.abort()
+        cache.pending.get(id)?.controller.abort()
+        clearTimeout(entry?.metadataTimer)
+        clearTimeout(cache.timers.get(id))
+        cache.entries.delete(id)
+        cache.dirty.delete(id)
+        cache.timers.delete(id)
+      }),
       Bus.subscribeGlobal(SessionEvent.Updated, (event) => {
         const info = event.properties.info
+        queueRoot(info.id, "session", (value) => {
+          value.root = info
+        })
         deliver(
           info.id,
           "session:" + info.id,
@@ -1153,6 +1276,13 @@ export namespace ExecutionService {
       for (const timer of cache.timers.values()) clearTimeout(timer)
       cache.timers.clear()
       for (const loading of cache.pending.values()) loading.controller.abort()
+      for (const entry of cache.entries.values()) {
+        entry.metadataLoading?.controller.abort()
+        entry.audit?.controller.abort()
+        clearTimeout(entry.metadataTimer)
+        entry.metadataListeners.clear()
+        entry.progressListeners.clear()
+      }
       cache.schedule = undefined
       cache.entries.clear()
       cache.subscriptions.clear()
@@ -1166,27 +1296,41 @@ export namespace ExecutionService {
       snapshots: Pick<RolloutSnapshot.Info, "owner" | "runs" | "calls">[]
     },
     runID?: string,
+    retained?: Pick<RootData, "rows" | "changed" | "orderChanged" | "usageByCall" | "orderedCalls">,
   ): ExecutionSchema.ContextSnapshot[] {
     const snapshot = value.snapshots.find(
       (entry) => entry.owner.kind === "session" && entry.owner.sessionID === value.root.id,
     )
     if (!snapshot) return []
-    const records = new Map<string, UsageSchema.Record[]>()
-    for (const record of value.usage.values()) {
+    const records = retained?.usageByCall ?? new Map<string, UsageSchema.Record[]>()
+    for (const record of retained ? [] : value.usage.values()) {
       const id = record.kind === "call" ? record.entityID : record.kind === "attempt" ? record.callID : undefined
       if (!id) continue
       const group = records.get(id) ?? []
       group.push(record)
       records.set(id, group)
     }
+    const cached = new Map(retained?.rows.map((row) => [row.callID, row]))
     let previous = -Infinity
     const rounds = new Map<string, number>()
     const compactions = snapshot.calls.filter((call) => call.usageRole === "compaction" && call.status === "completed")
-    return snapshot.calls
-      .filter((call) => call.usageRole === "conversation")
-      .sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
+    const ordered =
+      retained && !retained.orderChanged
+        ? retained.orderedCalls
+        : snapshot.calls
+            .filter((call) => call.usageRole === "conversation")
+            .sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
+    if (retained) retained.orderedCalls = ordered
+    const currentCalls = new Map(snapshot.calls.map((call) => [call.id, call]))
+    return ordered
       .map((call, index) => {
+        call = currentCalls.get(call.id)!
         if (!rounds.has(call.runID)) rounds.set(call.runID, rounds.size + 1)
+        const existing = cached.get(call.id)
+        if (existing && retained && !retained.orderChanged && !retained.changed.has(call.id)) {
+          previous = call.started
+          return existing
+        }
         const candidate = value.contexts.get(call.id)
         const accounting = Usage.summarize(records.get(call.id) ?? [], {
           sessionID: value.root.id,
@@ -1257,27 +1401,198 @@ export namespace ExecutionService {
   }
   const contextCursor = (identity: string, id: string) =>
     Buffer.from(JSON.stringify({ identity, id })).toString("base64url")
-  async function contextData(sessionID: string, signal?: AbortSignal) {
-    checkpoint(signal)
-    const root = await requireRoot(sessionID)
-    const snapshot = await RolloutSnapshot.modelCalls({ kind: "session", scopeID: root.scope.id, sessionID })
-    checkpoint(signal)
-    const [records, infos] = await Promise.all([
-      Usage.collect({ scopeID: root.scope.id, sessionID, includeDescendants: false }),
+  async function bootstrapRoot(root: Session.Info, signal: AbortSignal): Promise<RootData> {
+    const sessionID = root.id
+    const [snapshot, records, infos] = await Promise.all([
+      RolloutSnapshot.modelCalls({ kind: "session", scopeID: root.scope.id, sessionID }, signal),
+      Usage.collect({ scopeID: root.scope.id, sessionID, includeDescendants: false }, signal),
       MessageV2.readInfoList({
         scopeID: Identifier.asScopeID(root.scope.id),
         sessionID: Identifier.asSessionID(sessionID),
+        signal,
       }),
     ])
     checkpoint(signal)
     const contexts: Data["contexts"] = new Map()
     for (const info of infos) rememberContext(contexts, info)
+    const usageByCall = new Map<string, UsageSchema.Record[]>()
+    for (const record of records) {
+      const id = record.kind === "call" ? record.entityID : record.kind === "attempt" ? record.callID : undefined
+      if (!id) continue
+      const group = usageByCall.get(id) ?? []
+      group.push(record)
+      usageByCall.set(id, group)
+    }
     return {
       root,
       snapshots: [snapshot],
       usage: new Map(records.map((record) => [record.id, record])),
+      infos: new Map(infos.map((info) => [info.id, info])),
       contexts,
-      revision: ++state().sequence,
+      rows: [],
+      revision: 0,
+      changed: new Set(),
+      orderChanged: true,
+      usageByCall,
+      orderedCalls: [],
+      pendingMessages: new Set(),
+    }
+  }
+  function refreshContexts(value: RootData) {
+    const next: Data["contexts"] = new Map()
+    for (const info of [...value.infos.values()].sort(
+      (a, b) => a.time.created - b.time.created || a.id.localeCompare(b.id),
+    ))
+      rememberContext(next, info)
+    for (const id of new Set([...next.keys(), ...value.contexts.keys()]))
+      if (JSON.stringify(next.get(id)) !== JSON.stringify(value.contexts.get(id))) value.changed.add(id)
+    value.contexts = next
+  }
+  function queueRoot(sessionID: string, key: string, apply: (value: RootData) => void) {
+    const entry = state().entries.get(sessionID)
+    if (!entry || (!entry.metadata && !entry.metadataLoading)) return
+    if (entry.metadataChanges.size >= 4096) {
+      entry.metadataChanges.clear()
+      entry.metadataRepair = true
+    } else entry.metadataChanges.set(key, apply)
+    if (!entry.metadataListeners.size || entry.metadataTimer) return
+    entry.metadataTimer = setTimeout(() => {
+      entry.metadataTimer = undefined
+      if (!entry.metadataListeners.size) return
+      void ScopeContext.provide({
+        scope: entry.root.scope,
+        fn: async () => {
+          const value = await contextData(sessionID, undefined, false)
+          for (const listener of entry.metadataListeners) listener(value)
+        },
+      }).catch((error) =>
+        log.warn("execution root update failed", { kind: error instanceof Error ? error.name : "unknown" }),
+      )
+    }, 50)
+    entry.metadataTimer.unref()
+  }
+  async function contextData(sessionID: string, signal?: AbortSignal, access = true): Promise<RootData> {
+    checkpoint(signal)
+    const root = await requireRoot(sessionID)
+    init()
+    const entry = entryFor(root)
+    if (access) entry.touched = Date.now()
+    if (!entry.metadataLoading && entry.metadata && !entry.metadataChanges.size && !entry.metadataRepair)
+      return entry.metadata
+    if (entry.metadataLoading?.controller.signal.aborted) {
+      await entry.metadataLoading.promise.catch(() => checkpoint(signal))
+      return contextData(sessionID, signal, access)
+    }
+    if (!entry.metadataLoading) {
+      const controller = new AbortController()
+      const loading: RootLoading = {
+        controller,
+        readers: 0,
+        promise: Promise.resolve()
+          .then(async () => {
+            let value = entry.metadata
+            do {
+              if (!value || entry.metadataRepair) {
+                entry.metadataRepair = false
+                value = await bootstrapRoot(root, controller.signal)
+              }
+              const changes = entry.metadataChanges
+              entry.metadataChanges = new Map()
+              for (const apply of changes.values()) {
+                checkpoint(controller.signal)
+                apply(value)
+              }
+            } while (entry.metadataRepair)
+            for (const messageID of value.pendingMessages) {
+              checkpoint(controller.signal)
+              try {
+                const info = await MessageV2.readInfo({ scopeID: root.scope.id, sessionID, messageID })
+                value.infos.set(messageID, info)
+              } catch (error) {
+                if (!(error instanceof Storage.NotFoundError)) throw error
+                value.infos.delete(messageID)
+              }
+            }
+            if (value.pendingMessages.size) refreshContexts(value)
+            value.pendingMessages.clear()
+            checkpoint(controller.signal)
+            value.rows = contextSnapshots(value, undefined, value)
+            value.changed.clear()
+            value.orderChanged = false
+            value.revision = ++state().sequence
+            entry.metadata = value
+            return value
+          })
+          .catch((error) => {
+            entry.metadataRepair = true
+            throw error
+          })
+          .finally(() => {
+            if (entry.metadataLoading === loading) entry.metadataLoading = undefined
+            evict()
+          }),
+      }
+      entry.metadataLoading = loading
+    }
+    const loading = entry.metadataLoading
+    loading.readers++
+    let abort: (() => void) | undefined
+    try {
+      if (!signal) return await loading.promise
+      return await Promise.race([
+        loading.promise,
+        new Promise<never>((_, reject) => {
+          abort = () => reject(signal.reason)
+          signal.addEventListener("abort", abort, { once: true })
+          if (signal.aborted) abort()
+        }),
+      ])
+    } finally {
+      if (abort) signal?.removeEventListener("abort", abort)
+      if (--loading.readers === 0 && !entry.metadataListeners.size) loading.controller.abort()
+    }
+  }
+  export async function observeRoot(
+    sessionID: string,
+    listener: (value: { revision: number; contexts: ExecutionSchema.ContextSnapshot[] }) => void,
+    signal?: AbortSignal,
+  ) {
+    const root = await requireRoot(sessionID)
+    init()
+    const entry = entryFor(root)
+    const update = (value: RootData) => listener({ revision: value.revision, contexts: value.rows })
+    entry.metadataListeners.add(update)
+    let disposed = false
+    const dispose = () => {
+      if (disposed) return
+      disposed = true
+      entry.metadataListeners.delete(update)
+      signal?.removeEventListener("abort", dispose)
+      if (!entry.metadataListeners.size) {
+        clearTimeout(entry.metadataTimer)
+        entry.metadataTimer = undefined
+        if (entry.metadataLoading && !entry.metadataLoading.readers) entry.metadataLoading.controller.abort()
+      }
+    }
+    signal?.addEventListener("abort", dispose, { once: true })
+    try {
+      const value = await contextData(sessionID, signal)
+      checkpoint(signal)
+      update(value)
+      return dispose
+    } catch (error) {
+      dispose()
+      throw error
+    }
+  }
+  export async function observePreparation(
+    sessionID: string,
+    listener: (value: SessionHistory.ExecutionProgress) => void,
+  ) {
+    const entry = entryFor(await requireRoot(sessionID))
+    entry.progressListeners.add(listener)
+    return () => {
+      entry.progressListeners.delete(listener)
     }
   }
   export async function contextHistory(
@@ -1289,7 +1604,7 @@ export namespace ExecutionService {
     const identity = JSON.stringify([ScopeContext.current.scope.id, sessionID, input.runID ?? null])
     if (input.runID && !value.snapshots[0].runs.some((run) => !run.admissionOnly && run.id === input.runID))
       throw new Storage.NotFoundError({ message: "Context round was not found" })
-    const entries = contextSnapshots(value, input.runID)
+    const entries = value.rows.filter((row) => !input.runID || row.runID === input.runID)
     const id = contextPosition(input.cursor, identity)
     const position = id ? entries.findIndex((entry) => entry.callID === id) : -1
     if (id && position < 0) throw new ExecutionQueryError("Context cursor request was not found")
@@ -1304,7 +1619,7 @@ export namespace ExecutionService {
   }
   export async function contextSnapshot(sessionID: string, callID: string, runID?: string, signal?: AbortSignal) {
     const value = await contextData(sessionID, signal)
-    const entry = contextSnapshots(value, runID).find((entry) => entry.callID === callID)
+    const entry = value.rows.find((entry) => entry.callID === callID && (!runID || entry.runID === runID))
     if (!entry) throw new Storage.NotFoundError({ message: "Context request was not found in this session" })
     return ExecutionSchema.ContextSnapshot.parse(entry)
   }
@@ -1385,6 +1700,53 @@ export namespace ExecutionService {
     value.selections.set(runID, { summary, touched: Date.now() })
     if (value.selections.size > 4) value.selections.delete(value.selections.keys().next().value!)
     return summary
+  }
+  export async function verifyJournal(sessionID: string, signal?: AbortSignal): Promise<void> {
+    const value = await data(sessionID, true, signal)
+    const entry = entryFor(value.root)
+    if (entry.audit?.controller.signal.aborted) {
+      await entry.audit.promise.catch(() => checkpoint(signal))
+      return verifyJournal(sessionID, signal)
+    }
+    if (entry.audit) {
+      await consume(sessionID, entry.audit, signal)
+      return
+    }
+    const owners = value.snapshots.filter(
+      (snapshot) => snapshot.owner.kind === "session" && !value.verified.has(snapshot.owner.sessionID),
+    )
+    if (!owners.length) return
+    const controller = new AbortController()
+    const loading: Loading = {
+      scopeID: value.root.scope.id,
+      changes: value.changes,
+      readers: 0,
+      controller,
+      promise: Promise.resolve()
+        .then(async () => {
+          const snapshots = await RolloutSnapshot.currentAll(
+            owners.map((snapshot) => snapshot.owner),
+            controller.signal,
+          )
+          checkpoint(controller.signal)
+          for (const verified of snapshots) {
+            if (verified.owner.kind !== "session") continue
+            const current = value.snapshotsByID.get(verified.owner.sessionID)
+            if (!current || current.revision !== verified.revision) continue
+            current.gaps = verified.gaps
+            value.verified.add(verified.owner.sessionID)
+          }
+          value.revision = ++state().sequence
+          value.summary = summarize(value)
+          for (const [runID, selection] of value.selections) selection.summary = summarize(value, runID)
+          return value
+        })
+        .finally(() => {
+          if (entry.audit === loading) entry.audit = undefined
+        }),
+    }
+    entry.audit = loading
+    await consume(sessionID, loading, signal)
   }
   export async function trajectory(sessionID: string, input: ExecutionSchema.Query, signal?: AbortSignal) {
     const value = await data(sessionID, true, signal)
@@ -1486,15 +1848,74 @@ export namespace ExecutionService {
       throw new Storage.NotFoundError({ message: "Execution round was not found" })
     const node = selected(value, runID).find((node) => node.id === id)
     if (!node) throw new Storage.NotFoundError({ message: "Trajectory node was not found in this session" })
-    return { value, node, evidence: value.evidence.get(id), message: value.messages.get(id) }
+    const detail = details(value)
+    return {
+      value,
+      node,
+      evidence: detail.evidence.get(id),
+      evidenceByID: detail.evidence,
+      message: detail.messages.get(id),
+    }
+  }
+  function details(value: Data) {
+    if (value.detail) return value.detail
+    const evidence = new Map<string, Evidence>()
+    const messages = new Map<string, { sessionID: string; messageID: string; partID: string }>()
+    for (const [index, snapshot] of value.snapshots.entries())
+      for (const [id, record] of nodesFor(snapshot, value.sessions[index], true).evidence) evidence.set(id, record)
+    for (const node of value.nodes) {
+      if (node.source !== "messages" || !node.messageID) continue
+      const [, , partID] = JSON.parse(Buffer.from(node.id, "base64url").toString()) as [string, string, string]
+      messages.set(node.id, { sessionID: node.sessionID, messageID: node.messageID, partID })
+    }
+    value.detail = { evidence, messages, nodePositions: new Map(value.nodes.map((node, index) => [node.id, index])) }
+    return value.detail
+  }
+  async function requestNode(sessionID: string, id: string, runID?: string, signal?: AbortSignal) {
+    if (state().entries.get(sessionID)?.tree) return
+    let identity: unknown
+    try {
+      identity = JSON.parse(Buffer.from(id, "base64url").toString())
+    } catch {
+      return
+    }
+    const parsed = z.tuple([z.string(), z.literal("call"), z.string()]).safeParse(identity)
+    if (!parsed.success || parsed.data[0] !== sessionID) return
+    const metadata = await contextData(sessionID, signal)
+    if (metadata.root.parentID) return
+    const call = metadata.snapshots[0].calls.find(
+      (call) => call.id === parsed.data[2] && (!runID || call.runID === runID),
+    )
+    if (!call) throw new Storage.NotFoundError({ message: "Execution call was not found in this session" })
+    const snapshot = await RolloutSnapshot.projected(metadata.snapshots[0].owner, call.runID, () => checkpoint(signal))
+    const projected = nodesFor(snapshot, metadata.root, true)
+    const messages = await SessionHistory.executionMessages({ sessionID, signal })
+    await appendMessages(
+      metadata.root,
+      snapshot,
+      messages.filter((message) => (message.info.rootID ?? message.info.id) === call.runID),
+      projected.nodes,
+      new Map(),
+      signal,
+    )
+    projected.nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
+    const node = projected.nodes.find((node) => node.id === id)
+    if (!node) throw new Storage.NotFoundError({ message: "Execution call was removed" })
+    return {
+      value: { root: metadata.root, nodes: projected.nodes },
+      node,
+      evidence: projected.evidence.get(id),
+      evidenceByID: projected.evidence,
+      message: undefined,
+    }
   }
   export async function node(sessionID: string, id: string, runID?: string, signal?: AbortSignal) {
-    const found = await find(sessionID, id, runID, signal)
+    const found = (await requestNode(sessionID, id, runID, signal)) ?? (await find(sessionID, id, runID, signal))
     const call =
       found.evidence?.record.kind === "call"
         ? found.evidence
         : found.node.parentID
-          ? found.value.evidence.get(found.node.parentID)
+          ? found.evidenceByID.get(found.node.parentID)
           : undefined
     const definitions =
       call?.record.kind === "call" && (found.node.kind === "tool" || found.evidence?.record.kind === "call")
@@ -1573,7 +1994,28 @@ export namespace ExecutionService {
     version?: string,
     signal?: AbortSignal,
   ): Promise<ExecutionContent.Source> {
-    const found = await find(sessionID, id, runID, signal)
+    const identity = z.tuple([z.string(), z.string(), z.string()]).safeParse(
+      (() => {
+        try {
+          return JSON.parse(Buffer.from(id, "base64url").toString())
+        } catch {
+          return null
+        }
+      })(),
+    )
+    const direct = identity.success && identity.data[0] === sessionID && identity.data[1] === "call"
+    const found = direct
+      ? await (async () => {
+          const value = await contextData(sessionID, signal)
+          const snapshot = value.snapshots[0]
+          const call = snapshot.calls.find((call) => call.id === identity.data[2] && (!runID || call.runID === runID))
+          if (!call) throw new Storage.NotFoundError({ message: "Execution call was not found in this session" })
+          return {
+            evidence: { owner: snapshot.owner, record: { kind: "call", value: call } } as Evidence,
+            message: undefined,
+          }
+        })()
+      : await find(sessionID, id, runID, signal)
     if (found.evidence) {
       const { owner, record } = found.evidence
       const { ref, contentVersion } = await RolloutEvidence.source(owner, record, field, version)

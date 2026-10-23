@@ -18,7 +18,7 @@ import type { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["lattice"] })
 
 let originalPrepare: typeof Cortex.prepare
 let originalStart: typeof Cortex.start

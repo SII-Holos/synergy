@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { Config } from "@ericsanchezok/synergy-harness/config"
@@ -39,7 +40,7 @@ for (const sourceFirst of [false, true]) {
     })
     await Bun.write(source, raw)
     const open = (exclusive: boolean) => {
-      const composition = RuntimeComponents.compose([
+      const composition = composeWithExperiments([
         localRuntime({ workers: false, environment: false }),
         library(),
         note(),

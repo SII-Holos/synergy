@@ -1,9 +1,11 @@
+import { componentFeatures } from "./features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 
 export function dataManagement(): RuntimeComponent {
   return {
     id: "data-management",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: {
@@ -11,7 +13,6 @@ export function dataManagement(): RuntimeComponent {
       note: version,
       agenda: version,
       blueprint: version,
-      lattice: version,
       channels: version,
       holos: version,
     },

@@ -331,4 +331,35 @@ test("aborted exclusive acquisition releases its admission barrier", () =>
     await SnapshotLease.use(key, true, async () => {})
   }))
 
+test("an admitted reader can finish nested work while maintenance waits, without admitting unrelated readers", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir()
+    const scope = "nested-reader"
+    const options = { dataRoot: tmp.path, timeoutMs: 2000 }
+    const reader = await SnapshotLease.acquire(scope, false, options)
+    const controller = new AbortController()
+    const maintenance = SnapshotLease.use(scope, true, async () => {}, { ...options, signal: controller.signal })
+    const settled = maintenance.catch((error: unknown) => error)
+    try {
+      const file = Bun.file(path.join(tmp.path, ...StoragePath.snapshotLeases(scope)) + ".json")
+      while (!(await file.json()).owners.some((owner: { exclusive: boolean }) => owner.exclusive)) await Bun.sleep(10)
+      await expect(SnapshotLease.acquire(scope, false, { ...options, timeoutMs: 50 })).rejects.toBeInstanceOf(
+        SnapshotLease.BusyError,
+      )
+      expect(
+        await reader.run(() => SnapshotLease.use(scope, false, async () => "finished", { ...options, timeoutMs: 100 })),
+      ).toBe("finished")
+      await reader[Symbol.asyncDispose]()
+      await maintenance
+      await using exclusive = await SnapshotLease.acquire(scope, true, options)
+      await expect(
+        reader.run(() => SnapshotLease.acquire(scope, false, { ...options, timeoutMs: 50 })),
+      ).rejects.toBeInstanceOf(SnapshotLease.BusyError)
+    } finally {
+      controller.abort()
+      await reader[Symbol.asyncDispose]()
+      await settled
+    }
+  }))
+
 afterRuntimeTests(() => runtime.close())

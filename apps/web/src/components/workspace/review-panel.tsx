@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
+import { MenuRoot, MenuTrigger, MenuPortal, MenuContent, MenuItem } from "@kobalte/core/menu"
 import { useSDK } from "@/context/sdk"
 import { useFile } from "@/context/file"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -25,13 +26,16 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Popover, restorePopoverFocus } from "@ericsanchezok/synergy-ui/popover"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { DiffChanges } from "@ericsanchezok/synergy-ui/diff-changes"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { useOverlayLayer } from "@ericsanchezok/synergy-ui/context/overlay-layer"
+import { PortalStyleOwner } from "@ericsanchezok/synergy-ui/context/ui-style"
+import { useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { type CodeViewItem, type CodeViewLineSelection, type FileDiffMetadata } from "@pierre/diffs"
 import type { ReviewComment } from "@ericsanchezok/synergy-sdk/client"
@@ -53,6 +57,8 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
     dialog = useDialog(),
     dataView = useSessionDataView()
   const restore = useFileRestore(() => params.id)
+  const overlayLayer = useOverlayLayer()
+  const active = useViewActivity()
   const [source, setSource] = createSignal<ReviewSource>(props.tab.source ? "turn" : "session")
   const [messageID, setMessageID] = createSignal(props.tab.source)
   const [from, setFrom] = createSignal("origin/dev"),
@@ -60,6 +66,12 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
   const [draftFrom, setDraftFrom] = createSignal(from()),
     [draftTo, setDraftTo] = createSignal(to())
   const data = useReviewData({ source, messageID, from, to })
+  const recordingLabel = () => {
+    const recording = data.context()?.recording
+    if (!recording || recording.status === "ready") return
+    if (recording.status === "pending") return _(C.pending)
+    return _(recording.status === "live" && !recording.code ? C.live : C.partial)
+  }
   const [filter, setFilter] = createSignal("")
   const [selected, setSelected] = createSignal<string>()
   const [expanded, setExpanded] = createSignal<string[]>([])
@@ -246,7 +258,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       value = await data.load(row)
     if (!value || key !== data.key()) return
     dialog.show(() => (
-      <Dialog size="wide" title={row.file}>
+      <Dialog size="wide" title={row.file} class="review-version-dialog">
         <ReviewVersionPreview file={row.file} before={value.before} after={value.after} />
       </Dialog>
     ))
@@ -319,7 +331,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       patches: string[] = []
     try {
       for (const row of data.rows()) {
-        const value = await data.load(row, true)
+        const value = await data.load(row, { retry: true })
         if (key !== data.key()) return
         if (!value?.diff.patch) throw new Error(_(C.patchUnavailable))
         patches.push(value.diff.patch)
@@ -422,8 +434,9 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
     disabled?: boolean
     active?: boolean
     hint?: string
+    class?: string
   }) => (
-    <Tooltip value={props.hint ?? props.label}>
+    <Tooltip value={props.hint ?? props.label} class={props.class}>
       <IconButton
         icon={getSemanticIcon(props.token)}
         variant="ghost"
@@ -445,7 +458,14 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
         value={filter()}
         onInput={(event) => setFilter(event.currentTarget.value)}
       />
-      <Show when={filtered().length} fallback={<p class="review-state">{_(filter() ? C.filterEmpty : C.empty)}</p>}>
+      <Show
+        when={filtered().length}
+        fallback={
+          <p class="review-navigation-empty" role="status">
+            {_(filter() ? C.filterEmpty : C.empty)}
+          </p>
+        }
+      >
         <ReviewFileTree
           rows={filtered()}
           selected={selected()}
@@ -465,6 +485,33 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
   const fold = () => setExpanded(expanded().length ? [] : data.rows().map(reviewFileKey))
   function fileHeader(id: string) {
     const row = () => rowMap().get(id)
+    const [menuOpen, setMenuOpen] = createSignal(false)
+    let menu: HTMLDivElement | undefined
+    let trigger: HTMLButtonElement | undefined
+    createEffect(() => {
+      if (!active()) setMenuOpen(false)
+    })
+    function openFromKeyboard(event: KeyboardEvent) {
+      if (!["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) return
+      // Kobalte utils 0.9.1 repeats the same scroll ancestor beneath an overflow-hidden root.
+      // https://github.com/kobaltedev/kobalte/blob/main/packages/utils/src/scroll-into-view.ts
+      event.preventDefault()
+      event.stopPropagation()
+      const edge = event.key === "ArrowUp" ? "last" : "first"
+      setMenuOpen(true)
+      setTimeout(() => {
+        if (!menuOpen() || !menu?.isConnected) return
+        const items = menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([data-disabled])')
+        const item = edge === "last" ? items[items.length - 1] : items[0]
+        const target = item ?? menu
+        target.focus({ preventScroll: true })
+      }, 0)
+    }
+    function runDialogAction(action: () => void) {
+      setMenuOpen(false)
+      trigger?.focus({ preventScroll: true })
+      action()
+    }
     return (
       <Show when={row()}>
         {(value) => (
@@ -507,7 +554,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                   <ReviewIcon
                     token="action.refresh"
                     label={`${_(C.retry)}: ${data.fileError(id)}`}
-                    action={() => void data.load(value(), true)}
+                    action={() => void data.load(value(), { retry: true })}
                   />
                 </span>
               </Show>
@@ -538,54 +585,94 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               </Show>
               <DiffChanges changes={value()} />
               <div class="review-file-actions">
-                <ReviewIcon token="action.view" label={_(C.versions)} action={() => void preview(value())} />
                 <ReviewIcon
+                  class="review-file-secondary-action"
+                  token="action.view"
+                  label={_(C.versions)}
+                  action={() => void preview(value())}
+                />
+                <ReviewIcon
+                  class="review-file-secondary-action"
                   token="action.open"
                   label={_(data.canOpen(value()) ? C.open : C.historical)}
                   action={() => void file.openWorkspaceFile(value().file)}
                   disabled={!data.canOpen(value())}
                 />
-                <Popover
-                  variant="menu"
-                  triggerAs={(triggerProps) => (
-                    <IconButton
-                      {...triggerProps}
-                      icon={getSemanticIcon("action.more")}
-                      aria-label={_(C.fileOptions)}
-                      variant="ghost"
-                      size="large"
-                      iconSize="small"
-                    />
-                  )}
-                >
-                  <div class="review-menu">
-                    <Button variant="ghost" onClick={() => void copyTextToClipboard(value().file)}>
-                      {_(C.copyPath)}
-                    </Button>
-                    <Button variant="ghost" onClick={() => void preview(value())}>
-                      {_(C.versions)}
-                    </Button>
-                    <Show when={data.historical() && value().workspace}>
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          void restore({
-                            messageID: source() === "turn" ? messageID() : undefined,
-                            selectedFiles: [
-                              {
-                                workspaceID: value().workspace!.id,
-                                generation: value().workspace!.generation,
-                                file: value().file,
-                              },
-                            ],
-                          })
-                        }
+                <MenuRoot modal={false} open={menuOpen()} onOpenChange={setMenuOpen} gutter={4}>
+                  <MenuTrigger
+                    ref={trigger}
+                    as={IconButton}
+                    icon={getSemanticIcon("action.more")}
+                    aria-label={_(C.fileOptions)}
+                    variant="ghost"
+                    size="large"
+                    iconSize="small"
+                    on:keydown={openFromKeyboard}
+                  />
+                  <MenuPortal mount={overlayLayer()}>
+                    <PortalStyleOwner>
+                      <MenuContent
+                        ref={menu}
+                        class="menu-field-surface"
+                        aria-label={_(C.fileOptions)}
+                        onEscapeKeyDown={(event) => event.stopPropagation()}
+                        onCloseAutoFocus={(event) => {
+                          event.preventDefault()
+                          if (active()) void restorePopoverFocus(trigger, menu)
+                        }}
+                        onOpenAutoFocus={(event) => event.preventDefault()}
                       >
-                        {_(C.undoFile)}
-                      </Button>
-                    </Show>
-                  </div>
-                </Popover>
+                        <div class="menu-field-list">
+                          <MenuItem class="menu-field-item" onSelect={() => void copyTextToClipboard(value().file)}>
+                            {_(C.copyPath)}
+                          </MenuItem>
+                          <MenuItem
+                            class="menu-field-item"
+                            onSelect={() => runDialogAction(() => void preview(value()))}
+                          >
+                            {_(C.versions)}
+                          </MenuItem>
+                          <MenuItem
+                            class="menu-field-item"
+                            disabled={!data.canOpen(value())}
+                            onSelect={() => void file.openWorkspaceFile(value().file)}
+                          >
+                            {_(data.canOpen(value()) ? C.open : C.historical)}
+                          </MenuItem>
+                          <Show
+                            when={
+                              data.historical() &&
+                              value().workspace &&
+                              data.context()?.recording?.status !== "live" &&
+                              data.context()?.recording?.status !== "pending"
+                            }
+                          >
+                            <MenuItem
+                              class="menu-field-item"
+                              onSelect={() =>
+                                runDialogAction(
+                                  () =>
+                                    void restore({
+                                      messageID: source() === "turn" ? messageID() : undefined,
+                                      selectedFiles: [
+                                        {
+                                          workspaceID: value().workspace!.id,
+                                          generation: value().workspace!.generation,
+                                          file: value().file,
+                                        },
+                                      ],
+                                    }),
+                                )
+                              }
+                            >
+                              {_(C.undoFile)}
+                            </MenuItem>
+                          </Show>
+                        </div>
+                      </MenuContent>
+                    </PortalStyleOwner>
+                  </MenuPortal>
+                </MenuRoot>
               </div>
               <Checkbox
                 hideLabel
@@ -810,7 +897,13 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               >
                 {_(C.copyApply)}
               </Button>
-              <Show when={data.historical()}>
+              <Show
+                when={
+                  data.historical() &&
+                  data.context()?.recording?.status !== "live" &&
+                  data.context()?.recording?.status !== "pending"
+                }
+              >
                 <Button
                   variant="ghost"
                   icon={getSemanticIcon("command.undo")}
@@ -927,10 +1020,12 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
           </Button>
         </div>
       </Show>
-      <Show when={data.context()?.recording && data.context()?.recording?.status !== "ready"}>
-        <div class="review-banner" role="status">
-          {_(data.context()?.recording?.status === "pending" ? C.pending : C.partial)}
-        </div>
+      <Show when={recordingLabel()}>
+        {(label) => (
+          <div class="review-banner" role="status">
+            {label()}
+          </div>
+        )}
       </Show>
       <Show when={notice() || data.failure() || data.notes.error}>
         <div class="review-banner" role={data.failure() || data.notes.error ? "alert" : "status"}>
@@ -957,7 +1052,9 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               when={
                 data.context() &&
                 !data.rows().length &&
-                (!data.context()?.recording || data.context()?.recording?.status === "ready")
+                (!data.context()?.recording ||
+                  data.context()?.recording?.status === "ready" ||
+                  data.context()?.recording?.status === "live")
               }
             >
               <div class="review-state" role="status">

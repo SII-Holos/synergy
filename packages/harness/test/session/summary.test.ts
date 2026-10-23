@@ -23,7 +23,7 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-const originalDiffSummary = Snapshot.diffSummary
+const originalStatistics = Snapshot.statistics
 const originalGetModel = Provider.getModel
 const originalSessionMessages = Session.messages
 
@@ -33,7 +33,7 @@ function summarizeFromLoop(input: { sessionID: string; messageID: string; messag
 
 afterEach(() =>
   runtime.run(() => {
-    ;(Snapshot.diffSummary as any) = originalDiffSummary
+    ;(Snapshot.statistics as any) = originalStatistics
     ;(Provider.getModel as any) = originalGetModel
     ;(Session.messages as any) = originalSessionMessages
   }),
@@ -311,7 +311,7 @@ describe("SessionSummary", () => {
             patch: "+content\n",
             afterBytes: 8,
           })
-          ;(Snapshot.diffSummary as any) = mock(async () => [diff])
+          ;(Snapshot.statistics as any) = mock(async () => [diff])
           ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
             id: modelID,
             providerID,
@@ -431,7 +431,7 @@ describe("SessionSummary", () => {
             afterBytes: 8,
           })
           const diffSummary = mock(async () => [diff])
-          ;(Snapshot.diffSummary as any) = diffSummary
+          ;(Snapshot.statistics as any) = diffSummary
           ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
             id: modelID,
             providerID,
@@ -550,7 +550,7 @@ describe("SessionSummary", () => {
             patch: "diff --git a/file.txt b/file.txt\n@@ -0,0 +1 @@\n+content\n",
           })
           const diffSummary = mock(async () => [diff])
-          ;(Snapshot.diffSummary as any) = diffSummary
+          ;(Snapshot.statistics as any) = diffSummary
 
           const first = await writeTurn(1)
           await summarizeFromLoop({ sessionID: session.id, messageID: first.user.id, messages: first.messages })
@@ -582,7 +582,7 @@ describe("SessionSummary", () => {
           )
           const entered = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
-          ;(Snapshot.diffSummary as any) = mock(async () => {
+          ;(Snapshot.statistics as any) = mock(async () => {
             entered.resolve()
             await release.promise
             return [diff]
@@ -619,7 +619,7 @@ describe("SessionSummary", () => {
           const releaseFirst = Promise.withResolvers<void>()
           const ranges: string[] = []
           let second: Awaited<ReturnType<typeof createTurn>> | undefined
-          ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+          ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
             ranges.push(`${from}:${to}`)
             if (from === first.from && to === first.to) {
               firstStarted.resolve()
@@ -737,7 +737,7 @@ describe("SessionSummary", () => {
             if (calls === 1) throw new Error("transient diff failure")
             return [diff]
           })
-          ;(Snapshot.diffSummary as any) = diffSummary
+          ;(Snapshot.statistics as any) = diffSummary
           ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
             id: modelID,
             providerID,
@@ -855,7 +855,7 @@ describe("SessionSummary", () => {
               }
               return [diff]
             })
-            ;(Snapshot.diffSummary as any) = diffSummary
+            ;(Snapshot.statistics as any) = diffSummary
             ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
               id: modelID,
               providerID,
@@ -902,7 +902,7 @@ describe("SessionSummary", () => {
           const turn = await createTurn({ sessionID: session.id, directory: tmp.path, index: 1 })
           const diffStarted = Promise.withResolvers<void>()
           const diffResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
-          ;(Snapshot.diffSummary as any) = mock(async () => {
+          ;(Snapshot.statistics as any) = mock(async () => {
             diffStarted.resolve()
             return diffResult.promise
           })
@@ -943,7 +943,7 @@ describe("SessionSummary", () => {
               text: "Summarize this turn",
               finish: "stop",
             })
-            ;(Snapshot.diffSummary as any) = mock(async () => [turn.diff])
+            ;(Snapshot.statistics as any) = mock(async () => [turn.diff])
             installTestModel()
             const llmStarted = Promise.withResolvers<void>()
             const llmText = Promise.withResolvers<string>()
@@ -985,7 +985,7 @@ describe("SessionSummary", () => {
             const messageDiffReady = Promise.withResolvers<void>()
             const sessionDiffStarted = Promise.withResolvers<void>()
             const sessionDiff = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
-            ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+            ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
               if (from === second.from && to === second.to) {
                 messageDiffReady.resolve()
                 return [second.diff]
@@ -1030,7 +1030,7 @@ describe("SessionSummary", () => {
         fn: async () => {
           const session = await Session.create({ title: "Empty turn diff" })
           const turn = await createTurn({ sessionID: session.id, directory: tmp.path, index: 3 })
-          ;(Snapshot.diffSummary as any) = mock(async () => [])
+          ;(Snapshot.statistics as any) = mock(async () => [])
           installTestModel()
 
           await SessionSummary.summarize({ sessionID: session.id, messageID: turn.user.id })
@@ -1062,7 +1062,7 @@ describe("SessionSummary", () => {
             const second = await createTurn({ sessionID: session.id, directory: tmp.path, index: 5 })
             const firstDiffStarted = Promise.withResolvers<void>()
             const firstDiff = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
-            ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+            ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
               if (from === first.from && to === first.to) {
                 firstDiffStarted.resolve()
                 return firstDiff.promise
@@ -1106,7 +1106,7 @@ describe("SessionSummary", () => {
           const turn = await createTurn({ sessionID: session.id, directory: tmp.path, index: 6 })
           const diffStarted = Promise.withResolvers<void>()
           const diffResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
-          ;(Snapshot.diffSummary as any) = mock(async () => {
+          ;(Snapshot.statistics as any) = mock(async () => {
             diffStarted.resolve()
             return diffResult.promise
           })
@@ -1154,7 +1154,7 @@ describe("SessionSummary", () => {
           const firstDiffStarted = Promise.withResolvers<void>()
           const firstDiff = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
           const order: string[] = []
-          ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+          ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
             const turn = turns.find((item) => item.from === from && item.to === to)
             if (!turn) return turns.map((item) => item.diff)
             order.push(turn.user.id)
@@ -1195,7 +1195,7 @@ describe("SessionSummary", () => {
           const firstResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
           let continuation: Awaited<ReturnType<typeof createContinuation>> | undefined
           const ranges: string[] = []
-          ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+          ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
             ranges.push(`${from}:${to}`)
             if (from === first.from && to === first.to) {
               firstStarted.resolve()
@@ -1254,7 +1254,7 @@ describe("SessionSummary", () => {
             const firstMessageResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
             const firstSessionResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
             let fullRangeCalls = 0
-            ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+            ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
               if (from === first.from && to === first.to) {
                 firstMessageStarted.resolve()
                 return firstMessageResult.promise
@@ -1354,7 +1354,7 @@ describe("SessionSummary", () => {
           const firstDiffStarted = Promise.withResolvers<void>()
           const firstDiff = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
           let messageDiffCalls = 0
-          ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+          ;(Snapshot.statistics as any) = mock(async (from: string, to: string) => {
             if (from !== turn.from || to !== turn.to) return [turn.diff]
             messageDiffCalls++
             if (messageDiffCalls === 1) {
@@ -1394,7 +1394,7 @@ test("summary propagates recording failure after draining its parallel model cal
           finish: "stop",
         })
         installTestModel()
-        using diff = spyOn(Snapshot, "diffSummary").mockResolvedValue([turn.diff])
+        using diff = spyOn(Snapshot, "statistics").mockResolvedValue([turn.diff])
         const bodyStarted = Promise.withResolvers<void>()
         const releaseBody = Promise.withResolvers<void>()
         const failure = new RolloutRecordingError({ message: "disk full" })
@@ -1449,7 +1449,7 @@ test.each([undefined, "AbortError", "TimeoutError"] as const)(
             finish: "stop",
           })
           installTestModel()
-          using diff = spyOn(Snapshot, "diffSummary").mockResolvedValue([turn.diff])
+          using diff = spyOn(Snapshot, "statistics").mockResolvedValue([turn.diff])
           const started = Promise.withResolvers<void>()
           const release = Promise.withResolvers<void>()
           let modelCalls = 0

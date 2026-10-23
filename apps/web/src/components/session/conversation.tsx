@@ -7,7 +7,6 @@ import { useSync } from "@/context/sync"
 import { useGlobalSync } from "@/context/global-sync"
 import { ConversationMotionProvider } from "@ericsanchezok/synergy-ui/conversation-motion"
 import { createOptimisticSubmissionActivity, submissionForRoot } from "./session-submission-status"
-import { useFileRestore } from "./file-restore-dialog-loader"
 import { useSDK } from "@/context/sdk"
 import { useSessionDataView } from "@/context/session-data-view"
 import type { PluginComponentProps, PluginConversationService } from "@ericsanchezok/synergy-plugin"
@@ -97,7 +96,6 @@ function SessionConversationView(input: SessionConversationProps) {
     transitions.messageArrival.take([sdk.url, sdk.scopeKey, props.sessionID], messageID)
   const messageKey = (messageID: string) =>
     transitions.messageIdentity.key([sdk.url, sdk.scopeKey, props.sessionID], messageID)
-  const restoreFiles = useFileRestore(() => props.sessionID)
   const data = useSessionDataView()
   const sync = useSync()
   const [executionStates, setExecutionStates] = createStore<Record<string, TurnExecutionState | undefined>>({})
@@ -517,7 +515,6 @@ function SessionConversationView(input: SessionConversationProps) {
                       executionState={executionFor(rootMessage().id)}
                       connected={sdk.connected()}
                       following={!props.scrolledUp()}
-                      onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
                       lastUserMessageID={props.lastUserMessage()?.id}
                       compactReasoning={props.compactReasoning()}
                       preferWorkBrief={props.preferWorkBrief?.()}
@@ -555,7 +552,6 @@ function SessionConversationView(input: SessionConversationProps) {
             scrollRef={scrollRef()}
             submissionFor={submissionFor}
             executionFor={executionFor}
-            onRestoreChanges={(messageID) => void restoreFiles({ messageID })}
           />
         </Show>
         {props.transition?.()}

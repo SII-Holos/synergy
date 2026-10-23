@@ -4,7 +4,7 @@ import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
 import {
-  listQuickSwitcherEntries,
+  listModelSelectionEntries,
   listSelectableConnectedModels,
   recommendQuickSwitcherModels,
   resolveQuickSwitcherModels,
@@ -19,26 +19,33 @@ import "./model-manager.css"
 const freeTag = { id: "model.manager.tag.free", message: "Free" }
 const latestTag = { id: "model.manager.tag.latest", message: "Latest" }
 const quickLabel = { id: "model.manager.quick", message: "Quick switch" }
+const recentLabel = { id: "model.manager.recent", message: "Recent" }
 const searchModelsPlaceholder = { id: "model.manager.search.placeholder", message: "Search models" }
-const noQuickSwitchLabel = { id: "model.manager.empty.quickSwitch", message: "No quick-switch models" }
 const noConnectedLabel = { id: "model.manager.empty.connected", message: "No connected model results" }
-export function sortModelGroups(profiles: ProviderRecommendationMap) {
-  return (a: { category: string; items: LocalModel[] }, b: { category: string; items: LocalModel[] }) => {
-    if (a.category === "Recent" && b.category !== "Recent") return -1
-    if (b.category === "Recent" && a.category !== "Recent") return 1
+type ModelSelectionEntry = ReturnType<typeof listModelSelectionEntries<LocalModel>>[number]
 
-    const aProvider = a.items[0]?.provider
-    const bProvider = b.items[0]?.provider
-    if (!aProvider || !bProvider) return a.category.localeCompare(b.category)
+export function sortModelGroups(profiles: ProviderRecommendationMap) {
+  type Group = { category: string; items: (LocalModel & { section?: ModelSelectionEntry["section"] })[] }
+  return (left: Group, right: Group) => {
+    const priority = (group: Group) => {
+      const section = group.items[0]?.section
+      return section === "recent" ? 0 : section === "quick" ? 1 : 2
+    }
+    const sectionOrder = priority(left) - priority(right)
+    if (sectionOrder) return sectionOrder
+
+    const leftProvider = left.items[0]?.provider
+    const rightProvider = right.items[0]?.provider
+    if (!leftProvider || !rightProvider) return left.category.localeCompare(right.category)
     return compareProviderIDs(
       profiles,
-      { id: aProvider.id, name: aProvider.name },
-      { id: bProvider.id, name: bProvider.name },
+      { id: leftProvider.id, name: leftProvider.name },
+      { id: rightProvider.id, name: rightProvider.name },
     )
   }
 }
 
-export function ModelManagerRow(props: { model: LocalModel; compact?: boolean }) {
+export function ModelManagerRow(props: { model: LocalModel; compact?: boolean; providerLabel?: string }) {
   const { _ } = useLingui()
   const showFree =
     (props.model.cost?.input ?? 0) === 0 &&
@@ -46,21 +53,29 @@ export function ModelManagerRow(props: { model: LocalModel; compact?: boolean })
     !props.model.name.toLowerCase().includes("free")
 
   return (
-    <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-left text-13-regular">
-      <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
-      <Show when={showFree}>
-        <Tag>{_(freeTag)}</Tag>
-      </Show>
-      <Show when={!props.compact && props.model.latest}>
-        <Tag>{_(latestTag)}</Tag>
+    <div class="w-full min-w-0 flex flex-col gap-y-0.5 text-left">
+      <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-13-regular">
+        <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
+        <Show when={showFree}>
+          <Tag>{_(freeTag)}</Tag>
+        </Show>
+        <Show when={!props.compact && props.model.latest}>
+          <Tag>{_(latestTag)}</Tag>
+        </Show>
+      </div>
+      <Show when={props.providerLabel}>
+        <span
+          class="model-manager-provider-name w-full truncate text-12-regular text-text-weak"
+          title={props.providerLabel}
+        >
+          {props.providerLabel}
+        </span>
       </Show>
     </div>
   )
 }
 
-type QuickSwitcherEntry = ReturnType<typeof listQuickSwitcherEntries<LocalModel>>[number]
-
-export const QuickSwitcherList: Component<{
+export const ModelSelectionList: Component<{
   provider?: string
   class?: string
   onSelect: () => void
@@ -72,27 +87,43 @@ export const QuickSwitcherList: Component<{
     void providers.ensureCatalog().catch(() => {})
   })
 
-  const models = createMemo<QuickSwitcherEntry[]>(() =>
-    listQuickSwitcherEntries(local.model.quickSwitcher(), local.model.recent(), props.provider),
+  const models = createMemo<ModelSelectionEntry[]>(() =>
+    listModelSelectionEntries(local.model.all(), local.model.quickSwitcher(), local.model.recent(), props.provider),
   )
 
-  const current = createMemo<QuickSwitcherEntry | undefined>(() => {
+  const current = createMemo<ModelSelectionEntry | undefined>(() => {
     const selected = local.model.current()
     if (!selected) return undefined
     return models().find((model) => model.provider.id === selected.provider.id && model.id === selected.id)
   })
 
   const { _ } = useLingui()
+  const providerLabel = (provider: LocalModel["provider"]) => {
+    const ambiguous =
+      provider.name === _(recentLabel) ||
+      provider.name === _(quickLabel) ||
+      providers.all().some((other) => other.id !== provider.id && other.name === provider.name)
+    return ambiguous ? `${provider.name} (${provider.id})` : provider.name
+  }
   return (
-    <List<QuickSwitcherEntry>
+    <List<ModelSelectionEntry>
       class={`model-quick-switcher flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
       search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
-      emptyMessage={_(noQuickSwitchLabel)}
+      emptyMessage={_(noConnectedLabel)}
       key={(x) => x.listKey}
+      selectionKey={(model) => JSON.stringify([model.provider.id, model.id])}
       items={models()}
       current={current()}
       filterKeys={["provider.name", "name", "id"]}
-      groupBy={(x) => x.group}
+      groupBy={(model) =>
+        model.section === "provider" ? JSON.stringify(["provider", model.provider.id]) : model.section
+      }
+      groupLabel={(group) => {
+        if (group.category === "recent") return _(recentLabel)
+        if (group.category === "quick") return _(quickLabel)
+        const provider = group.items[0]?.provider
+        return provider ? providerLabel(provider) : group.category
+      }}
       sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
       onSelect={(x) => {
         if (!x) return
@@ -100,7 +131,13 @@ export const QuickSwitcherList: Component<{
         props.onSelect?.()
       }}
     >
-      {(model) => <ModelManagerRow model={model} compact />}
+      {(model) => (
+        <ModelManagerRow
+          model={model}
+          compact
+          providerLabel={model.section !== "provider" ? providerLabel(model.provider) : undefined}
+        />
+      )}
     </List>
   )
 }

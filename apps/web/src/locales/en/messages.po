@@ -2386,7 +2386,7 @@ msgstr "Connect provider"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.description"
-msgstr "Choose a quick-switch model for the current session."
+msgstr "Choose an available model for the current session."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.model.search"
@@ -8770,12 +8770,32 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "Projects"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr "Search sessions"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "Tools"
+
+#. js-lingui-explicit-id
+msgid "app.shell.mobile.panels.label"
+msgstr "Workspace panels"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "No sessions yet"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr "Earlier"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.pinned"
+msgstr "Pinned"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr "Today"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"
@@ -10676,6 +10696,10 @@ msgstr "Save as…"
 msgid "browser.downloads.waiting"
 msgstr "Waiting"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.action"
+msgstr "Page action failed"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.address"
 msgstr "The website could not be found. Check the address and try again."
@@ -10683,6 +10707,10 @@ msgstr "The website could not be found. Check the address and try again."
 #. js-lingui-explicit-id
 msgid "browser.failure.certificate"
 msgstr "A secure connection could not be established. Check the website address and your device’s date and time."
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.copyDetails"
+msgstr "Copy error details"
 
 #. js-lingui-explicit-id
 msgid "browser.failure.denied"
@@ -10692,13 +10720,29 @@ msgstr "This address cannot be opened with the current browser permissions."
 msgid "browser.failure.details"
 msgstr "Diagnostic details"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.dismiss"
+msgstr "Dismiss message"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.errorDetails"
+msgstr "Error details"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.offline"
 msgstr "You appear to be offline. Check your connection, then retry this page."
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.page"
+msgstr "Page could not be loaded"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.proxy"
 msgstr "The proxy connection failed. Check your proxy settings, then retry."
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.reload"
+msgstr "Reload page"
 
 #. js-lingui-explicit-id
 msgid "browser.failure.request"
@@ -12789,6 +12833,22 @@ msgid "execution.paused"
 msgstr "Paused"
 
 #. js-lingui-explicit-id
+msgid "execution.preparing"
+msgstr "Preparing execution records…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessages"
+msgstr "Preparing execution records: {count, plural, one {# message} other {# messages}} processed…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingMessagesTotal"
+msgstr "Preparing execution records: {count} of {total, plural, one {# message} other {# messages}} processed…"
+
+#. js-lingui-explicit-id
+msgid "execution.preparingParts"
+msgstr "Preparing current message: {count, plural, one {# content record} other {# content records}} processed…"
+
+#. js-lingui-explicit-id
 msgid "execution.previous"
 msgstr "Earlier events"
 
@@ -12907,6 +12967,10 @@ msgstr "Sections"
 #. js-lingui-explicit-id
 msgid "execution.sectionsTruncated"
 msgstr "Some sections are omitted from this directory. Raw JSON and download retain the recorded content."
+
+#. js-lingui-explicit-id
+msgid "execution.showingPrevious"
+msgstr "Showing the previous complete summary."
 
 #. js-lingui-explicit-id
 msgid "execution.start"
@@ -13069,6 +13133,238 @@ msgid "execution.wrap"
 msgstr "Wrap text"
 
 #. js-lingui-explicit-id
+msgid "features.acp.description"
+msgstr "Provide acp capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.acp.name"
+msgstr "Acp"
+
+#. js-lingui-explicit-id
+msgid "features.agenda.description"
+msgstr "Provide agenda capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.agenda.name"
+msgstr "Agenda"
+
+#. js-lingui-explicit-id
+msgid "features.anima.description"
+msgstr "Provide anima capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.anima.name"
+msgstr "Anima"
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.description"
+msgstr "Provide blueprint capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.name"
+msgstr "Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.boss.description"
+msgstr "Delegate tasks and follow progress."
+
+#. js-lingui-explicit-id
+msgid "features.boss.name"
+msgstr "Boss mode"
+
+#. js-lingui-explicit-id
+msgid "features.browser.description"
+msgstr "Provide browser capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.browser.name"
+msgstr "Browser"
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.description"
+msgstr "Provide channel clarus capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.name"
+msgstr "Channel Clarus"
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.description"
+msgstr "Provide channel feishu capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.name"
+msgstr "Channel Feishu"
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.description"
+msgstr "Provide channel github capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.name"
+msgstr "Channel Github"
+
+#. js-lingui-explicit-id
+msgid "features.channels.description"
+msgstr "Provide channels capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channels.name"
+msgstr "Channels"
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.description"
+msgstr "Provide code tools capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.name"
+msgstr "Code Tools"
+
+#. js-lingui-explicit-id
+msgid "features.computer.description"
+msgstr "Provide computer capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.computer.name"
+msgstr "Computer"
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.description"
+msgstr "Provide digital twin capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.name"
+msgstr "Digital Twin"
+
+#. js-lingui-explicit-id
+msgid "features.email.description"
+msgstr "Provide email capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.email.name"
+msgstr "Email"
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.description"
+msgstr "Provide external agents capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.name"
+msgstr "External Agents"
+
+#. js-lingui-explicit-id
+msgid "features.formatter.description"
+msgstr "Provide formatter capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.formatter.name"
+msgstr "Formatter"
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.description"
+msgstr "Provide github agenda capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.name"
+msgstr "Github Agenda"
+
+#. js-lingui-explicit-id
+msgid "features.github.description"
+msgstr "Provide github capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.github.name"
+msgstr "Github"
+
+#. js-lingui-explicit-id
+msgid "features.holos.description"
+msgstr "Provide holos capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.holos.name"
+msgstr "Holos"
+
+#. js-lingui-explicit-id
+msgid "features.kanban.description"
+msgstr "View and organize tasks on a board."
+
+#. js-lingui-explicit-id
+msgid "features.kanban.name"
+msgstr "Kanban"
+
+#. js-lingui-explicit-id
+msgid "features.lattice.description"
+msgstr "Organize and run multi-step workflows."
+
+#. js-lingui-explicit-id
+msgid "features.lattice.name"
+msgstr "Lattice"
+
+#. js-lingui-explicit-id
+msgid "features.library.description"
+msgstr "Provide library capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.library.name"
+msgstr "Library"
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.description"
+msgstr "Provide light loop capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.name"
+msgstr "Light Loop"
+
+#. js-lingui-explicit-id
+msgid "features.lsp.description"
+msgstr "Provide lsp capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.lsp.name"
+msgstr "Lsp"
+
+#. js-lingui-explicit-id
+msgid "features.mcp.description"
+msgstr "Provide mcp capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.mcp.name"
+msgstr "Mcp"
+
+#. js-lingui-explicit-id
+msgid "features.media.description"
+msgstr "Provide media capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.media.name"
+msgstr "Media"
+
+#. js-lingui-explicit-id
+msgid "features.note.description"
+msgstr "Provide note capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.note.name"
+msgstr "Note"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.description"
+msgstr "Provide plugin blueprint capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.name"
+msgstr "Plugin Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.workbench.description"
+msgstr "Projects, task presentation, reviews and activity."
+
+#. js-lingui-explicit-id
+msgid "features.workbench.name"
+msgstr "Workbench"
+
+#. js-lingui-explicit-id
 msgid "files.close.description"
 msgstr "Save changes to {name} before leaving this file."
 
@@ -13221,12 +13517,12 @@ msgid "model.manager.empty.connected"
 msgstr "No connected model results"
 
 #. js-lingui-explicit-id
-msgid "model.manager.empty.quickSwitch"
-msgstr "No quick-switch models"
-
-#. js-lingui-explicit-id
 msgid "model.manager.quick"
 msgstr "Quick switch"
+
+#. js-lingui-explicit-id
+msgid "model.manager.recent"
+msgstr "Recent"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -13239,18 +13535,6 @@ msgstr "Free"
 #. js-lingui-explicit-id
 msgid "model.manager.tag.latest"
 msgstr "Latest"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.close"
-msgstr "Close tools"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.section"
-msgstr "Tools"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.title"
-msgstr "Tools"
 
 #. js-lingui-explicit-id
 msgid "note.document.backupFailed"
@@ -13982,6 +14266,13 @@ msgstr "Failed to send command"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.composerControls"
+msgstr "Composer options"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
 msgstr "Connection lost — responses may be delayed"
 
@@ -14524,6 +14815,10 @@ msgid "prompt.long.expand"
 msgstr "Expand editor"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr "Drag up or down to resize the editor"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr "Markdown formatting"
 
@@ -14951,6 +15246,13 @@ msgstr "Enter shell command..."
 #. js-lingui-explicit-id
 msgid "prompt.placeholder.task"
 msgstr "Describe a task, or type / for commands"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr "Describe a task"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -15582,6 +15884,13 @@ msgstr "Add files"
 #. prompt-input.tsx — toolbar / chips
 msgid "prompt.toolbar.agent"
 msgstr "Agent"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.toolbar.assist"
+msgstr "Assist"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -16293,6 +16602,10 @@ msgstr "Diff layout"
 #. js-lingui-explicit-id
 msgid "review.panel.layoutState"
 msgstr "Diff layout: {layout}"
+
+#. js-lingui-explicit-id
+msgid "review.panel.live"
+msgstr "Recorded during this task. Refresh to load the latest changes."
 
 #. js-lingui-explicit-id
 msgid "review.panel.loading"
@@ -17133,6 +17446,30 @@ msgid "session.agenda.wake.unit.w"
 msgstr "weeks"
 
 #. js-lingui-explicit-id
+msgid "session.changes.fileCount"
+msgstr "{count, plural, one {# file} other {# files}}"
+
+#. js-lingui-explicit-id
+msgid "session.changes.incompleteHint"
+msgstr "Showing the last recorded changes. Some files or updates may be unavailable."
+
+#. js-lingui-explicit-id
+msgid "session.changes.recorded"
+msgstr "Recorded changes"
+
+#. js-lingui-explicit-id
+msgid "session.changes.reviewHint"
+msgstr "Open this turn’s recorded changes"
+
+#. js-lingui-explicit-id
+msgid "session.changes.turn"
+msgstr "Turn changes"
+
+#. js-lingui-explicit-id
+msgid "session.changes.unavailable"
+msgstr "Unavailable"
+
+#. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
 msgstr "Agent"
 
@@ -17531,6 +17868,10 @@ msgstr "Loading prompt…"
 #. js-lingui-explicit-id
 msgid "session.dock.parentSession"
 msgstr "Parent session"
+
+#. js-lingui-explicit-id
+msgid "session.execution.attachments"
+msgstr "Attachments ({count})"
 
 #. js-lingui-explicit-id
 msgid "session.execution.background"
@@ -18226,10 +18567,6 @@ msgstr "Original output"
 #. js-lingui-explicit-id
 msgid "session.process.records"
 msgstr "Process history"
-
-#. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
-msgstr "The full task result is not available. The original notification is shown."
 
 #. js-lingui-explicit-id
 msgid "session.process.statistics"
@@ -20576,6 +20913,66 @@ msgid "settings.email.state.paused"
 msgstr "Paused"
 
 #. js-lingui-explicit-id
+msgid "settings.experiments.dependencyUnavailable"
+msgstr "Required feature unavailable"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.description"
+msgstr "Try features still in development."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.empty"
+msgstr "No experimental features available."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.live"
+msgstr "Applies to the next action after saving"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loadFailed"
+msgstr "Couldn't load experimental features."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loading"
+msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.notInstalled"
+msgstr "Not installed"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.pending"
+msgstr "Saved. Restart to apply."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.restart"
+msgstr "Requires restart"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.saveFailed"
+msgstr "Couldn't confirm changes. Your draft is kept."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.searchTerms"
+msgstr "experimental | features | kanban | boss | lattice | preview"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.title"
+msgstr "Experimental features"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unsaved"
+msgstr "Not saved"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unselected"
+msgstr "Unavailable here"
+
+#. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.balanced"
 msgstr "Balanced"
 
@@ -22681,7 +23078,7 @@ msgstr "Models"
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.description"
-msgstr "Pick the connected models that appear in model switchers and command shortcuts."
+msgstr "Pin models to the Quick switch group. All available models remain selectable."
 
 #. js-lingui-explicit-id
 msgid "settings.models.quickSwitcher.title"
@@ -27236,10 +27633,6 @@ msgid "ui.turnChangeSummary.title"
 msgstr "Changed {fileCount, plural, one {# file} other {# files}}"
 
 #. js-lingui-explicit-id
-msgid "ui.turnChangeSummary.undo"
-msgstr "Undo"
-
-#. js-lingui-explicit-id
 msgid "ui.userMessage.markdown"
 msgstr "Markdown"
 
@@ -27256,6 +27649,10 @@ msgid "welcome.blocks.help"
 msgstr "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop."
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr "Drag sideways to move, tap to rotate, and swipe down to drop. A held drag keeps moving."
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr "Falling blocks"
 
@@ -27268,12 +27665,20 @@ msgid "welcome.blocks.ready"
 msgstr "Click to play · ↑ rotate · Space drop"
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr "Tap to play · Slide to move"
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr "{score} points · {lines} lines"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
 msgstr "Click to continue"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
+msgstr "Tap to continue"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
@@ -27292,12 +27697,20 @@ msgid "welcome.common.statusControl"
 msgstr "Click to play or pause. Escape pauses; R restarts."
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr "Tap to play or pause."
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr "From a spark to something real. What will you create?"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
 msgstr "Bring your ideas to life."
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
+msgstr "Play continues when you move focus away."
 
 #. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
@@ -27318,6 +27731,10 @@ msgstr "Aircraft playfield"
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
 msgstr "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair."
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
+msgstr "Drag to steer and touch to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair."
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -27348,6 +27765,10 @@ msgid "welcome.flight.ready"
 msgstr "Move to steer · Click to fly"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr "Drag to steer · Tap to fly"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr "Full health · +{points}"
 
@@ -27376,6 +27797,10 @@ msgid "welcome.slingshot.help"
 msgstr "Pull the courier back and release to topple the guards. Break supports to bring down the structure. Left and right aim, up and down set power, Space launches. Escape cancels the pull."
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr "Drag the courier back and release to topple the guards. Break supports to bring down the structure."
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr "Try again"
 
@@ -27386,6 +27811,10 @@ msgstr "Pixel slingshot"
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
 msgstr "Level {level} · Pull back and release · {shots} shots"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
+msgstr "Level {level} · Drag back and release · {shots} shots"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
@@ -27404,12 +27833,20 @@ msgid "welcome.stack.help"
 msgstr "Click or press Space to stack the moving floor. Line up the edges."
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr "Tap to stack the moving floor. Line up the edges."
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr "Tiny tower"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
 msgstr "Click to drop"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
+msgstr "Tap to drop"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.result"

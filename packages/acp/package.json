@@ -6,7 +6,8 @@
   "license": "MIT",
   "exports": {
     "./cli/acp": "./src/cli/acp.ts",
-    "./component": "./src/component.ts"
+    "./component": "./src/component.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -49,6 +50,20 @@
     },
     "packages": {
       "@ericsanchezok/synergy-server": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "acp",
+          "owner": "acp",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Acp",
+          "description": "Provide acp capabilities.",
+          "component": "acp"
+        }
+      ]
     }
   }
 }

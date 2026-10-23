@@ -203,6 +203,7 @@ export const PI = {
   abandonDone: { id: "prompt.control.abandonDone", message: "Execution abandoned" },
   abandonFailed: { id: "prompt.control.abandonFailed", message: "Failed to abandon the session" },
   selectAgent: { id: "prompt.selectAgent", message: "Select agent" },
+  composerControls: { id: "prompt.composerControls", message: "Composer options" },
   externalAgentBlocked: {
     id: "prompt.externalAgentBlocked",
     message: "Create a new session to use this external agent",
@@ -214,6 +215,7 @@ export const PI = {
   toolbarAddFiles: { id: "prompt.toolbar.addFiles", message: "Add files" },
   toolbarAttachFiles: { id: "prompt.toolbar.attachFiles", message: "Attach files or images" },
   toolbarWorkflow: { id: "prompt.toolbar.workflow", message: "Workflow" },
+  toolbarAssist: { id: "prompt.toolbar.assist", message: "Assist" },
   toolbarWorkspace: { id: "prompt.toolbar.workspace", message: "Workspace" },
   toolbarWorktree: { id: "prompt.toolbar.worktree", message: "Worktree" },
   toolbarWorktreeDesc: { id: "prompt.toolbar.worktreeDesc", message: "Isolated checkout" },
@@ -224,6 +226,7 @@ export const PI = {
   // prompt-input.tsx — editor placeholders
   placeholderShell: { id: "prompt.placeholder.shell", message: "Enter shell command..." },
   placeholderPlan: { id: "prompt.placeholder.plan", message: "Plan your approach..." },
+  placeholderTaskCompact: { id: "prompt.placeholder.taskCompact", message: "Describe a task" },
   placeholderExampleGlobal: { id: "prompt.placeholder.exampleGlobal", message: 'Ask me anything… "{example}"' },
   placeholderExampleProject: { id: "prompt.placeholder.exampleProject", message: 'Ask anything… "{example}"' },
   placeholderAskGlobal: { id: "prompt.placeholder.askGlobal", message: "Ask me anything..." },

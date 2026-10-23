@@ -52,7 +52,8 @@
     "./superplan/session-env": "./src/superplan/session-env.ts",
     "./superplan/store": "./src/superplan/store.ts",
     "./superplan/types": "./src/superplan/types.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -94,6 +95,20 @@
     },
     "packages": {
       "@ericsanchezok/synergy-note": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "blueprint",
+          "owner": "blueprint",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Blueprint",
+          "description": "Provide blueprint capabilities.",
+          "component": "blueprint"
+        }
+      ]
     }
   },
   "peerDependencies": {

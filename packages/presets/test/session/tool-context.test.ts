@@ -5,7 +5,7 @@ import { ToolMcpSource } from "@ericsanchezok/synergy-harness/tool/mcp-source"
 import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss", "lattice"] })
 
 /**
  * P9 tool execution context contract (S8): after the product manifest loads,

@@ -364,15 +364,23 @@ a {
   color: var(--text-weak);
   cursor: pointer;
   z-index: 2;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 .composer-expand-control [data-component="icon"] {
   width: 16px;
   height: 16px;
 }
-.composer-expand-control:hover {
+.composer-expand-control:focus-visible,
+.composer-expand-control:active {
   background: var(--surface-raised-base-hover);
 }
 @media (hover: hover) and (pointer: fine) {
+  .composer-expand-control:hover {
+    background: var(--surface-raised-base-hover);
+  }
   .composer-expand-control {
     opacity: 0;
   }
@@ -390,9 +398,6 @@ a {
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .composer-expand-control {
-    transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
-  }
   .composer-resize-handle span {
     transform: translateY(calc(-1 * var(--composer-expand-pull, 0px)))
       scaleX(calc(1 + var(--composer-expand-progress, 0) * 0.6));
@@ -613,9 +618,11 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-work-context-button:hover:not(:disabled) {
-  background: var(--surface-hover-base);
-  color: var(--text-strong);
+@media (hover: hover) and (pointer: fine) {
+  .session-work-context-button:hover:not(:disabled) {
+    background: var(--surface-hover-base);
+    color: var(--text-strong);
+  }
 }
 .session-work-context-button:disabled {
   opacity: 0.5;
@@ -1261,14 +1268,40 @@ a {
 
 .synergy-workbench-canvas .browser-empty-state {
   display: flex;
-  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  width: 100%;
+  overflow-y: auto;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   gap: 0.875rem;
   padding: 2rem 1.5rem;
   text-align: center;
   user-select: none;
+}
+
+.synergy-workbench-canvas .browser-empty-state > * {
+  flex-shrink: 0;
+}
+
+.synergy-workbench-canvas .browser-empty-hint {
+  max-width: 28rem;
+  margin: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+}
+
+.synergy-workbench-canvas .browser-error-notice {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--border-weak-base);
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
 }
 
 .synergy-workbench-canvas .browser-empty-mark {
@@ -1594,14 +1627,17 @@ a {
   height: 32px;
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button:hover:not(:disabled),
-.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .synergy-workbench-canvas .prompt-input-toolbar-button:hover:not(:disabled),
+  .synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
+  }
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access:hover,
-.synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access[aria-expanded="true"] {
-  background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+@media (hover: hover) and (pointer: fine) {
+  .synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access:hover {
+    background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+  }
 }
 
 .synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit {
@@ -1649,12 +1685,6 @@ a {
   }
 }
 
-@media (max-width: 767px) {
-  .synergy-workbench-canvas .prompt-input-shell {
-    border-color: var(--border-strong-base);
-    box-shadow: none;
-  }
-}
 .statusbar-indicator-value {
   display: inline-block;
   font-family: var(--font-family-sans);
@@ -1733,7 +1763,10 @@ a {
   }
 
   .session-prompt-dock.safe-bottom {
-    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    /* Keyboards that resize the layout viewport leave `safe-area-inset-bottom`
+       unchanged, so the home indicator gap would remain above the keyboard.
+       VirtualKeyboard exposes the overlap instead; take whichever is larger. */
+    padding-bottom: calc(12px + max(env(safe-area-inset-bottom, 0px), env(keyboard-inset-height, 0px)));
   }
 
   [data-slot="dialog-container"]:has(.dialog-skill-detail) {
@@ -1826,9 +1859,21 @@ a {
   background: transparent;
 }
 .synergy-workbench-canvas .prompt-input-toolbar-button[aria-expanded="true"],
-.prompt-input-add-button:hover,
+.synergy-workbench-canvas .prompt-input-toolbar-button:focus-visible:not(:disabled),
+.synergy-workbench-canvas .prompt-input-toolbar-button:active:not(:disabled),
+.prompt-input-add-button:focus-visible,
+.prompt-input-add-button:active,
 .prompt-input-add-button[aria-expanded="true"] {
   background-color: var(--surface-inset-base-hover);
+}
+.synergy-workbench-canvas
+  .prompt-input-toolbar-button.prompt-input-permission-full-access:is([aria-expanded="true"], :focus-visible, :active) {
+  background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+}
+@media (hover: hover) and (pointer: fine) {
+  .prompt-input-add-button:hover {
+    background-color: var(--surface-inset-base-hover);
+  }
 }
 .prompt-add-menu [data-slot="list-group"] + [data-slot="list-group"] {
   border-top: 1px solid var(--border-weaker-base);
@@ -1915,4 +1960,191 @@ a {
 .conversation-column-resize-handle:hover,
 .conversation-column-resize-handle:focus-visible {
   background: transparent;
+}
+
+/* The chips row is a layout wrapper only: on desktop it must not alter the
+   existing context line, so it participates as if absent. Narrow layouts turn
+   the same slot into one horizontally scrollable line so agent, permission and
+   workflow chips stay reachable without a second toolbar row. */
+.composer-chips-row {
+  display: contents;
+}
+
+@media (max-width: 767px) {
+  .composer-chips-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    margin-bottom: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .composer-chips-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .composer-chips-row > .session-work-context {
+    flex: none;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .mobile-composer-chips {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .composer-chips-row .session-work-context {
+    gap: 4px;
+  }
+
+  .composer-chips-row .session-work-context-button,
+  .composer-chips-row .prompt-input-toolbar-button {
+    height: auto;
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 8px;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    transition:
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+
+  .composer-chips-row [data-component="icon"] {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .composer-chips-row .session-work-context-button[aria-expanded="true"],
+  .composer-chips-row .session-work-context-button:focus-visible:not(:disabled),
+  .composer-chips-row .session-work-context-button:active:not(:disabled) {
+    background-color: var(--surface-inset-base-hover);
+    color: var(--text-strong);
+  }
+}
+
+@media (max-width: 767px) {
+  /* Without this the toolbar wraps into two rows at 343px: the main group and
+     the action group each exceeded the line. Keeping one row is what makes the
+     card short enough to leave the conversation readable. */
+  .synergy-workbench-canvas .prompt-input-toolbar,
+  .synergy-workbench-canvas .prompt-input-toolbar-main {
+    flex-wrap: nowrap;
+  }
+}
+
+@media (max-width: 767px), (pointer: coarse) {
+  /* A separate 44-pixel separator cannot coexist with the corner control here:
+     placed beside it, the fifth target pushes the card past its budget; placed
+     over the editor, it covers the first line of text and eats the drag that
+     selects a word. The resize gesture therefore moves onto the corner control,
+     which already lives inside the editor's 48-pixel `pr-12` gutter, so
+     dragging still resizes and no character is covered. */
+  .composer-resize-controls {
+    display: none;
+  }
+
+  /* The corner control is the only sizing affordance in this layout, so it stays
+     visible and clears the touch floor instead of waiting for hover. */
+  .composer-expand-region {
+    pointer-events: none;
+  }
+
+  .composer-expand-control {
+    top: 0;
+    inset-inline-end: 4px;
+    width: 44px;
+    height: 44px;
+    opacity: 1;
+    pointer-events: auto;
+    /* Without this the browser claims the vertical drag for scroll panning and
+       fires pointercancel before the gesture can resize, which is exactly what
+       the touch floor is supposed to enable. The desktop separator declares the
+       same policy; the merged target must inherit it. */
+    touch-action: none;
+  }
+}
+
+.composer-expand-cue {
+  position: absolute;
+  /* Above the card, mirroring where the desktop separator's cue appears: the
+     card's own top band is the target the finger is holding, so the feedback
+     cannot sit under it. */
+  bottom: calc(100% + 6px);
+  inset-inline-end: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Anchored inside the 52-pixel corner region, so a percentage would resolve
+     against that strip and truncate the sentence. */
+  max-width: 200px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-base);
+  background: var(--surface-raised-base);
+  border: 1px solid var(--border-weak-base);
+  border-radius: var(--radius-full);
+  padding: 2px 10px;
+  pointer-events: none;
+  z-index: 3;
+}
+.composer-expand-cue span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-expand-cue[data-armed] {
+  color: var(--text-interactive-base);
+  border-color: var(--border-interactive-base);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .composer-expand-cue {
+    transform: translateY(calc(-1 * var(--composer-expand-pull, 0px)));
+    transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
+@media (max-width: 767px) {
+  .synergy-workbench-canvas .prompt-input-shell {
+    padding-top: 2px;
+    border-radius: 16px;
+    border-color: var(--border-weak-base);
+    box-shadow: none;
+  }
+
+  .synergy-workbench-canvas .prompt-input-toolbar {
+    padding: 0 8px 8px;
+  }
+
+  .synergy-workbench-canvas .prompt-input-toolbar [data-component="icon"] {
+    width: 20px;
+    height: 20px;
+  }
+
+  .session-starter-actions {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-chips-row .session-work-context-button,
+  .synergy-workbench-canvas .composer-chips-row .prompt-input-toolbar-button,
+  .synergy-workbench-canvas .prompt-input-toolbar button,
+  .composer-expand-control {
+    transition: none;
+  }
 }

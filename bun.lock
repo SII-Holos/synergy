@@ -252,7 +252,7 @@
       "dependencies": {
         "@ericsanchezok/synergy-harness": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "zod": "catalog:",
+        "@ericsanchezok/synergy-util": "workspace:*",
       },
       "devDependencies": {
         "@ericsanchezok/synergy-formatter": "workspace:*",
@@ -330,6 +330,7 @@
       },
       "devDependencies": {
         "@ericsanchezok/synergy-testing": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
@@ -357,6 +358,7 @@
         "@ericsanchezok/synergy-library": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
@@ -1523,6 +1525,7 @@
       "name": "@ericsanchezok/synergy-util",
       "version": "1.1.26",
       "dependencies": {
+        "jsonc-parser": "3.3.1",
         "marked": "catalog:",
         "zod": "catalog:",
       },
@@ -1586,6 +1589,7 @@
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-note": "workspace:*",
         "@ericsanchezok/synergy-testing": "workspace:*",
+        "@ericsanchezok/synergy-util": "workspace:*",
         "@tsconfig/bun": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",

@@ -86,7 +86,9 @@ describe("SessionTurn attachment placement", () => {
     const evidence = document.querySelector('[data-slot="activity-evidence"]')!
     expect(evidence).toBeTruthy()
     expect(!!evidence.closest('[hidden], [aria-hidden="true"]')).toBe(false)
-    expect(evidence.querySelector('[data-compact="process"]')?.getAttribute("title")).toBe("evidence.svg")
+    expect(
+      evidence.querySelector('[data-component="attachment-card"][data-compact="process"]')?.getAttribute("title"),
+    ).toBe("evidence.svg")
     expect(
       document.querySelectorAll(
         '[data-slot="session-turn-timeline-item"]:is([data-kind="tool-attachments"], [data-kind="media"])',

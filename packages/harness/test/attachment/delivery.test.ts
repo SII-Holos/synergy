@@ -19,7 +19,9 @@ test("delivery instructions are copied at composition and isolated from another 
     normal.run(async () => {
       await Promise.resolve()
       expect(AttachmentDelivery.guidance().response).toContain("[descriptive filename](asset://...)")
-      expect(AttachmentDelivery.guidance().execution).toContain("captured as immutable attachments")
+      expect(AttachmentDelivery.guidance().execution).toContain(
+        "the tool captures it and returns its resource reference",
+      )
     }),
   ])
 })

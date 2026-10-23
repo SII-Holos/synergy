@@ -259,10 +259,10 @@ export namespace SessionInvoke {
       : false
 
     if (options.abandonWorkflow) {
-      const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
-        (message) => message.info.role === "user" && message.info.isRoot,
+      const root = (await SessionHistory.modelMessageInfos({ sessionID })).findLast(
+        (message) => message.role === "user" && message.isRoot,
       )
-      if (root) await RolloutLifecycle.cancel(sessionID, root.info.id)
+      if (root) await RolloutLifecycle.cancel(sessionID, root.id)
       await SessionLifecycle.clear(sessionID)
     }
     if (!options.internalCancel && !options.abandonWorkflow) {
@@ -685,6 +685,8 @@ export namespace SessionInvoke {
                 SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
                 log.info("loop", { step, sessionID })
                 if (abort.aborted) break
+                if (SessionManager.getRuntime(sessionID)?.owner?.lease === lease)
+                  SessionManager.setExecutionPhase(sessionID, "preparing")
                 session = SessionExecutionOwners.forRoot(await Session.get(sessionID), root.info)
                 if (await SessionLifecycle.blocksDrive(session)) {
                   cancel(sessionID, { pauseTurn: true })
@@ -1053,6 +1055,10 @@ export namespace SessionInvoke {
                 const isTopSession = !session.parentID
                 const firstModelPreparation = recalledRootID !== R.id
 
+                // One write-root resolution feeds both the environment block and the permission
+                // profile: re-reading the Workspace catalog and re-acquiring shared roots for the
+                // second consumer repeated the same catalog reads on every model round.
+                const writeRootsPromise = SystemPrompt.resolveWriteRoots()
                 const turnPreparation = await Promise.all([
                   ToolResolver.availability({
                     agent,
@@ -1064,7 +1070,13 @@ export namespace SessionInvoke {
                     includeMCP: true,
                   }),
                   Promise.all([
-                    SystemPrompt.environment({ endpointType: SessionEndpoint.type(session.endpoint), session }),
+                    writeRootsPromise.then((writeRoots) =>
+                      SystemPrompt.environment({
+                        endpointType: SessionEndpoint.type(session.endpoint),
+                        session,
+                        writeRoots,
+                      }),
+                    ),
                     SystemPrompt.custom(),
                   ]).then(([env, custom]) => [env, custom] as const),
                   buildCortexExecutionContext(sessionID),
@@ -1104,13 +1116,19 @@ export namespace SessionInvoke {
 
                 // Layered system prompt assembly: stable → semi-stable → dynamic
                 // This ordering maximizes prompt caching by keeping static content first.
-                let systemParts: string[] = [RuntimeAdvisory.protocol]
-                let systemCacheBreakpoint: number | undefined
-                let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
-                const advisorySources: RuntimeAdvisory.Source[] = [
-                  RuntimeAdvisory.present("tool-intent", lateSystemParts[0]),
-                  RuntimeAdvisory.present("attachment-guidance", lateSystemParts[1]),
+                // Only the durable observation layout carries <context-source> entries, so the
+                // state semantics stay out of prompts that can never contain one.
+                // Static policy belongs in this cached prefix. Leaving it in the volatile tail resent
+                // it on every round, and the layouts that append that tail as a final user message
+                // put general behaviour rules at the highest-weight position of the whole request.
+                let systemParts: string[] = [
+                  ...RuntimeAdvisory.protocol(advisoryHistory),
+                  ToolIntent.guidance,
+                  AttachmentDelivery.guidance().response,
                 ]
+                let systemCacheBreakpoint: number | undefined
+                let lateSystemParts: string[] = []
+                const advisorySources: RuntimeAdvisory.Source[] = []
                 const appendAdvisory = (id: string, text: string) => {
                   lateSystemParts.push(text)
                   advisorySources.push(RuntimeAdvisory.present(id, text))
@@ -1131,16 +1149,20 @@ export namespace SessionInvoke {
                     sessionID: session?.id,
                     agentControlProfile: agent.controlProfile,
                   })
-                  const trustedRoots = await Scope.Root.executionRoots(ScopeContext.current.scope, workspaceInfo)
-                  const resolved = await ControlProfileCompiler.resolve(profileId, {
-                    workspace,
-                    workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-                    trustedRoots,
-                  })
-                  if (resolved.valid) {
-                    const ctx = buildPermissionContext(resolved, trustedRoots)
-                    systemParts.push(ctx)
-                    systemCacheBreakpoint = systemParts.length - 1
+                  const writeRoots = await writeRootsPromise
+                  // The environment block already reports a failed write-root validation as an
+                  // explicit degradation. Compiling the profile from an empty root list would
+                  // instead advertise fewer capabilities with no explanation, so stay silent.
+                  if (writeRoots.failure.length === 0) {
+                    const resolved = await ControlProfileCompiler.resolve(profileId, {
+                      workspace,
+                      workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
+                      trustedRoots: writeRoots.roots,
+                    })
+                    if (resolved.valid) {
+                      systemParts.push(buildPermissionContext(resolved))
+                      systemCacheBreakpoint = systemParts.length - 1
+                    }
                   }
                 } catch {
                   // Profile resolution failure is non-fatal — skip permission context
@@ -1999,40 +2021,84 @@ export namespace SessionInvoke {
    * permanent spinner forever.
    */
   async function settleOrphanedToolParts(input: {
+    scopeID: string
     sessionID: string
+    messages: MessageV2.Info[]
+    lease?: SessionManager.LoopLease
     includeAssistantMessageID?: string
   }): Promise<number> {
-    const messages = await SessionHistory.modelMessages({ sessionID: input.sessionID }).catch(() => [])
+    const assistants = new Map(
+      input.messages.flatMap((info) =>
+        info.role === "assistant" &&
+        (SessionProgress.isTerminalAssistant(info) || info.id === input.includeAssistantMessageID)
+          ? [[info.id, info] as const]
+          : [],
+      ),
+    )
+    const currentOwner = () => SessionManager.getRuntime(input.sessionID)?.owner?.lease === input.lease
+    const candidates = await ObservabilitySpans.measure(
+      { name: "session.prepare.tool_candidates", module: "session", kind: "session", sessionID: input.sessionID },
+      () =>
+        MessageV2.unsettledToolParts({
+          scopeID: input.scopeID,
+          sessionID: input.sessionID,
+          messageIDs: new Set(assistants.keys()),
+        }),
+    )
     let settled = 0
-    for (const message of messages) {
-      if (message.info.role !== "assistant") continue
-      const assistant = message.info as MessageV2.Assistant
-      // On a terminal message the sweep can cover the whole session, because
-      // nothing else will ever settle those parts. A *non-terminal* message
-      // belongs to a turn that is legitimately unfinished, so it is settled
-      // only when the caller names it — which the pause path does, since an
-      // aborted in-flight call must not render as running forever.
-      const targeted = assistant.id === input.includeAssistantMessageID
-      if (!SessionProgress.isTerminalAssistant(assistant) && !targeted) continue
-      for (const part of message.parts) {
-        if (part.type !== "tool") continue
-        if (!MessageV2.isUnsettledToolState(part.state)) continue
-        const state = part.state
-        await Session.updatePart({
-          ...part,
-          state: {
-            status: "error",
-            input: state.input,
-            error: MessageV2.INTERRUPTED_TOOL_ERROR,
-            ...(state.metadata ? { metadata: state.metadata } : {}),
-            time: {
-              start: state.status === "running" ? state.time.start : assistant.time.created,
-              end: Date.now(),
+    for (const candidate of candidates) {
+      const written = await Storage.transaction(
+        async () => {
+          if (!currentOwner()) return false
+          const assistant = await MessageV2.readInfo({
+            scopeID: input.scopeID,
+            sessionID: input.sessionID,
+            messageID: candidate.messageID,
+          }).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          const original = assistants.get(candidate.messageID)!
+          if (
+            !assistant ||
+            assistant.role !== "assistant" ||
+            (assistant.rootID !== undefined && assistant.rootID !== original.rootID) ||
+            assistant.parentID !== original.parentID
+          )
+            return false
+          if (!SessionProgress.isTerminalAssistant(assistant) && assistant.id !== input.includeAssistantMessageID)
+            return false
+          const part = await MessageV2.readToolPart({
+            scopeID: input.scopeID,
+            sessionID: input.sessionID,
+            messageID: candidate.messageID,
+            partID: candidate.id,
+          })
+          if (!part || !MessageV2.isUnsettledToolState(part.state)) return false
+          const state = part.state
+          await Session.updatePart({
+            ...part,
+            state: {
+              status: "error",
+              input: state.input,
+              error: MessageV2.INTERRUPTED_TOOL_ERROR,
+              ...(state.metadata ? { metadata: state.metadata } : {}),
+              time: {
+                start: state.status === "running" ? state.time.start : assistant.time.created,
+                end: Date.now(),
+              },
             },
+          })
+          return true
+        },
+        {
+          commitGuard() {
+            if (!currentOwner())
+              throw new DOMException("Session execution ownership changed during repair", "AbortError")
           },
-        })
-        settled++
-      }
+        },
+      )
+      if (written) settled++
     }
     return settled
   }
@@ -2057,15 +2123,28 @@ export namespace SessionInvoke {
     sessionID: string,
     options: { terminalize?: boolean } = {},
   ): Promise<boolean> {
+    return ObservabilitySpans.measure(
+      { name: "session.prepare.repair", module: "session", kind: "session", sessionID },
+      () => repairAssistant(sessionID, options),
+    )
+  }
+
+  async function repairAssistant(sessionID: string, options: { terminalize?: boolean }): Promise<boolean> {
     using _ = await Lock.write(`session-terminal-repair:${sessionID}`)
     const session = await SessionManager.getSession(sessionID)
     if (!session) return false
 
-    const messages = await SessionHistory.modelMessages({ sessionID })
+    const lease = SessionManager.getRuntime(sessionID)?.owner?.lease
+    const messages = await ObservabilitySpans.measure(
+      { name: "session.prepare.history_headers", module: "session", kind: "session", sessionID },
+      () => SessionHistory.modelMessageInfos({ sessionID }),
+    )
+    if (SessionManager.getRuntime(sessionID)?.owner?.lease !== lease) return false
+    const sweep = { scopeID: session.scope.id, sessionID, messages, lease }
     let latestRoot: MessageV2.User | undefined
     let latestAssistantWithoutRoot: MessageV2.Assistant | undefined
     for (let index = messages.length - 1; index >= 0; index--) {
-      const info = messages[index].info
+      const info = messages[index]
       if (!latestAssistantWithoutRoot && info.role === "assistant") {
         latestAssistantWithoutRoot = info as MessageV2.Assistant
       }
@@ -2079,7 +2158,7 @@ export namespace SessionInvoke {
     let latestAssistant: MessageV2.Assistant | undefined
     if (latestRoot) {
       for (let index = messages.length - 1; index >= 0; index--) {
-        const info = messages[index].info
+        const info = messages[index]
         if (info.role !== "assistant") continue
         const assistant = info as MessageV2.Assistant
         if (assistant.parentID !== latestRoot.id && assistant.rootID !== latestRoot.id) continue
@@ -2095,38 +2174,60 @@ export namespace SessionInvoke {
       // The message is already terminal, but a process that died mid-turn can
       // still have left its tool parts non-terminal. Settle them here rather
       // than returning early, or they stay `running` forever.
-      const settled = await settleOrphanedToolParts({ sessionID })
+      const settled = await settleOrphanedToolParts(sweep)
       return settled > 0
     }
 
     if (latestAssistant && options.terminalize !== true) {
       const settled = await settleOrphanedToolParts({
-        sessionID,
+        ...sweep,
         includeAssistantMessageID: latestAssistant.id,
       })
       return settled > 0
     }
 
     if (latestAssistant) {
-      const preserveError = latestAssistant.error && latestAssistant.time.completed != null
-      log.info("repairing non-terminal assistant", {
-        sessionID,
-        rootID: latestRoot?.id ?? latestAssistant.rootID,
-        messageID: latestAssistant.id,
-        preserveError: !!preserveError,
-      })
-      await Session.updateMessage({
-        ...latestAssistant,
-        time: { ...latestAssistant.time, completed: latestAssistant.time.completed ?? Date.now() },
-        finish: "error",
-        error:
-          preserveError || latestAssistant.error
-            ? latestAssistant.error
-            : new MessageV2.AbortedError({
+      const selected = latestAssistant
+      const ownsRepair = () => SessionManager.getRuntime(sessionID)?.owner?.lease === lease
+      const terminalized = await Storage.transaction(
+        async () => {
+          if (!ownsRepair()) return false
+          const current = await MessageV2.readInfo({
+            scopeID: session.scope.id,
+            sessionID,
+            messageID: selected.id,
+          }).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          if (
+            !current ||
+            current.role !== "assistant" ||
+            (current.rootID !== undefined && current.rootID !== selected.rootID) ||
+            current.parentID !== selected.parentID ||
+            SessionProgress.isTerminalAssistant(current)
+          )
+            return false
+          await Session.updateMessage({
+            ...current,
+            time: { ...current.time, completed: current.time.completed ?? Date.now() },
+            finish: "error",
+            error:
+              current.error ??
+              new MessageV2.AbortedError({
                 message: "Session aborted during turn — assistant response was not completed",
               }).toObject(),
-      })
-      await settleOrphanedToolParts({ sessionID, includeAssistantMessageID: latestAssistant.id })
+          })
+          return true
+        },
+        {
+          commitGuard() {
+            if (!ownsRepair()) throw new DOMException("Session execution ownership changed during repair", "AbortError")
+          },
+        },
+      )
+      const settled = await settleOrphanedToolParts({ ...sweep, includeAssistantMessageID: selected.id })
+      return terminalized || settled > 0
     } else if (latestRoot && options.terminalize === true) {
       log.info("creating aborted assistant for pending root", {
         sessionID,
