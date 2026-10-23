@@ -17,21 +17,24 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><script type="module" src="/main.ts"></script>',
+      '<div id="actions"></div><div id="recent"></div><div id="worktree"></div><div id="paused"></div><div id="empty"></div><div id="grouped"></div><div id="mixed"></div><div id="account"></div><script type="module" src="/main.ts"></script>',
     ),
     Bun.write(
       path.join(fixtureDirectory, "main.ts"),
       `
-        import { createComponent } from "solid-js"
+        import { createComponent, createSignal } from "solid-js"
         import { render } from "solid-js/web"
         import {
           MobileDrawerAddProjectButton,
+          MobileDrawerAccountRow,
           MobileDrawerRecent,
           MobileDrawerSettingsButton,
         } from ${JSON.stringify(`/@fs/${componentPath}`)}
 
         const actions: string[] = []
         const selected: string[] = []
+        const [accountAvailable, setAccountAvailable] = createSignal(true)
+        window.setAccountAvailable = setAccountAvailable
         let loadMoreCalls = 0
         ;(window as any).__mobileDrawerState = {
           actions,
@@ -176,6 +179,65 @@ beforeAll(async () => {
             }),
           document.querySelector("#empty")!,
         )
+
+        render(
+          () =>
+            createComponent(MobileDrawerRecent, {
+              label: "Recent",
+              emptyLabel: "No recent sessions",
+              loadMoreLabel: "Load more",
+              untitledLabel: "Untitled",
+              draftLabel: "Draft",
+              hasDraft: () => false,
+              entries: [
+                { ...entry("ses_today", "Today session"), lastActivityAt: Date.now() },
+                { ...entry("ses_earlier", "Earlier session"), lastActivityAt: 1 },
+              ],
+              visualFor: () => homeVisual("", "home"),
+              hasMore: false,
+              onSelect: () => {},
+              onLoadMore: () => {},
+              groups: { pinned: "Pinned", today: "Today", earlier: "Earlier" },
+            }),
+          document.querySelector("#grouped")!,
+        )
+
+        // Production order puts pinned sessions first regardless of age, so a
+        // pinned old session sits above a fresh unpinned one. Rendering that
+        // order must not split the date groups into Earlier/Today/Earlier.
+        render(
+          () =>
+            createComponent(MobileDrawerRecent, {
+              label: "Mixed",
+              emptyLabel: "No recent sessions",
+              loadMoreLabel: "Load more",
+              untitledLabel: "Untitled",
+              draftLabel: "Draft",
+              hasDraft: () => false,
+              entries: [
+                { ...entry("ses_pinned_old", "Pinned old"), pinned: 2, lastActivityAt: 1 },
+                { ...entry("ses_today_two", "Today unpinned"), lastActivityAt: Date.now() },
+                { ...entry("ses_earlier_two", "Earlier unpinned"), lastActivityAt: 2 },
+              ],
+              visualFor: () => homeVisual("", "home"),
+              hasMore: false,
+              onSelect: () => {},
+              onLoadMore: () => {},
+              groups: { pinned: "Pinned", today: "Today", earlier: "Earlier" },
+            }),
+          document.querySelector("#mixed")!,
+        )
+
+        render(
+          () =>
+            createComponent(MobileDrawerAccountRow, {
+              name: "Eric",
+              description: "Connected to Holos",
+              avatarSrc: "/avatar.png",
+              get onClick() { return accountAvailable() ? () => actions.push("account") : undefined },
+            }),
+          document.querySelector("#account")!,
+        )
       `,
     ),
   ])
@@ -226,7 +288,8 @@ describe("mobile drawer root navigation", () => {
   test("shows recent sessions at the drawer root and exposes active navigation", async () => {
     await withFixture(async (page) => {
       const recent = page.locator("#recent")
-      await expect(recent.getByRole("heading", { name: "Recent" }).count()).resolves.toBe(1)
+      await expect(recent.getByRole("region", { name: "Recent" }).count()).resolves.toBe(1)
+      await expect(recent.getByRole("heading", { name: "Recent" }).count()).resolves.toBe(0)
       await expect(recent.getByText("Recent session").count()).resolves.toBe(1)
       await expect(recent.getByText("Other session").count()).resolves.toBe(1)
       expect(await recent.locator('[data-session-id="ses_recent"]').getAttribute("aria-current")).toBe("page")
@@ -256,7 +319,7 @@ describe("mobile drawer root navigation", () => {
       const row = section.locator('[data-session-id="ses_wt"]')
       await expect(row.locator('[data-slot="icon-svg"]').count()).resolves.toBe(1)
       await expect(row.locator('[data-slot="icon-svg"].text-icon-success-base').count()).resolves.toBe(0)
-      expect(await row.locator("span.text-13-medium").textContent()).toBe("Worktree session")
+      expect(await row.getByText("Worktree session", { exact: true }).first().textContent()).toBe("Worktree session")
       await expect(section.locator(".sr-only", { hasText: "Worktree session" }).count()).resolves.toBe(1)
     })
   })
@@ -275,6 +338,81 @@ describe("mobile drawer root navigation", () => {
       const empty = page.locator("#empty")
       await expect(empty.getByText("No recent sessions").count()).resolves.toBe(1)
       expect(await empty.locator("[data-session-id]").count()).toBe(0)
+    })
+  })
+
+  test("groups recents under today and earlier headings when the caller supplies labels", async () => {
+    await withFixture(async (page) => {
+      const grouped = page.locator("#grouped")
+      expect(await grouped.locator("h3").allTextContents()).toEqual(["Today", "Earlier"])
+      expect(await grouped.locator("[data-session-id]").count()).toBe(2)
+      const order = await grouped
+        .locator("[data-session-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")))
+      expect(order).toEqual(["ses_today", "ses_earlier"])
+    })
+  })
+
+  test("keeps the flat recent list when no grouping labels are supplied", async () => {
+    await withFixture(async (page) => {
+      const recent = page.locator("#recent")
+      expect(await recent.locator("h3").count()).toBe(0)
+      expect(await recent.locator("[data-session-id]").count()).toBe(2)
+    })
+  })
+
+  test("keeps pinned sessions in one group when production order interleaves them with dates", async () => {
+    await withFixture(async (page) => {
+      const mixed = page.locator("#mixed")
+      // Each heading appears once, in fixed order: pinned, today, earlier.
+      expect(await mixed.locator("h3").allTextContents()).toEqual(["Pinned", "Today", "Earlier"])
+      const order = await mixed
+        .locator("[data-session-id]")
+        .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")))
+      expect(order).toEqual(["ses_pinned_old", "ses_today_two", "ses_earlier_two"])
+    })
+  })
+
+  test("renders the account row with its identity and opens account settings", async () => {
+    await withFixture(async (page) => {
+      const account = page.locator("#account")
+      await expect(account.getByText("Eric", { exact: true }).count()).resolves.toBe(1)
+      await expect(account.getByText("Connected to Holos", { exact: true }).count()).resolves.toBe(1)
+      expect(await account.locator("img").getAttribute("src")).toBe("/avatar.png")
+      await account.getByRole("button").click()
+      const actions = await page.evaluate(() => (window as any).__mobileDrawerState.actions)
+      expect(actions).toContain("account")
+    })
+  })
+
+  test("renders identity without a focus target or chevron when no account action is available", async () => {
+    await withFixture(async (page) => {
+      const account = page.locator("#account")
+      await account.getByRole("button").waitFor()
+      await page.evaluate(() =>
+        (window as unknown as { setAccountAvailable(value: boolean): void }).setAccountAvailable(false),
+      )
+      expect(await account.getByRole("button").count()).toBe(0)
+      expect(await account.locator('[data-component="icon"]').count()).toBe(0)
+      expect(await account.locator('[data-action="account"], a, [tabindex]').count()).toBe(0)
+      expect(await account.getByText("Eric", { exact: true }).count()).toBe(1)
+      expect(await account.getByText("Connected to Holos", { exact: true }).count()).toBe(1)
+      expect(await account.locator("img").getAttribute("src")).toBe("/avatar.png")
+      await account.getByText("Eric", { exact: true }).click()
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { __mobileDrawerState: { actions: string[] } }).__mobileDrawerState.actions,
+        ),
+      ).toEqual([])
+      await page.evaluate(() =>
+        (window as unknown as { setAccountAvailable(value: boolean): void }).setAccountAvailable(true),
+      )
+      await account.getByRole("button").click()
+      expect(
+        await page.evaluate(
+          () => (window as unknown as { __mobileDrawerState: { actions: string[] } }).__mobileDrawerState.actions,
+        ),
+      ).toEqual(["account"])
     })
   })
 })

@@ -170,7 +170,7 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
         </Show>
         <div class="session-composer-context">{input.render("context")}</div>
         <Show when={binding} fallback={<DefaultComposerEditor context={{ input }} onError={report} />}>
-          <ComposerExpandButton input={input} />
+          <ComposerExpandButton input={input} availableHeight={availableHeight()} />
           <ComposerLongEditor input={input} report={report} animating={animating()}>
             <DefaultComposerEditor context={{ input }} onError={report} />
           </ComposerLongEditor>

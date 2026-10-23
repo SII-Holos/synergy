@@ -118,6 +118,8 @@ import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
+import { twinCopy } from "../digital-twin/copy"
+import type { PredictionControlApi } from "../digital-twin/composer"
 import { BlueprintDraftEntry, LoopStatusEntry, LoopStatusDialog } from "./loop-status-entry"
 import { resolveLoopDisplay } from "./loop-status"
 import { createLoopStatusResource } from "./loop-status-resource"
@@ -130,6 +132,7 @@ import { requestSessionContinue } from "./continue-request"
 import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
+import { AgentSelector } from "./agent-selector"
 import { collectDictationContext } from "./voice-dictation-core"
 import { classifySessionActivity, isWorkingStatus } from "@/utils/session-status"
 
@@ -204,6 +207,9 @@ const DraftAttachmentPreview = lazy(() =>
 
 const DigitalTwinComposer = lazy(() =>
   import("../digital-twin/composer").then((module) => ({ default: module.DigitalTwinComposer })),
+)
+const DigitalTwinPredictionButton = lazy(() =>
+  import("../digital-twin/composer").then((module) => ({ default: module.PredictionButton })),
 )
 
 export function createPromptInputController(props: PromptInputProps) {
@@ -417,6 +423,7 @@ export function createPromptInputController(props: PromptInputProps) {
     setPending: setContinuePending,
   })
   const [abandonPending, setAbandonPending] = createSignal(false)
+  const [predictionApi, setPredictionApi] = createSignal<PredictionControlApi>()
   const abandonController = createAbortRequestController({
     setPending: setAbandonPending,
     request: async () => {
@@ -1251,6 +1258,23 @@ export function createPromptInputController(props: PromptInputProps) {
           },
         ],
       },
+      ...(!layout.isDesktop() && capabilities.has("digital-twin")
+        ? [
+            {
+              id: "prediction",
+              label: i18n._(PI.toolbarAssist),
+              items: [
+                {
+                  id: "predict-next",
+                  label: i18n._(twinCopy.predict),
+                  icon: getSemanticIcon("action.predict"),
+                  disabled: !predictionApi() || predictionApi()!.disabled(),
+                  onSelect: () => predictionApi()?.predict(),
+                },
+              ],
+            },
+          ]
+        : []),
     ]
       .map((section) =>
         section.id === "workflow"
@@ -2239,6 +2263,79 @@ export function createPromptInputController(props: PromptInputProps) {
     requestAnimationFrame(() => void handleSubmit(new Event("submit", { cancelable: true })))
   })
 
+  const permissionSelector = () => (
+    <PermissionModeSelector
+      switching={() => store.switchingProfile}
+      activeMode={activePermissionMode}
+      selectedProfile={selectedControlProfile}
+      updateProfile={updateControlProfile}
+    />
+  )
+  const workflowChips = () => (
+    <>
+      <Show when={planActive()}>
+        <WorkflowChip
+          label={i18n._(PI.exitPlanLabel)}
+          ariaLabel={i18n._(PI.exitPlan)}
+          tooltip={i18n._(PI.exitPlan)}
+          icon={getSemanticIcon("prompt.plan")}
+          working={working}
+          onCancel={togglePlan}
+        />
+      </Show>
+      <Show when={latticeActive()}>
+        <WorkflowChip
+          label={i18n._(PI.cancelLatticeLabel)}
+          ariaLabel={i18n._(PI.cancelLattice)}
+          tooltip={i18n._(PI.cancelLattice)}
+          icon={getSemanticIcon("prompt.lattice")}
+          working={working}
+          onCancel={cancelLattice}
+        />
+      </Show>
+      <Show when={bossRootActive()}>
+        <WorkflowChip
+          label={i18n._(PI.cancelBossLabel)}
+          ariaLabel={i18n._(PI.cancelBoss)}
+          tooltip={i18n._(PI.cancelBoss)}
+          icon={getSemanticIcon("prompt.boss")}
+          working={working}
+          onCancel={() => void setBoss(false)}
+        />
+      </Show>
+    </>
+  )
+  const predictionControl = () => (
+    <Show when={capabilities.has("digital-twin")}>
+      <Suspense>
+        <DigitalTwinComposer
+          controller={composerDocument}
+          focusEditor={() => editorRef?.focus()}
+          sessionID={params.id}
+          parentID={info()?.parentID}
+          messages={view().messagesFor(params.id ?? "")}
+          status={status()}
+          blocked={
+            isReadOnly() || hasAttachments() || attachmentsUploading() || view().inboxFor(params.id ?? "").length > 0
+          }
+          modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
+          bind={setPredictionApi}
+          showProgress={!layout.isDesktop()}
+        />
+      </Suspense>
+    </Show>
+  )
+  const mobileChips = () => (
+    <Show when={!layout.isDesktop()}>
+      <div class="mobile-composer-chips" role="group" aria-label={i18n._(PI.composerControls)}>
+        <Show when={!props.hideAgentSelector}>
+          <AgentSelector hasMessages={sessionHasMessages} />
+        </Show>
+        {permissionSelector()}
+        {workflowChips()}
+      </div>
+    </Show>
+  )
   const views: Record<PluginInputViewPart, () => import("solid-js").JSX.Element> = {
     leading: () => (
       <>
@@ -2257,23 +2354,26 @@ export function createPromptInputController(props: PromptInputProps) {
           />
         </Show>
         <ComposerSlotOutlet slot="composer.above" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
-        <SessionWorkContext
-          directories={props.projectDirectories}
-          directoryError={props.projectDirectoryError}
-          onRefresh={props.onProjectDirectoriesRefresh}
-          onSelect={props.onNewSessionWorkspaceSelectionChange}
-          uploading={attachmentsUploading()}
-          onWorkspaceTransition={props.onWorkspaceTransition}
-          running={working()}
-          environmentID={props.newSessionEnvironmentID}
-          environmentProfile={props.newSessionEnvironmentProfile}
-          onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
-          workspaceSelection={props.newSessionWorkspaceSelection}
-          workspaceSelectionKey={props.newSessionWorkspaceSelectionKey}
-          onEnvironmentChange={props.onNewSessionEnvironmentChange}
-          startOptions={newSessionStartOptions()}
-          disabled={!!isReadOnly() || composerSubmitting() || !!props.sessionTransitionPending}
-        />
+        <div class="composer-chips-row">
+          <SessionWorkContext
+            directories={props.projectDirectories}
+            directoryError={props.projectDirectoryError}
+            onRefresh={props.onProjectDirectoriesRefresh}
+            onSelect={props.onNewSessionWorkspaceSelectionChange}
+            uploading={attachmentsUploading()}
+            onWorkspaceTransition={props.onWorkspaceTransition}
+            running={working()}
+            environmentID={props.newSessionEnvironmentID}
+            environmentProfile={props.newSessionEnvironmentProfile}
+            onEnvironmentProfileChange={props.onNewSessionEnvironmentProfileChange}
+            workspaceSelection={props.newSessionWorkspaceSelection}
+            workspaceSelectionKey={props.newSessionWorkspaceSelectionKey}
+            onEnvironmentChange={props.onNewSessionEnvironmentChange}
+            startOptions={newSessionStartOptions()}
+            disabled={!!isReadOnly() || composerSubmitting() || !!props.sessionTransitionPending}
+          />
+          {mobileChips()}
+        </div>
       </>
     ),
     context: () => (
@@ -2358,79 +2458,9 @@ export function createPromptInputController(props: PromptInputProps) {
               </Match>
               <Match when={store.mode === "normal"}>
                 <PromptAddMenu sections={addMenuSections()} />
-                <Show when={!props.hideAgentSelector}>
+                <Show when={!props.hideAgentSelector && layout.isDesktop()}>
                   <div class="min-w-0 shrink-0">
-                    <ToolbarSelectorPopover
-                      triggerAs={(triggerProps) => (
-                        <Tooltip
-                          value={i18n._(PI.selectAgent)}
-                          placement="top"
-                          open={String(triggerProps["aria-expanded"]) === "true" ? false : undefined}
-                        >
-                          <button
-                            {...triggerProps}
-                            type="button"
-                            aria-label={`${i18n._(PI.selectAgent)}: ${translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}`}
-                            class="prompt-input-toolbar-button flex items-center gap-1.5"
-                          >
-                            <span class="text-12-medium text-text-base whitespace-nowrap">
-                              {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
-                            </span>
-                          </button>
-                        </Tooltip>
-                      )}
-                      title={i18n._(PI.selectAgent)}
-                      contentClass="w-72 max-h-80"
-                      placement="top-start"
-                    >
-                      {(close) => (
-                        <List
-                          class="p-1 [&_[data-slot=list-item]]:relative [&_[data-slot=list-item]:focus-visible]:bg-surface-raised-base-hover [&_[data-slot=list-item-selected-icon]]:absolute [&_[data-slot=list-item-selected-icon]]:right-3"
-                          items={local.agent.list().filter((a) => !a.hidden)}
-                          key={(x) => x.name}
-                          current={local.agent.current()}
-                          filterKeys={["name"]}
-                          onSelect={(x) => {
-                            if (!x) return
-                            if (sessionHasMessages() && x.external) return
-                            local.agent.set(x.name)
-                            close()
-                          }}
-                        >
-                          {(agent) => {
-                            const visual = getAgentVisual(agent)
-                            return (
-                              <Tooltip
-                                placement="right"
-                                value={
-                                  sessionHasMessages() && agent.external ? i18n._(PI.externalAgentBlocked) : undefined
-                                }
-                              >
-                                <div
-                                  classList={{
-                                    "min-w-0 flex-1 pr-6 text-left": true,
-                                    "opacity-45": sessionHasMessages() && !!agent.external,
-                                  }}
-                                >
-                                  <div class="min-w-0">
-                                    <div class="text-13-medium text-text-base truncate">
-                                      {translateDescriptor(visual.label, i18n)}
-                                    </div>
-                                    <Show when={visual.description}>
-                                      {(description) => (
-                                        <div class="mt-0.5 text-12-regular text-text-weak leading-snug whitespace-normal">
-                                          {translateDescriptor(description(), i18n)}
-                                        </div>
-                                      )}
-                                    </Show>
-                                  </div>
-                                </div>
-                              </Tooltip>
-                            )
-                          }}
-                        </List>
-                      )}
-                    </ToolbarSelectorPopover>
+                    <AgentSelector hasMessages={sessionHasMessages} />
                   </div>
                 </Show>
                 <Show when={sessionMeta().canSelectModel}>
@@ -2487,41 +2517,9 @@ export function createPromptInputController(props: PromptInputProps) {
                     </Show>
                   </div>
                 </Show>
-                <PermissionModeSelector
-                  switching={() => store.switchingProfile}
-                  activeMode={activePermissionMode}
-                  selectedProfile={selectedControlProfile}
-                  updateProfile={updateControlProfile}
-                />
-                <Show when={planActive()}>
-                  <WorkflowChip
-                    label={i18n._(PI.exitPlanLabel)}
-                    ariaLabel={i18n._(PI.exitPlan)}
-                    tooltip={i18n._(PI.exitPlan)}
-                    icon={getSemanticIcon("prompt.plan")}
-                    working={working}
-                    onCancel={togglePlan}
-                  />
-                </Show>
-                <Show when={latticeActive()}>
-                  <WorkflowChip
-                    label={i18n._(PI.cancelLatticeLabel)}
-                    ariaLabel={i18n._(PI.cancelLattice)}
-                    tooltip={i18n._(PI.cancelLattice)}
-                    icon={getSemanticIcon("prompt.lattice")}
-                    working={working}
-                    onCancel={cancelLattice}
-                  />
-                </Show>
-                <Show when={bossRootActive()}>
-                  <WorkflowChip
-                    label={i18n._(PI.cancelBossLabel)}
-                    ariaLabel={i18n._(PI.cancelBoss)}
-                    tooltip={i18n._(PI.cancelBoss)}
-                    icon={getSemanticIcon("prompt.boss")}
-                    working={working}
-                    onCancel={() => void setBoss(false)}
-                  />
+                <Show when={layout.isDesktop()}>
+                  {permissionSelector()}
+                  {workflowChips()}
                 </Show>
                 <ComposerSlotOutlet slot="composer.add-menu" sessionId={params.id} class="contents" />
                 <ComposerSlotOutlet slot="composer.start-option" sessionId={params.id} class="contents" />
@@ -2542,24 +2540,12 @@ export function createPromptInputController(props: PromptInputProps) {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
-            <Show when={capabilities.has("digital-twin")}>
-              <Suspense>
-                <DigitalTwinComposer
-                  controller={composerDocument}
-                  focusEditor={() => editorRef?.focus()}
-                  sessionID={params.id}
-                  parentID={info()?.parentID}
-                  messages={view().messagesFor(params.id ?? "")}
-                  status={status()}
-                  blocked={
-                    isReadOnly() ||
-                    hasAttachments() ||
-                    attachmentsUploading() ||
-                    view().inboxFor(params.id ?? "").length > 0
-                  }
-                  modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
-                />
-              </Suspense>
+            <Show when={layout.isDesktop() && predictionApi()}>
+              {(api) => (
+                <Suspense>
+                  <DigitalTwinPredictionButton api={api()} />
+                </Suspense>
+              )}
             </Show>
             <Show when={capabilities.has("media")}>
               <VoiceDictationButton
@@ -2655,6 +2641,7 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
     trailing: () => (
       <>
+        {predictionControl()}
         <ComposerSlotOutlet slot="composer.below" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
       </>
     ),
@@ -2702,6 +2689,7 @@ export function createPromptInputController(props: PromptInputProps) {
         if (prompt.dirty()) return
         if (store.mode === "shell") return i18n._(PI.placeholderShell)
         if (planActive()) return i18n._(PI.placeholderPlan)
+        if (!layout.isDesktop()) return i18n._(PI.placeholderTaskCompact)
         return i18n._({ id: "prompt.placeholder.task", message: "Describe a task, or type / for commands" })
       },
     },

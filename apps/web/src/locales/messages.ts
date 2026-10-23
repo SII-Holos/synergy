@@ -643,6 +643,7 @@ export const appShell = {
   // Mobile navigation drawer
   navLabel: { id: "app.shell.mobile.nav.label", message: "Navigation" },
   closeNav: { id: "app.shell.mobile.nav.close", message: "Close navigation" },
+  search: { id: "app.shell.mobile.nav.search", message: "Search sessions" },
   home: { id: "app.shell.mobile.nav.home", message: "Home" },
   projects: { id: "app.shell.mobile.nav.projects", message: "Projects" },
   tools: { id: "app.shell.mobile.nav.tools", message: "Tools" },
@@ -650,6 +651,9 @@ export const appShell = {
   toolsSection: { id: "app.shell.mobile.tools.section", message: "Tools" },
   newSession: { id: "app.shell.mobile.session.new", message: "New session" },
   noSessions: { id: "app.shell.mobile.session.empty", message: "No sessions yet" },
+  pinned: { id: "app.shell.mobile.session.group.pinned", message: "Pinned" },
+  today: { id: "app.shell.mobile.session.group.today", message: "Today" },
+  earlier: { id: "app.shell.mobile.session.group.earlier", message: "Earlier" },
   agenda: { id: "app.shell.mobile.tool.agenda", message: "Agenda" },
   library: { id: "app.shell.mobile.tool.library", message: "Library" },
   performance: { id: "app.shell.mobile.tool.performance", message: "Performance" },

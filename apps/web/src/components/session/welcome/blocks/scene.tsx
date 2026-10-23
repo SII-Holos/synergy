@@ -48,9 +48,13 @@ export default function BlocksScene(props: WelcomeSceneProps) {
     state().phase === "over"
       ? i18n._({ id: "welcome.blocks.over", message: "{score} points · Play again", values: { score: state().score } })
       : !props.active()
-        ? i18n._({ id: "welcome.common.continue", message: "Click to continue" })
+        ? props.coarsePointer()
+          ? i18n._({ id: "welcome.common.continueTouch", message: "Tap to continue" })
+          : i18n._({ id: "welcome.common.continue", message: "Click to continue" })
         : state().phase === "ready"
-          ? i18n._({ id: "welcome.blocks.ready", message: "Click to play · ↑ rotate · Space drop" })
+          ? props.coarsePointer()
+            ? i18n._({ id: "welcome.blocks.readyTouch", message: "Tap to play · Slide to move" })
+            : i18n._({ id: "welcome.blocks.ready", message: "Click to play · ↑ rotate · Space drop" })
           : i18n._({
               id: "welcome.blocks.score",
               message: "{score} points · {lines} lines",
@@ -158,11 +162,18 @@ export default function BlocksScene(props: WelcomeSceneProps) {
         onAction={start}
         onReset={reset}
         onReleaseInput={cancel}
-        help={i18n._({
-          id: "welcome.blocks.help",
-          message:
-            "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop.",
-        })}
+        help={
+          props.coarsePointer()
+            ? i18n._({
+                id: "welcome.blocks.helpTouch",
+                message: "Drag sideways to move, tap to rotate, and swipe down to drop. A held drag keeps moving.",
+              })
+            : i18n._({
+                id: "welcome.blocks.help",
+                message:
+                  "Left and right move, Up rotates, Down lowers and Space drops. Hold left or right to repeat. On touch, drag sideways continuously, tap to rotate, and swipe down to drop.",
+              })
+        }
         onKey={(e) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " ", "Enter"].includes(e.key)) return
           e.preventDefault()

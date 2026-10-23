@@ -154,6 +154,14 @@
   background: var(--settings-canvas-bg);
 }
 
+.settings-panel-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .settings-panel-mobile-detail-header {
   display: none;
 }
@@ -189,16 +197,31 @@
 @media (max-width: 767px) {
   .settings-panel-root {
     width: 100%;
+    flex-direction: column;
+  }
+
+  .settings-panel-mobile-summary {
+    flex: 0 0 auto;
   }
 
   .settings-panel-navigation {
     width: 100%;
     flex: 1 1 auto;
+    min-height: 0;
     border-right: 0;
   }
 
   .settings-panel-navigation-header {
-    padding-right: 56px;
+    flex-shrink: 0;
+    gap: 8px;
+    padding: 6px 16px 12px;
+  }
+
+  .settings-nav-title {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding-inline-end: 44px;
   }
 
   .settings-panel-navigation button {
@@ -4254,6 +4277,29 @@
     --settings-control-height: 44px;
     --settings-small-control-size: 44px;
   }
+  .settings-panel-frame .ds-settings-search {
+    height: var(--settings-control-height);
+    flex-shrink: 0;
+    gap: 8px;
+    padding-inline: 12px 0;
+  }
+  .settings-panel-frame .ds-settings-search input {
+    height: 100%;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .settings-panel-frame .ds-settings-search button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    background: transparent;
+  }
   .settings-panel-frame button,
   .settings-popover-layer button {
     min-width: 44px;
@@ -4547,6 +4593,7 @@
   text-align: center;
 }
 
+.settings-panel-main,
 .settings-panel-content,
 .ds-content-inner {
   container-type: inline-size;

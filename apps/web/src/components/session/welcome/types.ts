@@ -23,6 +23,7 @@ export type WelcomeSceneProps = {
   seed: number
   active: Accessor<boolean>
   reducedMotion: Accessor<boolean>
+  coarsePointer: Accessor<boolean>
   memory: WelcomeMemory
   interact: () => void
   pause: () => void

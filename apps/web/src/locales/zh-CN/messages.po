@@ -8770,12 +8770,32 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "项目"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr "搜索会话"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "工具"
+
+#. js-lingui-explicit-id
+msgid "app.shell.mobile.panels.label"
+msgstr "工作区面板"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "暂无会话"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr "更早"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.pinned"
+msgstr "置顶"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr "今天"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"
@@ -13285,18 +13305,6 @@ msgid "model.manager.tag.latest"
 msgstr "最新"
 
 #. js-lingui-explicit-id
-msgid "nav.tools.close"
-msgstr "关闭工具"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.section"
-msgstr "工具"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.title"
-msgstr "工具"
-
-#. js-lingui-explicit-id
 msgid "note.document.backupFailed"
 msgstr "本地备份不可用。请保持此窗口打开，直到更改保存成功。"
 
@@ -14026,6 +14034,13 @@ msgstr "发送命令失败"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.composerControls"
+msgstr "输入框选项"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
 msgstr "连接已断开——回复可能延迟"
 
@@ -14568,6 +14583,10 @@ msgid "prompt.long.expand"
 msgstr "展开编辑器"
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr "向上或向下拖动可调整编辑器大小"
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr "Markdown 格式"
 
@@ -14995,6 +15014,13 @@ msgstr "输入 Shell 命令…"
 #. js-lingui-explicit-id
 msgid "prompt.placeholder.task"
 msgstr "描述任务，或输入 / 查看命令"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr "描述任务"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -15626,6 +15652,13 @@ msgstr "添加文件"
 #. prompt-input.tsx — toolbar / chips
 msgid "prompt.toolbar.agent"
 msgstr "智能体"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.toolbar.assist"
+msgstr "辅助"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -27296,6 +27329,10 @@ msgid "welcome.blocks.help"
 msgstr "左右键移动，上键旋转，下键加速，空格直接落下；长按左右键可连续移动。触屏可连续横拖、轻点旋转、下划落下。"
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr "左右拖动移动方块，轻点旋转，下滑落下。按住拖动会持续移动。"
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr "俄罗斯方块"
 
@@ -27308,12 +27345,20 @@ msgid "welcome.blocks.ready"
 msgstr "点击开始 · ↑ 旋转 · 空格落下"
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr "轻点开始 · 滑动移动"
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr "{score} 分 · 已消 {lines} 行"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
 msgstr "点击继续"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
+msgstr "轻点继续"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.keyboardHelp"
@@ -27332,12 +27377,20 @@ msgid "welcome.common.statusControl"
 msgstr "点击开始或暂停，Esc 暂停，R 重新开始。"
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr "轻点开始或暂停。"
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr "从一个念头，到真正做出来。你想创造什么？"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
 msgstr "让想法，动起来。"
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
+msgstr "移开焦点后游戏会继续。"
 
 #. js-lingui-explicit-id
 msgid "welcome.common.unavailable"
@@ -27358,6 +27411,10 @@ msgstr "飞机大战游戏区域"
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
 msgstr "移动指针或使用方向键操控，点击或按空格开始自动射击。躲避碰撞；漏掉敌人会中断连击。拾取弹药获得十秒三向火力，气泡护罩抵挡一次碰撞，爱心补给箱恢复生命。"
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
+msgstr "拖动转向，轻点开始自动射击。避开碰撞，漏掉敌人会中断连击。拾取弹药可获得十秒三连火力，泡泡可抵挡一次撞击，补给箱可恢复生命。"
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.name"
@@ -27388,6 +27445,10 @@ msgid "welcome.flight.ready"
 msgstr "移动操控 · 点击起飞"
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr "拖动转向 · 轻点起飞"
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr "生命已满 · +{points} 分"
 
@@ -27416,6 +27477,10 @@ msgid "welcome.slingshot.help"
 msgstr "向后拉小精灵，松手击倒守卫。击碎支撑，让结构倒塌。左右键调整角度，上下键调整力度，空格发射，Esc 取消拉弓。"
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr "向后拖拽小精灵并松手，击倒守卫。击碎支撑，让结构倒塌。"
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr "再试一次"
 
@@ -27426,6 +27491,10 @@ msgstr "像素弹弓"
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
 msgstr "第 {level} 关 · 向后拉，松开发射 · {shots} 发"
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
+msgstr "第 {level} 关 · 向后拖动并松手 · {shots} 发"
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.score"
@@ -27444,12 +27513,20 @@ msgid "welcome.stack.help"
 msgstr "点击或按空格叠放移动的楼层，尽量对齐边缘。"
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr "轻点落下方块。对齐边缘。"
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr "叠叠高"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
 msgstr "点击落下"
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
+msgstr "轻点落下"
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.result"

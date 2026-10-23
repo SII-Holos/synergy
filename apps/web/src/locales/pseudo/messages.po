@@ -8770,12 +8770,32 @@ msgid "app.shell.mobile.nav.projects"
 msgstr "⟦Projects⟧"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.nav.search"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.nav.tools"
 msgstr "⟦Tools⟧"
+
+#. js-lingui-explicit-id
+msgid "app.shell.mobile.panels.label"
+msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "⟦No sessions yet⟧"
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.earlier"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.pinned"
+msgstr ""
+
+#. ── App Shell ────────────────────────────────────────────────────────────────
+msgid "app.shell.mobile.session.group.today"
+msgstr ""
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.new"
@@ -13285,18 +13305,6 @@ msgid "model.manager.tag.latest"
 msgstr "⟦Latest⟧"
 
 #. js-lingui-explicit-id
-msgid "nav.tools.close"
-msgstr "⟦Close tools⟧"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.section"
-msgstr "⟦Tools⟧"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.title"
-msgstr "⟦Tools⟧"
-
-#. js-lingui-explicit-id
 msgid "note.document.backupFailed"
 msgstr ""
 
@@ -14026,6 +14034,13 @@ msgstr "⟦Failed to send command⟧"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.composerControls"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.connectionLost"
 msgstr "⟦Connection lost — responses may be delayed⟧"
 
@@ -14568,6 +14583,10 @@ msgid "prompt.long.expand"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "prompt.long.expandDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "prompt.long.format"
 msgstr ""
 
@@ -14995,6 +15014,13 @@ msgstr "⟦Enter shell command...⟧"
 #. js-lingui-explicit-id
 msgid "prompt.placeholder.task"
 msgstr "⟦Describe a task, or type / for commands⟧"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.placeholder.taskCompact"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -15626,6 +15652,13 @@ msgstr "⟦Add files⟧"
 #. prompt-input.tsx — toolbar / chips
 msgid "prompt.toolbar.agent"
 msgstr "⟦Agent⟧"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.toolbar.assist"
+msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -27296,6 +27329,10 @@ msgid "welcome.blocks.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.name"
 msgstr ""
 
@@ -27308,11 +27345,19 @@ msgid "welcome.blocks.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.blocks.readyTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.blocks.score"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.continue"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.continueTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27332,11 +27377,19 @@ msgid "welcome.common.statusControl"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.common.statusControlTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.common.subtitle"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.common.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.common.touchHelp"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27357,6 +27410,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.flight.help"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.flight.helpTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27388,6 +27445,10 @@ msgid "welcome.flight.ready"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.flight.readyTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.flight.received.bonus"
 msgstr ""
 
@@ -27416,6 +27477,10 @@ msgid "welcome.slingshot.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.slingshot.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.slingshot.lost"
 msgstr ""
 
@@ -27425,6 +27490,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.slingshot.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.slingshot.readyTouch"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -27444,11 +27513,19 @@ msgid "welcome.stack.help"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "welcome.stack.helpTouch"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "welcome.stack.name"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "welcome.stack.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "welcome.stack.readyTouch"
 msgstr ""
 
 #. js-lingui-explicit-id

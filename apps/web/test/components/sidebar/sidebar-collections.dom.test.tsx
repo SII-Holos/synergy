@@ -84,7 +84,7 @@ beforeAll(async () => {
     })
     export const useGlobalSync = () => ({data:{scope:[],provider:{all:[],authHealth:{}}},sessionStatus:{},permissions:{},questions:{},cortex:[]})
     export const useGlobalSDK = () => ({url:"fixture",connected:()=>true,capabilities:{has:id=>query.get("core")!=="1"||["local-runtime","plugin-host"].includes(id),load:async()=>{}},event:{listen:()=>()=>{}},drafts:{hasDraftSession:()=>false},client:{global:{nav:{recent:async({tag})=>({data:{items:[entry("tag-result","home","History matching "+tag)],total:1,nextCursor:null}})}}}})
-    export const useHolos = () => ({loaded:false,state:{social:{},identity:{loggedIn:false},connection:{status:"disabled"}}})
+    export const useHolos = () => ({loaded:query.get("holos")==="1",state:{social:{},identity:{loggedIn:false},connection:{status:"disabled"}}})
     export const useProductUpdate = () => ({notice:()=>({visible:false})})
     export const usePlatform = () => ({platform:"web"})
     export const useTheme = () => ({mode:()=>query.get("mode")||"dark"})
@@ -123,6 +123,7 @@ beforeAll(async () => {
     import ${JSON.stringify(`/@fs/${source}/components/app-shell/mobile-drawer.css`)}
     const locale=new URLSearchParams(location.search).get("locale")||"zh-CN"
     const i18n=setupI18n({locale,messages:{en,"zh-CN":zh}})
+    window.sidebarI18n=i18n
     const selector = new URLSearchParams(location.search).get("selector")
     render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar onSearchOpen={()=>{}} onCreateProject={createProject}/>{selector&&<ProjectTaskButton label="No project" disabled={selector==="disabled"} uploading={selector==="uploading"}/>} {creating()&&<div role="dialog" aria-label="New project">Project creation</div>}</div>}/></Router></I18nProvider>,document.getElementById("root"))
   `,
@@ -560,6 +561,30 @@ test("signed-out account menus retain local settings with and without Holos", as
     expect(await menu.getByRole("menuitem", { name: "Import Agent", exact: true }).count()).toBe(core ? 0 : 1)
     expect(errors).toEqual([])
   }
+})
+
+// The account row derives its name and description from translated labels. If
+// those labels are evaluated once while the component is created, the row keeps
+// the mount-time language after a switch while every other string updates. Both
+// assertions therefore read the row and a neighbouring control after the same
+// in-page activation, without a reload.
+test("the account row follows a locale switch without remounting", async () => {
+  await open("?locale=en&holos=1")
+  const subtitle = page.locator(".sidebar-account-subtitle")
+  await subtitle.waitFor()
+  expect(await page.locator(".sidebar-account-name").innerText()).toBe("HOLOS account")
+  expect(await subtitle.innerText()).toBe("Not signed in · local workspace")
+  expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
+
+  await page.evaluate(() =>
+    (window as unknown as { sidebarI18n: { activate(locale: string): void } }).sidebarI18n.activate("zh-CN"),
+  )
+  await page.waitForFunction(
+    () => document.querySelector(".sidebar-account-subtitle")?.textContent === "未登录 · 本地工作台",
+  )
+  expect(await page.locator(".sidebar-account-name").innerText()).toBe("HOLOS 账号")
+  expect(await page.getByRole("button", { name: "搜索会话", exact: true }).count()).toBe(1)
+  expect(errors).toEqual([])
 })
 
 test("tools precede tags and vertical categories while the list scrolls independently", async () => {

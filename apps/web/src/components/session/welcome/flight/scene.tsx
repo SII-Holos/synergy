@@ -114,8 +114,14 @@ export default function FlightScene(props: WelcomeSceneProps) {
     const s = state()
     if (s.phase === "over")
       return i18n._({ id: "welcome.flight.over", message: "{score} points · Fly again", values: { score: s.score } })
-    if (!props.active()) return i18n._({ id: "welcome.common.continue", message: "Click to continue" })
-    if (s.phase === "ready") return i18n._({ id: "welcome.flight.ready", message: "Move to steer · Click to fly" })
+    if (!props.active())
+      return props.coarsePointer()
+        ? i18n._({ id: "welcome.common.continueTouch", message: "Tap to continue" })
+        : i18n._({ id: "welcome.common.continue", message: "Click to continue" })
+    if (s.phase === "ready")
+      return props.coarsePointer()
+        ? i18n._({ id: "welcome.flight.readyTouch", message: "Drag to steer · Tap to fly" })
+        : i18n._({ id: "welcome.flight.ready", message: "Move to steer · Click to fly" })
     return [
       String(s.score).padStart(4, "0"),
       "♥".repeat(s.lives),
@@ -313,11 +319,19 @@ export default function FlightScene(props: WelcomeSceneProps) {
         onAction={start}
         onReset={reset}
         onReleaseInput={releaseInput}
-        help={i18n._({
-          id: "welcome.flight.help",
-          message:
-            "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair.",
-        })}
+        help={
+          props.coarsePointer()
+            ? i18n._({
+                id: "welcome.flight.helpTouch",
+                message:
+                  "Drag to steer and touch to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair.",
+              })
+            : i18n._({
+                id: "welcome.flight.help",
+                message:
+                  "Move the pointer or use arrow keys to steer. Click or press Space to start automatic fire. Avoid collisions; missed enemies break your combo. Collect ammunition for ten seconds of triple fire, a bubble for one protected hit, or a heart supply box to repair.",
+              })
+        }
         onKey={(e) => {
           if (e.key.startsWith("Arrow")) {
             e.preventDefault()
