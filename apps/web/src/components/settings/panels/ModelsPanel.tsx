@@ -30,7 +30,7 @@ const noProviderHint = {
 const quickSwitcherTitle = { id: "settings.models.quickSwitcher.title", message: "Quick switcher models" }
 const quickSwitcherDescription = {
   id: "settings.models.quickSwitcher.description",
-  message: "Pick the connected models that appear in model switchers and command shortcuts.",
+  message: "Pin models to the Quick switch group. All available models remain selectable.",
 }
 const connectProviderLabel = { id: "settings.models.connectProvider", message: "Connect provider" }
 

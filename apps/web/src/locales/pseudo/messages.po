@@ -13241,12 +13241,12 @@ msgid "model.manager.empty.connected"
 msgstr "⟦No connected model results⟧"
 
 #. js-lingui-explicit-id
-msgid "model.manager.empty.quickSwitch"
-msgstr "⟦No quick-switch models⟧"
-
-#. js-lingui-explicit-id
 msgid "model.manager.quick"
 msgstr "⟦Quick switch⟧"
+
+#. js-lingui-explicit-id
+msgid "model.manager.recent"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"

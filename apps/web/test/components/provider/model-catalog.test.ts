@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
 import {
   isSelectableModel,
-  listQuickSwitcherEntries,
+  listModelSelectionEntries,
   listSelectableConnectedModels,
   recommendQuickSwitcherModels,
   resolveQuickSwitcherModels,
@@ -143,7 +143,7 @@ describe("provider model catalog selection", () => {
     ])
   })
 
-  test("recent-only models stay out of provider quick-switch groups", () => {
+  test("shortcut preferences never hide models from provider groups", () => {
     const connected = provider({
       luna: { ...baseModel, id: "gpt-5.6-luna", name: "GPT-5.6 Luna" },
       sol: { ...baseModel, id: "gpt-5.6-sol", name: "GPT-5.6 Sol" },
@@ -153,13 +153,37 @@ describe("provider model catalog selection", () => {
     const models = listSelectableConnectedModels([connected], ["provider"])
     const configured = models.filter((model) => model.id.startsWith("gpt-5.6"))
     const recent = models.filter((model) => model.id === "gpt-5.5")
-    const entries = listQuickSwitcherEntries(configured, recent)
+    const entries = listModelSelectionEntries(models, configured, recent)
 
-    expect(entries.filter((entry) => entry.group === "Recent").map((entry) => entry.id)).toEqual(["gpt-5.5"])
-    expect(entries.filter((entry) => entry.group === "Provider").map((entry) => entry.id)).toEqual([
+    expect(entries.filter((entry) => entry.section === "recent").map((entry) => entry.id)).toEqual(["gpt-5.5"])
+    expect(entries.filter((entry) => entry.section === "quick").map((entry) => entry.id)).toEqual([
       "gpt-5.6-luna",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
     ])
+    expect(entries.filter((entry) => entry.section === "provider").map((entry) => entry.id)).toEqual([
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+    ])
+    expect(new Set(entries.map((entry) => entry.listKey)).size).toBe(entries.length)
+    expect(listModelSelectionEntries(models, [], []).map((entry) => entry.id)).toEqual([
+      "gpt-5.5",
+      "gpt-5.6-luna",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+    ])
+  })
+
+  test("provider restrictions apply to catalog and shortcut sections alike", () => {
+    const models = [
+      { id: "shared", name: "Shared", provider: { id: "first", name: "First" } },
+      { id: "shared", name: "Shared", provider: { id: "second", name: "Second" } },
+    ]
+    const entries = listModelSelectionEntries(models, models, models, "second")
+    expect(entries.map((entry) => entry.section)).toEqual(["recent", "quick", "provider"])
+    expect(entries.every((entry) => entry.provider.id === "second")).toBe(true)
+    expect(new Set(entries.map((entry) => entry.listKey)).size).toBe(3)
   })
 })

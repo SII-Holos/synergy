@@ -21,6 +21,8 @@ export interface ListProps<T> extends FilteredListProps<T> {
   children: (item: T) => JSX.Element
   emptyMessage?: string
   interactive?: boolean
+  selectionKey?: (item: T) => string
+  groupLabel?: (group: { category: string; items: T[] }) => string
   onKeyEvent?: (event: KeyboardEvent, item: T | undefined) => void
   onMove?: (item: T | undefined) => void
   activeIcon?: IconName
@@ -45,7 +47,10 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
   const interactive = () => props.interactive ?? true
-  const isSelected = (item: T) => props.current !== undefined && props.key(item) === props.key(props.current)
+  const isSelected = (item: T) => {
+    const key = props.selectionKey ?? props.key
+    return props.current !== undefined && key(item) === key(props.current)
+  }
   let searchContainerRef: HTMLDivElement | undefined
 
   onMount(() => {
@@ -240,7 +245,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
             {(group) => (
               <div data-slot="list-group">
                 <Show when={group.category}>
-                  <GroupHeader category={group.category} />
+                  <GroupHeader category={props.groupLabel?.(group) ?? group.category} />
                 </Show>
                 <div data-slot="list-items">
                   <For each={group.items}>
