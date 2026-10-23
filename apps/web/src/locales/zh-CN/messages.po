@@ -16295,6 +16295,10 @@ msgid "review.panel.layoutState"
 msgstr "差异布局：{layout}"
 
 #. js-lingui-explicit-id
+msgid "review.panel.live"
+msgstr "这是任务进行时记录的更改。刷新以加载最新更改。"
+
+#. js-lingui-explicit-id
 msgid "review.panel.loading"
 msgstr "正在加载比较…"
 
@@ -17131,6 +17135,30 @@ msgstr "秒"
 #. js-lingui-explicit-id
 msgid "session.agenda.wake.unit.w"
 msgstr "周"
+
+#. js-lingui-explicit-id
+msgid "session.changes.fileCount"
+msgstr "{count} 个文件"
+
+#. js-lingui-explicit-id
+msgid "session.changes.incompleteHint"
+msgstr "显示最近记录的更改。部分文件或更新可能暂不可用。"
+
+#. js-lingui-explicit-id
+msgid "session.changes.recorded"
+msgstr "已记录更改"
+
+#. js-lingui-explicit-id
+msgid "session.changes.reviewHint"
+msgstr "打开本轮任务记录的更改"
+
+#. js-lingui-explicit-id
+msgid "session.changes.turn"
+msgstr "本轮更改"
+
+#. js-lingui-explicit-id
+msgid "session.changes.unavailable"
+msgstr "暂不可用"
 
 #. js-lingui-explicit-id
 msgid "session.cmd.category.agent"

@@ -167,7 +167,7 @@ export function SessionProgressPanel(props: {
     <Show when={phase() !== "hidden"}>
       <div
         ref={root}
-        class="relative w-full"
+        class="session-progress-panel relative w-full"
         hidden={props.suppressed}
         inert={props.suppressed || phase() === "exiting"}
         aria-hidden={props.suppressed}

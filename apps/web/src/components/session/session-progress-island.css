@@ -59,6 +59,9 @@
 .session-progress-island-positioner {
   pointer-events: none;
 }
+.session-progress-island:not([data-expanded="true"]) .session-progress-island-positioner {
+  display: none;
+}
 .session-progress-island-positioner[data-compact="true"] {
   position: fixed;
   top: var(--progress-viewport-top, 0);

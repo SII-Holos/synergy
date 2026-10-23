@@ -574,6 +574,24 @@ describe("session turn assistant collection", () => {
       "error",
     )
     expect(shouldShowTurnDiffs({ summary: { diffs: [diff], diffState: { status: "ready" } } })).toBe("ready")
+    expect(
+      shouldShowTurnDiffs({
+        summary: {
+          diffs: [],
+          diffTotals: { files: 300, additions: 900, deletions: 1 },
+          diffState: { status: "ready" },
+        },
+      }),
+    ).toBe("ready")
+    expect(
+      shouldShowTurnDiffs({
+        summary: {
+          diffs: [diff],
+          diffTotals: { files: 300, additions: 900, deletions: 1 },
+          diffState: { status: "live" },
+        },
+      }),
+    ).toBe("hidden")
     expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "ready" } } })).toBe("hidden")
     expect(shouldShowTurnDiffs({ summary: { diffs: [] } })).toBe("hidden")
   })

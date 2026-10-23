@@ -60,6 +60,10 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
   const { _, i18n } = useLingui()
   const recordingNotice = () => {
     const state = props.diffState?.()
+    if (state?.status === "live")
+      return state.code
+        ? translateDescriptor(recordingErrors.incomplete, i18n())
+        : _({ id: "review.panel.live", message: "Recorded during this task. Refresh to load the latest changes." })
     if (state?.status === "pending")
       return _({ id: "session.review.recording.pending", message: "Recording file changes…" })
     if (state?.status === "error" || state?.status === "partial")

@@ -21,6 +21,7 @@ export type { TurnChangeSummaryDiff } from "./turn-change-summary-panel-model"
 
 export type TurnChangeSummaryPanelProps = {
   diffs: TurnChangeSummaryDiff[]
+  totals?: { files: number; additions: number; deletions: number }
   state?: Exclude<TurnDiffPanelState, "hidden">
   animateReady?: boolean
   previewLimit?: number
@@ -40,13 +41,13 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   const visibleDiffs = createMemo(() =>
     turnChangeSummaryVisibleDiffs(files(), { expanded: store.expanded, previewLimit: previewLimit() }),
   )
-  const title = createMemo(() => turnChangeSummaryTitle(files().length, i18n()))
+  const title = createMemo(() => turnChangeSummaryTitle(props.totals?.files ?? files().length, i18n()))
   const toggleLabel = createMemo(() =>
     turnChangeSummaryToggleLabel({ expanded: store.expanded, hiddenCount: hiddenCount() }, i18n()),
   )
 
   return (
-    <Show when={files().length > 0}>
+    <Show when={(props.totals?.files ?? files().length) > 0}>
       <section
         data-component="turn-change-summary-panel"
         data-diff-state={state()}
@@ -61,7 +62,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </span>
             <div data-slot="turn-change-summary-title-copy">
               <div data-slot="turn-change-summary-title">{title()}</div>
-              <DiffChanges changes={files()} />
+              <DiffChanges changes={props.totals ?? files()} />
             </div>
           </div>
           <div data-slot="turn-change-summary-actions">

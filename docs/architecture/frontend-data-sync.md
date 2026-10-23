@@ -144,6 +144,8 @@ type MessageWindowMetadata = {
 
 The `messages` array in the store contains only the visible window messages, not the full transcript. `tailMissingLatest` records that a history prepend cap-evicted newest overflow, so the bounded window's tail no longer reaches the true latest messages. Latest page applies and latest-mode reconciles clear it; history prepends, in-place reconciles, and removals preserve it.
 
+Current-turn file changes have a separate per-Session compact projection containing the indexed latest root, complete totals, recording state and opaque comparison revision. Sequenced root-message updates merge it independently of message-window insertion; older roots and non-root messages cannot replace it. Cold activation, reconnect and root/history removal refresh it through the generated current-turn API, with per-resource epoch, sequence and in-flight generation checks. Identical requests coalesce; a superseded in-flight request drains before a fresh request starts. Scope disposal and Session eviction release this projection with their other data. Review leases a complete comparison on entry and explicit refresh; list, patch and content reads share that revision, while later numeric events preserve selected files, reading state and comment versions.
+
 ### Page size and cap
 
 - Timeline requests use at most 100 headers and a 256 KiB decoded summary budget. Part pages have independent cursors, the same count and byte ceilings, and a target Part window for search or hash location. The store primary-message cap is 500.

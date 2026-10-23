@@ -9,6 +9,7 @@ import { createReviewReadQueue } from "./review-read-queue"
 import { reviewFileKey } from "@ericsanchezok/synergy-ui/session-review"
 import type {
   FileDiff,
+  TurnFileComparison,
   ReviewComparisonFile,
   ReviewFileVersions,
   ReviewStateResult,
@@ -37,8 +38,9 @@ export function useReviewData(input: {
   const [accepted, setAccepted] = createSignal<{
     key: string
     rows: ReviewRow[]
-    recording?: { status: string; code?: string }
+    recording?: TurnFileComparison["recording"]
     endpoints?: { from: string; to: string }
+    revision?: string
   }>()
   const [storedNotes, setStoredNotes] = createSignal<ReviewStateResult & { key: string }>()
   const cache = new Map<string, ReviewContent>()
@@ -48,6 +50,12 @@ export function useReviewData(input: {
   let controller = new AbortController()
   let comparisonController = new AbortController()
   let notesController = new AbortController()
+  let comparisonLease: { sessionID: string; revision: string } | undefined
+  const releaseComparison = () => {
+    const lease = comparisonLease
+    comparisonLease = undefined
+    if (lease) void sdk.client.session.files.release(lease).catch(() => {})
+  }
   const key = createMemo(() =>
     JSON.stringify([
       sdk.url,
@@ -82,6 +90,7 @@ export function useReviewData(input: {
   }
   createEffect(() => {
     key()
+    releaseComparison()
     controller.abort()
     controller = new AbortController()
     cache.clear()
@@ -92,7 +101,7 @@ export function useReviewData(input: {
   })
   const requestKey = createMemo(() => {
     const summary = params.id ? sync.session.get(params.id)?.summary : undefined
-    return JSON.stringify([key(), refresh(), historical() ? summary : undefined])
+    return JSON.stringify([key(), refresh(), input.source() === "session" ? summary : undefined])
   })
   const [comparison] = createResource(requestKey, async () => {
     comparisonController.abort()
@@ -103,15 +112,17 @@ export function useReviewData(input: {
       signal = comparisonController.signal
     if (!sessionID) throw new Error(_(C.sessionRequired))
     let rows: ReviewRow[]
-    let recording: { status: string; code?: string } | undefined
+    let recording: TurnFileComparison["recording"]
     let endpoints: { from: string; to: string } | undefined
+    let revision: string | undefined
     if (source === "turn") {
       const messageID = input.messageID()
       if (!messageID) throw new Error(_(C.noTurn))
-      const result = await sdk.client.session.message({ sessionID, messageID }, { signal, throwOnError: true })
-      if (result.data?.info.role !== "user") throw new Error(_(C.turnUnavailable))
-      rows = result.data.info.summary?.diffs ?? []
-      recording = result.data.info.summary?.diffState
+      const result = await sdk.client.session.files.comparison({ sessionID, messageID }, { signal, throwOnError: true })
+      if (!result.data) throw new Error(_(C.turnUnavailable))
+      rows = result.data.files
+      recording = result.data.recording
+      revision = result.data.revision
     } else if (source === "session") {
       const result = await sdk.client.session.diff({ sessionID }, { signal, throwOnError: true })
       rows = result.data ?? []
@@ -122,8 +133,13 @@ export function useReviewData(input: {
       rows = result.data.files
       endpoints = { from: result.data.from, to: result.data.to }
     }
-    if (signal.aborted || captured !== key()) throw new DOMException("Aborted", "AbortError")
-    const value = { key: captured, rows, recording, endpoints }
+    if (signal.aborted || captured !== key()) {
+      if (revision) void sdk.client.session.files.release({ sessionID, revision }).catch(() => {})
+      throw new DOMException("Aborted", "AbortError")
+    }
+    releaseComparison()
+    if (revision) comparisonLease = { sessionID, revision }
+    const value = { key: captured, rows, recording, endpoints, revision }
     const loaded = new Set(cache.keys())
     const live = new Set(rows.map(reviewFileKey))
     controller.abort()
@@ -156,6 +172,7 @@ export function useReviewData(input: {
     if (properties.sessionID === params.id && !saving()) void reloadNotes()
   })
   onCleanup(() => {
+    releaseComparison()
     controller.abort()
     comparisonController.abort()
     notesController.abort()
@@ -191,6 +208,7 @@ export function useReviewData(input: {
     failures.delete(id)
     const captured = key(),
       sessionID = params.id!,
+      comparisonRevision = context()?.revision,
       signal = controller.signal
     const operation = queue
       .run(signal, async () => {
@@ -204,6 +222,7 @@ export function useReviewData(input: {
               workspaceID: row.workspace.id,
               generation: row.workspace.generation,
               file: row.file,
+              revision: comparisonRevision,
             }
             const [diff, versions] = await Promise.all([
               sdk.client.session.files.diff(query, { signal, throwOnError: true }),

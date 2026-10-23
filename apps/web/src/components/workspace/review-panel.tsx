@@ -60,6 +60,12 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
   const [draftFrom, setDraftFrom] = createSignal(from()),
     [draftTo, setDraftTo] = createSignal(to())
   const data = useReviewData({ source, messageID, from, to })
+  const recordingLabel = () => {
+    const recording = data.context()?.recording
+    if (!recording || recording.status === "ready") return
+    if (recording.status === "pending") return _(C.pending)
+    return _(recording.status === "live" && !recording.code ? C.live : C.partial)
+  }
   const [filter, setFilter] = createSignal("")
   const [selected, setSelected] = createSignal<string>()
   const [expanded, setExpanded] = createSignal<string[]>([])
@@ -565,7 +571,14 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                     <Button variant="ghost" onClick={() => void preview(value())}>
                       {_(C.versions)}
                     </Button>
-                    <Show when={data.historical() && value().workspace}>
+                    <Show
+                      when={
+                        data.historical() &&
+                        value().workspace &&
+                        data.context()?.recording?.status !== "live" &&
+                        data.context()?.recording?.status !== "pending"
+                      }
+                    >
                       <Button
                         variant="ghost"
                         onClick={() =>
@@ -810,7 +823,13 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               >
                 {_(C.copyApply)}
               </Button>
-              <Show when={data.historical()}>
+              <Show
+                when={
+                  data.historical() &&
+                  data.context()?.recording?.status !== "live" &&
+                  data.context()?.recording?.status !== "pending"
+                }
+              >
                 <Button
                   variant="ghost"
                   icon={getSemanticIcon("command.undo")}
@@ -927,10 +946,12 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
           </Button>
         </div>
       </Show>
-      <Show when={data.context()?.recording && data.context()?.recording?.status !== "ready"}>
-        <div class="review-banner" role="status">
-          {_(data.context()?.recording?.status === "pending" ? C.pending : C.partial)}
-        </div>
+      <Show when={recordingLabel()}>
+        {(label) => (
+          <div class="review-banner" role="status">
+            {label()}
+          </div>
+        )}
       </Show>
       <Show when={notice() || data.failure() || data.notes.error}>
         <div class="review-banner" role={data.failure() || data.notes.error ? "alert" : "status"}>
@@ -957,7 +978,9 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               when={
                 data.context() &&
                 !data.rows().length &&
-                (!data.context()?.recording || data.context()?.recording?.status === "ready")
+                (!data.context()?.recording ||
+                  data.context()?.recording?.status === "ready" ||
+                  data.context()?.recording?.status === "live")
               }
             >
               <div class="review-state" role="status">

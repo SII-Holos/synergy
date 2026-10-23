@@ -16295,6 +16295,10 @@ msgid "review.panel.layoutState"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "review.panel.live"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "review.panel.loading"
 msgstr ""
 
@@ -17131,6 +17135,30 @@ msgstr "⟦seconds⟧"
 #. js-lingui-explicit-id
 msgid "session.agenda.wake.unit.w"
 msgstr "⟦weeks⟧"
+
+#. js-lingui-explicit-id
+msgid "session.changes.fileCount"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.incompleteHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.recorded"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.reviewHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.turn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.changes.unavailable"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
