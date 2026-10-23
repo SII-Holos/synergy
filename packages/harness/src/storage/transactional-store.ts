@@ -879,28 +879,48 @@ export class StoreTransaction {
     return rows.map((row) => JSON.parse(row.key_text) as string[]).sort()
   }
 
+  private artifactSubtree(prefix: string[], after = "") {
+    const values: SqlValue[] = [this.namespace]
+    let condition = "namespace = ?"
+    if (after) {
+      condition += " AND key_text > ?"
+      values.push(after)
+    }
+    if (!prefix.length) return { condition, values }
+    const text = JSON.stringify(prefix)
+    if (this.backend === "sqlite") {
+      // Canonical JSON string-array keys continue only with ',' or ']' after
+      // the last segment. SQLite's BINARY primary key therefore covers exactly
+      // the descendants and root in this interval, without an owner-wide scan.
+      if (!after) {
+        condition += " AND key_text >= ?"
+        values.push(text.slice(0, -1) + ",")
+      }
+      condition += " AND key_text <= ?"
+      values.push(text)
+      return { condition, values }
+    }
+    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
+    condition += " AND (key_text = ? OR key_text LIKE ? ESCAPE '!')"
+    values.push(text, like)
+    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
+    if (prefix.length >= ownerLength) {
+      condition += " AND owner_key = ?"
+      values.push(JSON.stringify(prefix.slice(0, ownerLength)))
+    }
+    return { condition, values }
+  }
+
   async removeTree(prefix: string[]): Promise<void> {
     this.check(true)
     await this.assertAdmitted([prefix], true)
     await this.mutationGuard?.([prefix], true)
-    let artifactCondition = "namespace = ?"
-    const artifactValues: SqlValue[] = [this.namespace]
-    if (prefix.length) {
-      const text = JSON.stringify(prefix)
-      const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
-      artifactCondition += " AND (key_text = ? OR key_text LIKE ? ESCAPE '!')"
-      artifactValues.push(text, like)
-      const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
-      if (prefix.length >= ownerLength) {
-        artifactCondition += " AND owner_key = ?"
-        artifactValues.push(JSON.stringify(prefix.slice(0, ownerLength)))
-      }
-    }
+    const artifacts = this.artifactSubtree(prefix)
     await this.connection.query(
-      `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${artifactCondition} ON CONFLICT(namespace, pack) DO NOTHING`,
-      artifactValues,
+      `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${artifacts.condition} ON CONFLICT(namespace, pack) DO NOTHING`,
+      artifacts.values,
     )
-    await this.connection.query(`DELETE FROM storage_artifacts WHERE ${artifactCondition}`, artifactValues)
+    await this.connection.query(`DELETE FROM storage_artifacts WHERE ${artifacts.condition}`, artifacts.values)
     if (!prefix.length) {
       await this.connection.query(
         "UPDATE storage_records SET body = NULL, revision = revision + 1, updated = ? WHERE namespace = ? AND body IS NOT NULL",
@@ -1001,23 +1021,15 @@ export class StoreTransaction {
     await this.assertAdmitted([prefix], true)
     await this.mutationGuard?.([prefix], true)
     if (!prefix.length) throw new StorageIntegrityError("Cannot prune the storage root")
-    const text = JSON.stringify(prefix)
-    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
-    let artifactCondition = "namespace = ? AND (key_text = ? OR key_text LIKE ? ESCAPE '!')"
-    const artifactValues: SqlValue[] = [this.namespace, text, like]
-    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
-    if (prefix.length >= ownerLength) {
-      artifactCondition += " AND owner_key = ?"
-      artifactValues.push(JSON.stringify(prefix.slice(0, ownerLength)))
-    }
+    const artifacts = this.artifactSubtree(prefix)
     await this.connection.query(
-      `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${artifactCondition} ON CONFLICT(namespace, pack) DO NOTHING`,
-      artifactValues,
+      `INSERT INTO storage_artifact_gc(namespace, pack) SELECT namespace, pack FROM storage_artifacts WHERE ${artifacts.condition} ON CONFLICT(namespace, pack) DO NOTHING`,
+      artifacts.values,
       options.maintenance ? { maintenance: "prune" } : undefined,
     )
     await this.connection.query(
-      `DELETE FROM storage_artifacts WHERE ${artifactCondition}`,
-      artifactValues,
+      `DELETE FROM storage_artifacts WHERE ${artifacts.condition}`,
+      artifacts.values,
       options.maintenance ? { maintenance: "prune" } : undefined,
     )
     const tree =
@@ -1084,12 +1096,10 @@ export class StoreTransaction {
       records += Number(row?.count ?? 0)
       if (records > limits.records) return "records"
     }
-    const text = JSON.stringify(prefix)
-    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
-    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
+    const subtree = this.artifactSubtree(prefix)
     const artifacts = await this.connection.query(
-      "SELECT key_text FROM storage_artifacts WHERE namespace = ? AND owner_key = ? AND (key_text = ? OR key_text LIKE ? ESCAPE '!') LIMIT ?",
-      [this.namespace, JSON.stringify(prefix.slice(0, ownerLength)), text, like, limits.artifacts + 1],
+      `SELECT key_text FROM storage_artifacts WHERE ${subtree.condition} LIMIT ?`,
+      [...subtree.values, limits.artifacts + 1],
     )
     if (artifacts.length > limits.artifacts) return "artifacts"
   }
@@ -1353,24 +1363,12 @@ export class StoreTransaction {
   async *artifacts(prefix: string[] = []): AsyncGenerator<{ key: string[]; location: ArtifactLocation }> {
     this.check()
     await this.assertAdmitted([prefix], true)
-    const text = JSON.stringify(prefix)
-    const like = (text.slice(0, -1) + ",").replace(/[!%_]/g, (value) => "!" + value) + "%"
-    const condition = prefix.length ? " AND (key_text = ? OR key_text LIKE ? ESCAPE '!')" : ""
-    const ownerLength = ["sessions", "operations"].includes(prefix[0]) ? 3 : 1
-    const owner = prefix.length >= ownerLength ? " AND owner_key = ?" : ""
     let after = ""
     for (;;) {
+      const subtree = this.artifactSubtree(prefix, after)
       const rows = await this.connection.query(
-        "SELECT key_text, location FROM storage_artifacts WHERE namespace = ? AND key_text > ?" +
-          condition +
-          owner +
-          " ORDER BY key_text LIMIT 256",
-        [
-          this.namespace,
-          after,
-          ...(prefix.length ? [text, like] : []),
-          ...(owner ? [JSON.stringify(prefix.slice(0, ownerLength))] : []),
-        ],
+        `SELECT key_text, location FROM storage_artifacts WHERE ${subtree.condition} ORDER BY key_text LIMIT 256`,
+        subtree.values,
       )
       if (!rows.length) return
       for (const row of rows)
