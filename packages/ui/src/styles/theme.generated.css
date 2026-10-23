@@ -37,6 +37,9 @@
   --surface-hover-base: #F0F0F0;
   --surface-overlay: #00000057;
   --surface-shadow: #1418201f;
+  --brand-ribbon-start: #92bf46;
+  --brand-ribbon-middle: #4f9bb6;
+  --brand-ribbon-end: #5e52b4;
   --surface-brand-base: #3b82f6;
   --surface-brand-image: #fdfdfd;
   --surface-brand-hover: #549cff;
@@ -319,6 +322,9 @@
     --surface-hover-base: #292929;
     --surface-overlay: #0000007a;
     --surface-shadow: #00000066;
+    --brand-ribbon-start: #92bf46;
+    --brand-ribbon-middle: #4f9bb6;
+    --brand-ribbon-end: #5e52b4;
     --surface-brand-base: #3b82f6;
     --surface-brand-image: #fdfdfd;
     --surface-brand-hover: #549cff;

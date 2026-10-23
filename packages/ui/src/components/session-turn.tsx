@@ -83,6 +83,7 @@ import {
 } from "./session-turn-activity"
 import { timelineItemStableKey, timelineVisualKind, type SessionTurnTimelineItem } from "./session-turn-timeline-item"
 import { ExecutionCompletion, type TurnExecutionSummary } from "./execution-completion"
+import { createCompletionRibbon } from "./completion-ribbon"
 import { externalLoadNotify, externalLookup, resolveExternalToolRenderer } from "./tool-registry-lazy"
 export { timelineItemStableKey, timelineVisualKind } from "./session-turn-timeline-item"
 export type { SessionTurnTimelineItem, SessionTurnTimelineVisualKind } from "./session-turn-timeline-item"
@@ -1511,6 +1512,20 @@ export function SessionTurn(
     if (!paused() || summary?.status !== "running") return summary
     return { ...summary, status: paused()?.reason === "failed" ? "failed" : "interrupted" }
   }
+  let turnElement: HTMLDivElement | undefined
+  const completionSucceeded = () =>
+    executionSummary()?.status === "completed" &&
+    !paused() &&
+    (props.executionState ? props.executionState.status === "completed" : !error())
+  const completionRibbon = showFooter()
+    ? createCompletionRibbon({
+        root: () => turnElement,
+        replyID: () => lastAssistantMessage()?.id,
+        working: () => isLastUserMessage() && working(),
+        completed: () => showExecutionCompletion() && completionSucceeded(),
+        following,
+      })
+    : undefined
   const hasProcess = createMemo(
     () =>
       (props.segment?.process?.hasContent ?? (turnReasoning().length > 0 || timelineItems().some(isProcessItem))) ||
@@ -1603,6 +1618,7 @@ export function SessionTurn(
 
   return (
     <div
+      ref={turnElement}
       data-component="session-turn"
       data-segment-footer={props.segment?.footer ? "" : undefined}
       data-activity-body={props.segment?.activityBody ? "" : undefined}
@@ -1817,6 +1833,13 @@ export function SessionTurn(
                                         data-slot="session-turn-timeline-item"
                                         data-scroll-anchor={key}
                                         data-kind={displayItemVisualKind(current())}
+                                        data-completion-reply={
+                                          displayItemVisualKind(current()) === "text" &&
+                                          current().message.role === "assistant" &&
+                                          !isProcessItem(current())
+                                            ? current().message.id
+                                            : undefined
+                                        }
                                         data-activity-continues={activityContinues() ? "" : undefined}
                                         data-activity-follows={activityFollows() ? "" : undefined}
                                         ref={motionRef}
@@ -1880,7 +1903,12 @@ export function SessionTurn(
                         </For>
                         <Show when={showFooter() && showExecutionCompletion()}>
                           <div data-slot="session-turn-timeline-item" data-kind="execution-completion">
-                            <ExecutionCompletion summary={executionSummary()} onDetails={props.onExecutionDetails} />
+                            <ExecutionCompletion
+                              summary={executionSummary()}
+                              onDetails={props.onExecutionDetails}
+                              showSignature={completionSucceeded()}
+                              ribbonRef={completionRibbon}
+                            />
                           </div>
                         </Show>
                         <Show when={showFooter() && showCopyActions()}>
