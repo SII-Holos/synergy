@@ -121,6 +121,79 @@ export namespace PartContent {
     })
   }
 
+  async function* textBlocks(key: string[], value: Stored, signal?: AbortSignal) {
+    const content = checkpoint(value)
+    if (!content) {
+      if (value.type === "text" || value.type === "reasoning") yield (value as Streaming).text
+      return
+    }
+    if (content.inline !== undefined) {
+      if (content.chunks !== 0 || content.inline.length !== content.codeUnits)
+        throw new StorageIntegrityError("Streaming Part inline content does not match its checkpoint")
+      yield content.inline
+      return
+    }
+    let codeUnits = 0
+    for (let sequence = 0; sequence < content.chunks; sequence++) {
+      signal?.throwIfAborted()
+      const bytes = await Storage.readBinary(StoragePath.partContentChunk(key, content.generation, sequence)).catch(
+        (error) => {
+          if (error instanceof Storage.NotFoundError)
+            throw new StorageIntegrityError("Streaming Part content is missing a committed chunk", { cause: error })
+          throw error
+        },
+      )
+      if (bytes.length % 2) throw new StorageIntegrityError("Streaming Part content has an incomplete UTF-16 code unit")
+      codeUnits += bytes.length / 2
+      if (codeUnits > content.codeUnits)
+        throw new StorageIntegrityError("Streaming Part content exceeds its checkpoint")
+      yield Buffer.from(bytes).toString("utf16le")
+    }
+    if (codeUnits !== content.codeUnits)
+      throw new StorageIntegrityError("Streaming Part content length does not match its checkpoint")
+  }
+
+  export async function prefix(
+    sources: ReadonlyArray<{ key: string[]; value: Stored }>,
+    options: {
+      maxLength: number
+      separator?: string
+      normalizeWhitespace?: boolean
+      trim?: boolean
+      signal?: AbortSignal
+    },
+  ) {
+    if (Storage.inTransaction())
+      throw new StorageConflictError("Part prefixes must be read outside a storage transaction")
+    if (!Number.isInteger(options.maxLength) || options.maxLength <= 0) throw new RangeError("Invalid prefix length")
+    let output = ""
+    let started = false
+    let whitespace = false
+    const append = (block: string) => {
+      if (options.normalizeWhitespace) {
+        const normalized = block.replace(/\s+/g, " ")
+        block = whitespace && normalized.startsWith(" ") ? normalized.slice(1) : normalized
+        if (normalized.length) whitespace = normalized.endsWith(" ")
+      }
+      if (!started && options.trim !== false) block = block.trimStart()
+      if (!block.length) return false
+      started = true
+      const remaining = options.maxLength - output.length
+      output += block.slice(0, remaining)
+      return (
+        output.length === options.maxLength &&
+        (options.trim === false || /\S$/.test(output) || /\S/.test(block.slice(remaining)))
+      )
+    }
+    for (let index = 0; index < sources.length; index++) {
+      options.signal?.throwIfAborted()
+      if (index && append(options.separator ?? "")) return output
+      const source = sources[index]
+      for await (const block of textBlocks(source.key, source.value, options.signal)) if (append(block)) return output
+    }
+    return options.trim === false ? output : output.trimEnd()
+  }
+
   export async function assertOwner(tx: StoreTransaction, key: string[]) {
     await tx.read([...key.slice(0, 3), "info"])
     await tx.read([...key.slice(0, 5), "info"])

@@ -256,6 +256,8 @@ Opening the latest display window uses pages of immediate message-order keys. Hy
 
 Pagination and finite `messages` queries establish the effective or raw header view, select their window and referenced roots, then hydrate only that selection with bounded concurrency. Canonical legacy semantic derivation accepts Part metadata without loading streaming bodies. Repair shares a model header view with canonical tool-candidate settlement; rollout reconciliation uses complete effective headers so compaction cannot hide completed roots. The zero-policy continuation gate returns before reading history after provider draining.
 
+Last-exchange refresh computes exact 200-code-unit text previews outside SQL transactions. Short snapshots capture header, ordering and Part-membership revisions; a short writer validates those sources and merges the preview without changing recency or publishing conversation activity. Concurrent requests coalesce per Runtime and Session. Source changes retry, Session deletion stops publication, and unchanged-source artifact failures remain errors. Callers must invoke this operation outside transactions.
+
 ### Query parameters
 
 | Parameter | Type     | Meaning                                                                                  |
