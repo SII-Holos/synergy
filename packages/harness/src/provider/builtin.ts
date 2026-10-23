@@ -145,10 +145,10 @@ export function registerBuiltinProviderProfiles() {
       defaultModel: "grok-4.6",
     }),
     baseURL: GrokProvider.BASE_URL,
-    apiMode: "chat_completions",
+    apiMode: "responses",
     authKind: "oauth_external",
     aiSdkPackage: "@ai-sdk/xai",
-    modelFactory: "openaiChat",
+    modelFactory: "openaiResponses",
     modelsDevProviderID: "xai",
     fallbackModels: [...GrokProvider.DEFAULT_MODEL_IDS],
     runtimeOptions: async (input) => {

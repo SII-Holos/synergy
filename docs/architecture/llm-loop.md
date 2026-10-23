@@ -92,6 +92,12 @@ An explicit selector choice saves model and thinking together through `session.s
 
 Catalog providers may rely on their SDK's built-in endpoint. Their client model metadata represents an absent endpoint as an empty string, while SDK construction omits the endpoint override. Explicit model and provider connection options retain precedence over a catalog endpoint. Navigation validates this same model metadata even when another provider handles the selected conversation.
 
+### Builtin Responses providers
+
+The `grok` builtin profile declares `apiMode: "responses"` and explicitly constructs models with `@ai-sdk/xai.responses()` on xAI SDK version 5. The `openai-codex` builtin profile declares `apiMode: "codex_responses"` and explicitly constructs models with `@ai-sdk/openai.responses()`. A declared factory must exist on the selected SDK; a missing factory is an error, not permission to substitute `languageModel()` or switch protocols. See the [factory selection decision](../decisions/implemented/bug-fix/2026-10-23-explicit-grok-and-codex-responses.md).
+
+Both profiles use subscription OAuth with provider-specific request preparation, not OpenAI Platform API-key authentication or billing. Responses transport does not transfer provider options between Grok and Codex. Codex's opaque compaction artifacts and encrypted reasoning replay retain their Codex-specific handling and identity checks.
+
 ### Model variants and reasoning options
 
 Model capability metadata from catalogs such as models.dev describes what a model advertises, but it does not prove that a service reusing another provider's AI SDK package accepts the same provider option semantics. Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
