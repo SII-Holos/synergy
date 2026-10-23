@@ -13,7 +13,7 @@ import STATE_CLARIFYING from "@ericsanchezok/synergy-lattice/lattice/prompt/stat
 import { WorkflowUserWrapper } from "@ericsanchezok/synergy-harness/test/internal/session/workflow-user-wrapper"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["lattice"] })
 
 function step(input: {
   id: string

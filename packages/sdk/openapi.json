@@ -113,17 +113,18 @@
             }
           },
           "503": {
-            "description": "Runtime services are not ready",
+            "description": "Runtime services are still starting or shutting down",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RuntimeNotReadyError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/RuntimeShuttingDownError"
                     }
-                  },
-                  "required": ["error"]
+                  ]
                 }
               }
             }
@@ -39446,6 +39447,34 @@
         },
         "required": ["id", "selected", "available", "enabled", "pendingRestart"]
       },
+      "RuntimeNotReadyError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"]
+      },
+      "RuntimeShuttingDownError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "RuntimeShuttingDown"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "RuntimeCapabilities": {
         "type": "object",
         "properties": {
@@ -39488,34 +39517,6 @@
           }
         },
         "required": ["apiVersion", "hostVersion", "components", "features"]
-      },
-      "RuntimeNotReadyError": {
-        "type": "object",
-        "properties": {
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": ["error"]
-      },
-      "RuntimeShuttingDownError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "RuntimeShuttingDown"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "GlobalPaths": {
         "type": "object",

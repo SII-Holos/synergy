@@ -16,7 +16,7 @@ import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/l
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["lattice"] })
 
 async function withScope<T>(fn: (scope: Scope) => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })

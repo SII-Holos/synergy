@@ -179,7 +179,12 @@ for (const completionFrame of [0, 1, 16]) {
         result.samples.every((sample) => sample.rows > 0),
         JSON.stringify(result.samples.slice(0, 24)),
       ).toBe(true)
-      expect(result.samples.every((sample) => Math.abs(sample.gap) <= 2)).toBe(true)
+      expect(
+        result.samples.every((sample) => Math.abs(sample.gap) <= 2),
+        JSON.stringify(
+          result.samples.map((sample, frame) => ({ ...sample, frame })).filter((sample) => Math.abs(sample.gap) > 2),
+        ),
+      ).toBe(true)
       expect(result.answer).toBe(true)
       expect(errors).toEqual([])
     },

@@ -8,7 +8,7 @@ import { ConfigLspCatalog } from "@ericsanchezok/synergy-harness/config/lsp-cata
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss"] })
 
 test("domain migration preserves legacy timeout priority and moves prompts without losing sibling values", () =>
   runtime.run(async () => {

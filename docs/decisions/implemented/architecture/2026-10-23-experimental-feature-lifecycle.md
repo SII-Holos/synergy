@@ -16,6 +16,8 @@ Managed readiness protocol 2 distinguishes candidate selection from active compo
 
 The plan retains required relationships so saved-choice status reuses startup dependency evaluation instead of maintaining a second resolver. Stable owners cannot depend on experiments indirectly through bridges. Composition validates active factory presence and exact versions before loading adapters or registering capabilities. Settings retries use the existing save coordinator so page recovery and the shared save status cannot diverge.
 
+The feature catalog keeps both startup-unavailable and runtime-shutdown responses in its 503 OpenAPI contract. Owner tests explicitly select their experiments; ordinary product fixtures retain the default-off plan. Offline maintenance dependencies remain installable without becoming mandatory runtime requirements.
+
 ## Alternatives considered
 
 **Only hide UI or reuse business enable settings.** Routes, tools, Agents and background work would remain registered, so presentation and actual availability would disagree.

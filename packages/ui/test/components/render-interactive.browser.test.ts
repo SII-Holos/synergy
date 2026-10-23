@@ -76,7 +76,9 @@ test("interactive source runs in an opaque frame and preserves parameters throug
   expect(await page.locator('[data-component="attachment-card"]').count()).toBe(1)
   const filename = page.locator('[data-slot="attachment-card-filename"]')
   expect(await filename.textContent()).toBe("visual.synergy.json")
-  expect(await filename.getAttribute("title")).toBe("visual.synergy.json")
+  expect(await filename.evaluate((element) => element.closest("[title]")?.getAttribute("title"))).toBe(
+    "visual.synergy.json",
+  )
   expect(await page.locator("iframe").getAttribute("sandbox")).toBe("allow-scripts")
   await inline().getByRole("slider", { name: "Workers" }).fill("4")
   await inline().getByRole("slider", { name: "Workers" }).dispatchEvent("change")

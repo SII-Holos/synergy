@@ -32,6 +32,7 @@
     "@ericsanchezok/synergy-library": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-testing": "workspace:*",
+    "@ericsanchezok/synergy-util": "workspace:*",
     "@tsconfig/bun": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",

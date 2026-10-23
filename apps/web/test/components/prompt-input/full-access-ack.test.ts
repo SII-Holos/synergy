@@ -206,7 +206,7 @@ mock.module("../../../src/context/prompt", () => ({
 }))
 
 mock.module("../../../src/context/layout", () => ({
-  useLayout: () => ({ isDesktop: () => false, nav: { navEntryForSession: () => undefined } }),
+  useLayout: () => ({ isDesktop: () => true, nav: { navEntryForSession: () => undefined } }),
 }))
 
 mock.module("../../../src/context/command", () => ({

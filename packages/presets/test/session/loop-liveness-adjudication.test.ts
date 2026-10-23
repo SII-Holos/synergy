@@ -12,7 +12,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["lattice"] })
 
 runtime.run(() => Log.init({ print: false }))
 

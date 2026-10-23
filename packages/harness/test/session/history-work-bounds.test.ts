@@ -65,7 +65,7 @@ test.each([64, 512, 2478, 5000])(
           using queries = spyOn(Storage, "query")
           const selected = await SessionHistory.messages({ sessionID: session.id, limit: 24 })
           expect(selected.map((message) => message.info.id)).toEqual(ids.slice(-24))
-          expect(parts).toHaveBeenCalledTimes(24)
+          expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id)).toHaveLength(24)
           expect(binary).not.toHaveBeenCalled()
           expect(queries.mock.calls.length).toBeLessThan(count + 256)
           parts.mockClear()
@@ -75,13 +75,17 @@ test.each([64, 512, 2478, 5000])(
           expect((await Session.get(session.id)).lastExchange?.user).toBe(
             text.type === "text" ? text.text.slice(0, 200) : undefined,
           )
-          expect(parts).not.toHaveBeenCalled()
+          expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id)).toHaveLength(0)
           await ContinuationKernel.propose(session.id)
           if (latest.info.role !== "user") throw new Error("Expected input")
           const segment = await RolloutLifecycle.start(session, latest.info, latest.parts)
           await RolloutLifecycle.finishSegment(segment, "completed")
-          expect(parts.mock.calls.length).toBeLessThanOrEqual(2)
-          expect(parts.mock.calls.every(([input]) => input.messageID === latest.info.id)).toBe(true)
+          expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id).length).toBeLessThanOrEqual(2)
+          expect(
+            parts.mock.calls
+              .filter(([input]) => input.sessionID === session.id)
+              .every(([input]) => input.messageID === latest.info.id),
+          ).toBe(true)
           expect(binary).not.toHaveBeenCalled()
         },
       })

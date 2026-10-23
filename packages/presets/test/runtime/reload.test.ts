@@ -18,7 +18,7 @@ import { Channel } from "@ericsanchezok/synergy-channels/channel"
 import { Embedding } from "@ericsanchezok/synergy-library/vector/embedding"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss"] })
 
 const eventCleanups: Array<() => void> = []
 

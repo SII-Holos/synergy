@@ -929,22 +929,13 @@ describe("SessionWorking", () => {
               model: { providerID: "test-provider", modelID: "test-model" },
               time: { created: Date.now() },
             })
-            const brokenPart = {
-              id: Identifier.ascending("part"),
-              sessionID: corrupt.id,
-              messageID: user.id,
-              type: "attachment",
-              mime: "application/octet-stream",
-              url: "data:broken",
-            }
             await Storage.write(
-              StoragePath.messagePart(
+              StoragePath.messageInfo(
                 Identifier.asScopeID(corrupt.scope.id),
                 Identifier.asSessionID(corrupt.id),
                 Identifier.asMessageID(user.id),
-                Identifier.asPartID(brokenPart.id),
               ),
-              brokenPart,
+              { ...user, time: null },
             )
 
             const healthy = await Session.create({ id: Identifier.create("session", false, 2) })

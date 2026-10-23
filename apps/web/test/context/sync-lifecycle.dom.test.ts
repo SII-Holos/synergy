@@ -16,13 +16,13 @@ test.each(["dispose", "rebind", "epoch"] as const)(
       stub,
       `
  import {createStore} from 'solid-js/store';
- const createState=()=>createStore({status:'ready',message:{},messageWindow:{},latestContextMessage:{},session:[],session_diff:{},inbox:{},path:{directory:''}});
+ const createState=()=>createStore({status:'ready',message:{},messageWindow:{},latestContextMessage:{},currentTurnChanges:{},session:[],session_diff:{},inbox:{},path:{directory:''}});
  const state=createState();let current=state;
  let notifyStarted;export const started=new Promise(resolve=>notifyStarted=resolve);
  export const stats={released:0,generation:0,signal:null,reject:null,metadataSignal:null,diffSignal:null,metadataReply:null,diffReply:null,cortexWrites:0};
  export const replaceState=()=>{current=createState()};
  export const snapshot=()=>({sessions:state[0].session.length,diffs:Object.keys(state[0].session_diff).length,cortexWrites:stats.cortexWrites});
- export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),retainScopeState:()=>({state,release:()=>stats.released++}),peekScopeState:()=>current,scopeReconnectVersion:()=>0,capturePartSnapshotRequest:()=>({}),captureResourceRequest:()=>({generation:stats.generation}),beginContextProjection:()=>0,applyResourceResponse:(_scope,_session,_resource,_request,_headers,apply)=>{apply();return true},seedSessionPermissions:()=>{},reconcileCortexFromSession:()=>stats.cortexWrites++});
+ export const useGlobalSync=()=>({loadCurrentTurn:()=>Promise.resolve(),retainContentCache:(_key,create)=>({cache:create(),release(){}}),retainScopeState:()=>({state,release:()=>stats.released++}),peekScopeState:()=>current,scopeReconnectVersion:()=>0,capturePartSnapshotRequest:()=>({}),captureResourceRequest:()=>({generation:stats.generation}),beginContextProjection:()=>0,applyResourceResponse:(_scope,_session,_resource,_request,_headers,apply)=>{apply();return true},seedSessionPermissions:()=>{},reconcileCortexFromSession:()=>stats.cortexWrites++});
  export const refreshPlanBlueprintOfferFromLoadedParts=()=>{};export const updatePlanBlueprintOfferState=()=>{};
  export const useSDK=()=>({scopeKey:'probe',client:{permission:{list:()=>Promise.resolve({data:[]})},session:{
  get:(_input,options)=>{stats.metadataSignal=options?.signal;return new Promise(resolve=>{stats.metadataReply=resolve})},

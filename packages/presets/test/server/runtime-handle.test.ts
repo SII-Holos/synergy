@@ -56,11 +56,11 @@ test("embedding the full backend serves only an explicitly selected Web applicat
     webAppDirectory: directory,
   })
   expect(runtime.components.some((component) => component.id === "web-app")).toBe(true)
-  const response = await fetch(`http://127.0.0.1:${runtime.server.port}/`)
+  const response = await fetch(`http://127.0.0.1:${runtime.server.port}/`, { headers: { Accept: "text/html" } })
   expect(await response.text()).toContain("Company UI fixture")
 }, 30_000)
 
-test("cold corrupt history stays deferred while new work remains usable", async () => {
+test("cold corrupt uncommitted evidence stays deferred while new work remains usable", async () => {
   await using fixture = await runtimeHome()
   const store = await TransactionalStore.open({
     backend: "sqlite",
@@ -81,7 +81,7 @@ test("cold corrupt history stays deferred while new work remains usable", async 
         version: 1,
         owners: [{ kind: "operation", scopeID: root[1], operationID: root[2] }],
       })
-      await tx.write([...root, "head"], { allocated: 1, committed: 1 })
+      await tx.write([...root, "head"], { allocated: 1, committed: 0 })
       await tx.write([...root, "events", "000000000001"], { version: 1, seq: 2, time: 0, kind: "gap" })
     })
     await using runtime = await PresetRuntimeHandle.open({

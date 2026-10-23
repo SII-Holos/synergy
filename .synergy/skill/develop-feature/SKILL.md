@@ -44,6 +44,7 @@ Use the actual owner's ID and existing request assembly functions. Do not query 
 - Retry failed catalog reads and saves through their existing owners. Retained unavailable choices must allow removal and undo before saving.
 - Save dependent choices together and disable a dependency while running; pending state must describe the next composition without changing the current one. Reject stable-to-experimental dependency chains even when all experiments are enabled.
 - Disable, change unrelated configuration, run backup/import/maintenance and re-enable. Preserve dormant business settings and history; test Continue on an old owner-bound task separately from a new ordinary human message, which follows the existing independent-root admission contract.
+- Owner tests opt into experimental features explicitly through the canonical Feature plan or fixture Home configuration. Keep default product fixtures unselected so absence and reinstall remain observable. Installing a maintenance dependency does not select its runtime owner.
 - Run focused domain tests, `feature:check`, dependency and package checks, generated-contract checks and the applicable Web production/private-HTTP smoke. Use `develop-synergy` for the isolated runtime.
 
 ## Graduate or retire

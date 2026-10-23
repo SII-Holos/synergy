@@ -98,7 +98,7 @@ export namespace SessionHistory {
       const key = StoragePath.sessionDisplayPart(scopeID, part.sessionID, part.messageID, part.id)
       const [display] = await Storage.readMany<Record<string, unknown>>([key])
       if (!display) return
-      await SessionHistoryDisplay.partWritten(scopeID, part)
+      await SessionHistoryDisplay.partWritten(scopeID, part, { ...display, ...MessageV2.summarizePart(part) })
     })
   }
 

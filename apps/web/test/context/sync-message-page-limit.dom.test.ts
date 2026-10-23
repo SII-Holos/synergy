@@ -23,10 +23,11 @@ test("an initial latest load requests the rendered-bound page while history and 
     stub,
     `
 import {createStore} from 'solid-js/store';
-const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
+const state=createStore({status:'ready',path:{directory:''},scopeID:'home',session:[],message:{},messageWindow:{},latestContextMessage:{},currentTurnChanges:{},part:{},partSummary:{},partPage:{},partVersion:{},permission:{},question:{},inbox:{},todo:{},dag:{},session_diff:{},cortex:[]});
 export const calls={messagePage:[],permissionList:[]};
 export const useGlobalSync=()=>({retainContentCache:(_key,create)=>({cache:create(),release(){}}),
   data:{scope:[]},
+  loadCurrentTurn:()=>Promise.resolve(),
   retainScopeState:()=>({state,release:()=>{}}),
   peekScopeState:()=>state,
   scopeReconnectVersion:()=>0,

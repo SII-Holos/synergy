@@ -30,6 +30,17 @@ export type FeatureStatus = {
   reason?: "not-installed" | "component-unselected" | "dependency-unavailable" | "restart-required"
 }
 
+export type RuntimeNotReadyError = {
+  error: string
+}
+
+export type RuntimeShuttingDownError = {
+  name: "RuntimeShuttingDown"
+  data: {
+    message: string
+  }
+}
+
 export type RuntimeCapabilities = {
   apiVersion: 1
   hostVersion: string
@@ -39,17 +50,6 @@ export type RuntimeCapabilities = {
     displayManifest: 1
     projection?: "projection-v2"
     viewDemand?: 1
-  }
-}
-
-export type RuntimeNotReadyError = {
-  error: string
-}
-
-export type RuntimeShuttingDownError = {
-  name: "RuntimeShuttingDown"
-  data: {
-    message: string
   }
 }
 
@@ -15643,11 +15643,9 @@ export type GlobalFeaturesData = {
 
 export type GlobalFeaturesErrors = {
   /**
-   * Runtime services are not ready
+   * Runtime services are still starting or shutting down
    */
-  503: {
-    error: string
-  }
+  503: RuntimeNotReadyError | RuntimeShuttingDownError
 }
 
 export type GlobalFeaturesError = GlobalFeaturesErrors[keyof GlobalFeaturesErrors]

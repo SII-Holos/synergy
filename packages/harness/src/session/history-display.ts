@@ -247,8 +247,10 @@ export namespace SessionHistoryDisplay {
                 signal,
               }),
             )!
+          const summary = SessionPartContent.summary(value)
           values.push({
-            ...SessionPartContent.summary(value),
+            ...(source.summaries[index]?.content.version === summary.content.version ? source.summaries[index] : {}),
+            ...summary,
             execution: { version: 1, revision: String(record.revision), fact },
           })
         }
@@ -885,6 +887,7 @@ export namespace SessionHistoryDisplay {
           projected.map((summary, index) => ({
             key: StoragePath.sessionDisplayPart(scopeID, input.sessionID, input.messageID, summary.id),
             value: {
+              ...(old[index]?.content.version === summary.content.version ? old[index] : {}),
               ...summary,
               execution: executionFact(old[index], records[index].revision) ? old[index]?.execution : undefined,
             },

@@ -20,6 +20,7 @@ test("independently published Kit retains its declared host requirement", async 
   try {
     await fs.mkdir(path.join(directory, "dist"))
     await fs.copyFile(new URL("../src/component.ts", import.meta.url), path.join(directory, "dist/component.ts"))
+    await fs.copyFile(new URL("../src/features.ts", import.meta.url), path.join(directory, "dist/features.ts"))
     await fs.writeFile(
       path.join(directory, "package.json"),
       JSON.stringify({ version: "5.1.0", type: "module", synergy: { requires: { "plugin-host": "4.2.0" } } }),

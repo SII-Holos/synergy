@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss", "lattice"] })
 
 /**
  * H5 startup contribution contract (S9): after the product manifest loads,

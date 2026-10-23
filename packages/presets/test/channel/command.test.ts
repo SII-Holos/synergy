@@ -9,7 +9,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 // Product domains register workflows and tools via the L4 manifest
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ optIn: ["boss", "lattice"] })
 
 describe("ChannelCommand", () => {
   const endpointSuffix = crypto.randomUUID()

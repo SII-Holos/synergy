@@ -888,8 +888,17 @@ export namespace Server {
               content: { "application/json": { schema: resolver(z.array(Features.Status)) } },
             },
             503: {
-              description: "Runtime services are not ready",
-              content: { "application/json": { schema: resolver(z.object({ error: z.string() })) } },
+              description: "Runtime services are still starting or shutting down",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.union([
+                      z.object({ error: z.string() }).meta({ ref: "RuntimeNotReadyError" }),
+                      RuntimeShuttingDownError,
+                    ]),
+                  ),
+                },
+              },
             },
           },
         }),

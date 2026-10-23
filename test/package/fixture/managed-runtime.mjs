@@ -67,7 +67,7 @@ try {
   await attached.server.close()
   assert.equal((await client.global.health({ throwOnError: true })).data.healthy, true)
   if (web) {
-    const response = await fetch(server.url, { headers: server.headers })
+    const response = await fetch(server.url, { headers: { ...server.headers, Accept: "text/html" } })
     assert.equal(response.status, 200)
     assert.match(await response.text(), /<!doctype html>/i)
   }

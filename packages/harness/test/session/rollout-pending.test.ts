@@ -41,22 +41,40 @@ test("unknown recovery coverage leaves cold owners untouched and fences only the
     }
   }))
 
-test("corrupt historical evidence blocks its owner without blocking startup or a new operation", () =>
+test("corrupt uncommitted evidence blocks its owner without blocking startup or a new operation", () =>
   runtime.run(async () => {
     const broken = owner()
     await RolloutLedger.beginRun(broken, "run")
     const key = [...RolloutArtifact.root(broken), "journal", "events", "000000000001"]
     const original = await Storage.read(key)
     await Storage.write(key, { version: 99 })
+    await Storage.write([...RolloutArtifact.root(broken), "journal", "head"], { allocated: 1, committed: 0 })
     await Storage.remove(StoragePath.rolloutRecoveryPending())
     await RolloutRecovery.all()
     const fresh = owner()
     expect((await RolloutLedger.beginRun(fresh, "new")).status).toBe("running")
     await expect(RolloutLedger.beginRun(broken, "next")).rejects.toThrow()
-    expect((await RolloutJournal.head(broken)).committed).toBe(1)
+    expect((await RolloutJournal.head(broken)).committed).toBe(0)
     await Storage.write(key, original)
     await Promise.all([RolloutSnapshot.read(broken), RolloutSnapshot.read(broken)])
     expect(await Storage.read(runKey(broken))).toMatchObject({ status: "interrupted" })
+  }))
+
+test("settled journal corruption remains visible to audit without blocking current records", () =>
+  runtime.run(async () => {
+    const retained = owner()
+    await RolloutLedger.beginRun(retained, "run")
+    await RolloutLedger.finishRun(retained, "run", "completed")
+    const key = [...RolloutArtifact.root(retained), "journal", "events", "000000000001"]
+    const original = await Storage.read(key)
+    await Storage.write(key, { version: 99 })
+    await RolloutRecovery.all()
+    expect((await RolloutLedger.beginRun(retained, "next")).status).toBe("running")
+    expect(await Storage.read(key)).toEqual({ version: 99 })
+    expect((await RolloutSnapshot.presentation(retained)).verified).toBe(false)
+    await expect(RolloutSnapshot.current(retained)).rejects.toThrow()
+    await Storage.write(key, original)
+    expect((await RolloutSnapshot.current(retained)).runs.map((run) => run.id).sort()).toEqual(["next", "run"])
   }))
 
 test("shutdown retains untouched pending owners and clears only this runtime's writes", () =>
