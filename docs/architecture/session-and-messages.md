@@ -238,7 +238,7 @@ Full transcript reads run it over the complete ordered raw message list before p
 
 The LLM loop uses a compaction-aware read boundary instead of materializing the full transcript. It restores chronological message-info order, applies rollback events, locates the latest committed compaction boundary, loads parts only for the boundary root, retained summaries, and active suffix, then derives semantics over that root-anchored working set. Generic `Session.messages()` remains the complete transcript path for UI, export, rollback, fork, and other history consumers.
 
-Part hydration is bounded on every read path. Full-history model loading resolves its selected set first, then hydrates parts through the same declared concurrency window pagination uses, so hydration cost is independent of how many messages a session holds. This matters because the authoritative storage queue rejects rather than waits once its depth is reached, and it is shared process-wide: an unbounded fan-out on one large session would otherwise fail that session's own turns and starve every other session's reads.
+Part hydration concurrency is bounded. Full-history model loading resolves its selected set first, then hydrates parts through the same declared concurrency window pagination uses. Total body work still depends on the selected set and its sizes. The authoritative storage queue rejects rather than waits once its depth is reached, so unbounded fan-out could fail one large session and starve other sessions.
 
 Newest-first streaming propagates message-info and part hydration failures. Only a missing message-info record after the chronology snapshot may be skipped; an unavailable or corrupt record cannot be presented as a successfully loaded history with evidence omitted.
 
@@ -254,7 +254,7 @@ Opening the latest display window uses pages of immediate message-order keys. Hy
 
 `Session.messagePage()` and `GET /session/:sessionID/message/page` (`operationId: session.messagePage`) provide additive cursor-based pagination over effective session history. The existing `Session.messages()` and `GET /session/:sessionID/message` remain unchanged and are the correct path for runtime loops, export, preview, and flat consumers that need the complete message array or a simple tail slice.
 
-Pagination scans lightweight message info to establish effective history, cursor position, and referenced roots, then hydrates parts only for the selected page and those roots with bounded concurrency. Legacy records whose canonical semantics depend on parts are hydrated during read-time derivation; current records outside the requested page are not.
+Pagination and finite `messages` queries establish the effective or raw header view, select their window and referenced roots, then hydrate only that selection with bounded concurrency. Canonical legacy semantic derivation accepts Part metadata without loading streaming bodies. Repair shares a model header view with canonical tool-candidate settlement; rollout reconciliation uses complete effective headers so compaction cannot hide completed roots. The zero-policy continuation gate returns before reading history after provider draining.
 
 ### Query parameters
 

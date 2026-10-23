@@ -259,10 +259,10 @@ export namespace SessionInvoke {
       : false
 
     if (options.abandonWorkflow) {
-      const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
-        (message) => message.info.role === "user" && message.info.isRoot,
+      const root = (await SessionHistory.modelMessageInfos({ sessionID })).findLast(
+        (message) => message.role === "user" && message.isRoot,
       )
-      if (root) await RolloutLifecycle.cancel(sessionID, root.info.id)
+      if (root) await RolloutLifecycle.cancel(sessionID, root.id)
       await SessionLifecycle.clear(sessionID)
     }
     if (!options.internalCancel && !options.abandonWorkflow) {
@@ -1999,40 +1999,80 @@ export namespace SessionInvoke {
    * permanent spinner forever.
    */
   async function settleOrphanedToolParts(input: {
+    scopeID: string
     sessionID: string
+    messages: MessageV2.Info[]
+    lease?: SessionManager.LoopLease
     includeAssistantMessageID?: string
   }): Promise<number> {
-    const messages = await SessionHistory.modelMessages({ sessionID: input.sessionID }).catch(() => [])
+    const assistants = new Map(
+      input.messages.flatMap((info) =>
+        info.role === "assistant" &&
+        (SessionProgress.isTerminalAssistant(info) || info.id === input.includeAssistantMessageID)
+          ? [[info.id, info] as const]
+          : [],
+      ),
+    )
+    const currentOwner = () => SessionManager.getRuntime(input.sessionID)?.owner?.lease === input.lease
+    const candidates = await MessageV2.unsettledToolParts({
+      scopeID: input.scopeID,
+      sessionID: input.sessionID,
+      messageIDs: new Set(assistants.keys()),
+    })
     let settled = 0
-    for (const message of messages) {
-      if (message.info.role !== "assistant") continue
-      const assistant = message.info as MessageV2.Assistant
-      // On a terminal message the sweep can cover the whole session, because
-      // nothing else will ever settle those parts. A *non-terminal* message
-      // belongs to a turn that is legitimately unfinished, so it is settled
-      // only when the caller names it — which the pause path does, since an
-      // aborted in-flight call must not render as running forever.
-      const targeted = assistant.id === input.includeAssistantMessageID
-      if (!SessionProgress.isTerminalAssistant(assistant) && !targeted) continue
-      for (const part of message.parts) {
-        if (part.type !== "tool") continue
-        if (!MessageV2.isUnsettledToolState(part.state)) continue
-        const state = part.state
-        await Session.updatePart({
-          ...part,
-          state: {
-            status: "error",
-            input: state.input,
-            error: MessageV2.INTERRUPTED_TOOL_ERROR,
-            ...(state.metadata ? { metadata: state.metadata } : {}),
-            time: {
-              start: state.status === "running" ? state.time.start : assistant.time.created,
-              end: Date.now(),
+    for (const candidate of candidates) {
+      const written = await Storage.transaction(
+        async () => {
+          if (!currentOwner()) return false
+          const assistant = await MessageV2.readInfo({
+            scopeID: input.scopeID,
+            sessionID: input.sessionID,
+            messageID: candidate.messageID,
+          }).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          const original = assistants.get(candidate.messageID)!
+          if (
+            !assistant ||
+            assistant.role !== "assistant" ||
+            assistant.rootID !== original.rootID ||
+            assistant.parentID !== original.parentID
+          )
+            return false
+          if (!SessionProgress.isTerminalAssistant(assistant) && assistant.id !== input.includeAssistantMessageID)
+            return false
+          const part = await MessageV2.readToolPart({
+            scopeID: input.scopeID,
+            sessionID: input.sessionID,
+            messageID: candidate.messageID,
+            partID: candidate.id,
+          })
+          if (!part || !MessageV2.isUnsettledToolState(part.state)) return false
+          const state = part.state
+          await Session.updatePart({
+            ...part,
+            state: {
+              status: "error",
+              input: state.input,
+              error: MessageV2.INTERRUPTED_TOOL_ERROR,
+              ...(state.metadata ? { metadata: state.metadata } : {}),
+              time: {
+                start: state.status === "running" ? state.time.start : assistant.time.created,
+                end: Date.now(),
+              },
             },
+          })
+          return true
+        },
+        {
+          commitGuard() {
+            if (!currentOwner())
+              throw new DOMException("Session execution ownership changed during repair", "AbortError")
           },
-        })
-        settled++
-      }
+        },
+      )
+      if (written) settled++
     }
     return settled
   }
@@ -2061,11 +2101,14 @@ export namespace SessionInvoke {
     const session = await SessionManager.getSession(sessionID)
     if (!session) return false
 
-    const messages = await SessionHistory.modelMessages({ sessionID })
+    const lease = SessionManager.getRuntime(sessionID)?.owner?.lease
+    const messages = await SessionHistory.modelMessageInfos({ sessionID })
+    if (SessionManager.getRuntime(sessionID)?.owner?.lease !== lease) return false
+    const sweep = { scopeID: session.scope.id, sessionID, messages, lease }
     let latestRoot: MessageV2.User | undefined
     let latestAssistantWithoutRoot: MessageV2.Assistant | undefined
     for (let index = messages.length - 1; index >= 0; index--) {
-      const info = messages[index].info
+      const info = messages[index]
       if (!latestAssistantWithoutRoot && info.role === "assistant") {
         latestAssistantWithoutRoot = info as MessageV2.Assistant
       }
@@ -2079,7 +2122,7 @@ export namespace SessionInvoke {
     let latestAssistant: MessageV2.Assistant | undefined
     if (latestRoot) {
       for (let index = messages.length - 1; index >= 0; index--) {
-        const info = messages[index].info
+        const info = messages[index]
         if (info.role !== "assistant") continue
         const assistant = info as MessageV2.Assistant
         if (assistant.parentID !== latestRoot.id && assistant.rootID !== latestRoot.id) continue
@@ -2095,13 +2138,13 @@ export namespace SessionInvoke {
       // The message is already terminal, but a process that died mid-turn can
       // still have left its tool parts non-terminal. Settle them here rather
       // than returning early, or they stay `running` forever.
-      const settled = await settleOrphanedToolParts({ sessionID })
+      const settled = await settleOrphanedToolParts(sweep)
       return settled > 0
     }
 
     if (latestAssistant && options.terminalize !== true) {
       const settled = await settleOrphanedToolParts({
-        sessionID,
+        ...sweep,
         includeAssistantMessageID: latestAssistant.id,
       })
       return settled > 0
@@ -2126,7 +2169,7 @@ export namespace SessionInvoke {
                 message: "Session aborted during turn — assistant response was not completed",
               }).toObject(),
       })
-      await settleOrphanedToolParts({ sessionID, includeAssistantMessageID: latestAssistant.id })
+      await settleOrphanedToolParts({ ...sweep, includeAssistantMessageID: latestAssistant.id })
     } else if (latestRoot && options.terminalize === true) {
       log.info("creating aborted assistant for pending root", {
         sessionID,

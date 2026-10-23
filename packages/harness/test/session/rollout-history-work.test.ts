@@ -14,9 +14,7 @@ test("starting a production segment records its input without reading previous h
     fixture(async ({ session, rootID, call }) => {
       const root = await MessageV2.get({ sessionID: session.id, messageID: rootID })
       if (root.info.role !== "user") throw new Error("Expected root input")
-      using history = spyOn(MessageV2, "stream").mockImplementation(() => {
-        throw new Error("Run bookkeeping must not read historical bodies")
-      })
+      using history = spyOn(MessageV2, "stream")
       const segment = await RolloutLifecycle.start(session, root.info, root.parts)
       const run = await RolloutLedger.getRun(call.owner, rootID)
       expect(segment.status).toBe("running")

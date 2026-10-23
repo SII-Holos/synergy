@@ -8,6 +8,7 @@ import type { Info as SessionInfo } from "./types"
 import { SessionManager } from "./manager"
 import { SessionInbox } from "./inbox"
 import { ContinuationWait } from "./continuation-wait"
+import { SessionHistory } from "./history"
 
 export namespace ContinuationKernel {
   const log = Log.create({ service: "session.continuation-kernel" })
@@ -141,6 +142,7 @@ export namespace ContinuationKernel {
       log.warn("continuation kernel has no policies registered", {
         providers: providerIDs().length,
       })
+      return undefined
     }
     const gate = await passesSharedGate(sessionID)
     if (!gate) return undefined
@@ -220,7 +222,7 @@ export namespace ContinuationKernel {
   }
 
   async function terminalAssistantMessageID(sessionID: string): Promise<string | undefined> {
-    const messages = await MessageV2.filterCompacted(MessageV2.stream({ sessionID }))
+    const messages = await SessionHistory.modelMessageInfos({ sessionID, raw: true })
     const latestUser = latestReplyRequiredUser(messages)
     if (!latestUser) return undefined
 
@@ -229,20 +231,20 @@ export namespace ContinuationKernel {
     return assistant.id
   }
 
-  function latestAssistantFor(messages: MessageV2.WithParts[], parentID: string): MessageV2.Assistant | undefined {
+  function latestAssistantFor(messages: MessageV2.Info[], parentID: string): MessageV2.Assistant | undefined {
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index]
-      if (message.info.role !== "assistant") continue
-      const assistant = message.info as MessageV2.Assistant
+      if (message.role !== "assistant") continue
+      const assistant = message
       if (assistant.parentID === parentID) return assistant
     }
   }
 
-  function latestReplyRequiredUser(messages: MessageV2.WithParts[]): MessageV2.User | undefined {
+  function latestReplyRequiredUser(messages: MessageV2.Info[]): MessageV2.User | undefined {
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index]
-      if (message.info.role !== "user" || !MessageV2.isPromptVisible(message)) continue
-      const user = message.info as MessageV2.User
+      if (message.role !== "user" || !MessageV2.isPromptVisible({ info: message, parts: [] })) continue
+      const user = message
       if (SessionProgress.isReplyRequiredUser(user)) return user
     }
   }

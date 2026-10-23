@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
@@ -91,7 +91,11 @@ describe("orphaned tool part settlement on abort repair", () => {
 
           // The message is already terminal, which previously short-circuited the
           // repair and left the part `running` forever.
-          await SessionInvoke.repairAfterAbort(session.id)
+          {
+            using bodies = spyOn(MessageV2, "parts")
+            await SessionInvoke.repairAfterAbort(session.id)
+            expect(bodies).not.toHaveBeenCalled()
+          }
 
           const settled = await readToolPart(session.id, assistant.id, partID)
           expect(settled.state.status).toBe("error")
