@@ -112,3 +112,5 @@ For startup maintenance, pair real SQLite lifecycle tests (opening DDL, VACUUM/c
 When a polling cleanup test opens real Runtimes, observe only timers scheduled by that polling operation. Storage maintenance can schedule independent timers while another Runtime closes, so a process-wide fake-timer count is not an ownership assertion. Include an unrelated timer and retain timeout, success and cross-Runtime disposal coverage.
 
 Capture operation metrics through `ObservabilityMetrics.withForwarder` when that boundary is available; a global metric spy can include other connections. Retain an independent asynchronous metric in exact-count fixtures. Suites replacing the process-wide monotonic clock or deadline timers run in their own batch so sibling Runtime work keeps its actual clock.
+
+An offline fixture that opens Storage under a raw RuntimeContext must stop observability producers and drain their store before disposing that context. Prefer the existing migration or Runtime fixtures; closing the SQL handle alone leaves aggregate timers owned by the disposed context.

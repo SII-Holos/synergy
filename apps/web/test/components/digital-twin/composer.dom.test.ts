@@ -144,7 +144,6 @@ beforeAll(async () => {
     localized: true,
     aliases: [
       ...["sdk", "sync", "view-residency", "global-sdk", "locale"].map((name) => ({
-
         find: new RegExp("^@/context/" + name + "$"),
         replacement: path.join(directory, "services.ts"),
       })),
@@ -654,7 +653,6 @@ test.each(["setting", "capability", "connection"] as const)(
     }
   },
 )
-
 
 test("a bound narrow menu keeps prediction busy, failure and success feedback on the page", async () => {
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } })

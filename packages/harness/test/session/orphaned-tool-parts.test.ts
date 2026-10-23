@@ -22,13 +22,13 @@ async function writeRoot(sessionID: string) {
   })
 }
 
-async function writeAssistant(sessionID: string, parentID: string, finish?: string) {
+async function writeAssistant(sessionID: string, parentID: string, finish?: string, legacy = false) {
   return Session.updateMessage({
     id: Identifier.ascending("message"),
     sessionID,
     role: "assistant",
     parentID,
-    rootID: parentID,
+    rootID: legacy ? undefined : parentID,
     modelID: "test-model",
     providerID: "test-provider",
     path: { cwd: projectRoot, root: projectRoot },
@@ -74,40 +74,43 @@ async function findToolPart(sessionID: string, messageID: string, partID: string
 }
 
 describe("orphaned tool part settlement on abort repair", () => {
-  test("settles a running tool part left on an already-terminal assistant message", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const session = await Session.create({})
-          const root = await writeRoot(session.id)
-          const assistant = await writeAssistant(session.id, root.id, "error")
-          const partID = await writeRunningToolPart({
-            sessionID: session.id,
-            messageID: assistant.id,
-            callID: "call_orphaned_1",
-          })
+  test.each([false, true])(
+    "settles a running tool part left on an already-terminal assistant message (legacy=%s)",
+    (legacy) =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            const root = await writeRoot(session.id)
+            const assistant = await writeAssistant(session.id, root.id, "error", legacy)
+            const partID = await writeRunningToolPart({
+              sessionID: session.id,
+              messageID: assistant.id,
+              callID: "call_orphaned_1",
+            })
 
-          // The message is already terminal, which previously short-circuited the
-          // repair and left the part `running` forever.
-          {
-            using bodies = spyOn(MessageV2, "parts")
-            await SessionInvoke.repairAfterAbort(session.id)
-            expect(bodies).not.toHaveBeenCalled()
-          }
+            // The message is already terminal, which previously short-circuited the
+            // repair and left the part `running` forever.
+            {
+              using bodies = spyOn(MessageV2, "parts")
+              await SessionInvoke.repairAfterAbort(session.id)
+              expect(bodies).not.toHaveBeenCalled()
+            }
 
-          const settled = await readToolPart(session.id, assistant.id, partID)
-          expect(settled.state.status).toBe("error")
-          if (settled.state.status !== "error") throw new Error("expected error state")
-          expect(settled.state.error).toBe(MessageV2.INTERRUPTED_TOOL_ERROR)
-          // The wording must not imply success or a replay.
-          expect(settled.state.error).toContain("not replayed")
-          expect(settled.state.error).toContain("unknown")
-          expect(settled.state.time.end).toBeNumber()
-        },
-      })
-    }))
+            const settled = await readToolPart(session.id, assistant.id, partID)
+            expect(settled.state.status).toBe("error")
+            if (settled.state.status !== "error") throw new Error("expected error state")
+            expect(settled.state.error).toBe(MessageV2.INTERRUPTED_TOOL_ERROR)
+            // The wording must not imply success or a replay.
+            expect(settled.state.error).toContain("not replayed")
+            expect(settled.state.error).toContain("unknown")
+            expect(settled.state.time.end).toBeNumber()
+          },
+        })
+      }),
+  )
 
   test("settles tool parts on a non-terminal assistant message it terminalizes", () =>
     runtime.run(async () => {

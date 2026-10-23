@@ -96,7 +96,7 @@ Catalog providers may rely on their SDK's built-in endpoint. Their client model 
 
 The `grok` builtin profile declares `apiMode: "responses"` and explicitly constructs models with `@ai-sdk/xai.responses()` on xAI SDK version 5. The `openai-codex` builtin profile declares `apiMode: "codex_responses"` and explicitly constructs models with `@ai-sdk/openai.responses()`. A declared factory must exist on the selected SDK; a missing factory is an error, not permission to substitute `languageModel()` or switch protocols. See the [factory selection decision](../decisions/implemented/bug-fix/2026-10-23-explicit-grok-and-codex-responses.md).
 
-Both profiles use subscription OAuth with provider-specific request preparation, not OpenAI Platform API-key authentication or billing. Responses transport does not transfer provider options between Grok and Codex. Codex's opaque compaction artifacts and encrypted reasoning replay retain their Codex-specific handling and identity checks.
+Grok main and auxiliary requests default to `store: false`; explicit model options retain ordinary precedence. Both profiles use subscription OAuth with provider-specific request preparation, not OpenAI Platform API-key authentication or billing. Responses transport does not transfer provider options between Grok and Codex. Codex's opaque compaction artifacts and encrypted reasoning replay retain their Codex-specific handling and identity checks.
 
 ### Model variants and reasoning options
 
@@ -243,7 +243,7 @@ The post-job captures only session, root-message, and terminal-revision identifi
 - stable and late system context
 - projected history
 - tool names, descriptions, schemas, and protocol overhead
-- bounded estimates for historical image/file parts; encrypted reasoning bytes are replaced with an opaque placeholder and counted once per item using producer-reported reasoning usage where available (or output usage where reasoning usage is absent), with a conservative per-item floor when usage is unavailable
+- bounded estimates for historical image/file parts; OpenAI and xAI encrypted reasoning bytes are replaced with an opaque placeholder and counted once per provider-qualified item using producer-reported reasoning usage where available (or output usage where reasoning usage is absent), with a conservative per-item floor when usage is unavailable
 
 The budget derives from the model's declared limits. For a context `C`, an effective requested output `O` bounded by the model's configured output and the global output maximum, and no explicit separate input limit, Synergy reserves the requested output plus a safety margin only when that reservation leaves a positive input envelope:
 

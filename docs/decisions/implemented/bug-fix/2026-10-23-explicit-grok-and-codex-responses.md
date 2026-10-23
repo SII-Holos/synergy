@@ -16,6 +16,10 @@ Both providers retain subscription OAuth and their provider-specific request pre
 
 Compatibility verification must construct models through the actual builtin profile and installed SDK factory, then inspect the physical Responses request. Direct SDK construction alone cannot establish that the shipped profile works. Protocol regressions must cover request routing, reasoning options and tool continuation for each provider without treating one provider's options as the other's.
 
+Grok's main and auxiliary requests default to `store: false` through the existing provider transforms; explicit model options retain their ordinary precedence. The installed SDK's [Responses options](https://ai-sdk.dev/providers/ai-sdk-providers/xai) otherwise enable remote storage. The physical request regressions assert this setting alongside reasoning efforts and tool continuation.
+
+[Prompt budgeting](../../../../packages/harness/src/session/prompt-budgeter.ts) treats OpenAI and xAI encrypted reasoning as opaque payloads. Replay estimates use provider-qualified item identity and producer-reported usage, preserving the existing conservative floor for absent or invalid usage. Storage round trips and same-ID cross-provider tests protect retained metadata and prevent one provider's reasoning allowance from being reused for another.
+
 ## Alternatives considered
 
 **Roll back to an older xAI SDK with a chat factory.** Rejected because it restores a retired factory dependency instead of aligning the builtin profile with the installed SDK and runtime interface. It also gives up the version-5 implementation and fixes merely to keep the old transport selection.

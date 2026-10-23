@@ -20,6 +20,8 @@ import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 import { fullComponents } from "../../src/components"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { ObservabilityMetrics } from "@ericsanchezok/synergy-harness/observability/metrics"
+import { ObservabilityStore } from "@ericsanchezok/synergy-harness/observability/store"
 import { StorageBootstrap } from "@ericsanchezok/synergy-harness/storage/bootstrap"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
@@ -234,6 +236,10 @@ test("offline Home maintenance upgrades dormant Lattice data without enabling it
       }
     })
   } finally {
+    await context.run(async () => {
+      ObservabilityMetrics.stop()
+      await ObservabilityStore.stop()
+    })
     context.dispose()
   }
   await using dormant = await openAgentRuntime({

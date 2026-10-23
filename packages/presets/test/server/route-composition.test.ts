@@ -15,7 +15,7 @@ test("full route composition leaves application assets with the embedding host",
     registerFullRoutes()
     webApp({ directory }).register()
     Server.mountApp()
-    const response = await Server.App().request("http://localhost/")
+    const response = await Server.App().request("http://localhost/", { headers: { accept: "text/html" } })
     expect(response.status).toBe(200)
     expect(await response.text()).toContain("Company agent shell")
   })

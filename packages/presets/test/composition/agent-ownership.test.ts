@@ -301,7 +301,8 @@ test("selected owners preserve the complete subagent permission profiles", async
         }
         const readOnly = await Agent.get("code-cartographer")
         expect(action(readOnly, "note_read")).toBe("allow")
-        for (const permission of ["note_write", "note_edit", "memory_get", "session_read", "mcp__any_server__any_tool"])
+        expect(action(readOnly, "mcp__any_server__any_tool")).toBe("allow")
+        for (const permission of ["note_write", "note_edit", "memory_get", "session_read"])
           expect(action(readOnly, permission)).toBe("deny")
         for (const name of ["docs-researcher", "research-scout", "literature-searcher", "literature-analyst"])
           expect(action(await Agent.get(name), "mcp__any_server__any_tool"), name).toBe("allow")

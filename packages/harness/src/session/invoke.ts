@@ -2062,7 +2062,7 @@ export namespace SessionInvoke {
           if (
             !assistant ||
             assistant.role !== "assistant" ||
-            assistant.rootID !== original.rootID ||
+            (assistant.rootID !== undefined && assistant.rootID !== original.rootID) ||
             assistant.parentID !== original.parentID
           )
             return false
@@ -2203,7 +2203,7 @@ export namespace SessionInvoke {
           if (
             !current ||
             current.role !== "assistant" ||
-            current.rootID !== selected.rootID ||
+            (current.rootID !== undefined && current.rootID !== selected.rootID) ||
             current.parentID !== selected.parentID ||
             SessionProgress.isTerminalAssistant(current)
           )

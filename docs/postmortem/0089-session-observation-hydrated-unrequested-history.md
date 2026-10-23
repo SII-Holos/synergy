@@ -18,6 +18,8 @@ Convenient full-history helpers obscured the distinction between selection metad
 
 Delayed metadata notifications could replace newer Context attribution. Terminal repair could likewise publish an older assistant header after that assistant completed. Both cases required canonical source validation, in addition to preserving the execution lease.
 
+Integration also exposed a mismatch between derived and persisted roots: historical assistants without an explicit `rootID` were selected correctly, but the write guard treated the absent persisted field as a different owner and skipped repair. Regression fixtures now cover both explicit and inferred roots; explicit ownership changes remain fenced.
+
 ## Guardrails
 
 [History work bounds](../../packages/harness/test/session/history-work-bounds.test.ts) cover multiple history sizes. [Execution facts](../../packages/harness/test/session/execution-facts.test.ts) cover demand-time preparation, cancellation cursors and replacement/deletion fences. [Stop and abandon tests](../../packages/harness/test/session/pause-abort.test.ts) preserve completed assistants and later input. [Context tests](../../packages/workbench/test/execution/context.test.ts), [projection tests](../../packages/workbench/test/execution/projection.test.ts) and [Web summary tests](../../apps/web/test/context/execution-summary.test.ts) cover shared preparation, independent demand, immutable recovery checkpoints and retention of the last complete summary during preparation or failure. The [implemented decision](../decisions/implemented/bug-fix/2026-10-23-bound-session-history-read-work.md) records ownership and tradeoffs.

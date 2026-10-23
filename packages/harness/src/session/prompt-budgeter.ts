@@ -1,5 +1,6 @@
 import { RuntimeContext } from "../lifecycle/context"
 import type { JSONSchema7, ModelMessage } from "ai"
+import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { SessionPluginHooks as Plugin } from "./plugin-hooks"
 import { ProviderTransform } from "../provider/transform"
@@ -211,6 +212,23 @@ export namespace PromptBudgeter {
    * compactions while still catching genuine overflows from many images.
    */
   const IMAGE_TOKEN_ESTIMATE = 500
+  function encryptedReasoning(metadata: unknown) {
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return []
+    return (["openai", "xai"] as const).flatMap((namespace) => {
+      const options = (metadata as Record<string, unknown>)[namespace]
+      if (!options || typeof options !== "object" || Array.isArray(options)) return []
+      if (!("reasoningEncryptedContent" in options) || typeof options.reasoningEncryptedContent !== "string") return []
+      return [
+        {
+          namespace,
+          options,
+          content: options.reasoningEncryptedContent,
+          key: reasoningItemKey({ [namespace]: options }),
+        },
+      ]
+    })
+  }
+
   export function reasoningReplayTokens(messages: MessageV2.WithParts[]): ReadonlyMap<string, number> {
     const result = new Map<string, number>()
     for (const message of messages) {
@@ -218,10 +236,9 @@ export namespace PromptBudgeter {
       const ids = new Set<string>()
       for (const part of message.parts) {
         if (part.type !== "reasoning") continue
-        const openai = part.metadata?.openai
-        if (typeof openai?.itemId !== "string" || !openai.itemId) continue
-        if (typeof openai.reasoningEncryptedContent !== "string" || !openai.reasoningEncryptedContent) continue
-        ids.add(openai.itemId)
+        for (const item of encryptedReasoning(part.metadata)) {
+          if (item.content && item.key) ids.add(item.key)
+        }
       }
       const reported = message.info.tokens.reasoning || message.info.tokens.output
       if (!Number.isSafeInteger(reported) || reported <= 0 || ids.size === 0) continue
@@ -246,7 +263,7 @@ export namespace PromptBudgeter {
     const sanitized = msgs.map((msg) => ({
       ...msg,
       content: Array.isArray(msg.content)
-        ? msg.content.map((part: any) => {
+        ? msg.content.map((part) => {
             if (part.type === "image") {
               imageParts++
               return { ...part, image: "[image]" }
@@ -255,28 +272,25 @@ export namespace PromptBudgeter {
               imageParts++
               return { ...part, data: "[file data]", mediaType: part.mediaType }
             }
-            if (
-              part.type === "reasoning" &&
-              typeof part.providerOptions?.openai?.reasoningEncryptedContent === "string"
-            ) {
-              const content = part.providerOptions.openai.reasoningEncryptedContent
-              if (content.length > 0) {
-                const id = part.providerOptions.openai.itemId
-                if (typeof id !== "string" || !reasoningItems.has(id)) {
+            if (part.type === "reasoning") {
+              const items = encryptedReasoning(part.providerOptions)
+              if (!items.length) return part
+              const providerOptions = { ...part.providerOptions }
+              for (const item of items) {
+                if (item.content && (!item.key || !reasoningItems.has(item.key))) {
+                  const reported = item.key ? encryptedReasoningTokens?.get(item.key) : undefined
                   encryptedReasoningCost +=
-                    typeof id === "string" && Number.isFinite(encryptedReasoningTokens?.get(id))
-                      ? Math.max(ENCRYPTED_REASONING_TOKEN_ESTIMATE, encryptedReasoningTokens!.get(id)!)
+                    typeof reported === "number" && Number.isFinite(reported)
+                      ? Math.max(ENCRYPTED_REASONING_TOKEN_ESTIMATE, reported)
                       : ENCRYPTED_REASONING_TOKEN_ESTIMATE
-                  if (typeof id === "string") reasoningItems.add(id)
+                  if (item.key) reasoningItems.add(item.key)
+                }
+                providerOptions[item.namespace] = {
+                  ...item.options,
+                  reasoningEncryptedContent: "[encrypted reasoning]",
                 }
               }
-              return {
-                ...part,
-                providerOptions: {
-                  ...part.providerOptions,
-                  openai: { ...part.providerOptions.openai, reasoningEncryptedContent: "[encrypted reasoning]" },
-                },
-              }
+              return { ...part, providerOptions }
             }
             return part
           })

@@ -511,7 +511,6 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       setMenuOpen(false)
       trigger?.focus({ preventScroll: true })
       action()
-
     }
     return (
       <Show when={row()}>
@@ -622,8 +621,6 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                           if (active()) void restorePopoverFocus(trigger, menu)
                         }}
                         onOpenAutoFocus={(event) => event.preventDefault()}
-
-
                       >
                         <div class="menu-field-list">
                           <MenuItem class="menu-field-item" onSelect={() => void copyTextToClipboard(value().file)}>
@@ -635,7 +632,21 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                           >
                             {_(C.versions)}
                           </MenuItem>
-                          <Show when={data.historical() && value().workspace && data.context()?.recording?.status !== "live" && data.context()?.recording?.status !== "pending"}>
+                          <MenuItem
+                            class="menu-field-item"
+                            disabled={!data.canOpen(value())}
+                            onSelect={() => void file.openWorkspaceFile(value().file)}
+                          >
+                            {_(data.canOpen(value()) ? C.open : C.historical)}
+                          </MenuItem>
+                          <Show
+                            when={
+                              data.historical() &&
+                              value().workspace &&
+                              data.context()?.recording?.status !== "live" &&
+                              data.context()?.recording?.status !== "pending"
+                            }
+                          >
                             <MenuItem
                               class="menu-field-item"
                               onSelect={() =>

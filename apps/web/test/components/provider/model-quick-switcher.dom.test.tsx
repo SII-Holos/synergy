@@ -131,7 +131,9 @@ test("account search and keyboard selection keep identical model IDs bound to th
       "OpenAI · Personal account with a long identifying remark",
     )
     expect(
-      (await page.locator('[data-slot="list-item"]:has([data-slot="list-item-selected-icon"])').allTextContents()).join(" "),
+      (await page.locator('[data-slot="list-item"]:has([data-slot="list-item-selected-icon"])').allTextContents()).join(
+        " ",
+      ),
     ).toContain("OpenAI · Personal")
   } finally {
     await page.close()

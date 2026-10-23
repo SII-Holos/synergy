@@ -107,7 +107,7 @@ const stubModules: Record<string, string> = {
   `,
   "stub-global-sdk.ts": `
     import { createSignal } from "solid-js"
-    export const [features, setFeatures] = createSignal(["workbench", "agenda", "library", "plugin-host", "note", "browser", "holos"])
+    export const [features, setFeatures] = createSignal(["workbench", "agenda", "library", "plugin-host", "note", "browser", "holos", "kanban"])
     window.setFeatures = setFeatures
     export function useGlobalSDK() {
       return { capabilities: { has: id => features()?.includes(id) ?? false }, drafts: { hasDraftSession: () => false }, url: "", client: {}, connected: () => true }
@@ -720,7 +720,10 @@ describe("single mobile navigation", () => {
           expect(await page.getByRole("link", { name: label, exact: true }).count()).toBe(0)
         for (const label of ["Notes", "Browser"])
           expect(await page.getByRole("button", { name: label, exact: true }).count()).toBe(0)
+        await setFeatures(["kanban"])
+        expect(await page.getByRole("link", { name: "Kanban", exact: true }).count()).toBe(1)
         await setFeatures(["agenda"])
+        expect(await page.getByRole("link", { name: "Kanban", exact: true }).count()).toBe(0)
         expect(await page.getByRole("link", { name: "Agenda", exact: true }).count()).toBe(1)
         await setFeatures([])
         expect(await page.getByRole("link", { name: "Agenda", exact: true }).count()).toBe(0)

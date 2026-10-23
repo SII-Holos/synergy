@@ -49,7 +49,8 @@ beforeAll(async () => {
     export const switchSession=()=>setId("second")
     export const useParams=()=>({get id(){return id()}})
     export const useSDK=()=>({url:location.origin,scopeKey:"scope",client,event:{on:()=>()=>{}}})
-    export const useFile=()=>({workspace:{...${JSON.stringify(workspace)},path:"/review"},openWorkspaceFile:()=>{}})
+    export const openedFiles: string[]=[]
+    export const useFile=()=>({workspace:{...${JSON.stringify(workspace)},path:"/review"},openWorkspaceFile:(file:string)=>{openedFiles.push(file)}})
     export const useSync=()=>({session:{get:()=>undefined}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>[]})
     export const restores: unknown[]=[]
@@ -60,8 +61,6 @@ beforeAll(async () => {
     path.join(fixture, "main.tsx"),
     `import {render} from "solid-js/web"
     import {createSignal,ErrorBoundary,Suspense} from "solid-js"
-    import {MetaProvider} from "@solidjs/meta"
-    import {Font} from "@ericsanchezok/synergy-ui/font"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {MetaProvider} from "@solidjs/meta"
@@ -76,12 +75,12 @@ beforeAll(async () => {
     import {messages as pseudo} from ${JSON.stringify(`/@fs/${appSrc}/locales/pseudo/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
-    import {restores,switchSession} from "./contexts"
+    import {openedFiles,restores,switchSession} from "./contexts"
     const i18n=setupI18n({locale:"en",messages:{en,"zh-CN":zh,pseudo}})
     function App(){
       const theme=useTheme()
       const [active,setActive]=createSignal(true)
-      window.fixture={restores,switchSession,theme:theme.setColorScheme,locale:(value)=>i18n.activate(value),active:setActive}
+      window.fixture={openedFiles,restores,switchSession,theme:theme.setColorScheme,locale:(value)=>i18n.activate(value),active:setActive}
       return <ViewActivityProvider active={active}><ErrorBoundary fallback={error=><p data-testid="fatal">{String(error)}</p>}>
 
         <Suspense fallback={<p data-testid="suspended">Suspended</p>}>
@@ -246,7 +245,6 @@ async function mount(input = rows(), pendingFiles = false) {
     })
   await page.evaluate(() => document.fonts.ready)
   if (!pendingFiles) await page.getByRole("button", { name: "Select line 2 in after", exact: true }).first().waitFor()
-
 }
 
 test("loading glyphs rotate around their visible center and respect reduced motion", async () => {
@@ -816,7 +814,12 @@ test("file headers adapt to the reading width with both directory and comments o
   expect(geometry.name).toBeGreaterThan(40)
   await header.getByRole("button", { name: "File options", exact: true }).click()
   const menu = page.getByRole("menu", { name: "File options", exact: true })
-  expect(await menu.getByRole("menuitem", { name: "Open current file", exact: true }).isEnabled()).toBe(true)
+  await menu.getByRole("menuitem", { name: "Open current file", exact: true }).click()
+  await menu.waitFor({ state: "hidden" })
+  expect(
+    await page.evaluate(() => (window as unknown as { fixture: { openedFiles: string[] } }).fixture.openedFiles),
+  ).toEqual(["src/first.ts"])
+  await header.getByRole("button", { name: "File options", exact: true }).click()
   await menu.getByRole("menuitem", { name: "File versions", exact: true }).click()
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
   await page.keyboard.press("Escape")
@@ -892,7 +895,6 @@ test("file menus close with their view and preserve focus outside the menu", asy
   await menu.waitFor({ state: "hidden" })
   expect(errors).toEqual([])
 }, 30_000)
-
 
 test("compact touch controls fit phone panes and keep refresh and fold reachable", async () => {
   const desktop = page

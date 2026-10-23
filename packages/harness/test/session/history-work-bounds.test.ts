@@ -80,7 +80,9 @@ test.each([64, 512, 2478, 5000])(
           if (latest.info.role !== "user") throw new Error("Expected input")
           const segment = await RolloutLifecycle.start(session, latest.info, latest.parts)
           await RolloutLifecycle.finishSegment(segment, "completed")
-          expect(parts).not.toHaveBeenCalled()
+          expect(parts.mock.calls.length).toBeLessThanOrEqual(2)
+          expect(parts.mock.calls.every(([input]) => input.messageID === latest.info.id)).toBe(true)
+          expect(binary).not.toHaveBeenCalled()
         },
       })
     }),

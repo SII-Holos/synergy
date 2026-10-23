@@ -3,16 +3,19 @@ import { ProviderProfile } from "@ericsanchezok/synergy-harness/provider/profile
 import { registerBuiltinProviderProfiles } from "@ericsanchezok/synergy-harness/test/internal/provider/builtin"
 import { loadBundledProvider } from "../../src/provider/sdk-registry"
 import { testRuntime } from "../support/runtime"
-import z from "zod"
+import { z } from "zod"
+import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
+import { ProviderTransform } from "@ericsanchezok/synergy-harness/provider/transform"
 
 const runtime = await testRuntime({ register: registerBuiltinProviderProfiles })
 const efforts = ["low", "medium", "high", "xhigh"] as const
 const requestBody = z.object({
   input: z.array(z.unknown()),
   reasoning: z.object({ effort: z.string() }),
+  store: z.boolean().optional(),
 })
 
-test("Grok's production profile sends Responses with documented reasoning efforts", () =>
+test.each([false, true])("Grok Responses disable remote storage for auxiliary=%s", (small) =>
   runtime.run(async () => {
     const profile = ProviderProfile.get("grok")!
     expect(profile.modelFactory).toBe("openaiResponses")
@@ -30,11 +33,36 @@ test("Grok's production profile sends Responses with documented reasoning effort
     })
     const model = ProviderProfile.defaultModelFactory(profile.modelFactory, { sdk, modelID: "grok-4.7" })
 
+    const catalogModel = Provider.Model.parse({
+      id: "grok-4.7",
+      providerID: "subscription-connection",
+      name: "Grok",
+      api: { id: "grok-4.7", url: "https://provider.invalid/v1", npm: profile.aiSdkPackage },
+      capabilities: {
+        temperature: true,
+        reasoning: true,
+        attachment: false,
+        toolcall: true,
+        input: { text: true, audio: false, image: false, video: false, pdf: false },
+        output: { text: true, audio: false, image: false, video: false, pdf: false },
+        interleaved: false,
+      },
+      cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+      limit: { context: 128_000, output: 8_192 },
+      status: "active",
+      options: {},
+      headers: {},
+      release_date: "2026-01-01",
+      variants: {},
+    })
+    const defaults = small
+      ? ProviderTransform.smallOptions(catalogModel, profile.id)
+      : ProviderTransform.options(catalogModel, "fixture", undefined, profile.id)
     for (const reasoningEffort of efforts) {
       await expect(
         model.doStream({
           prompt: [{ role: "user", content: [{ type: "text", text: "ping" }] }],
-          providerOptions: { xai: { reasoningEffort } },
+          providerOptions: ProviderTransform.providerOptions(catalogModel, { ...defaults, reasoningEffort }),
         }),
       ).rejects.toThrow("request captured")
     }
@@ -42,7 +70,9 @@ test("Grok's production profile sends Responses with documented reasoning effort
     expect(requests.map((request) => request.pathname)).toEqual(efforts.map(() => "/v1/responses"))
     expect(requests.map((request) => request.body.reasoning.effort)).toEqual([...efforts])
     expect(requests.every((request) => request.body.input.length === 1)).toBe(true)
-  }))
+    expect(requests.map((request) => request.body.store)).toEqual(efforts.map(() => false))
+  }),
+)
 
 test.each([
   { providerID: "grok", modelID: "grok-4.7", namespace: "xai" },

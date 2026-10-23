@@ -43,7 +43,10 @@ export type PredictionControlApi = {
 export function PredictionButton(props: { api: PredictionControlApi }) {
   const { _ } = useLingui()
   return (
-    <Tooltip value={props.api.busy() ? _(twinCopy.predicting) : props.api.disabledReason() ?? _(twinCopy.predict)} placement="top">
+    <Tooltip
+      value={props.api.busy() ? _(twinCopy.predicting) : (props.api.disabledReason() ?? _(twinCopy.predict))}
+      placement="top"
+    >
       <button
         type="button"
         class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
@@ -356,7 +359,7 @@ function SessionPrediction(props: Props) {
     },
     busy,
     disabled,
-    disabledReason: () => reason() ? reasonLabel() : undefined,
+    disabledReason: () => (reason() ? reasonLabel() : undefined),
   }
   if (props.bind) {
     props.bind(api)
@@ -374,7 +377,12 @@ function SessionPrediction(props: Props) {
         </span>
       </Show>
       <Show when={failure()}>
-        <span role="status" data-slot="twin-prediction-status" data-twin-notice class="flex items-center gap-1 text-12-regular text-text-base">
+        <span
+          role="status"
+          data-slot="twin-prediction-status"
+          data-twin-notice
+          class="flex items-center gap-1 text-12-regular text-text-base"
+        >
           <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
           {_(twinCopy.unavailable)}
           <button
@@ -386,7 +394,6 @@ function SessionPrediction(props: Props) {
             <Icon name={getSemanticIcon("action.close")} size="small" />
           </button>
         </span>
-
       </Show>
     </>
   )
