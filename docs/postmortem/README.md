@@ -13,11 +13,13 @@
 - **Executive summary** — failure, cause, lesson.
 - **Summary** — failure details.
 - **Timeline** — observations.
-- **Root cause** — mechanism and missing safeguards.
+- **Root cause** — missing safeguards.
 - **Guardrails** — tests, docs, gates.
 - **Lessons** — takeaways.
 
 ## Index
+
+- [0089](0089-provider-recovery-stream-lifetime.md)
 
 - [0088](0088-storage-admission-misclassified-as-session-preparation.md)
 

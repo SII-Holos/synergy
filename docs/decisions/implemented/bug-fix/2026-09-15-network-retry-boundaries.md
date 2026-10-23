@@ -20,6 +20,8 @@ Status: implemented
 
 具体审查证据、上游资料与范围边界见 [网络重试审查](../../../research/2026-09-15-network-retry-audit.md)。分类器、SDK 适配和共享退避旁保留采用标准与上游行为的来源。
 
+The probe lifetime described above is refined by [stream-progress provider recovery](2026-10-23-stream-progress-provider-recovery.md): meaningful output permits paced overlapping requests before the original stream completes, while its later failures remain observable. The classification, retry-budget, connection-isolation and tool-replay decisions remain applicable.
+
 ## Alternatives considered
 
 **只补 ETIMEOUT 或匹配 DeepSeek 域名。** 不能覆盖其他供应商、其他网站、多层包装和跨进程信息丢失，也无法解决误重试。

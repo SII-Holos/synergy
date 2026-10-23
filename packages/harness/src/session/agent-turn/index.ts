@@ -135,78 +135,78 @@ export namespace AgentTurn {
           toolDefinitions: requestTools,
         })
       : undefined
+    const lease = await instanceState.recovery.acquire(
+      providerRetryKey(input.model, prepared?.provider),
+      input.abort,
+      recovery,
+    )
     try {
-      return await instanceState.recovery.stream(
-        providerRetryKey(input.model, prepared?.provider),
-        input.abort,
-        () =>
-          RolloutCall.stream(
-            {
-              ...attribution,
-              usageRole: usageRole ?? "auxiliary",
-              retryIndex,
-              agent: input.agent.name,
-              model: {
-                providerID: input.model.providerID,
-                modelID: input.model.id,
-                apiModelID: input.model.api?.id,
-                sdk: input.model.api?.npm ?? "unknown",
-                pricing: input.model.pricing ?? null,
-                billingMode: input.model.billingMode ?? "unknown",
-                limits: input.model.limit,
-              },
-              request: JSON.parse(
-                JSON.stringify({
-                  userMetadata,
-                  messages: input.messages,
-                  system: prepared?.system ?? input.system,
-                  lateSystem: input.lateSystem,
-                  promptSuffix: input.promptSuffix,
-                  contextSources: provenance
-                    ? ContextUsage.sourceIndex({
-                        messages: input.messages,
-                        system: prepared?.system ?? input.system,
-                        lateSystem: input.lateSystem,
-                        provenance,
-                      })
-                    : undefined,
-                  tools: requestTools,
-                  toolChoice: input.toolChoice,
-                  params: prepared
-                    ? {
-                        temperature: prepared.params.temperature,
-                        topP: prepared.params.topP,
-                        topK: prepared.params.topK,
-                      }
-                    : undefined,
-                  maxOutputTokens: input.maxOutputTokens,
-                  modelSelection: input.modelSelection,
-                }),
-              ),
-            },
-            async (archive) => {
-              if (!instanceState.accepting || instanceState.stopPromise)
-                throw new Error("Agent worker pool is stopping")
-              if (instanceState.inProcessStream) {
-                onPhase?.("waiting_model")
-                return RolloutTransport.provide(archive, () =>
-                  instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
-                )
-              }
-              instanceState.pool ??= createExecutor(instanceState.options)
-              onPhase?.("queued_agent")
-              const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
-              const contextUsageDraft = startContextUsageDraft(input, prepared!.system, provenance)
-              return { ...result, contextUsageDraft }
-            },
-            () => {
-              if (attribution.owner.kind === "session")
-                SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
-            },
+      return await RolloutCall.stream(
+        {
+          ...attribution,
+          usageRole: usageRole ?? "auxiliary",
+          retryIndex,
+          agent: input.agent.name,
+          model: {
+            providerID: input.model.providerID,
+            modelID: input.model.id,
+            apiModelID: input.model.api?.id,
+            sdk: input.model.api?.npm ?? "unknown",
+            pricing: input.model.pricing ?? null,
+            billingMode: input.model.billingMode ?? "unknown",
+            limits: input.model.limit,
+          },
+          request: JSON.parse(
+            JSON.stringify({
+              userMetadata,
+              messages: input.messages,
+              system: prepared?.system ?? input.system,
+              lateSystem: input.lateSystem,
+              promptSuffix: input.promptSuffix,
+              contextSources: provenance
+                ? ContextUsage.sourceIndex({
+                    messages: input.messages,
+                    system: prepared?.system ?? input.system,
+                    lateSystem: input.lateSystem,
+                    provenance,
+                  })
+                : undefined,
+              tools: requestTools,
+              toolChoice: input.toolChoice,
+              params: prepared
+                ? {
+                    temperature: prepared.params.temperature,
+                    topP: prepared.params.topP,
+                    topK: prepared.params.topK,
+                  }
+                : undefined,
+              maxOutputTokens: input.maxOutputTokens,
+              modelSelection: input.modelSelection,
+            }),
           ),
-        recovery,
+        },
+        (archive) =>
+          lease.stream(async () => {
+            if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
+            if (instanceState.inProcessStream) {
+              onPhase?.("waiting_model")
+              return RolloutTransport.provide(archive, () =>
+                instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+              )
+            }
+            instanceState.pool ??= createExecutor(instanceState.options)
+            onPhase?.("queued_agent")
+            const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
+            const contextUsageDraft = startContextUsageDraft(input, prepared!.system, provenance)
+            return { ...result, contextUsageDraft }
+          }),
+        () => {
+          if (attribution.owner.kind === "session")
+            SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
+        },
       )
     } catch (error) {
+      lease.release()
       if (RolloutRecordingError.isInstance(error) && attribution.owner.kind === "session") {
         SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
       }

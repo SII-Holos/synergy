@@ -1,4 +1,4 @@
-import type { AgentTurnStream } from "../session/agent-turn/worker-pool"
+import type { AgentTurnStream, AgentTurnStreamPart } from "../session/agent-turn/worker-pool"
 import { retryAfterMs, retrySleep } from "@ericsanchezok/synergy-util/retry"
 import { providerRetryable } from "./retry"
 
@@ -7,6 +7,7 @@ type Entry = {
   revision: number
   until: number
   retryAfter: number
+  admitAfter: number
   error: unknown
   probe?: symbol
   waiters: Set<() => void>
@@ -24,6 +25,21 @@ type Options = {
   sleep(ms: number, signal: AbortSignal): Promise<void>
   maxWaitMs: number
   maxEntries: number
+  recoveryIntervalMs: number
+}
+
+function providerProgress(part: AgentTurnStreamPart) {
+  switch (part.type) {
+    case "text-delta":
+    case "reasoning-delta":
+      return part.text.length > 0
+    case "tool-input-delta":
+      return part.delta.length > 0
+    case "tool-call":
+      return true
+    default:
+      return false
+  }
 }
 
 export function providerRetryKey(
@@ -66,7 +82,8 @@ export function providerEndpointHost(
 }
 
 // Provenance: https://learn.microsoft.com/en-us/azure/architecture/patterns/circuit-breaker
-// Local adaptation: host-owned cooldown and one recovery probe before worker admission; caller retry budgets remain unchanged.
+// Provenance: https://platform.claude.com/docs/en/api/errors
+// Local adaptation: meaningful stream progress permits paced probes before completion; midstream failures retain shared cooldown.
 export class ProviderRetryCoordinator {
   private readonly entries = new Map<string, Entry>()
   private readonly closing = new AbortController()
@@ -79,6 +96,7 @@ export class ProviderRetryCoordinator {
       sleep: retrySleep,
       maxWaitMs: 5 * 60_000,
       maxEntries: 1024,
+      recoveryIntervalMs: 1_000,
       ...options,
     }
   }
@@ -97,10 +115,11 @@ export class ProviderRetryCoordinator {
     let entry = this.entries.get(key)
     if (!entry) {
       for (const [key, value] of this.entries) {
-        if (!value.probe && !value.waiters.size && value.until <= now) this.entries.delete(key)
+        if (!value.probe && !value.waiters.size && Math.max(value.until, value.admitAfter) <= now)
+          this.entries.delete(key)
       }
       if (this.entries.size >= this.options.maxEntries) return
-      entry = { failures: 0, revision: 0, until: now, retryAfter: 0, error, waiters: new Set() }
+      entry = { failures: 0, revision: 0, until: now, retryAfter: 0, admitAfter: 0, error, waiters: new Set() }
       this.entries.set(key, entry)
     }
     entry.revision++
@@ -115,62 +134,6 @@ export class ProviderRetryCoordinator {
     this.wake(entry)
   }
 
-  async stream(
-    key: string,
-    signal: AbortSignal,
-    start: () => Promise<AgentTurnStream>,
-    recovery?: ProviderRecoveryOptions,
-  ): Promise<AgentTurnStream> {
-    const lease = await this.acquire(key, signal, recovery)
-    let source: AgentTurnStream
-    try {
-      signal.throwIfAborted()
-      this.closing.signal.throwIfAborted()
-      source = await start()
-    } catch (error) {
-      lease.failure(error)
-      lease.release()
-      throw error
-    }
-    let completed = false
-    let failed = false
-    let disposal: Promise<void> | undefined
-    function dispose() {
-      disposal ??= (async () => {
-        try {
-          await source.dispose()
-          if (completed && !failed) lease.success()
-        } finally {
-          lease.release()
-        }
-      })()
-      return disposal
-    }
-    return {
-      ...source,
-      fullStream: (async function* () {
-        try {
-          for await (const part of source.fullStream) {
-            if (part.type === "error") {
-              failed = true
-              lease.failure(part.error)
-            }
-            if (part.type === "abort") failed = true
-            yield part
-          }
-          completed = true
-        } catch (error) {
-          failed = true
-          lease.failure(error)
-          throw error
-        } finally {
-          await dispose()
-        }
-      })(),
-      dispose,
-    }
-  }
-
   async acquire(key: string, signal: AbortSignal, recovery?: ProviderRecoveryOptions) {
     const waiting = AbortSignal.any([signal, this.closing.signal])
     const deadline = this.options.now() + this.options.maxWaitMs
@@ -181,6 +144,7 @@ export class ProviderRetryCoordinator {
         this.entries.get(key) !== entry ||
         entry.probe ||
         entry.until <= this.options.now() ||
+        entry.admitAfter > this.options.now() ||
         entry.retryAfter > this.options.now()
       )
         return false
@@ -200,7 +164,8 @@ export class ProviderRetryCoordinator {
         error.name = "ProviderRecoveryTimeoutError"
         throw error
       }
-      const delay = entry.until - this.options.now()
+      const next = Math.max(entry.until, entry.admitAfter)
+      const delay = next - this.options.now()
       if (!entry.probe && delay <= 0) {
         const token = Symbol()
         entry.probe = token
@@ -213,8 +178,11 @@ export class ProviderRetryCoordinator {
       try {
         recovery?.onWait?.({
           error: entry.error,
-          next: entry.probe ? undefined : entry.until,
-          retry: !entry.probe && entry.retryAfter <= this.options.now() ? () => expedite(entry) : undefined,
+          next: entry.probe ? undefined : next,
+          retry:
+            !entry.probe && entry.retryAfter <= this.options.now() && entry.admitAfter <= this.options.now()
+              ? () => expedite(entry)
+              : undefined,
         })
         await this.options.sleep(
           Math.min(remaining, delay > 0 ? delay : remaining),
@@ -227,28 +195,96 @@ export class ProviderRetryCoordinator {
         entry.waiters.delete(notify)
       }
     }
-    recovery?.onWait?.(undefined)
     let released = false
     let failed = false
-    return {
+    let progressed = false
+    const releaseProbe = () => {
+      if (!probe || probe.entry.probe !== probe.token) return
+      delete probe.entry.probe
+      this.wake(probe.entry)
+    }
+    const release = () => {
+      if (released) return
+      released = true
+      waiting.removeEventListener("abort", release)
+      releaseProbe()
+    }
+    const lease = {
       failure: (error: unknown) => {
-        if (released || failed || signal.aborted) return
+        if (released || failed || waiting.aborted) return
         failed = true
         this.failure(key, error)
+        releaseProbe()
+      },
+      progress: () => {
+        if (released || failed || progressed || waiting.aborted || !probe || this.entries.get(key) !== probe.entry)
+          return
+        progressed = true
+        probe.entry.admitAfter = Math.max(probe.entry.admitAfter, this.options.now() + this.options.recoveryIntervalMs)
+        releaseProbe()
       },
       success: () => {
-        if (released || failed || signal.aborted || !probe || this.entries.get(key) !== probe.entry) return
-        if (probe.entry.probe !== probe.token || probe.entry.revision !== probe.revision) return
+        if (released || failed || waiting.aborted || !probe || this.entries.get(key) !== probe.entry) return
+        if (probe.entry.revision !== probe.revision) return
         this.entries.delete(key)
         this.wake(probe.entry)
       },
-      release: () => {
-        if (released) return
-        released = true
-        if (!probe || probe.entry.probe !== probe.token) return
-        delete probe.entry.probe
-        this.wake(probe.entry)
+      release,
+      async stream(start: () => Promise<AgentTurnStream>): Promise<AgentTurnStream> {
+        let source: AgentTurnStream
+        try {
+          waiting.throwIfAborted()
+          source = await start()
+        } catch (error) {
+          lease.failure(error)
+          release()
+          throw error
+        }
+        let streamFailed = false
+        let disposal: Promise<void> | undefined
+        function dispose() {
+          disposal ??= (async () => {
+            release()
+            await source.dispose()
+          })()
+          return disposal
+        }
+        return {
+          ...source,
+          fullStream: (async function* () {
+            try {
+              for await (const part of source.fullStream) {
+                if (part.type === "error") {
+                  streamFailed = true
+                  lease.failure(part.error)
+                }
+                if (part.type === "abort") {
+                  streamFailed = true
+                  release()
+                }
+                if (providerProgress(part)) lease.progress()
+                yield part
+              }
+              if (!streamFailed) lease.success()
+            } catch (error) {
+              lease.failure(error)
+              throw error
+            } finally {
+              await dispose()
+            }
+          })(),
+          dispose,
+        }
       },
+    }
+    waiting.addEventListener("abort", release, { once: true })
+    try {
+      recovery?.onWait?.(undefined)
+      waiting.throwIfAborted()
+      return lease
+    } catch (error) {
+      release()
+      throw error
     }
   }
 }
