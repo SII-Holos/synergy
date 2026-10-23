@@ -24,3 +24,5 @@ const session = await client.session.create({ title: "Embedded agent" })
 ```
 
 The component list is required. An empty list opens the Harness without a default execution Environment or plugin host. Select `localRuntime({ workers: false, environment: false })` when native file services are needed without a default execution destination. Select the Plugin Host component separately if needed. Session creation and API tools do not allocate compute. See [Environments](../../docs/architecture/environments.md) for selection and lifetime. Components are checked for duplicate identities, missing dependencies, version conflicts and cycles before opening storage. Runtime close drains execution and disposes started services in reverse dependency order.
+
+Feature candidates are resolved before registration using global opt-ins. A host with its own configuration source supplies the matching `features` plan from Util `FeatureSelection.resolve`; it must resolve the instance-wide preferences before opening the Runtime. Workers inherit that plan. See [Feature lifecycle](../../docs/architecture/feature-lifecycle.md).

@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { Vcs } from "./project/vcs"
 import { Ide } from "./project/ide"
@@ -20,6 +21,7 @@ import { registerPresentationTools } from "./presentation/tools"
 export function workbench(): RuntimeComponent {
   return {
     id: "workbench",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

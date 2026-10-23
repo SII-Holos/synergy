@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { SessionExecutionOwners } from "@ericsanchezok/synergy-harness/session/execution-owners"
 import { AgendaStore } from "./agenda/store"
 import { registerAgentContributions } from "./agent-contributions"
@@ -13,6 +14,7 @@ import { Agenda } from "./agenda"
 export function agenda(): RuntimeComponent {
   return {
     id: "agenda",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

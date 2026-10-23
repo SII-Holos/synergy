@@ -25,7 +25,8 @@
     "./config-schema": "./src/config-schema.ts",
     "./http": "./src/http.ts",
     "./migration": "./src/migration.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -72,6 +73,20 @@
       "@ericsanchezok/synergy-channels": "1.1.26",
       "@ericsanchezok/synergy-holos": "1.1.26",
       "@ericsanchezok/synergy-agenda": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "channel-clarus",
+          "owner": "channel-clarus",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Channel Clarus",
+          "description": "Provide channel clarus capabilities.",
+          "component": "channel-clarus"
+        }
+      ]
     }
   },
   "peerDependencies": {

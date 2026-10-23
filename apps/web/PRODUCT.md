@@ -22,6 +22,10 @@ Avoid nested-card chrome, border-within-border form shells, decorative gradients
 
 ## Design Principles
 
+Experimental features always has a settings entry. Its saved choices and pending restart state are separate from current availability. Ordinary navigation, settings/search, workflow menus, restored panels and mobile entries follow server capabilities. Kanban, Boss and Lattice default off; hidden capabilities preserve history and settings. See [Feature lifecycle](../../docs/architecture/feature-lifecycle.md).
+
+Experimental settings use the shared compact setting row with a trailing Switch. Keep the feature name and short benefit description on the left, with activation status as secondary text below the description. Keep component names, worker protocols and other implementation details in developer documentation. Errors give a recovery action without displaying raw diagnostics.
+
 Confirming directory recovery completes the current task’s directory selection and preserves its draft. The next send uses that confirmed binding without another selection step. Background directory changes cannot silently redirect an explicit task selection.
 
 Use one visual source of truth for shared document editing.

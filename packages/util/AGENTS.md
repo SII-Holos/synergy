@@ -1,8 +1,8 @@
 # Shared Utility Rules
 
-This published package owns dependency-light primitives shared across runtime, SDK, plugins, UI, and protocol packages.
+Shared primitives for runtime, SDK, plugins, UI and protocols.
 
-- Do not import App, Desktop, or core-runtime implementation into this package. Keep utilities deterministic, side-effect free unless explicitly named, and safe in every declared runtime.
+- Do not import App, Desktop, or core-runtime implementation into this package. Keep unnamed utilities deterministic, portable and side-effect free.
 - Preserve public export paths and Bun/types/import resolution. Prefer small domain-neutral functions and schemas over moving product ownership into a generic helper.
 - The `tool-timeout` export owns the one definition of the tool-timeout observation (`ToolTimeoutSource`, `ToolTimeoutMetadata`) shared by the runtime producer and the shared UI consumer. It lives here because `ui` may not import runtime-private modules and `util` is the only package both already depend on. Keep it type-only and keep the `*Ms` field names: the object is persisted on tool parts, so renaming strands the observation on stored history. Seconds are the unit at the agent- and human-facing boundary, not here.
 - The public `runtime-startup` export owns the versioned startup-record schema and bounded framing constants. Keep payloads aggregate-only; CLI emission, Desktop presentation and waiting policy belong to their consumers. Verify schema edge cases with `bun test test/runtime-startup.test.ts` and run the core migration/CLI and Desktop startup consumer tests when changing this export.
@@ -32,3 +32,5 @@ Run `bun run typecheck`, `bun test`, and `bun run build`, affected consumer test
 `resource-reference` owns the portable target parser, Workspace origin and location schemas. It never selects a current Workspace or probes files. Use it for every Markdown/resource ingress; ownership validation and opening belong to the host. Verify `test/resource-reference.test.ts` with affected message, composer and resource-opening tests.
 
 `render-artifact`/`render-ui` own [visual schemas](../../docs/architecture/visual-results.md); `json-value` validates JSON.
+
+`features` selects features; `feature-config` reads preferences; `worker-plan` validates worker selections.

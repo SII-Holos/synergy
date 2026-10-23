@@ -9,7 +9,8 @@
     "./ast-grep": "./src/ast-grep/index.ts",
     "./ast-grep/cli": "./src/ast-grep/cli.ts",
     "./register-tools": "./src/register-tools.ts",
-    "./component": "./src/component.ts"
+    "./component": "./src/component.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -44,6 +45,20 @@
     "export": "codeTools",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "code-tools",
+          "owner": "code-tools",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Code Tools",
+          "description": "Provide code tools capabilities.",
+          "component": "code-tools"
+        }
+      ]
     }
   },
   "optionalDependencies": {

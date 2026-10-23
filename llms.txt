@@ -82,3 +82,5 @@ The project-local `.synergy/skill/` files are executable workflows for this repo
 - `find-logs`, `inspect-sessions`, `find-simplifications`, `release-log-workflow`, and `report-bug`
 
 Use `Scope` for workspace resolution/context and `Library` for the knowledge subsystem. Current built-in primary agents are `atlas`, `forge`, and `pico`; retired terminology belongs only in migration or research material.
+
+- [Develop a feature](.synergy/skill/develop-feature/SKILL.md): Declare, verify, graduate and retire experimental modules and behavior changes.

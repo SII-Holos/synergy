@@ -1,3 +1,5 @@
+import { ExperimentsPanel } from "./panels/ExperimentsPanel"
+import { createExperimentsController } from "./panels/experiments-controller"
 import { getBuiltinSettingsSection } from "./catalog"
 import { createBossNameController } from "./panels/boss-name-controller"
 import { validateSettingsDraft } from "./settings-draft-validation"
@@ -415,6 +417,25 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (activeTab() === "boss" && globalSDK.capabilities.has("library") && !bossNameController.loaded())
       untrack(() => void bossNameController.load())
   })
+  const experimentsController = createExperimentsController(
+    {
+      get: async () => (await globalSDK.client.global.features({ throwOnError: true })).data!,
+      update: async (optIn) => {
+        await globalSDK.client.config.domain.update(
+          {
+            domain: "features",
+            configDomainUpdateInput: { config: { features: { optIn } }, mode: "replace-domain" },
+          },
+          { throwOnError: true },
+        )
+      },
+    },
+    {
+      owner: globalSDK.capabilities.current,
+      identity: () => globalSDK.url,
+      visible: () => activeTab() === "experiments",
+    },
+  )
   const voiceController = createVoiceController({
     get: async () =>
       (await globalSDK.client.config.domain.get({ domain: "voice" }, { throwOnError: true })).data?.voice,
@@ -847,6 +868,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       font.dirty() ||
       desktopUpdateDirty() ||
       voiceController.dirty() ||
+      experimentsController.dirty() ||
       (globalSDK.capabilities.has("library") && bossNameController.dirty()),
   )
   const draftFingerprint = createMemo(() =>
@@ -860,6 +882,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       font: [font.selected("sans"), font.selected("mono")],
       desktopUpdate: desktopUpdateDraft(),
       voice: voiceController.draft,
+      experiments: experimentsController.draft(),
       bossName: bossNameController.content(),
     }),
   )
@@ -873,6 +896,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
     pluginDrafts.discard()
     personalizeController.discard()
     voiceController.discard()
+    experimentsController.discard()
     bossNameController.discard()
     font.discard()
     setDesktopUpdateDraft(undefined)
@@ -986,6 +1010,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const explicitSaveSources = () => [
     {
+      name: translateDescriptor(getBuiltinSettingsSection("experiments")!.copy.label, i18n()),
+      page: "experiments",
+      dirty: experimentsController.dirty,
+      save: experimentsController.save,
+    },
+    {
       name: serverValidation()[0]
         ? _(getBuiltinSettingsSection(serverValidation()[0]!.page)!.copy.label)
         : _(copy.globalConfig),
@@ -1030,6 +1060,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       saving() ||
       save.status() === "saving" ||
       personalizeController.busy() ||
+      experimentsController.status() === "saving" ||
       (hasServerChanges() && !domainSummariesResource.ready()),
   )
 
@@ -1211,6 +1242,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
     browser: BrowserPanel,
+    experiments: () => (
+      <ExperimentsPanel controller={experimentsController} onRetrySave={() => void saveExplicitChanges()} />
+    ),
     account: AccountPanel,
     personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (

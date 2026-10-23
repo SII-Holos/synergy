@@ -8,6 +8,7 @@ import { workerPlan, registerWorkerComponents } from "@ericsanchezok/synergy-age
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
+import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { fullComponents } from "../../src/components"
 
 for (const full of [true, false])
@@ -20,7 +21,10 @@ for (const full of [true, false])
     ])
     const context = RuntimeContext.create({
       ...fixture.host,
-      env: { ...fixture.host.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components)) },
+      env: {
+        ...fixture.host.env,
+        SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components, FeatureSelection.complete(components))),
+      },
     })
     try {
       await context.run(async () => {

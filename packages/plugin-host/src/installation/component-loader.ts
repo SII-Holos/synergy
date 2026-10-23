@@ -1,9 +1,9 @@
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { ComponentFeatures, FeatureSelection, type FeaturePlan } from "@ericsanchezok/synergy-util/features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
-import type { ComponentPackage } from "@ericsanchezok/synergy-plugin/package"
-import type { InstalledGeneration, InstalledPackage } from "./generations"
+import type { InstalledGeneration } from "./generations"
 
 const core = new Set(["local-runtime", "plugin-host"])
 const harness = "@ericsanchezok/synergy-harness"
@@ -19,33 +19,25 @@ export async function assertHarnessIdentity(generation: Pick<InstalledGeneration
 
 function selectedPackages(
   generation: InstalledGeneration,
-  selection?: Readonly<Record<string, string>>,
-  desktop = false,
+  selection: Readonly<Record<string, string>> | undefined,
+  options: { desktop?: boolean; optIn?: readonly string[] },
 ) {
-  const packages = new Map<string, InstalledPackage & { metadata: ComponentPackage }>()
-  for (const pkg of Object.values(generation.packages)) {
-    if (pkg.metadata?.kind === "component" && !core.has(pkg.metadata.id))
-      packages.set(pkg.metadata.id, { ...pkg, metadata: pkg.metadata })
-  }
-  const selected = new Set<string>()
-  function visit(id: string) {
-    if (id === "browser-runtime" && !desktop) return
-    if (core.has(id) || selected.has(id)) return
-    const pkg = packages.get(id)
-    if (!pkg) throw new Error(`Component is not installed: ${id}`)
-    selected.add(id)
-    for (const required of Object.keys(pkg.metadata.requires ?? {})) visit(required)
-  }
-  for (const id of selection ? Object.keys(selection) : packages.keys()) {
-    visit(id)
-    const version =
-      packages.get(id)?.version ??
-      generation.packages[`@ericsanchezok/synergy-${id}`]?.version ??
-      generation.hostVersion
-    if (selection && selection[id] !== version)
-      throw new Error(`Component ${id} requires exact version ${selection[id]}; installed ${version}`)
-  }
-  return [...selected].map((id) => packages.get(id)!)
+  const packages = Object.values(generation.packages).flatMap((pkg) =>
+    pkg.metadata?.kind === "component" &&
+    !core.has(pkg.metadata.id) &&
+    (options.desktop || pkg.metadata.id !== "browser-runtime")
+      ? [{ ...pkg, metadata: pkg.metadata }]
+      : [],
+  )
+  const features = FeatureSelection.resolve(
+    packages.map((pkg) => ({ ...pkg.metadata, version: pkg.version })),
+    {
+      selection,
+      optIn: options.optIn,
+      provided: { "local-runtime": generation.hostVersion, "plugin-host": generation.hostVersion },
+    },
+  )
+  return { packages, features }
 }
 
 const requirements = (value: Readonly<Record<string, string>> = {}) =>
@@ -54,11 +46,14 @@ const requirements = (value: Readonly<Record<string, string>> = {}) =>
 export async function loadInstalledComponents(
   generation: InstalledGeneration,
   selection?: Readonly<Record<string, string>>,
-  options: { desktop?: boolean } = {},
-): Promise<RuntimeComponent[]> {
-  const packages = selectedPackages(generation, selection, options.desktop)
+  options: { desktop?: boolean; optIn?: readonly string[] } = {},
+): Promise<{ components: RuntimeComponent[]; features: FeaturePlan; maintenance: URL[] }> {
+  const catalog = selectedPackages(generation, selection, options)
+  const packages = catalog.packages.filter((pkg) => catalog.features.components.includes(pkg.metadata.id))
   const canonical = await assertHarnessIdentity(generation)
-  for (const pkg of packages) {
+  for (const pkg of catalog.packages.filter(
+    (pkg) => catalog.features.components.includes(pkg.metadata.id) || pkg.metadata.maintenance,
+  )) {
     const resolved = await fs.realpath(
       Bun.resolveSync(`${harness}/lifecycle`, path.join(generation.directory, pkg.directory)),
     )
@@ -77,18 +72,37 @@ export async function loadInstalledComponents(
       component.version !== pkg.metadata.version ||
       component.apiVersion !== pkg.metadata.apiVersion ||
       typeof component.register !== "function" ||
-      requirements(component.requires) !== requirements(pkg.metadata.requires)
+      requirements(component.requires) !== requirements(pkg.metadata.requires) ||
+      Boolean(component.maintenance) !== Boolean(pkg.metadata.maintenance) ||
+      JSON.stringify(component.features && ComponentFeatures.parse(component.features)) !==
+        JSON.stringify(pkg.metadata.features && ComponentFeatures.parse(pkg.metadata.features))
     )
       throw new Error(`Component executable does not match approved metadata: ${pkg.metadata.id}`)
-    for (const url of [...Object.values(component.adapters ?? {}), ...Object.values(component.workers ?? {})]) {
+    for (const url of [
+      ...Object.values(component.adapters ?? {}),
+      ...Object.values(component.workers ?? {}),
+      ...(component.maintenance ? [component.maintenance] : []),
+    ]) {
       if (!(url instanceof URL) || url.protocol !== "file:")
         throw new Error(`Component entry is not a local file: ${component.id}`)
       const file = await fs.realpath(fileURLToPath(url))
+      if (
+        url === component.maintenance &&
+        file !== (await fs.realpath(path.join(generation.directory, pkg.directory, pkg.metadata.maintenance!)))
+      )
+        throw new Error(`Component maintenance does not match approved metadata: ${component.id}`)
       const relative = path.relative(generation.directory, file).split(path.sep).join("/")
       if (generation.files[relative]?.kind !== "file")
         throw new Error(`Component entry is outside its sealed generation: ${component.id}`)
     }
     result.push(component as RuntimeComponent)
   }
-  return result
+  const maintenance = catalog.packages.flatMap((pkg) => {
+    if (catalog.features.components.includes(pkg.metadata.id) || !pkg.metadata.maintenance) return []
+    const relative = path.posix.join(pkg.directory, pkg.metadata.maintenance)
+    if (generation.files[relative]?.kind !== "file")
+      throw new Error(`Maintenance entry is outside its sealed generation: ${pkg.metadata.id}`)
+    return [pathToFileURL(path.join(generation.directory, relative))]
+  })
+  return { components: result, features: catalog.features, maintenance }
 }

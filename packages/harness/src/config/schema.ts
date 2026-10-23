@@ -8,6 +8,7 @@ import { ModelsDev } from "../provider/models-schemas"
 import { ProviderPricing } from "../provider/pricing"
 import { ModelRole } from "../provider/model-role"
 import { ConfigExtensions } from "./extensions"
+import { FeaturePreferences } from "@ericsanchezok/synergy-util/features"
 
 export const SandboxConfig = z
   .object({
@@ -583,6 +584,9 @@ export type Provider = z.infer<typeof Provider>
 
 export const CoreInfo = z
   .object({
+    features: FeaturePreferences.optional().describe(
+      "Global experimental feature opt-ins; empty by default. Component changes apply after restart.",
+    ),
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
     logLevel: Log.Level.optional().describe("Log level"),
     storage: StorageConfiguration.optional().describe(

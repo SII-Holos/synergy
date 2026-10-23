@@ -40,7 +40,7 @@ export type SynergyServer = {
   [Symbol.asyncDispose](): Promise<void>
 }
 
-function verifyComponents(selected: Readonly<Record<string, string>>, active: RuntimeReady["components"]) {
+function verifyComponents(selected: Readonly<Record<string, string>>, active: RuntimeReady["selection"]) {
   for (const [id, version] of Object.entries(selected)) {
     if (!active.some((item) => item.id === id && item.version === version))
       throw new Error(`Runtime component ${id}@${version} is unavailable`)
@@ -177,7 +177,7 @@ export async function createSynergyServer(options: ServerOptions): Promise<Syner
             )
               throw new Error("Invalid managed runtime endpoint")
             if (port && Number(url.port) !== port) throw new Error("Runtime port mismatch")
-            verifyComponents(options.components, result.components)
+            verifyComponents(options.components, result.selection)
             settled = true
             cleanup()
             resolve(result)

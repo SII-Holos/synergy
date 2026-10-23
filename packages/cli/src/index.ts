@@ -1,4 +1,5 @@
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
+import type { RuntimeSelection } from "./runtime-cli"
 
 export async function runComponentRunner(entry: URL, name: string, ready?: () => void) {
   const { RuntimeContext } = await import("@ericsanchezok/synergy-harness/lifecycle/context")
@@ -22,6 +23,7 @@ export async function runComponentRunner(entry: URL, name: string, ready?: () =>
 export async function runCoreWorker(
   components: readonly RuntimeComponent[] = [],
   ready?: () => void,
+  selection: RuntimeSelection = {},
 ): Promise<boolean> {
   const { CORE_RUNNERS } = await import("@ericsanchezok/synergy-util/installed-launcher")
   const worker = process.argv[2]
@@ -42,7 +44,11 @@ export async function runCoreWorker(
   return RuntimeContext.create(createLocalHost()).run(async () => {
     if (worker === "__storage-maintenance-runner") {
       const { createRuntimeCli } = await import("./runtime-cli")
-      ;(await createRuntimeCli(components)).register!()
+      ;(await createRuntimeCli(components, selection)).register!()
+      for (const entry of selection.maintenance ?? []) {
+        const module: { registerMaintenance(): void } = await import(entry.href)
+        module.registerMaintenance()
+      }
       const { StorageMaintenance } = await import("@ericsanchezok/synergy-harness/storage/maintenance")
       await using handle = await StorageMaintenance.open({ recover: true })
       return true
@@ -75,11 +81,15 @@ export async function runCoreWorker(
   })
 }
 
-export async function main(components: readonly RuntimeComponent[] = [], workerReady?: () => void) {
-  if (await runCoreWorker(components, workerReady)) return
+export async function main(
+  components: readonly RuntimeComponent[] = [],
+  workerReady?: () => void,
+  selection: RuntimeSelection = {},
+) {
+  if (await runCoreWorker(components, workerReady, selection)) return
   const { runCli } = await import("./main")
   const { createRuntimeCli } = await import("./runtime-cli")
-  await runCli(await createRuntimeCli(components))
+  await runCli(await createRuntimeCli(components, selection))
 }
 
 if (import.meta.main) {

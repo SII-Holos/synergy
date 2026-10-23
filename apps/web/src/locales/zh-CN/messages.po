@@ -13069,6 +13069,238 @@ msgid "execution.wrap"
 msgstr "自动换行"
 
 #. js-lingui-explicit-id
+msgid "features.acp.description"
+msgstr "提供ACP相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.acp.name"
+msgstr "ACP"
+
+#. js-lingui-explicit-id
+msgid "features.agenda.description"
+msgstr "提供日程相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.agenda.name"
+msgstr "日程"
+
+#. js-lingui-explicit-id
+msgid "features.anima.description"
+msgstr "提供Anima相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.anima.name"
+msgstr "Anima"
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.description"
+msgstr "提供Blueprint相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.name"
+msgstr "Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.boss.description"
+msgstr "分配任务并跟进进展。"
+
+#. js-lingui-explicit-id
+msgid "features.boss.name"
+msgstr "Boss 模式"
+
+#. js-lingui-explicit-id
+msgid "features.browser.description"
+msgstr "提供浏览器相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.browser.name"
+msgstr "浏览器"
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.description"
+msgstr "提供Clarus 渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.name"
+msgstr "Clarus 渠道"
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.description"
+msgstr "提供飞书渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.name"
+msgstr "飞书渠道"
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.description"
+msgstr "提供GitHub 渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.name"
+msgstr "GitHub 渠道"
+
+#. js-lingui-explicit-id
+msgid "features.channels.description"
+msgstr "提供渠道相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.channels.name"
+msgstr "渠道"
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.description"
+msgstr "提供代码工具相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.name"
+msgstr "代码工具"
+
+#. js-lingui-explicit-id
+msgid "features.computer.description"
+msgstr "提供电脑操作相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.computer.name"
+msgstr "电脑操作"
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.description"
+msgstr "提供数字分身相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.name"
+msgstr "数字分身"
+
+#. js-lingui-explicit-id
+msgid "features.email.description"
+msgstr "提供邮箱相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.email.name"
+msgstr "邮箱"
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.description"
+msgstr "提供外部 Agent相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.name"
+msgstr "外部 Agent"
+
+#. js-lingui-explicit-id
+msgid "features.formatter.description"
+msgstr "提供格式化相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.formatter.name"
+msgstr "格式化"
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.description"
+msgstr "提供GitHub 日程相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.name"
+msgstr "GitHub 日程"
+
+#. js-lingui-explicit-id
+msgid "features.github.description"
+msgstr "提供GitHub相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.github.name"
+msgstr "GitHub"
+
+#. js-lingui-explicit-id
+msgid "features.holos.description"
+msgstr "提供Holos相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.holos.name"
+msgstr "Holos"
+
+#. js-lingui-explicit-id
+msgid "features.kanban.description"
+msgstr "在看板中查看和组织任务。"
+
+#. js-lingui-explicit-id
+msgid "features.kanban.name"
+msgstr "看板"
+
+#. js-lingui-explicit-id
+msgid "features.lattice.description"
+msgstr "组织并执行多步骤工作流。"
+
+#. js-lingui-explicit-id
+msgid "features.lattice.name"
+msgstr "Lattice"
+
+#. js-lingui-explicit-id
+msgid "features.library.description"
+msgstr "提供知识库相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.library.name"
+msgstr "知识库"
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.description"
+msgstr "提供轻量循环相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.name"
+msgstr "轻量循环"
+
+#. js-lingui-explicit-id
+msgid "features.lsp.description"
+msgstr "提供语言服务相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.lsp.name"
+msgstr "语言服务"
+
+#. js-lingui-explicit-id
+msgid "features.mcp.description"
+msgstr "提供MCP相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.mcp.name"
+msgstr "MCP"
+
+#. js-lingui-explicit-id
+msgid "features.media.description"
+msgstr "提供媒体相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.media.name"
+msgstr "媒体"
+
+#. js-lingui-explicit-id
+msgid "features.note.description"
+msgstr "提供笔记相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.note.name"
+msgstr "笔记"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.description"
+msgstr "提供插件 Blueprint相关功能。"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.name"
+msgstr "插件 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.workbench.description"
+msgstr "项目、任务展示、代码审查和活动。"
+
+#. js-lingui-explicit-id
+msgid "features.workbench.name"
+msgstr "工作台"
+
+#. js-lingui-explicit-id
 msgid "files.close.description"
 msgstr "离开此文件前，保存 {name} 的更改。"
 
@@ -20574,6 +20806,66 @@ msgstr "开启"
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
 msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.dependencyUnavailable"
+msgstr "所需功能不可用"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.description"
+msgstr "试用尚未完善的功能。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.empty"
+msgstr "暂无实验功能。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.live"
+msgstr "保存后，下次操作生效"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loadFailed"
+msgstr "无法加载实验功能。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loading"
+msgstr "加载中…"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.notInstalled"
+msgstr "未安装"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.pending"
+msgstr "已保存，重启后生效"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.restart"
+msgstr "重启后生效"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.saveFailed"
+msgstr "未能确认更改，已保留草稿。"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.searchTerms"
+msgstr "实验 | 功能 | 看板 | boss | lattice | 预览"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.title"
+msgstr "实验功能"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unsaved"
+msgstr "尚未保存"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unselected"
+msgstr "当前不可用"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.balanced"

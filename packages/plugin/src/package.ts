@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { ComponentFeatures } from "@ericsanchezok/synergy-util/features"
 
 const Identifier = z.string().regex(/^[a-z][a-z0-9.-]*$/)
 export const SynergyPackageName = z.string().regex(/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/)
@@ -27,6 +28,8 @@ export const ComponentPackage = z
     ...common,
     kind: z.literal("component"),
     apiVersion: z.literal(1),
+    features: ComponentFeatures.optional(),
+    maintenance: RelativeFile.optional(),
     entry: RelativeFile,
     export: z.string().regex(/^[A-Za-z_$][A-Za-z0-9_$]*$/),
     runners: z

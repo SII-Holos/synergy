@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, test } from "bun:test"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { AgentDelegation } from "@ericsanchezok/synergy-harness/agent/delegation"
@@ -61,7 +62,7 @@ async function open(
   permission: Record<string, PermissionNext.Action> = {},
   renameReviewers = false,
 ) {
-  const composition = RuntimeComponents.compose([localRuntime({ workers: false, environment: false }), ...components])
+  const composition = composeWithExperiments([localRuntime({ workers: false, environment: false }), ...components])
   return testRuntime({
     composition: {
       register() {

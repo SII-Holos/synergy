@@ -93,6 +93,50 @@
         ]
       }
     },
+    "/global/features": {
+      "get": {
+        "operationId": "global.features",
+        "summary": "Get feature catalog",
+        "description": "List feature declarations, saved opt-ins, active state and restart requirements for this instance.",
+        "responses": {
+          "200": {
+            "description": "Runtime feature catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FeatureStatus"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime services are not ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.features({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/capabilities": {
       "get": {
         "operationId": "global.capabilities",
@@ -6360,6 +6404,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "features",
                 "general",
                 "models",
                 "providers",
@@ -6450,6 +6495,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "features",
                 "general",
                 "models",
                 "providers",
@@ -6551,6 +6597,7 @@
             "schema": {
               "type": "string",
               "enum": [
+                "features",
                 "general",
                 "models",
                 "providers",
@@ -6662,6 +6709,7 @@
                 {
                   "type": "string",
                   "enum": [
+                    "features",
                     "general",
                     "models",
                     "providers",
@@ -6690,6 +6738,7 @@
                   "items": {
                     "type": "string",
                     "enum": [
+                      "features",
                       "general",
                       "models",
                       "providers",
@@ -38939,6 +38988,70 @@
         },
         "required": ["id", "version", "apiVersion"]
       },
+      "FeatureDefinition": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*$"
+          },
+          "owner": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*$"
+          },
+          "maturity": {
+            "type": "string",
+            "enum": ["experimental", "stable"]
+          },
+          "activation": {
+            "type": "string",
+            "enum": ["live", "restart"]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "component": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*$"
+          }
+        },
+        "required": ["id", "owner", "maturity", "activation", "name", "description"],
+        "additionalProperties": false
+      },
+      "FeatureStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*$"
+          },
+          "definition": {
+            "$ref": "#/components/schemas/FeatureDefinition"
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "pendingRestart": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["not-installed", "component-unselected", "dependency-unavailable", "restart-required"]
+          }
+        },
+        "required": ["id", "selected", "available", "enabled", "pendingRestart"]
+      },
       "RuntimeCapabilities": {
         "type": "object",
         "properties": {
@@ -59051,6 +59164,21 @@
       "Config": {
         "type": "object",
         "properties": {
+          "features": {
+            "description": "Global experimental feature opt-ins; empty by default. Component changes apply after restart.",
+            "type": "object",
+            "properties": {
+              "optIn": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9.-]*$"
+                }
+              }
+            },
+            "required": ["optIn"],
+            "additionalProperties": false
+          },
           "$schema": {
             "description": "JSON schema reference for configuration validation",
             "type": "string"
@@ -60759,6 +60887,7 @@
           "id": {
             "type": "string",
             "enum": [
+              "features",
               "general",
               "models",
               "providers",
@@ -60910,6 +61039,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "features",
                 "general",
                 "models",
                 "providers",
@@ -61046,6 +61176,7 @@
           "id": {
             "type": "string",
             "enum": [
+              "features",
               "general",
               "models",
               "providers",
@@ -61183,6 +61314,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "features",
                 "general",
                 "models",
                 "providers",
@@ -61408,6 +61540,7 @@
                 "items": {
                   "type": "string",
                   "enum": [
+                    "features",
                     "general",
                     "models",
                     "providers",
@@ -61471,6 +61604,7 @@
             "items": {
               "type": "string",
               "enum": [
+                "features",
                 "general",
                 "models",
                 "providers",

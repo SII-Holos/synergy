@@ -23,10 +23,12 @@ const server = Bun.serve({
     return Response.json({ healthy: true })
   },
 })
-const ready = { protocol: 1, pid: process.pid, version: mode === "version" ? "2.0.0" : "1.0.0", home: process.env.SYNERGY_RUNTIME_ROOT, url: "http://127.0.0.1:" + server.port, components: [{ id: "server", version: "1.0.0", apiVersion: 1 }] }
-if (mode === "component") ready.components = []
+const ready = { protocol: 2, pid: process.pid, version: mode === "version" ? "2.0.0" : "1.0.0", home: process.env.SYNERGY_RUNTIME_ROOT, url: "http://127.0.0.1:" + server.port, components: [{ id: "server", version: "1.0.0", apiVersion: 1 }] }
+ready.selection = ready.components.map(({id,version}) => ({id,version}))
+if (mode === "component") ready.selection = []
+if (mode === "experiment") ready.selection = [...ready.components, { id: "boss", version: "1.0.0" }]
 console.log("unrelated output")
-const line = "SYNERGY_READY_V1 " + JSON.stringify(ready) + "\n"
+const line = "SYNERGY_READY_V2 " + JSON.stringify(ready) + "\n"
 process.stdout.write(line.slice(0, 29))
 setTimeout(() => process.stdout.write(line.slice(29)), 5)
 await new Promise(() => {})
@@ -72,6 +74,16 @@ const capturingFetch = (captured: { request?: Request }) =>
   }) as unknown as typeof fetch
 
 describe("managed Synergy runtime", () => {
+  test("accepts a selected experimental component that remains dormant in the runtime", async () => {
+    await withFakeSynergy("experiment", async (dir) => {
+      const server = await createSynergyServer({ ...managed(dir), components: { server: "1.0.0", boss: "1.0.0" } })
+      try {
+        expect(server.ready?.components.map((component) => component.id)).toEqual(["server"])
+      } finally {
+        await server.close()
+      }
+    })
+  })
   test("uses the server command, explicit home, dynamic port and structured readiness with private auth", async () => {
     await withFakeSynergy("server", async (dir) => {
       process.env.FAKE_ARGS_LOG = path.join(dir, "args.json")

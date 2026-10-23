@@ -576,28 +576,19 @@ The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelop
 
 ## Runtime Boss Mode
 
-Runtime Boss Mode is an experimental Runtime-domain feature: when enabled, the runtime auto-provisions a home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it. All keys are optional, experimental, and live under `experimental` in `120-runtime.jsonc`:
+Boss is an experimental component. Opt in through the global features domain and restart before changing its business settings. The Runtime domain retains the following configuration in `120-runtime.jsonc` even while Boss is dormant:
 
 ```jsonc
 {
-  "experimental": {
-    "boss_mode": true,
-    "boss_persona": { "preset": "ops_assistant" },
-    "boss_briefing_interval_days": 7,
+  "boss": {
+    "enabled": true,
+    "persona": { "preset": "ops_assistant" },
+    "briefingIntervalDays": 7,
   },
 }
 ```
 
-| Key                                        | Type             | Default         | Behavior                                                                                                                                                                                                                                                                                                     |
-| ------------------------------------------ | ---------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `experimental.boss_mode`                   | boolean          | `false`         | Enables Runtime Boss Mode: auto-provisions one home-scope runtime boss session per enabled Feishu account and routes all accepted Feishu group and direct messages to it.                                                                                                                                    |
-| `experimental.boss_persona`                | object           | default persona | Colleague personality: `{ "preset": "project_manager" }`, `{ "preset": "ops_assistant" }`, or `{ "preset": "custom", "formality": 0..1, "conciseness": 0..1, "proactiveness": 0..1, "warmth": 0..1 }`. Deterministically renders the identity text and reporting style injected each turn; `null` clears it. |
-| `experimental.boss_identity_text`          | string           | default persona | Deprecated legacy fallback: optional colleague-identity description injected when `boss_persona` is not set. When both are set, `boss_persona` wins. The Settings UI no longer exposes this field; it remains readable for compatibility.                                                                    |
-| `experimental.boss_briefing_interval_days` | positive integer | disabled        | Periodically delivers a refresh instruction to the runtime boss to re-enumerate sessions, projects, agenda, memory, and experience; omitted or non-positive disables periodic re-injection.                                                                                                                  |
-
-The boss name is not config: it is a runtime-level single value stored in the shared memory library as a `self`-category row titled `boss_name` (written by the Settings UI through the Library HTTP memory create/update APIs). Each turn's persona rendering combines the name with the configured personality.
-
-Disabling `boss_mode` reverts Feishu routing to per-chat sessions; the boss session and its history remain. See [Workflows](../architecture/workflows.md) and [Connections](../product/connections.md) for routing and governance details.
+`boss.enabled` controls the assembled Boss service; it never opts into the experiment. Feishu routing additionally requires the `boss-feishu` bridge and an enabled account. `boss.persona`, `boss.identityText` and `boss.briefingIntervalDays` retain their business meanings. Disabling or deselecting Boss preserves its configuration and history. See the generated [configuration reference](configuration.md), [Workflows](../architecture/workflows.md) and [Feature lifecycle](../architecture/feature-lifecycle.md).
 
 ## GitHub Channel
 
@@ -763,23 +754,19 @@ Domain files are the durable configuration contract. Environment variables are p
 | `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`    | Override the process-global Cortex subagent concurrency maximum with a positive integer |
 | `SYNERGY_FAKE_VCS`                     | Override detected Scope VCS type for tests and controlled embedding                     |
 
-### Experimental and diagnostic escape hatches
+### Diagnostic overrides
 
 | Variable                          | Effect                                                                                                                                                   |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SYNERGY_ALLOW_REAL_HOME=1`       | Opt out of the test-home guard (`TestHomeGuardError`) for a deliberate real-home or non-isolated test run                                                |
 | `SYNERGY_TEST_HOME`               | Isolated home for test processes (positive marker required by the test-home guard; set by `test:ci`/`test:coverage` orchestrators and `test/preload.ts`) |
 | `SYNERGY_TEST_ROOT`               | Isolated fixture root for test processes (set by the orchestrators and `test/preload.ts`)                                                                |
-| `SYNERGY_EXPERIMENTAL=1`          | Enable the grouped experimental behaviors that explicitly consult it                                                                                     |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`    | Allow the experimental `oxfmt` formatter path                                                                                                            |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`   | Prefer the experimental `ty` Python language server over Pyright                                                                                         |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1` | Register the experimental direct LSP tool                                                                                                                |
 | `SYNERGY_DISABLE_MESSAGE_CACHE=1` | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read                                                             |
 | `SYNERGY_VERIFY_MESSAGE_CACHE=1`  | Compare the cached model working set with storage and fall back when they diverge                                                                        |
 | `SYNERGY_SESSION_CACHE_MAX_BYTES` | Set the aggregate and per-session model-working-set cache byte budget; defaults to 256 MiB                                                               |
 | `SYNERGY_DISABLE_LSP_REAP=1`      | Disable idle-age reaping; native write contention still retires idle LSP clients                                                                         |
 
-Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
+Diagnostic variables are not persisted preferences. Use domain configuration for ordinary behavior settings. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).
 
 ## File read/write tool group
 
@@ -788,3 +775,9 @@ Set `fileToolGroup` in the existing `60-agents.jsonc` domain. The values are `re
 This setting changes the local file interface independently of Agent and model selection. It does not grant permission, install an optional component, or configure external agents' own tools. Existing permission-only interface switching must be replaced by an explicit group setting. Existing `read`/`edit` and concrete-tool restrictions remain authoritative; a conflicting `edit: deny` can leave the selected interface read-only. No migration deletes these restrictions or falls back to another group. See [file tool interfaces](../architecture/workspace-and-files.md#file-tool-interfaces) for the member table, search modes and patch failure guarantees.
 
 `parse_code` now checks permission against resolved file paths before returning matches. Rules previously keyed to an AST expression must be replaced with path patterns; semantic `read` restrictions also apply.
+
+## Experimental feature preferences
+
+The global `features` domain uses `140-features.jsonc` and stores `{ "features": { "optIn": [] } }`. Lists replace previous selections; project and Session overrides are unsupported. Boss, Lattice and Kanban default off even when retained business configuration enables their internal behavior. Settings → Experimental features displays saved, active and pending-restart state. See [Feature lifecycle](../architecture/feature-lifecycle.md) for ownership, live behavior and graduation.
+
+`SYNERGY_EXPERIMENTAL` and `SYNERGY_EXPERIMENTAL_*` variables are ignored with a migration warning. Configure ordinary formatter, LSP and tool-exposure parameters through their domain settings; these parameters do not opt into product experiments. Execution-parameter `Experiment` files remain independent.

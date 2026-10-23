@@ -4,7 +4,7 @@ Own the reusable HTTP server, core routes, transport middleware, and OpenAPI gen
 
 - Keep product domain routes in their owning packages and mount their explicitly selected HTTP adapters; this package depends only on harness, local-runtime, and util.
 - Remote providers expose the authenticated Host gateway. Preserve pairing admission, native WebSocket upgrade ownership and revocation.
-- Preserve route contribution order, Scope middleware, authentication, snapshot headers, and OpenAPI operation IDs. Global capabilities publishes stable features from ready owners with HTTP adapters; component IDs are diagnostics. Return 503 before Runtime readiness and after admission closes. Managed processes require their captured bearer credential; never read another Runtime’s credentials or put them in readiness records.
+- Preserve route contribution order, Scope middleware, authentication, snapshot headers, and OpenAPI operation IDs. Global capabilities publishes effective features from ready owners with HTTP adapters; component IDs are diagnostics. Return 503 before Runtime readiness and after admission closes. Managed processes require their captured bearer credential; never read another Runtime’s credentials or put them in readiness records.
 - The explicit Web App owner serves known page navigations after transport guards and before optional APIs. Preserve JSON/fetch requests, API errors and missing assets when page and API paths overlap.
 - Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
 - Tests live under test/ and use isolated homes through the testing support package.

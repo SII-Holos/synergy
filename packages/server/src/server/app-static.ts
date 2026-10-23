@@ -62,22 +62,27 @@ export function appNavigationRoutes(directory: string) {
   const app = new Hono()
   for (const route of ["/agenda", "/library", "/kanban", "/performance", "/plugins/marketplace"]) {
     app.get(route, (c, next) => {
-      c.header("Vary", "Accept, Sec-Fetch-Mode, Sec-Fetch-Dest", { append: true })
-      const mode = c.req.header("sec-fetch-mode")
-      const destination = c.req.header("sec-fetch-dest")
-      if ((mode && mode !== "navigate") || (destination && destination !== "document")) return next()
-      const html = c.req
-        .header("accept")
-        ?.split(",")
-        .some((entry) => {
-          const [type, ...parameters] = entry.trim().split(";")
-          const quality = parameters.find((parameter) => parameter.trim().startsWith("q="))?.split("=")[1]
-          return type.trim() === "text/html" && (quality === undefined || Number(quality) > 0)
-        })
-      return html ? appDocument(c, directory) : next()
+      return isDocumentNavigation(c) ? appDocument(c, directory) : next()
     })
   }
   return app
+}
+
+function isDocumentNavigation(c: Context): boolean {
+  c.header("Vary", "Accept, Sec-Fetch-Mode, Sec-Fetch-Dest", { append: true })
+  const mode = c.req.header("sec-fetch-mode")
+  const destination = c.req.header("sec-fetch-dest")
+  if ((mode && mode !== "navigate") || (destination && destination !== "document")) return false
+  return (
+    c.req
+      .header("accept")
+      ?.split(",")
+      .some((entry) => {
+        const [type, ...parameters] = entry.trim().split(";")
+        const quality = parameters.find((parameter) => parameter.trim().startsWith("q="))?.split("=")[1]
+        return type.trim() === "text/html" && (quality === undefined || Number(quality) > 0)
+      }) ?? false
+  )
 }
 
 export function mountApp(app: Hono, directory: string) {
@@ -98,5 +103,5 @@ export function mountApp(app: Hono, directory: string) {
       if (resolved.type === "missing") return c.notFound()
       return next()
     })
-    .get("/*", (c) => appDocument(c, directory))
+    .get("/*", (c) => (isDocumentNavigation(c) ? appDocument(c, directory) : c.notFound()))
 }

@@ -214,12 +214,10 @@ export namespace ConfigImport {
     for (const definition of ConfigDomain.definitions()) {
       const fragment = split.get(definition.id)
       if (!fragment || !selected.has(definition.id) || !definition.importable) continue
-      const current = await Config.domainGet(definition.id, target.root)
       const filepath = ConfigDomain.filepath(definition.id, target.root)
       const raw = await readFileSnapshot(filepath)
       const mode = parsed.mode ?? definition.mergePolicy
-      const mergedFragment = Config.mergeRedactedSecrets(fragment as Schema.Info, current)
-      const next = Config.mergeDomainConfig(current, mergedFragment, mode)
+      const { current, next } = await Config.prepareDomainUpdate(definition.id, fragment, { root: target.root, mode })
       const changes = diffDomain(current, next, fragment as Schema.Info)
       domains.push({
         id: definition.id,
@@ -266,13 +264,14 @@ export namespace ConfigImport {
       }
 
       const split = ConfigDomain.split(parsed.config)
-      const nextByDomain = new Map<ConfigDomain.Id, Schema.Info>()
+      const nextByDomain = new Map<ConfigDomain.Id, Config.PreparedDomainUpdate>()
       for (const domain of currentPlan.domains) {
         const fragment = split.get(domain.id)
         if (!fragment) continue
-        const current = await Config.domainGet(domain.id, target.root)
-        const mergedFragment = Config.mergeRedactedSecrets(fragment as Schema.Info, current)
-        nextByDomain.set(domain.id, Config.mergeDomainConfig(current, mergedFragment, domain.mode))
+        nextByDomain.set(
+          domain.id,
+          await Config.prepareDomainUpdate(domain.id, fragment, { root: target.root, mode: domain.mode }),
+        )
       }
       await withTargetScope(target, () => Config.current())
       await prevalidate(target.root, nextByDomain)
@@ -327,22 +326,26 @@ export namespace ConfigImport {
     }
   }
 
-  async function prevalidate(root: string, nextByDomain: Map<ConfigDomain.Id, Schema.Info>) {
+  async function prevalidate(root: string, nextByDomain: Map<ConfigDomain.Id, Config.PreparedDomainUpdate>) {
     const aggregate: Record<string, unknown> = {}
     for (const definition of ConfigDomain.definitions()) {
-      const config = nextByDomain.get(definition.id) ?? (await Config.domainGet(definition.id, root))
+      const config = nextByDomain.get(definition.id)?.next ?? (await Config.domainGet(definition.id, root))
       Object.assign(aggregate, config)
     }
     Schema.Info.parse(aggregate)
   }
 
-  async function commit(domains: DomainPlan[], nextByDomain: Map<ConfigDomain.Id, Schema.Info>, options: ApplyOptions) {
+  async function commit(
+    domains: DomainPlan[],
+    nextByDomain: Map<ConfigDomain.Id, Config.PreparedDomainUpdate>,
+    options: ApplyOptions,
+  ) {
     const token = `${process.pid}-${Date.now().toString(36)}-${crypto.randomUUID()}`
     const snapshots: Snapshot[] = []
     try {
       for (const domain of domains) {
         if (domain.changes.length === 0) continue
-        const next = nextByDomain.get(domain.id)
+        const next = nextByDomain.get(domain.id)?.stored
         if (!next) continue
         const raw = await readFileSnapshot(domain.path)
         assertDomainRevision(domain, raw.content)

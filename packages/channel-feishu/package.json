@@ -28,7 +28,8 @@
     "./config-schema": "./src/config-schema.ts",
     "./http": "./src/http.ts",
     "./script/svg-raster-runtime-assets": "./script/svg-raster-runtime-assets.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -70,6 +71,20 @@
     },
     "packages": {
       "@ericsanchezok/synergy-channels": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "channel-feishu",
+          "owner": "channel-feishu",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Channel Feishu",
+          "description": "Provide channel feishu capabilities.",
+          "component": "channel-feishu"
+        }
+      ]
     }
   },
   "peerDependencies": {

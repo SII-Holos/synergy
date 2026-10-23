@@ -8,7 +8,8 @@
     "./tools": "./src/tools.ts",
     "./routes/computer-route": "./src/routes/computer-route.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -53,6 +54,20 @@
     "export": "computer",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "computer",
+          "owner": "computer-runtime",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Computer",
+          "description": "Provide computer capabilities.",
+          "component": "computer-runtime"
+        }
+      ]
     }
   }
 }

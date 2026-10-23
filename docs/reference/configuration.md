@@ -29,6 +29,7 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `voice` | `125-voice.jsonc` | merge |
 | `storage` | `130-storage.jsonc` | replace-domain |
 | `resources` | `135-resources.jsonc` | replace-domain |
+| `features` | `140-features.jsonc` | replace-domain |
 
 ## General
 
@@ -257,3 +258,11 @@ File: `135-resources.jsonc` · Merge: replace-domain
 | Key | Type | Description |
 | --- | --- | --- |
 | `resources` | ResourcesConfig |  |
+
+## Experimental features
+
+File: `140-features.jsonc` · Merge: replace-domain
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `features` | FeaturePreferences.optional (optional) |  |

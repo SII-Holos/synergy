@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
@@ -41,6 +42,7 @@ const migrations = [
 export function digitalTwin(): RuntimeComponent {
   return {
     id: "digital-twin",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

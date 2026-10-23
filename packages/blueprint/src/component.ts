@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerAgentContributions } from "./agent-contributions"
 import { registerSessionMigrations } from "./session-migration"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -17,6 +18,7 @@ import { clearDeadlineTimers } from "./blueprint/deadline"
 export function blueprint(): RuntimeComponent {
   return {
     id: "blueprint",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version, note: version },

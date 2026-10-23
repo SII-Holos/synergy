@@ -175,6 +175,7 @@ export const testOptions = {
     "test/components/session/project-directory-resource.test.ts",
     "test/components/note/blueprint-loops.test.ts",
     "test/components/settings/settings-resource.test.ts",
+    "test/components/settings/panels/experiments-controller.test.ts",
     "test/components/settings/browser-settings.test.ts",
     "test/context/session-submission-view.test.ts",
     "test/context/workbench-view.test.ts",

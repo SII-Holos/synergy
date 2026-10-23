@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerSessionMigrations } from "./session-migration"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -7,6 +8,7 @@ import { registerLightLoopDomain } from "./light-loop/register"
 export function lightLoop(): RuntimeComponent {
   return {
     id: "light-loop",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

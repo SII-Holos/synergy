@@ -5,6 +5,7 @@ import z from "zod"
 import { Global } from "../global"
 import * as Schema from "./schema"
 import { ConfigExtensions } from "./extensions"
+import { FEATURE_CONFIG_FILENAME } from "@ericsanchezok/synergy-util/feature-config"
 
 export namespace ConfigDomain {
   export const Id: z.ZodEnum<Record<string, string>> = ConfigExtensions.dynamicSchema(() => {
@@ -32,6 +33,18 @@ export namespace ConfigDomain {
   }
 
   const builtinDefinitions: Definition[] = [
+    {
+      id: "features",
+      filename: FEATURE_CONFIG_FILENAME,
+      label: "Experimental features",
+      ownedKeys: ["features"],
+      mergePolicy: "replace-domain",
+      reloadTargets: ["config"],
+      uiSection: "experiments",
+      importable: true,
+      globalOnly: true,
+      failClosed: true,
+    },
     {
       id: "general",
       filename: "00-general.jsonc",

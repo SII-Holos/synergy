@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, spyOn, test } from "bun:test"
 import { RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -22,7 +23,7 @@ import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 const owners = () => [note(), blueprint(), lattice(), lightLoop(), agenda()]
 const model = { providerID: "fixture", modelID: "fixture" }
 function open(home: string, components: RuntimeComponent[]) {
-  const composition = RuntimeComponents.compose([localRuntime({ workers: false, environment: false }), ...components])
+  const composition = composeWithExperiments([localRuntime({ workers: false, environment: false }), ...components])
   return testRuntime({ home, composition: { register: composition.register } })
 }
 function within<T>(fn: () => Promise<T>) {

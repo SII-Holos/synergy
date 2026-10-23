@@ -27,6 +27,7 @@ export interface Gate {
 }
 
 const LOCAL_GATES: Gate[] = [
+  { id: "feature:check", run: "bun run feature:check", needs: [] },
   { id: "format:check", run: "bun run format:check", needs: [] },
   { id: "lint", run: "bun run lint", needs: [] },
   { id: "skill:check", run: "bun run skill:check", needs: [] },

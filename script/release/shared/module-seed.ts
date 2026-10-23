@@ -1,6 +1,7 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { webAppFeatures } from "../../../packages/server/src/features"
 import { packWorkspace } from "../../pack-workspace"
 import { readPackedArchives, withInstalledPackages, type PackedArchive } from "../../package-install-check"
 import { seedInstalledCore } from "../../../packages/plugin-host/src/installation/seed"
@@ -70,6 +71,7 @@ export async function prepareModuleArchives(options: {
         version: options.version,
         compatibility: { synergy: options.version },
         apiVersion: 1,
+        features: { ...webAppFeatures, definitions: [...webAppFeatures.definitions] },
         entry: "./index.js",
         export: "webApplication",
         requires: { server: options.version },

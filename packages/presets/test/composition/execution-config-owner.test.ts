@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, test } from "bun:test"
 import path from "node:path"
 import { Config } from "@ericsanchezok/synergy-harness/config"
@@ -29,7 +30,7 @@ for (const owner of ["mcp", "boss"] as const) {
       const selected = selection === "selected"
       await using runtime = await testRuntime({
         home: home.host.home,
-        composition: RuntimeComponents.compose([
+        composition: composeWithExperiments([
           localRuntime({ workers: false, environment: false }),
           ...(selected ? (owner === "mcp" ? [plugins(), mcp()] : [library(), agenda(), boss()]) : []),
         ]),

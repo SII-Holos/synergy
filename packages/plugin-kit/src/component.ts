@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { readFileSync } from "node:fs"
 
 export function pluginKit() {
@@ -7,6 +8,7 @@ export function pluginKit() {
   }
   return {
     id: "plugin-kit",
+    features: componentFeatures,
     apiVersion: 1 as const,
     version,
     requires: synergy.requires,

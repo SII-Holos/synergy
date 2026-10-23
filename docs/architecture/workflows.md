@@ -223,3 +223,5 @@ When Agenda delivery wakes an active Light Loop or running BlueprintLoop executi
 The repository also contains `superplan/` schemas, storage, events, session ownership metadata, and worktree owner types for a graph of nodes and merge waves. No current CLI command, server route, tool registration, or continuation runner exposes SuperPlan as a selectable product workflow. The supported large-goal workflow is Lattice.
 
 Treat SuperPlan fields as an internal persisted substrate that must remain import/export- and migration-safe while present. Do not route new product behavior through it or describe it as equivalent to Plan, BlueprintLoop, or Lattice without first adding an explicit lifecycle and user-facing contract.
+
+Boss and Lattice are experimental, default off and activated at restart. Their business parameters do not select components. Blueprint and other stable workflows remain independent; see [Feature lifecycle](feature-lifecycle.md).

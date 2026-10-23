@@ -1,3 +1,4 @@
+import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { expect, test } from "bun:test"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -19,10 +20,11 @@ const adapters = await Promise.all(
 )
 for (const selected of [false, true]) {
   test(`lattice HTTP capability follows explicit composition after its adapters were imported (${selected})`, async () => {
-    const composition = RuntimeComponents.compose([
+    const selectedComponents = [
       ...(selected ? components : [localRuntime({ workers: false, environment: false })]),
       server(),
-    ])
+    ]
+    const composition = RuntimeComponents.compose(selectedComponents, FeatureSelection.complete(selectedComponents))
     await using runtime = await testRuntime({
       composition: {
         register() {

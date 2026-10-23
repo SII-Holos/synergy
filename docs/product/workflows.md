@@ -119,3 +119,5 @@ While a one-shot Agenda watch owns the next wake, completion and review actions 
 If more than one policy could react, the priority is BlueprintLoop, then Lattice, then Boss Mode, then Light Loop. Workflow continuations use stable Inbox delivery identities, so concurrent wake requests and restart recovery do not create duplicate continuation messages. Explicit Lattice resume and startup repair also enter through durable Inbox work before the shared drive; they do not bypass Inbox ordering or invoke the model directly.
 
 This ordering gives the innermost execution loop control while a Lattice step is running, then returns control to the Pathway after the BlueprintLoop reaches a reviewed terminal state. Boss Mode continuation applies only to workers with an assigned task that has not reported; the root boss session remains human-driven.
+
+Boss mode and Lattice are available after opting in through Settings → Experimental features and restarting Synergy. They default off for new and upgraded instances. Turning them off preserves history and settings; existing owner checks block unavailable work. See [Feature lifecycle](../architecture/feature-lifecycle.md).

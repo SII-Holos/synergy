@@ -21,7 +21,8 @@
     "./config-schema": "./src/config-schema.ts",
     "./http": "./src/http.ts",
     "./tool-policy": "./src/tool-policy.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -64,6 +65,20 @@
     "packages": {
       "@ericsanchezok/synergy-channels": "1.1.26",
       "@ericsanchezok/synergy-github": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "channel-github",
+          "owner": "channel-github",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Channel Github",
+          "description": "Provide channel github capabilities.",
+          "component": "channel-github"
+        }
+      ]
     }
   },
   "peerDependencies": {

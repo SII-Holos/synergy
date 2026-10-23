@@ -12,7 +12,8 @@
     "./register": "./src/register.ts",
     "./schedule-description.txt": "./src/schedule-description.txt",
     "./watch-description.txt": "./src/watch-description.txt",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -54,6 +55,20 @@
     "packages": {
       "@ericsanchezok/synergy-github": "1.1.26",
       "@ericsanchezok/synergy-agenda": "1.1.26"
+    },
+    "features": {
+      "kind": "bridge",
+      "definitions": [
+        {
+          "id": "github-agenda",
+          "owner": "github-agenda",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Github Agenda",
+          "description": "Provide github agenda capabilities.",
+          "component": "github-agenda"
+        }
+      ]
     }
   },
   "peerDependencies": {

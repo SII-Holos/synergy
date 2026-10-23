@@ -15,7 +15,8 @@
     "./prompts/anima.txt": "./src/prompts/anima.txt",
     "./reload": "./src/reload.ts",
     "./schedule": "./src/schedule.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -61,6 +62,20 @@
       "@ericsanchezok/synergy-library": "1.1.26",
       "@ericsanchezok/synergy-note": "1.1.26",
       "@ericsanchezok/synergy-agenda": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "anima",
+          "owner": "anima",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Anima",
+          "description": "Provide anima capabilities.",
+          "component": "anima"
+        }
+      ]
     }
   },
   "peerDependencies": {

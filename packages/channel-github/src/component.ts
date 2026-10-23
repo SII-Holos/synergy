@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerToolPolicy } from "./tool-policy"
 import { ChannelSetup } from "@ericsanchezok/synergy-channels/channel/setup"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -11,6 +12,7 @@ import { GithubDeliverFixTool } from "./channel/tools/github-deliver-fix"
 export function channelGithub(): RuntimeComponent {
   return {
     id: "channel-github",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { channels: version, github: version },

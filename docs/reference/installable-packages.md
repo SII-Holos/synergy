@@ -11,6 +11,8 @@ synergy remove lsp
 
 `full` selects the complete backend, `web` adds the Web application, and `desktop` adds the native shell. The existing complete product distribution keeps its full selection. Built-in selections resolve to the running host version. See [Package map](packages.md#installation-commands) for trust, upgrade, rollback and activation semantics, and [Embedding](embedding.md) for direct Bun, Node.js and HTTP integration.
 
+Installed packages are candidates for composition. Experimental opt-ins independently control activation: Boss and Lattice components and their bridges remain dormant by default; Kanban remains hidden inside Workbench. Choose them in Settings → Experimental features, then restart. Package installation alone does not opt in. See [feature lifecycle](../architecture/feature-lifecycle.md).
+
 ## Company presets
 
 A preset is an ordinary npm package with declarative `synergy` metadata. It selects dependencies without copying the Harness or executing a setup script. This example uses `1.1.26`; replace every host/dependency version with the exact Synergy release your company has validated:

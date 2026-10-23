@@ -244,6 +244,8 @@ import type {
   GlobalCapabilitiesResponses,
   GlobalDisposeErrors,
   GlobalDisposeResponses,
+  GlobalFeaturesErrors,
+  GlobalFeaturesResponses,
   GlobalFilesystemBrowseErrors,
   GlobalFilesystemBrowseResponses,
   GlobalFilesystemDirectoriesErrors,
@@ -5776,6 +5778,18 @@ export class Nav extends HeyApiClient {
 
 export class Global extends HeyApiClient {
   /**
+   * Get feature catalog
+   *
+   * List feature declarations, saved opt-ins, active state and restart requirements for this instance.
+   */
+  public features<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GlobalFeaturesResponses, GlobalFeaturesErrors, ThrowOnError>({
+      url: "/global/features",
+      ...options,
+    })
+  }
+
+  /**
    * Get runtime capabilities
    *
    * List active services with HTTP adapters and selected components. Installed changes apply after restart.
@@ -8762,6 +8776,7 @@ export class Domain extends HeyApiClient {
   public get<ThrowOnError extends boolean = false>(
     parameters: {
       domain:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -8815,6 +8830,7 @@ export class Domain extends HeyApiClient {
   public update<ThrowOnError extends boolean = false>(
     parameters: {
       domain:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -8875,6 +8891,7 @@ export class Domain extends HeyApiClient {
   public open<ThrowOnError extends boolean = false>(
     parameters: {
       domain:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -9136,6 +9153,7 @@ export class Config extends HeyApiClient {
       scopeID?: string
       scope?: ConfigImportScope
       only?:
+        | "features"
         | "general"
         | "models"
         | "providers"
@@ -9158,6 +9176,7 @@ export class Config extends HeyApiClient {
         | "mcp"
         | "voice"
         | Array<
+            | "features"
             | "general"
             | "models"
             | "providers"

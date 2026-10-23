@@ -8,7 +8,8 @@
     "./adapter": "./src/adapter.ts",
     "./component": "./src/component.ts",
     "./register": "./src/register.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -50,6 +51,20 @@
     },
     "packages": {
       "@ericsanchezok/synergy-blueprint": "1.1.26"
+    },
+    "features": {
+      "kind": "bridge",
+      "definitions": [
+        {
+          "id": "plugin-blueprint",
+          "owner": "plugin-blueprint",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Plugin Blueprint",
+          "description": "Provide plugin blueprint capabilities.",
+          "component": "plugin-blueprint"
+        }
+      ]
     }
   }
 }
