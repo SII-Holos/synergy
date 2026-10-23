@@ -315,13 +315,13 @@ function SessionPrediction(props: Props) {
           a menu-triggered prediction had no visible progress and a rejection
           was silent. */}
       <Show when={props.bind && busy()}>
-        <span role="status" class="text-12-regular text-text-weak">
+        <span data-slot="twin-prediction-status" role="status" class="text-12-regular text-text-weak">
           {_(twinCopy.predicting)}
         </span>
       </Show>
       <Show when={failure()}>
         {(reason) => (
-          <span role="status" class="text-12-regular text-text-weak">
+          <span data-slot="twin-prediction-status" role="status" class="text-12-regular text-text-weak">
             {_(twinCopy[reason()])}
           </span>
         )}
