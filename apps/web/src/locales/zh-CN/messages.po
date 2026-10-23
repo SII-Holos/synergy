@@ -10676,6 +10676,10 @@ msgstr "另存为…"
 msgid "browser.downloads.waiting"
 msgstr "待确认"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.action"
+msgstr "页面操作未完成"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.address"
 msgstr "无法找到该网站。请检查地址后重试。"
@@ -10683,6 +10687,10 @@ msgstr "无法找到该网站。请检查地址后重试。"
 #. js-lingui-explicit-id
 msgid "browser.failure.certificate"
 msgstr "无法建立安全连接。请检查网站地址以及设备的日期和时间。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.copyDetails"
+msgstr "复制错误详情"
 
 #. js-lingui-explicit-id
 msgid "browser.failure.denied"
@@ -10692,13 +10700,29 @@ msgstr "当前浏览器权限不允许打开此地址。"
 msgid "browser.failure.details"
 msgstr "诊断详情"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.dismiss"
+msgstr "关闭提示"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.errorDetails"
+msgstr "错误详情"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.offline"
 msgstr "网络似乎已断开。请检查连接后重试此页面。"
 
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.page"
+msgstr "页面未能加载"
+
 #. js-lingui-explicit-id
 msgid "browser.failure.proxy"
 msgstr "代理连接失败。请检查代理设置后重试。"
+
+#. ── Browser ──────────────────────────────────────────────────────────────────
+msgid "browser.failure.reload"
+msgstr "重新加载"
 
 #. js-lingui-explicit-id
 msgid "browser.failure.request"

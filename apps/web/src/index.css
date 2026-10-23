@@ -1261,14 +1261,40 @@ a {
 
 .synergy-workbench-canvas .browser-empty-state {
   display: flex;
-  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  width: 100%;
+  overflow-y: auto;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: safe center;
   gap: 0.875rem;
   padding: 2rem 1.5rem;
   text-align: center;
   user-select: none;
+}
+
+.synergy-workbench-canvas .browser-empty-state > * {
+  flex-shrink: 0;
+}
+
+.synergy-workbench-canvas .browser-empty-hint {
+  max-width: 28rem;
+  margin: 0;
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+}
+
+.synergy-workbench-canvas .browser-error-notice {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--border-weak-base);
+  color: var(--text-weak);
+  font-size: var(--font-size-small);
 }
 
 .synergy-workbench-canvas .browser-empty-mark {

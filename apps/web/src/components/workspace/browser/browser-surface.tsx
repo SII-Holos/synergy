@@ -9,7 +9,8 @@ import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
 import { browser as B, type AppMessageDescriptor } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
-import { shouldShowBrowserPresentationSurface } from "./browser-presentation"
+import { failedBrowserNavigation, shouldShowBrowserPresentationSurface } from "./browser-presentation"
+import { browserErrorPresentation } from "./browser-error"
 
 const MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
 const MAX_UPLOAD_REQUEST_BYTES = 50 * 1024 * 1024
@@ -30,6 +31,7 @@ export function BrowserSurface(props: {
   ownerKey: string
   clientPresentation: "native"
   onRetryNative?: () => void
+  onRetryNavigation?: () => void
 }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
@@ -39,6 +41,13 @@ export function BrowserSurface(props: {
 
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
+  const navigationFailure = () => failedBrowserNavigation(browser.page())
+  const navigationHint = () => {
+    const error = navigationFailure()
+    if (!error) return
+    const presentation = browserErrorPresentation(error)
+    return presentation.id === "browser.failure.request" ? undefined : presentation
+  }
 
   async function chooseFiles(files: FileList | null) {
     const request = browser.fileChooserRequest()
@@ -74,6 +83,7 @@ export function BrowserSurface(props: {
   }
 
   function hasPresentationSurface() {
+    if (navigationFailure() || browser.page()?.status === "suspended") return false
     return shouldShowBrowserPresentationSurface({
       presentation: browser.presentation()?.kind,
       clientPresentation: props.clientPresentation,
@@ -93,13 +103,15 @@ export function BrowserSurface(props: {
     if (host === "failed") return { title: B.nativeRecoveryFailed, action: retry }
     if (browser.page()?.status === "suspended")
       return { title: B.suspended, action: props.onRetryNative ? B.resume : undefined }
+    if (navigationFailure())
+      return { title: B.pageLoadFailed, action: props.onRetryNavigation ? B.reloadPage : undefined }
     return { title: B.ready, action: host === "detached" ? retry : undefined }
   })
 
   // A suspended or recovering page still has an identity: its own site. The
   // brand mark says which page is coming back without a sentence explaining it.
   const identity = createMemo(() => {
-    const url = browser.page()?.url
+    const url = navigationFailure() ? browser.page()?.navigation?.requestedURL : browser.page()?.url
     return url && /^https?:\/\//i.test(url) ? ({ kind: "url", url } as const) : undefined
   })
 
@@ -112,16 +124,24 @@ export function BrowserSurface(props: {
       <Show
         when={hasPresentationSurface()}
         fallback={
-          <div class="browser-empty-state">
+          <div class="browser-empty-state" role="status">
             <div class="browser-empty-mark">
               <Show when={identity()} fallback={<Icon name={getSemanticIcon("browser.main")} size="large" />}>
                 {(reference) => <ResourceIcon reference={reference()} />}
               </Show>
             </div>
             <div class="browser-empty-title">{lingui._(empty().title)}</div>
+            <Show when={empty().title === B.pageLoadFailed && navigationHint()}>
+              {(hint) => <p class="browser-empty-hint">{lingui._(hint())}</p>}
+            </Show>
             <Show when={empty().action}>
               {(action) => (
-                <Button size="large" variant="primary" onClick={() => props.onRetryNative?.()}>
+                <Button
+                  size="large"
+                  variant="primary"
+                  disabled={Boolean(action() === B.reloadPage && browser.page()?.isLoading)}
+                  onClick={() => (action() === B.reloadPage ? props.onRetryNavigation?.() : props.onRetryNative?.())}
+                >
                   {lingui._(action())}
                 </Button>
               )}

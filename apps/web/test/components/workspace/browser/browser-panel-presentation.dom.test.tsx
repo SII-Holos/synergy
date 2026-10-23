@@ -1,7 +1,7 @@
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
@@ -84,6 +84,8 @@ beforeAll(async () => {
     import {createResource,createSignal,For,Show,Suspense} from "solid-js"
     import {createStore} from "solid-js/store"
     import {ViewActivityProvider} from ${JSON.stringify(`/@fs/${source}/context/view-residency.tsx`)}
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {DialogProvider} from "@ericsanchezok/synergy-ui/context/dialog"
@@ -91,6 +93,8 @@ beforeAll(async () => {
     import {BrowserPanel} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-panel.tsx`)}
     import {browserPageTab} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-workbench-model.ts`)}
     import {messages} from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
+    import {messages as zh} from ${JSON.stringify(`/@fs/${source}/locales/zh-CN/messages.po`)}
+    import {messages as pseudo} from ${JSON.stringify(`/@fs/${source}/locales/pseudo/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     window.presentation={kind:"native",protocolVersion:${BROWSER_PROTOCOL_VERSION},capabilities:{native:true},reason:"desktop-local"};
@@ -98,7 +102,8 @@ beforeAll(async () => {
     window.catalogPages=new URLSearchParams(location.search).has("missing") ? [] : window.pages;
     window.seq=1; window.dataUnavailable=new URLSearchParams(location.search).has("no-data");
     const route={mode:"scope",scopeID:"home",path_directory:"home"};
-    const i18n=setupI18n({locale:"en",messages:{en:messages}});
+    const i18n=setupI18n({locale:"en",messages:{en:messages,"zh-CN":zh,pseudo}});
+    window.setLocale=value => i18n.activate(value);
     function Harness() {
       const catalog=useBrowserCatalog();
       const [loaded]=createResource(() => catalog.get(route));
@@ -125,7 +130,7 @@ beforeAll(async () => {
         <div class="synergy-workbench-canvas" style="height:500px"><For each={tabs}>{tab => <ViewActivityProvider active={() => active()===tab.id}><section data-page={tab.resourceId} style={{height:"100%",display:active()===tab.id ? "block" : "none"}} inert={active()!==tab.id}><BrowserPanel tab={tab} /></section></ViewActivityProvider>}</For></div>
       </>}</Show></Suspense>
     }
-    render(() => <I18nProvider i18n={i18n}><DialogProvider><BrowserCatalogProvider><Harness /></BrowserCatalogProvider></DialogProvider></I18nProvider>,document.querySelector("#root"));
+    render(() => <MetaProvider><Font/><I18nProvider i18n={i18n}><DialogProvider><BrowserCatalogProvider><Harness /></BrowserCatalogProvider></DialogProvider></I18nProvider></MetaProvider>,document.querySelector("#root"));
   `,
   )
   server = await createServer({
@@ -171,6 +176,7 @@ afterAll(async () => {
 
 type Fixture = Window & {
   presentation: unknown
+  setLocale(value: string): void
   deliverPresentation(value: unknown): void
   attachments: Array<{ pageId: string; visible: boolean }>
   publishPage(): void
@@ -180,7 +186,7 @@ type Fixture = Window & {
   dataRequests: Array<{ pageId: string; action: { type: string } }>
   detachments: Array<{ pageId: string }>
   resizes: Array<{ pageId: string; bounds: { y: number; height: number } }>
-  commands: Array<{ type: string; pageId: string }>
+  commands: Array<Parameters<BrowserStoreAPI["send"]>[0]>
   replaceMetadata(id: string, title: string, url: string): void
   store: BrowserStoreAPI
 }
@@ -359,7 +365,7 @@ test("metadata updates preserve the address draft, DOM identity and native attac
   ).toEqual(before)
 })
 
-test("a popup failure leaves its parent visible and the error outside native page bounds", async () => {
+test("a popup failure keeps the page visible with one compact notice and deferred diagnostics", async () => {
   await page.goto(url)
   await page.getByRole("button", { name: "Open first", exact: true }).click()
   await page.waitForFunction(() => (window as unknown as Fixture).attachments.some((item) => item.visible))
@@ -370,18 +376,26 @@ test("a popup failure leaves its parent visible and the error outside native pag
       message: "Popup could not open",
     }),
   )
-  await page
-    .getByText("The page could not complete this request. Check the page and try again.", { exact: true })
-    .waitFor()
-  await page.getByText("Diagnostic details", { exact: true }).click()
-  await page.getByText("Popup could not open", { exact: true }).waitFor()
+  await page.getByText("Page action failed", { exact: true }).waitFor()
+  expect(await page.getByText("Browser issue", { exact: true }).count()).toBe(0)
+  expect(await page.getByText("Popup could not open", { exact: true }).count()).toBe(0)
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(true)
-  const error = await page.getByText("Popup could not open", { exact: true }).boundingBox()
+  const error = await page.getByText("Page action failed", { exact: true }).boundingBox()
   const surface = await page.locator(".browser-surface").boundingBox()
   expect(error!.y + error!.height).toBeLessThanOrEqual(surface!.y)
-  await page.getByRole("button", { name: "Dismiss", exact: true }).click()
-  expect(await page.getByText("Popup could not open", { exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  await page.getByRole("button", { name: "Error details", exact: true }).click()
+  const details = page.getByRole("dialog", { name: "Error details", exact: true })
+  await details.getByText("Popup could not open", { exact: true }).waitFor()
+  await page.waitForFunction(() => !(window as unknown as Fixture).attachments.at(-1)?.visible)
+  await page.keyboard.press("Escape")
+  await details.waitFor({ state: "hidden" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Browser options")
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible)
+  await page.getByRole("button", { name: "Dismiss message", exact: true }).click()
+  expect(await page.getByText("Page action failed", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
 })
 
 test("the real new-tab import entry opens a dialog while its page is missing and recovers the same target", async () => {
@@ -441,7 +455,7 @@ test("loading and completion keep content bounds stable and do not focus the add
   expect(await page.locator(".browser-surface").boundingBox()).toEqual(before)
 })
 
-test("navigation Retry resumes a disconnected suspended page instead of navigating it", async () => {
+test("a disconnected suspended page offers only Resume instead of a duplicate error notice", async () => {
   await page.goto(url)
   await page.getByRole("button", { name: "Open first", exact: true }).click()
   await page.getByRole("combobox").waitFor()
@@ -461,6 +475,7 @@ test("navigation Retry resumes a disconnected suspended page instead of navigati
       },
     })
     fixture.store.setHostStatus(current.id, "detached")
+    fixture.store.setSession("connectionStatus", "failed")
     fixture.store.setBrowserError({
       pageId: current.id,
       severity: "error",
@@ -468,13 +483,180 @@ test("navigation Retry resumes a disconnected suspended page instead of navigati
       message: "Browser Host broker disconnected.",
     })
   })
-  await page
-    .locator('[role="status"]')
-    .filter({ hasText: "Browser Host broker disconnected." })
-    .getByRole("button", { name: "Retry", exact: true })
-    .click()
+  await page.getByText("Page suspended", { exact: true }).waitFor()
+  expect(await page.getByText("Browser issue", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Retry", exact: true }).count()).toBe(0)
+  await page.getByRole("button", { name: "Resume page", exact: true }).click()
   expect(await page.evaluate(() => (window as unknown as Fixture).commands)).toEqual([
     { type: "resume", pageId: "page-one" },
   ])
+  expect(errors).toEqual([])
+})
+
+test("failed main-frame navigation uses one recovery state, retains page identity, and retries its address", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.some((item) => item.visible))
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    const current = fixture.store.session.pages[0]!
+    const navigation = {
+      id: "failed-navigation",
+      generation: 1,
+      revision: 2,
+      phase: "failed" as const,
+      requestedURL: "https://example.test/destination",
+      slow: false,
+      error: { code: "browser_load_-324", message: "net::ERR_EMPTY_RESPONSE" },
+    }
+    fixture.store.upsertPage({ ...current, navigation })
+    fixture.store.setBrowserError({ pageId: current.id, navigation, severity: "error", ...navigation.error })
+  })
+  const state = page.locator(".browser-empty-state:visible")
+  await state.getByText("Page could not be loaded", { exact: true }).waitFor()
+  expect((await state.innerText()).trim()).toBe("Page could not be loaded\nReload page")
+  expect(await state.getByRole("button").count()).toBe(1)
+  expect(await page.getByRole("button", { name: "Dismiss message", exact: true }).count()).toBe(0)
+  expect(await page.getByText("net::ERR_EMPTY_RESPONSE", { exact: true }).count()).toBe(0)
+  await page.waitForFunction(() =>
+    (window as unknown as Fixture).detachments.some((item) => item.pageId === "page-one"),
+  )
+  expect(await page.getByRole("combobox").inputValue()).toBe("https://example.test/destination")
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  await page.getByRole("button", { name: "Error details", exact: true }).click()
+  const details = page.getByRole("dialog", { name: "Error details", exact: true })
+  await details.getByText("net::ERR_EMPTY_RESPONSE", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Error details", exact: true }).waitFor({ state: "hidden" })
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
+  await details.getByRole("button", { name: "Copy error details", exact: true }).click()
+  await details.getByRole("status").getByText("Copied", { exact: true }).waitFor()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("net::ERR_EMPTY_RESPONSE")
+  expect(await details.getByRole("button", { name: "Copy error details", exact: true }).isEnabled()).toBe(true)
+  await page.keyboard.press("Escape")
+  await details.waitFor({ state: "hidden" })
+  await page.getByRole("button", { name: "Open second", exact: true }).click()
+  expect(await page.locator(".browser-empty-state:visible").count()).toBe(0)
+  await page.getByRole("button", { name: "Browser options", exact: true }).click()
+  expect(await page.getByRole("button", { name: "Error details", exact: true }).count()).toBe(0)
+  await page.keyboard.press("Escape")
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await state.getByRole("button", { name: "Reload page", exact: true }).click()
+  expect(await state.getByRole("button", { name: "Reload page", exact: true }).isDisabled()).toBe(true)
+  expect(await page.evaluate(() => (window as unknown as Fixture).commands)).toEqual([
+    { type: "navigate", pageId: "page-one", source: "user", url: "https://example.test/destination" },
+  ])
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    const current = fixture.store.session.pages[0]!
+    fixture.store.upsertPage({
+      ...current,
+      isLoading: false,
+      url: "https://example.test/destination",
+      navigation: {
+        ...current.navigation!,
+        id: "reloaded-navigation",
+        revision: 3,
+        phase: "completed",
+        error: undefined,
+      },
+    })
+  })
+  await state.waitFor({ state: "hidden" })
+  await page.waitForFunction(() => (window as unknown as Fixture).attachments.at(-1)?.visible)
+  expect(await page.evaluate(() => (window as unknown as Fixture).store.session.pages.map((item) => item.id))).toEqual([
+    "page-one",
+    "page-two",
+  ])
+  expect(errors).toEqual([])
+})
+
+test("recovery states fit short and narrow panels across themes and locales, with actionable failure guidance", async () => {
+  await page.goto(url)
+  await page.getByRole("button", { name: "Open first", exact: true }).click()
+  await page.getByRole("combobox").waitFor()
+  await page.evaluate(() => {
+    const fixture = window as unknown as Fixture
+    const current = fixture.store.session.pages[0]!
+    fixture.store.upsertPage({
+      ...current,
+      navigation: {
+        id: "offline-navigation",
+        generation: 1,
+        revision: 2,
+        phase: "failed",
+        slow: false,
+        requestedURL: current.url,
+        error: { code: "browser_load_-106", message: "ERR_INTERNET_DISCONNECTED" },
+      },
+    })
+  })
+  const state = page.locator(".browser-empty-state:visible")
+  await state
+    .getByText("You appear to be offline. Check your connection, then retry this page.", { exact: true })
+    .waitFor()
+  await page.evaluate(() => document.fonts.ready)
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" })
+    await page.evaluate(() => {
+      const fixture = window as unknown as Fixture
+      const current = fixture.store.session.pages[0]!
+      fixture.store.upsertPage({
+        ...current,
+        navigation: {
+          ...current.navigation!,
+          revision: current.navigation!.revision + 1,
+          error: { code: "browser_load_-106", message: "ERR_INTERNET_DISCONNECTED" },
+        },
+      })
+    })
+    for (const locale of ["en", "zh-CN", "pseudo"]) {
+      await page.evaluate((locale) => (window as unknown as Fixture).setLocale(locale), locale)
+      for (const width of [900, 375]) {
+        await page.setViewportSize({ width, height: 560 })
+        await page.locator(".synergy-workbench-canvas").evaluate((element) => (element.style.height = "240px"))
+        await state.getByRole("button").scrollIntoViewIfNeeded()
+        const geometry = await state.evaluate((element) => {
+          const button = element.querySelector("button")!.getBoundingClientRect()
+          const surface = element.closest(".browser-surface")!.getBoundingClientRect()
+          return {
+            fits: button.top >= surface.top && button.bottom <= surface.bottom + 1,
+            width: element.clientWidth,
+            scroll: element.scrollWidth,
+            actions: element.querySelectorAll("button").length,
+            summary: element.querySelector(".browser-empty-title")!.textContent,
+          }
+        })
+        expect(geometry.fits).toBe(true)
+        expect(geometry.scroll).toBeLessThanOrEqual(geometry.width + 1)
+        expect(geometry.actions).toBe(1)
+        if (locale === "zh-CN") expect(geometry.summary).toBe("页面未能加载")
+      }
+    }
+    if (process.env.SYNERGY_BROWSER_RECOVERY_SHOTS) {
+      const output = path.resolve(import.meta.dir, "../../../../../../.artifacts/verify-browser-recovery")
+      await mkdir(output, { recursive: true })
+      await page
+        .locator(".browser-workspace:visible")
+        .screenshot({ path: path.join(output, `${scheme}-navigation-narrow.png`) })
+      await page.evaluate(() => {
+        const fixture = window as unknown as Fixture
+        fixture.setLocale("zh-CN")
+        const current = fixture.store.session.pages[0]!
+        fixture.store.upsertPage({
+          ...current,
+          navigation: {
+            ...current.navigation!,
+            revision: current.navigation!.revision + 1,
+            error: { code: "browser_load_-324", message: "ERR_EMPTY_RESPONSE" },
+          },
+        })
+      })
+      await page.setViewportSize({ width: 900, height: 560 })
+      await page.locator(".synergy-workbench-canvas").evaluate((element) => (element.style.height = "440px"))
+      await page
+        .locator(".browser-workspace:visible")
+        .screenshot({ path: path.join(output, `${scheme}-navigation-empty.png`) })
+    }
+  }
   expect(errors).toEqual([])
 })
