@@ -1107,13 +1107,17 @@ export namespace SessionInvoke {
                 // This ordering maximizes prompt caching by keeping static content first.
                 // Only the durable observation layout carries <context-source> entries, so the
                 // state semantics stay out of prompts that can never contain one.
-                let systemParts: string[] = RuntimeAdvisory.protocol(advisoryHistory)
-                let systemCacheBreakpoint: number | undefined
-                let lateSystemParts: string[] = [ToolIntent.guidance, AttachmentDelivery.guidance().response]
-                const advisorySources: RuntimeAdvisory.Source[] = [
-                  RuntimeAdvisory.present("tool-intent", lateSystemParts[0]),
-                  RuntimeAdvisory.present("attachment-guidance", lateSystemParts[1]),
+                // Static policy belongs in this cached prefix. Leaving it in the volatile tail resent
+                // it on every round, and the layouts that append that tail as a final user message
+                // put general behaviour rules at the highest-weight position of the whole request.
+                let systemParts: string[] = [
+                  ...RuntimeAdvisory.protocol(advisoryHistory),
+                  ToolIntent.guidance,
+                  AttachmentDelivery.guidance().response,
                 ]
+                let systemCacheBreakpoint: number | undefined
+                let lateSystemParts: string[] = []
+                const advisorySources: RuntimeAdvisory.Source[] = []
                 const appendAdvisory = (id: string, text: string) => {
                   lateSystemParts.push(text)
                   advisorySources.push(RuntimeAdvisory.present(id, text))

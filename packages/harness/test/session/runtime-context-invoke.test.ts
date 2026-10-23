@@ -246,11 +246,14 @@ for (const profile of ["openai-codex", "openai", "anthropic"] as const) {
           expect(messages.filter((m) => m.info.role === "user" && m.info.isRoot)).toHaveLength(1)
           if (profile === "openai-codex") {
             expect(events).toHaveLength(2)
-            expect(
-              RuntimeAdvisory.read(events[0]!.info)!
-                .sources.slice(0, 3)
-                .map((source) => source.id),
-            ).toEqual(["tool-intent", "attachment-guidance", "synergy-runtime"])
+            // Static policy lives in the cached system prefix, so the durable observation starts
+            // with the volatile host identity instead of replaying those blocks as advisory sources.
+            expect(RuntimeAdvisory.read(events[0]!.info)!.sources[0]!.id).toBe("synergy-runtime")
+            const observed = events.flatMap((event) =>
+              RuntimeAdvisory.read(event.info)!.sources.map((source) => source.id),
+            )
+            expect(observed).not.toContain("tool-intent")
+            expect(observed).not.toContain("attachment-guidance")
             expect(
               RuntimeAdvisory.read(events[1]!.info)!.sources.some((source) => source.id === "synergy-runtime"),
             ).toBe(false)
