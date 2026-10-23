@@ -4,6 +4,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import { lingui } from "@lingui/vite-plugin"
 
 let browser: Browser
 let server: ViteDevServer
@@ -205,16 +206,21 @@ beforeAll(async () => {
       `
         import { render } from "solid-js/web"
         import { Router, Route } from "@solidjs/router"
-        import { i18n } from "@lingui/core"
+        import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { MobileDrawer } from ${JSON.stringify(`/@fs/${navDrawerPath}`)}
         import { MobileToolsDrawer } from ${JSON.stringify(`/@fs/${toolsDrawerPath}`)}
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import "@ericsanchezok/synergy-ui/styles"
         import { DesktopWindowChrome } from ${JSON.stringify(`/@fs/${chromePath}`)}
+        import { messages as en } from ${JSON.stringify(`/@fs/${appSrc}/locales/en/messages.po`)}
+        import { messages as zh } from ${JSON.stringify(`/@fs/${appSrc}/locales/zh-CN/messages.po`)}
 
-        i18n.load("en", {})
-        i18n.activate("en")
+        // The account row derives its text from translated labels, so the drawer
+        // is only testable against real catalogs: an empty catalog would make
+        // every surface fall back to its message default and hide a stale label.
+        const i18n = setupI18n({ locale: "en", messages: { en, "zh-CN": zh } })
+        window.__drawerI18n = i18n
 
         render(
           () => (
@@ -239,7 +245,7 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root: fixtureDirectory,
-    plugins: [solidPlugin()],
+    plugins: [solidPlugin(), ...lingui()],
     resolve: {
       alias: [
         { find: "@/context/layout", replacement: path.join(fixtureDirectory, "stub-layout.ts") },
@@ -390,6 +396,28 @@ describe("mobile drawer session status", () => {
       ] as const) {
         expect(await working(sessionID), `${sessionID} working flag`).toBe(expected)
       }
+    })
+  })
+})
+
+describe("mobile drawer localization", () => {
+  // The drawer is the second navigation surface that renders the shared account
+  // identity. Translating the labels once while the row is created would keep
+  // the old language here while the header and every other string follow the
+  // switch, so the assertion activates the catalog in place rather than
+  // remounting the fixture.
+  test("the account row and header follow a locale switch without remounting", async () => {
+    await withFixture(async (page) => {
+      const account = page.locator('[data-action="account"]')
+      await account.waitFor()
+      expect(await account.innerText()).toContain("Loading identity...")
+      expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
+
+      await page.evaluate(() => (window as unknown as { __drawerI18n: { activate(locale: string): void } }).__drawerI18n.activate("zh-CN"))
+
+      await page.waitForFunction(() => document.querySelector('[data-action="account"]')?.textContent?.includes("正在加载身份…"))
+      expect(await page.getByRole("button", { name: "搜索会话", exact: true }).count()).toBe(1)
+      expect(await account.innerText()).not.toContain("Loading identity...")
     })
   })
 })
