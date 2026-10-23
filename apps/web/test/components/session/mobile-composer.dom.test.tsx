@@ -98,6 +98,34 @@ async function open(viewport: { width: number; height: number }, touch: boolean)
 const style = (page: Page, selector: string, property: string) =>
   page.locator(selector).evaluate((element, name) => getComputedStyle(element).getPropertyValue(name), property)
 
+// A touch context makes the page *capable* of touch, but `page.mouse` still
+// dispatches mouse events, so it cannot prove that a finger can drag: the
+// browser only applies its own gesture arbitration to real touch input. These
+// helpers therefore drive Chromium through CDP, which is what surfaced the
+// cancellation that a fixed `touch-action` has to prevent.
+const touchStart = async (page: Page, from: { x: number; y: number }) => {
+  const session = await page.context().newCDPSession(page)
+  const points = (point: { x: number; y: number }) => [
+    { x: point.x, y: point.y, id: 1, radiusX: 4, radiusY: 4, force: 1 },
+  ]
+  await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: points(from) })
+  return {
+    move: (point: { x: number; y: number }) =>
+      session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: points(point) }),
+    end: async () => {
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+      await session.detach()
+    },
+  }
+}
+
+// Stops short of the viewport edge so every move stays a real coordinate.
+const upwardPath = (from: { x: number; y: number }, distance: number, steps = 10) =>
+  Array.from({ length: steps }, (_, index) => ({
+    x: from.x,
+    y: Math.max(2, from.y - (distance * (index + 1)) / steps),
+  }))
+
 // Only controls a user can reach count towards the card budget. The model
 // trigger is rendered inside `.prompt-input-mobile-model`, which the shipped
 // sheet hides under the default shell, so it must not be counted — and must not
@@ -195,10 +223,15 @@ test("the corner control drags to resize, taps to expand, and never covers a typ
     expect(await page.locator(".session-composer").getAttribute("data-resized")).toBeNull()
     const before = (await page.locator(".session-composer-editor").boundingBox())!.height
 
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 70, { steps: 12 })
-    await page.mouse.up()
+    // Chromium only arbitrates gestures for real touch input. Without a
+    // touch-action policy on this target the browser claims the vertical drag
+    // for panning and cancels the gesture after two moves, so the drag below is
+    // driven through CDP and the policy is asserted alongside it.
+    expect(await style(page, ".composer-expand-control", "touch-action")).toBe("none")
+    const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const drag = await touchStart(page, origin)
+    for (const point of upwardPath(origin, 70)) await drag.move(point)
+    await drag.end()
 
     expect(await page.locator(".session-composer").getAttribute("data-resized")).not.toBeNull()
     const after = (await page.locator(".session-composer-editor").boundingBox())!.height
@@ -233,6 +266,60 @@ test("the corner control drags to resize, taps to expand, and never covers a typ
     })
     expect(hit.total).toBeGreaterThan(30)
     expect(hit.stolen).toEqual([])
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
+test("the merged control restores a cancelled drag and arms expansion past the limit", async () => {
+  const { page, close } = await open({ width: 375, height: 812 }, true)
+  try {
+    const control = page.locator(".composer-expand-control")
+    const box = (await control.boundingBox())!
+    const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const height = async () => Math.round((await page.locator(".session-composer-editor").boundingBox())!.height)
+    const resting = await height()
+
+    // Folding the gesture onto this control must keep the separator's escape
+    // hatch: a mis-drag otherwise has no way back except another drag that lands
+    // on an arbitrary height.
+    const cancelled = await touchStart(page, origin)
+    for (const point of upwardPath(origin, 60, 6)) await cancelled.move(point)
+    expect(await height()).toBeGreaterThan(resting)
+    await page.keyboard.press("Escape")
+    await cancelled.end()
+    expect(await height()).toBe(resting)
+    expect(await page.locator(".session-composer").getAttribute("data-resized")).toBeNull()
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).toBeNull()
+
+    // Past the manual limit the editor stays bounded while an instruction
+    // reports continued progress; 32 further pixels arm expansion on release.
+    const cue = page.locator(".composer-expand-cue")
+    const armed = () => cue.getAttribute("data-armed")
+    const second = await touchStart(page, origin)
+    let travelled = 0
+    while (travelled < 500 && (await cue.count()) === 0) {
+      travelled += 16
+      await second.move({ x: origin.x, y: origin.y - travelled })
+    }
+    expect(await cue.count()).toBe(1)
+    expect(await armed()).toBeNull()
+    expect(await cue.innerText()).toContain("Continue dragging to expand")
+    // The editor is bounded at the manual limit while the drag keeps going.
+    const bounded = await height()
+    await second.move({ x: origin.x, y: origin.y - travelled - 16 })
+    expect(await height()).toBe(bounded)
+
+    while (travelled < 500 && (await armed()) === null) {
+      travelled += 16
+      await second.move({ x: origin.x, y: origin.y - travelled })
+    }
+    expect(await armed()).not.toBeNull()
+    expect(await cue.innerText()).toContain("Release to expand")
+    await second.end()
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
+    expect(await page.locator(".composer-expand-cue").count()).toBe(0)
     expect(errors).toEqual([])
   } finally {
     await close()

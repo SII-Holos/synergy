@@ -26,6 +26,18 @@ export function ComposerExpandButton(props: { input: Pick<PluginInputService, "c
   let pointer: number | undefined
   let originalHeight: number | undefined
   let dragged = false
+  // Beyond the manual limit the same gesture used to arm expansion on release
+  // and show how much further the drag went. Folding the gesture onto this
+  // control must not drop that: `move()` already reports it, so it is rendered
+  // here instead of on the hidden separator.
+  const [armed, setArmed] = createSignal(false)
+  const [progress, setProgress] = createSignal(0)
+  const [pull, setPull] = createSignal(0)
+  const clearFeedback = () => {
+    setArmed(false)
+    setProgress(0)
+    setPull(0)
+  }
   const form = () => root?.closest("form")
   const editor = () => form()?.querySelector<HTMLElement>(".session-composer-editor")
   const limits = () => {
@@ -45,7 +57,19 @@ export function ComposerExpandButton(props: { input: Pick<PluginInputService, "c
     gesture = undefined
     pointer = undefined
     binding?.state.setHeight(originalHeight)
+    clearFeedback()
   }
+  const cancelKey = (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || !gesture) return
+    event.preventDefault()
+    event.stopPropagation()
+    cancel()
+  }
+  document.addEventListener("keydown", cancelKey, true)
+  onCleanup(() => {
+    cancel()
+    document.removeEventListener("keydown", cancelKey, true)
+  })
   const toggle = () => {
     if (expanded()) binding?.state.collapse()
     else binding?.state.expand()
@@ -95,15 +119,23 @@ export function ComposerExpandButton(props: { input: Pick<PluginInputService, "c
               event.preventDefault()
               const next = gesture.move(event.clientY)
               if (next.height !== binding?.state.manualHeight) binding?.state.setHeight(next.height)
+              setArmed(next.expand)
+              setProgress(next.progress)
+              setPull(next.pull)
             }}
             onPointerUp={(event) => {
               if (!gesture || event.pointerId !== pointer) return
               const moved = dragged
+              const expand = armed()
               gesture = undefined
               pointer = undefined
-              if (moved) return
-              binding?.state.setHeight(originalHeight)
-              toggle()
+              clearFeedback()
+              if (!moved) {
+                binding?.state.setHeight(originalHeight)
+                toggle()
+                return
+              }
+              if (expand) binding?.state.expand()
             }}
             onPointerCancel={cancel}
             onLostPointerCapture={cancel}
@@ -133,6 +165,21 @@ export function ComposerExpandButton(props: { input: Pick<PluginInputService, "c
             <Icon name={getSemanticIcon(expanded() ? "action.collapse" : "action.expand")} size="small" />
           </button>
         </Tooltip>
+        <Show when={merged() && progress() > 0}>
+          <div
+            class="composer-expand-cue"
+            role="status"
+            data-armed={armed() ? "" : undefined}
+            style={{ "--composer-expand-progress": progress(), "--composer-expand-pull": `${pull()}px` }}
+          >
+            <Icon name={getSemanticIcon("action.expand")} size="small" aria-hidden="true" />
+            <span>
+              {armed()
+                ? _({ id: "prompt.long.releaseExpand", message: "Release to expand" })
+                : _({ id: "prompt.long.continueExpand", message: "Continue dragging to expand" })}
+            </span>
+          </div>
+        </Show>
       </div>
     </Show>
   )

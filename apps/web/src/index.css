@@ -2026,6 +2026,51 @@ a {
     height: 44px;
     opacity: 1;
     pointer-events: auto;
+    /* Without this the browser claims the vertical drag for scroll panning and
+       fires pointercancel before the gesture can resize, which is exactly what
+       the touch floor is supposed to enable. The desktop separator declares the
+       same policy; the merged target must inherit it. */
+    touch-action: none;
+  }
+}
+
+.composer-expand-cue {
+  position: absolute;
+  /* Above the card, mirroring where the desktop separator's cue appears: the
+     card's own top band is the target the finger is holding, so the feedback
+     cannot sit under it. */
+  bottom: calc(100% + 6px);
+  inset-inline-end: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* Anchored inside the 52-pixel corner region, so a percentage would resolve
+     against that strip and truncate the sentence. */
+  max-width: 200px;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-base);
+  background: var(--surface-raised-base);
+  border: 1px solid var(--border-weak-base);
+  border-radius: var(--radius-full);
+  padding: 2px 10px;
+  pointer-events: none;
+  z-index: 3;
+}
+.composer-expand-cue span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-expand-cue[data-armed] {
+  color: var(--text-interactive-base);
+  border-color: var(--border-interactive-base);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .composer-expand-cue {
+    transform: translateY(calc(-1 * var(--composer-expand-pull, 0px)));
+    transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
   }
 }
 
