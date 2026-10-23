@@ -20,6 +20,7 @@ import { StorageBusyError, StorageClosedError } from "../../storage/errors"
 import { RolloutExecution } from "./execution"
 import { Bus } from "../../bus"
 import { SessionEvent } from "../event"
+import { ObservabilitySpans } from "../../observability/spans"
 
 export namespace RolloutLifecycle {
   export function owner(session: Session.Info): RolloutSchema.Owner {
@@ -49,7 +50,10 @@ export namespace RolloutLifecycle {
       parent: await parent(session),
     })
     const { SessionFileChanges } = await import("../file-changes")
-    await SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id })
+    await ObservabilitySpans.measure(
+      { name: "session.prepare.file_baseline", module: "session", kind: "session", sessionID: session.id },
+      () => SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id }),
+    )
     await RolloutExecution.start(segment)
     return segment
   }

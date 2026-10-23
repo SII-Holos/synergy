@@ -685,6 +685,8 @@ export namespace SessionInvoke {
                 SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
                 log.info("loop", { step, sessionID })
                 if (abort.aborted) break
+                if (SessionManager.getRuntime(sessionID)?.owner?.lease === lease)
+                  SessionManager.setExecutionPhase(sessionID, "preparing")
                 session = SessionExecutionOwners.forRoot(await Session.get(sessionID), root.info)
                 if (await SessionLifecycle.blocksDrive(session)) {
                   cancel(sessionID, { pauseTurn: true })
@@ -2014,11 +2016,15 @@ export namespace SessionInvoke {
       ),
     )
     const currentOwner = () => SessionManager.getRuntime(input.sessionID)?.owner?.lease === input.lease
-    const candidates = await MessageV2.unsettledToolParts({
-      scopeID: input.scopeID,
-      sessionID: input.sessionID,
-      messageIDs: new Set(assistants.keys()),
-    })
+    const candidates = await ObservabilitySpans.measure(
+      { name: "session.prepare.tool_candidates", module: "session", kind: "session", sessionID: input.sessionID },
+      () =>
+        MessageV2.unsettledToolParts({
+          scopeID: input.scopeID,
+          sessionID: input.sessionID,
+          messageIDs: new Set(assistants.keys()),
+        }),
+    )
     let settled = 0
     for (const candidate of candidates) {
       const written = await Storage.transaction(
@@ -2097,12 +2103,22 @@ export namespace SessionInvoke {
     sessionID: string,
     options: { terminalize?: boolean } = {},
   ): Promise<boolean> {
+    return ObservabilitySpans.measure(
+      { name: "session.prepare.repair", module: "session", kind: "session", sessionID },
+      () => repairAssistant(sessionID, options),
+    )
+  }
+
+  async function repairAssistant(sessionID: string, options: { terminalize?: boolean }): Promise<boolean> {
     using _ = await Lock.write(`session-terminal-repair:${sessionID}`)
     const session = await SessionManager.getSession(sessionID)
     if (!session) return false
 
     const lease = SessionManager.getRuntime(sessionID)?.owner?.lease
-    const messages = await SessionHistory.modelMessageInfos({ sessionID })
+    const messages = await ObservabilitySpans.measure(
+      { name: "session.prepare.history_headers", module: "session", kind: "session", sessionID },
+      () => SessionHistory.modelMessageInfos({ sessionID }),
+    )
     if (SessionManager.getRuntime(sessionID)?.owner?.lease !== lease) return false
     const sweep = { scopeID: session.scope.id, sessionID, messages, lease }
     let latestRoot: MessageV2.User | undefined

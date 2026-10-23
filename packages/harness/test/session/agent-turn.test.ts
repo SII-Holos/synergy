@@ -18,6 +18,10 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
     const originalRun = AgentWorkerPool.prototype.run
     const originalMeasureDraft = ContextUsage.measureDraft
     const started = Promise.withResolvers<AgentTurn.Stream>()
+    const preparing = Promise.withResolvers<void>()
+    const prepared = Promise.withResolvers<void>()
+    const queued = Promise.withResolvers<Parameters<AgentWorkerPool["run"]>[0]>()
+    const phases: string[] = []
     let estimationStarts = 0
     let measured: Parameters<typeof ContextUsage.measureDraft>[0] | undefined
     const operationID = crypto.randomUUID()
@@ -26,16 +30,23 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       await AgentTurn.stop()
       AgentTurn.configure({ minIdle: 0 })
       AgentTurn.setInProcessStream(undefined)
-      ;(LLM.prepare as any) = mock(async () => ({
-        system: ["prepared system"],
-        baseSystemLength: 1,
-        provider: {
-          options: {},
-          timeouts: { ttfbMs: 1_000, idleMs: false, wallMs: false },
-        },
-        params: { options: {} },
-      }))
-      ;(AgentWorkerPool.prototype.run as any) = mock(() => started.promise)
+      ;(LLM.prepare as any) = mock(async () => {
+        preparing.resolve()
+        await prepared.promise
+        return {
+          system: ["prepared system"],
+          baseSystemLength: 1,
+          provider: {
+            options: {},
+            timeouts: { ttfbMs: 1_000, idleMs: false, wallMs: false },
+          },
+          params: { options: {} },
+        }
+      })
+      ;(AgentWorkerPool.prototype.run as any) = mock((input: Parameters<AgentWorkerPool["run"]>[0]) => {
+        queued.resolve(input)
+        return started.promise
+      })
       ;(ContextUsage.measureDraft as any) = mock(async (input: Parameters<typeof ContextUsage.measureDraft>[0]) => {
         estimationStarts++
         measured = input
@@ -43,6 +54,7 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       })
 
       const pending = AgentTurn.stream({
+        onPhase: (phase: string) => phases.push(phase),
         user: { id: "msg_user", metadata: { source: "test-operation", sourceSessionID: "ses_source" } },
         sessionID: "ses_test",
         recording: { owner: { kind: "operation", scopeID: "home", operationID }, runID: operationID, purpose: "test" },
@@ -85,8 +97,14 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
         },
       } as any)
 
-      await Bun.sleep(0)
+      await preparing.promise
+      expect(phases).toEqual([])
+      prepared.resolve()
+      const enqueued = await queued.promise
+      expect(phases).toEqual(["queued_agent"])
       expect(estimationStarts).toBe(0)
+      enqueued.onPhase?.("waiting_model")
+      expect(phases).toEqual(["queued_agent", "waiting_model"])
 
       started.resolve({
         fullStream: (async function* () {})(),
@@ -115,6 +133,7 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       await stream.contextUsageDraft
       await stream.dispose()
     } finally {
+      prepared.resolve()
       ;(LLM.prepare as any) = originalPrepare
       ;(AgentWorkerPool.prototype.run as any) = originalRun
       ;(ContextUsage.measureDraft as any) = originalMeasureDraft

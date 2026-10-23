@@ -14,6 +14,8 @@ Repair shares one model header view and reads canonical unsettled tool candidate
 
 Last-exchange refresh captures the model headers, membership generations and source revisions under short snapshots. The PartContent owner reads immutable chunks outside SQL transactions and computes the exact joined, trimmed UTF-16 prefix. A short writer validates all selection sources and merges only the preview into current Session info. Changed sources retry, including after a removed chunk; unchanged-source failures propagate. Runtime-local single flight coalesces concurrent refreshes, and inherited transactions are rejected.
 
+Internal execution phases record preparation separately from actual worker queueing. Enqueue and start callbacks own the queue/running transitions. Preparation spans distinguish repair, headers, tool candidates, file baseline and model input; public execution status and historical samples remain unchanged.
+
 ## Alternatives considered
 
 **More hydration concurrency:** still performs work proportional to unrelated body size.

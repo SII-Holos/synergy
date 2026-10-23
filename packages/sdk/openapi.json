@@ -48413,6 +48413,7 @@
                     "propertyNames": {
                       "type": "string",
                       "enum": [
+                        "preparing",
                         "queued_agent",
                         "running_agent",
                         "authorizing_tools",

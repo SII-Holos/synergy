@@ -1,5 +1,6 @@
 import { ContextUsage } from "../context-usage"
 import { RuntimeContext } from "../../lifecycle/context"
+import { ObservabilitySpans } from "../../observability/spans"
 import { Log } from "../../util/log"
 import { ProviderRetryCoordinator, providerRetryKey } from "../../provider/retry-coordinator"
 import { LLM } from "../llm"
@@ -122,10 +123,10 @@ export namespace AgentTurn {
       input.prepared ??
       (instanceState.inProcessStream
         ? undefined
-        : await LLM.prepare({
-            ...turnInput,
-            tools: ToolCatalog.modelTools(input.toolDefinitions ?? []),
-          }))
+        : await ObservabilitySpans.measure(
+            { name: "session.prepare.model_input", module: "session", kind: "session", sessionID: input.sessionID },
+            () => LLM.prepare({ ...turnInput, tools: ToolCatalog.modelTools(input.toolDefinitions ?? []) }),
+          ))
     const requestTools = (input.toolDefinitions ?? []).filter(
       (tool) => !input.activeToolIDs || input.activeToolIDs.includes(tool.id),
     )
