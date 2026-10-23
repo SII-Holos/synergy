@@ -28,6 +28,7 @@ import { ExecutionActivity } from "./activity"
 import { ExecutionPresentation } from "./presentation"
 import { ExecutionContent } from "./content"
 import { ExecutionProcess } from "./process"
+import { preview } from "./preview"
 
 export namespace ExecutionService {
   const log = Log.create({ service: "execution" })
@@ -100,7 +101,6 @@ export namespace ExecutionService {
     schedule: undefined as ((sessionID: string) => void) | undefined,
     dispose: undefined as (() => void) | undefined,
   }))
-  const preview = (value: string) => value.replace(/\s+/g, " ").slice(0, 240)
   const nodeID = (sessionID: string, kind: string, id: string) =>
     Buffer.from(JSON.stringify([sessionID, kind, id])).toString("base64url")
   function rootID(record: RolloutEvents.Record) {
