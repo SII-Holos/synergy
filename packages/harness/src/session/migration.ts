@@ -1539,6 +1539,26 @@ async function migrateAttachmentDisplay(
 
 export const migrations: Migration[] = [
   {
+    id: "20261023-session-execution-facts",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20261001-session-display-index"],
+    description: "Initialize independent lazy execution facts without reading historical bodies",
+    async upSession(owner, progress) {
+      const { SessionHistoryDisplay } = await import("./history-display")
+      await SessionHistoryDisplay.initializeExecution(owner.scopeID, owner.sessionID)
+      progress(1, 1)
+    },
+    async up(progress) {
+      const { SessionHistoryDisplay } = await import("./history-display")
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await SessionHistoryDisplay.initializeExecution(scopeID, sessionID)
+      progress(1, 1)
+    },
+  },
+  {
     id: "20261017-session-nav-canonical-membership",
     execution: "record",
     scope: "derived",

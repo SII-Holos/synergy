@@ -53,7 +53,9 @@ export namespace RolloutSnapshot {
 
   export async function modelCalls(
     owner: RolloutSchema.Owner,
+    signal?: AbortSignal,
   ): Promise<Pick<Info, "owner" | "revision" | "runs" | "calls">> {
+    signal?.throwIfAborted()
     await RolloutJournal.prepare(owner)
     await prepareOwnerMigrations(owner)
     return Storage.snapshot(async () => {
@@ -68,6 +70,7 @@ export namespace RolloutSnapshot {
       }
       const keys = (await Storage.scan([...base, "runs"])).map((id) => [...base, "runs", id])
       for (let offset = 0; offset < keys.length; offset += 128) {
+        signal?.throwIfAborted()
         const page = keys.slice(offset, offset + 128)
         const runs = await Storage.readMany(page.map((key) => [...key, "info"]))
         for (const [index, key] of page.entries()) {
@@ -77,6 +80,7 @@ export namespace RolloutSnapshot {
             result.runs.push(run)
           }
           for await (const row of Storage.records({ prefix: [...key, "calls"], limit: 128 })) {
+            signal?.throwIfAborted()
             const call = RolloutSchema.CallRecord.parse(row.value)
             check(result.owner, call, row.key.slice(base.length))
             result.calls.push(call)

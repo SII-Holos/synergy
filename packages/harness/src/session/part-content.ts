@@ -30,6 +30,71 @@ export namespace PartContent {
   })
   export type Checkpoint = z.infer<typeof Checkpoint>
   export type Stored = MessageV2.Part | (Header & { textContent: Checkpoint })
+  export const ExecutionFact = z.object({
+    id: z.string(),
+    sessionID: z.string(),
+    messageID: z.string(),
+    type: z.enum([
+      "text",
+      "reasoning",
+      "attachment",
+      "tool",
+      "step-start",
+      "step-finish",
+      "snapshot",
+      "patch",
+      "retry",
+      "compaction",
+      "compaction_recovery",
+    ]),
+    origin: z.enum(["user", "system"]).optional(),
+    checkpoint: z.literal(true).optional(),
+    preview: z.string().max(240),
+    tool: z.string().optional(),
+    callID: z.string().optional(),
+    status: z.enum(["pending", "generating", "running", "completed", "error"]).optional(),
+    time: z.object({ start: z.number(), end: z.number().optional() }).optional(),
+    accounting: z.object({ kind: z.literal("rollout"), callIDs: z.string().array() }).optional(),
+  })
+  export type ExecutionFact = z.infer<typeof ExecutionFact>
+
+  export function executionFact(value: Stored, preparedPreview?: string): ExecutionFact | undefined {
+    let text = ""
+    const content = checkpoint(value)
+    if (content && preparedPreview === undefined) {
+      if (content.inline !== undefined) text = content.inline
+      else {
+        const normalized = content.preview.replace(/\s+/g, " ")
+        if (normalized.length < 240 && content.preview.length < content.codeUnits) return
+        text = content.preview
+      }
+    } else if (!content && (value.type === "text" || value.type === "reasoning")) text = (value as Streaming).text
+    else if (value.type === "tool")
+      text = value.state.status === "completed" ? value.state.title : JSON.stringify(value.state.input ?? {})
+    else if (value.type === "attachment") text = value.filename ?? value.mime
+    const time =
+      value.type === "tool"
+        ? "time" in value.state
+          ? value.state.time
+          : undefined
+        : "time" in value
+          ? value.time
+          : undefined
+    return ExecutionFact.parse({
+      id: value.id,
+      sessionID: value.sessionID,
+      messageID: value.messageID,
+      type: value.type,
+      origin: value.type === "text" ? (MessageV2.isSystemPart(value) ? "system" : "user") : undefined,
+      checkpoint: value.type === "patch" && value.checkpoint ? true : undefined,
+      preview: preparedPreview ?? text.replace(/\s+/g, " ").slice(0, 240),
+      tool: value.type === "tool" ? value.tool : undefined,
+      callID: value.type === "tool" ? value.callID : undefined,
+      status: value.type === "tool" ? value.state.status : undefined,
+      time: time && "start" in time ? time : undefined,
+      accounting: value.type === "step-finish" && value.accounting?.kind === "rollout" ? value.accounting : undefined,
+    })
+  }
   export type Batch = {
     header: Header
     text: string

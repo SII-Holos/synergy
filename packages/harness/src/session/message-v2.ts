@@ -1015,7 +1015,12 @@ export namespace MessageV2 {
    * that predate it. The single predicate all consumers should use instead of
    * reading `part.synthetic` directly.
    */
-  export type SemanticPart = Part | Omit<TextPart, "text"> | Omit<ReasoningPart, "text">
+  export type SemanticPart = {
+    type: Part["type"]
+    origin?: TextPart["origin"]
+    synthetic?: boolean
+    checkpoint?: unknown
+  }
 
   export function isSystemPart(part: SemanticPart): boolean {
     if (part.type === "patch" && part.checkpoint) return true
@@ -1955,6 +1960,7 @@ export namespace MessageV2 {
   export async function readInfoList(input: {
     scopeID: Identifier.ScopeID
     sessionID: Identifier.SessionID
+    signal?: AbortSignal
   }): Promise<Info[]> {
     const infos: Info[] = []
     for await (const record of Storage.records<Info>({
@@ -1962,6 +1968,7 @@ export namespace MessageV2 {
       scopeID: input.scopeID,
       sessionID: input.sessionID,
     })) {
+      input.signal?.throwIfAborted()
       infos.push(canonicalMessage(upgradeAccessRecord(record.key, record.value)))
     }
     return infos.sort(compareStorageOrder)
@@ -2007,7 +2014,10 @@ export namespace MessageV2 {
       if (value.type === "tool" && input.messageIDs.has(value.messageID) && isUnsettledToolState(value.state))
         candidates.push(value)
     }
-    return candidates.sort((a, b) => a.id.localeCompare(b.id))
+    const positions = new Map([...input.messageIDs].map((id, index) => [id, index]))
+    return candidates.sort(
+      (a, b) => positions.get(a.messageID)! - positions.get(b.messageID)! || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
   }
 
   export async function readToolPart(input: { scopeID: string; sessionID: string; messageID: string; partID: string }) {

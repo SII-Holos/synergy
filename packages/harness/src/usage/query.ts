@@ -238,17 +238,23 @@ export namespace UsageQuery {
       throw new UsageSchema.InvalidQuery({ message: "Usage time range must be half-open and increasing" })
     return result
   }
-  export async function* scan(input: UsageSchema.Filter = {}, after?: string[]) {
+  export async function* scan(input: UsageSchema.Filter = {}, after?: string[], signal?: AbortSignal) {
     const filter = validate(input)
-    yield* scanSelected(filter, await related(filter), after)
+    signal?.throwIfAborted()
+    yield* scanSelected(filter, await related(filter), after, signal)
   }
-  async function* scanSelected(filter: z.output<typeof UsageSchema.Filter>, selection?: Selection, after?: string[]) {
+  async function* scanSelected(
+    filter: z.output<typeof UsageSchema.Filter>,
+    selection?: Selection,
+    after?: string[],
+    signal?: AbortSignal,
+  ) {
     const sources: AsyncGenerator<UsageSchema.Record>[] = []
-    if (filter.sessionID) sources.push(scanOwner(filter, selection, after, filter.sessionID))
-    if (!filter.sessionID && !filter.runID) sources.push(scanOwner(filter, selection, after))
+    if (filter.sessionID) sources.push(scanOwner(filter, selection, after, filter.sessionID, signal))
+    if (!filter.sessionID && !filter.runID) sources.push(scanOwner(filter, selection, after, undefined, signal))
     for (const owner of selection?.targets.values() ?? []) {
       if (owner.kind === "session" && owner.sessionID === filter.sessionID) continue
-      sources.push(scanOwner({ ...filter, scopeID: owner.scopeID }, selection, after, owner))
+      sources.push(scanOwner({ ...filter, scopeID: owner.scopeID }, selection, after, owner, signal))
     }
     const heads = await Promise.all(sources.map((source) => source.next()))
     for (;;) {
@@ -280,10 +286,12 @@ export namespace UsageQuery {
     selection: Selection | undefined,
     after?: string[],
     owner?: UsageSchema.Owner | string,
+    signal?: AbortSignal,
   ) {
     const operation = typeof owner === "object" && owner.kind === "operation" ? owner : undefined
     let cursor = after
     for (;;) {
+      signal?.throwIfAborted()
       const batch = await Storage.query<{ key: string[] }>({
         kind: "usage_time",
         prefix: operation ? ["usage_time", operation.scopeID, UsageLedger.ownerKey(operation)] : undefined,
@@ -308,10 +316,14 @@ export namespace UsageQuery {
   export async function records(input: UsageSchema.Filter = {}, options: { cursor?: string; limit?: number } = {}) {
     return Storage.snapshot(() => readPage(input, options))
   }
-  export async function collect(input: UsageSchema.Filter) {
+  export async function collect(input: UsageSchema.Filter, signal?: AbortSignal) {
     return Storage.snapshot(async () => {
       const records: UsageSchema.Record[] = []
-      for await (const record of scan(input)) records.push(record)
+      signal?.throwIfAborted()
+      for await (const record of scan(input, undefined, signal)) {
+        signal?.throwIfAborted()
+        records.push(record)
+      }
       return records
     })
   }

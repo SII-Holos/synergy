@@ -41,6 +41,49 @@ export namespace SessionHistory {
   export const summarizePart = SessionHistoryDisplay.summarizePart
   export const summarizeMessage = SessionHistoryDisplay.summarizeMessage
   export const MessageDetails = SessionHistoryDisplay.MessageDetails
+  export type ExecutionPart = SessionHistoryDisplay.ExecutionPart
+  export type ExecutionProgress = SessionHistoryDisplay.ExecutionProgress
+
+  export async function executionMessages(input: {
+    sessionID: string
+    messageID?: string
+    signal?: AbortSignal
+    progress?: (value: ExecutionProgress) => void
+  }) {
+    if (Storage.inTransaction()) throw new Error("Execution preparation must run outside a storage transaction")
+    const session = await prepareInfoRead(input.sessionID)
+    const owner = { scopeID: asScopeID(session.scope.id), sessionID: asSessionID(session.id) }
+    for (;;) {
+      input.signal?.throwIfAborted()
+      const infos = input.messageID
+        ? [await MessageV2.readInfo({ ...owner, messageID: input.messageID })]
+        : await MessageV2.readInfoList({ ...owner, signal: input.signal })
+      for (const [index, info] of infos.entries()) {
+        try {
+          await SessionHistoryDisplay.prepareExecutionParts(owner.scopeID, owner.sessionID, info.id, input.signal)
+        } catch (error) {
+          if (input.messageID || !(error instanceof Storage.NotFoundError)) throw error
+          const current = await MessageV2.readInfoList({ ...owner, signal: input.signal })
+          if (current.some((message) => message.id === info.id)) throw error
+        }
+        input.progress?.({ prepared: index + 1, total: infos.length })
+      }
+      const result = await Storage.snapshot(async () => {
+        const current = input.messageID
+          ? [await MessageV2.readInfo({ ...owner, messageID: input.messageID })]
+          : await MessageV2.readInfoList(owner)
+        const messages: { info: MessageV2.Info; parts: ExecutionPart[] }[] = []
+        for (const info of current) {
+          input.signal?.throwIfAborted()
+          const parts = await SessionHistoryDisplay.readExecutionParts(owner.scopeID, owner.sessionID, info.id)
+          if (!parts) return
+          messages.push({ info, parts })
+        }
+        return MessageV2.deriveSemantics(messages)
+      })
+      if (result) return result
+    }
+  }
 
   export async function refreshDisplayPart(scopeID: string, part: MessageV2.Part) {
     await Storage.transaction(async () => {
@@ -48,7 +91,6 @@ export namespace SessionHistory {
       const [display] = await Storage.readMany<Record<string, unknown>>([key])
       if (!display) return
       await SessionHistoryDisplay.partWritten(scopeID, part)
-      await Storage.write(key, { ...display, ...summarizePart(part) })
     })
   }
 
