@@ -53,16 +53,23 @@ export function ModelManagerRow(props: { model: LocalModel; compact?: boolean; p
     !props.model.name.toLowerCase().includes("free")
 
   return (
-    <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-left text-13-regular">
-      <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
+    <div class="w-full min-w-0 flex flex-col gap-y-0.5 text-left">
+      <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-13-regular">
+        <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
+        <Show when={showFree}>
+          <Tag>{_(freeTag)}</Tag>
+        </Show>
+        <Show when={!props.compact && props.model.latest}>
+          <Tag>{_(latestTag)}</Tag>
+        </Show>
+      </div>
       <Show when={props.providerLabel}>
-        <span class="min-w-0 max-w-24 truncate text-12-regular text-text-weak">{props.providerLabel}</span>
-      </Show>
-      <Show when={showFree}>
-        <Tag>{_(freeTag)}</Tag>
-      </Show>
-      <Show when={!props.compact && props.model.latest}>
-        <Tag>{_(latestTag)}</Tag>
+        <span
+          class="model-manager-provider-name w-full truncate text-12-regular text-text-weak"
+          title={props.providerLabel}
+        >
+          {props.providerLabel}
+        </span>
       </Show>
     </div>
   )
