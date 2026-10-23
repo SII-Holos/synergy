@@ -246,7 +246,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       value = await data.load(row)
     if (!value || key !== data.key()) return
     dialog.show(() => (
-      <Dialog size="wide" title={row.file}>
+      <Dialog size="wide" title={row.file} class="review-version-dialog">
         <ReviewVersionPreview file={row.file} before={value.before} after={value.after} />
       </Dialog>
     ))
@@ -422,8 +422,9 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
     disabled?: boolean
     active?: boolean
     hint?: string
+    class?: string
   }) => (
-    <Tooltip value={props.hint ?? props.label}>
+    <Tooltip value={props.hint ?? props.label} class={props.class}>
       <IconButton
         icon={getSemanticIcon(props.token)}
         variant="ghost"
@@ -445,7 +446,14 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
         value={filter()}
         onInput={(event) => setFilter(event.currentTarget.value)}
       />
-      <Show when={filtered().length} fallback={<p class="review-state">{_(filter() ? C.filterEmpty : C.empty)}</p>}>
+      <Show
+        when={filtered().length}
+        fallback={
+          <p class="review-navigation-empty" role="status">
+            {_(filter() ? C.filterEmpty : C.empty)}
+          </p>
+        }
+      >
         <ReviewFileTree
           rows={filtered()}
           selected={selected()}
@@ -465,6 +473,12 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
   const fold = () => setExpanded(expanded().length ? [] : data.rows().map(reviewFileKey))
   function fileHeader(id: string) {
     const row = () => rowMap().get(id)
+    const [menuOpen, setMenuOpen] = createSignal(false)
+    let menuTrigger: HTMLButtonElement | undefined
+    const closeMenu = () => {
+      setMenuOpen(false)
+      menuTrigger?.focus({ preventScroll: true })
+    }
     return (
       <Show when={row()}>
         {(value) => (
@@ -538,18 +552,31 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
               </Show>
               <DiffChanges changes={value()} />
               <div class="review-file-actions">
-                <ReviewIcon token="action.view" label={_(C.versions)} action={() => void preview(value())} />
                 <ReviewIcon
+                  class="review-file-secondary-action"
+                  token="action.view"
+                  label={_(C.versions)}
+                  action={() => void preview(value())}
+                />
+                <ReviewIcon
+                  class="review-file-secondary-action"
                   token="action.open"
                   label={_(data.canOpen(value()) ? C.open : C.historical)}
                   action={() => void file.openWorkspaceFile(value().file)}
                   disabled={!data.canOpen(value())}
                 />
                 <Popover
+                  open={menuOpen()}
+                  onOpenChange={setMenuOpen}
                   variant="menu"
+                  class="review-popover"
                   triggerAs={(triggerProps) => (
                     <IconButton
                       {...triggerProps}
+                      ref={(element) => {
+                        if (typeof triggerProps.ref === "function") triggerProps.ref(element)
+                        menuTrigger = element
+                      }}
                       icon={getSemanticIcon("action.more")}
                       aria-label={_(C.fileOptions)}
                       variant="ghost"
@@ -559,16 +586,39 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                   )}
                 >
                   <div class="review-menu">
-                    <Button variant="ghost" onClick={() => void copyTextToClipboard(value().file)}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        closeMenu()
+                        void copyTextToClipboard(value().file)
+                      }}
+                    >
                       {_(C.copyPath)}
                     </Button>
-                    <Button variant="ghost" onClick={() => void preview(value())}>
+                    <Button
+                      variant="ghost"
+                      onClick={() => {
+                        closeMenu()
+                        void preview(value())
+                      }}
+                    >
                       {_(C.versions)}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      disabled={!data.canOpen(value())}
+                      onClick={() => {
+                        closeMenu()
+                        void file.openWorkspaceFile(value().file)
+                      }}
+                    >
+                      {_(data.canOpen(value()) ? C.open : C.historical)}
                     </Button>
                     <Show when={data.historical() && value().workspace}>
                       <Button
                         variant="ghost"
-                        onClick={() =>
+                        onClick={() => {
+                          closeMenu()
                           void restore({
                             messageID: source() === "turn" ? messageID() : undefined,
                             selectedFiles: [
@@ -579,7 +629,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                               },
                             ],
                           })
-                        }
+                        }}
                       >
                         {_(C.undoFile)}
                       </Button>

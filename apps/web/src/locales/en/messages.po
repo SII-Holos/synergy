@@ -18228,10 +18228,6 @@ msgid "session.process.records"
 msgstr "Process history"
 
 #. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
-msgstr "The full task result is not available. The original notification is shown."
-
-#. js-lingui-explicit-id
 msgid "session.process.statistics"
 msgstr "{steps} steps · {calls} tool calls"
 

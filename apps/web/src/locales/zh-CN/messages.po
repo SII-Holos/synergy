@@ -18228,10 +18228,6 @@ msgid "session.process.records"
 msgstr "执行过程"
 
 #. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
-msgstr "完整任务结果暂不可用，当前显示原始通知。"
-
-#. js-lingui-explicit-id
 msgid "session.process.statistics"
 msgstr "{steps} 个步骤 · {calls} 次工具调用"
 

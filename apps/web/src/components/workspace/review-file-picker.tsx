@@ -11,7 +11,7 @@ export function ReviewFilePicker(props: { rows: ReviewRow[]; select: (id: string
   const id = createUniqueId()
   const [query, setQuery] = createSignal("")
   const [active, setActive] = createSignal(0)
-  let list: VListHandle | undefined
+  const [list, setList] = createSignal<VListHandle>()
   const entries = createMemo(() => {
     const names = new Map<string, number>()
     for (const row of props.rows) {
@@ -32,7 +32,7 @@ export function ReviewFilePicker(props: { rows: ReviewRow[]; select: (id: string
     )
   })
   createEffect(on(matches, () => setActive(0)))
-  createEffect(() => list?.scrollToIndex(active(), { align: "nearest" }))
+  createEffect(() => list()?.scrollToIndex(active(), { align: "nearest" }))
   const choose = (index: number) => {
     const entry = matches()[index]
     if (entry) props.select(reviewFileKey(entry.row))
@@ -76,9 +76,7 @@ export function ReviewFilePicker(props: { rows: ReviewRow[]; select: (id: string
         }
       >
         <VList
-          ref={(value) => {
-            list = value
-          }}
+          ref={setList}
           id={`${id}-list`}
           role="listbox"
           aria-label={_(C.files)}

@@ -18228,10 +18228,6 @@ msgid "session.process.records"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "session.process.resultUnavailable"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "session.process.statistics"
 msgstr ""
 

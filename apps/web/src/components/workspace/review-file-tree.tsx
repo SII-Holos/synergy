@@ -115,7 +115,7 @@ export function ReviewFileTree(props: {
       itemSize={touch() ? 44 : 32}
       overscan={4}
       keepMounted={[indices().get(active() ?? "") ?? 0, indices().get(focused() ?? "") ?? 0]}
-      style={{ height: `min(${entries().length * (touch() ? 44 : 32)}px, 50dvh)` }}
+      style={{ height: `${entries().length * (touch() ? 44 : 32)}px` }}
       onScrollEnd={() => {
         if (pendingFocus()) element?.querySelector<HTMLButtonElement>('[tabindex="0"]')?.focus({ preventScroll: true })
       }}
