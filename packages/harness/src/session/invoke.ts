@@ -2167,25 +2167,47 @@ export namespace SessionInvoke {
     }
 
     if (latestAssistant) {
-      const preserveError = latestAssistant.error && latestAssistant.time.completed != null
-      log.info("repairing non-terminal assistant", {
-        sessionID,
-        rootID: latestRoot?.id ?? latestAssistant.rootID,
-        messageID: latestAssistant.id,
-        preserveError: !!preserveError,
-      })
-      await Session.updateMessage({
-        ...latestAssistant,
-        time: { ...latestAssistant.time, completed: latestAssistant.time.completed ?? Date.now() },
-        finish: "error",
-        error:
-          preserveError || latestAssistant.error
-            ? latestAssistant.error
-            : new MessageV2.AbortedError({
+      const selected = latestAssistant
+      const ownsRepair = () => SessionManager.getRuntime(sessionID)?.owner?.lease === lease
+      const terminalized = await Storage.transaction(
+        async () => {
+          if (!ownsRepair()) return false
+          const current = await MessageV2.readInfo({
+            scopeID: session.scope.id,
+            sessionID,
+            messageID: selected.id,
+          }).catch((error) => {
+            if (error instanceof Storage.NotFoundError) return undefined
+            throw error
+          })
+          if (
+            !current ||
+            current.role !== "assistant" ||
+            current.rootID !== selected.rootID ||
+            current.parentID !== selected.parentID ||
+            SessionProgress.isTerminalAssistant(current)
+          )
+            return false
+          await Session.updateMessage({
+            ...current,
+            time: { ...current.time, completed: current.time.completed ?? Date.now() },
+            finish: "error",
+            error:
+              current.error ??
+              new MessageV2.AbortedError({
                 message: "Session aborted during turn — assistant response was not completed",
               }).toObject(),
-      })
-      await settleOrphanedToolParts({ ...sweep, includeAssistantMessageID: latestAssistant.id })
+          })
+          return true
+        },
+        {
+          commitGuard() {
+            if (!ownsRepair()) throw new DOMException("Session execution ownership changed during repair", "AbortError")
+          },
+        },
+      )
+      const settled = await settleOrphanedToolParts({ ...sweep, includeAssistantMessageID: selected.id })
+      return terminalized || settled > 0
     } else if (latestRoot && options.terminalize === true) {
       log.info("creating aborted assistant for pending root", {
         sessionID,

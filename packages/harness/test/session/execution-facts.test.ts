@@ -76,3 +76,56 @@ test("facts publication is fenced against replacement and ordinary Part backfill
     }
     expect((await preparation)[0].parts[0].preview).toBe("new version")
   }))
+
+test("cancelled facts preparation resumes after its committed cursor", () =>
+  run(async () => {
+    const { session, user, part } = await fixture()
+    for (let index = 1; index < 65; index++)
+      await Session.updatePartDelta({ ...part, id: Identifier.ascending("part") }, part.text)
+    await Session.flushPartWrites(session.id)
+    const controller = new AbortController()
+    using binary = spyOn(Storage, "readBinary")
+    await expect(
+      SessionHistory.executionMessages({
+        sessionID: session.id,
+        signal: controller.signal,
+        progress(value) {
+          if (value.stage === "parts" && value.prepared >= 32) controller.abort()
+        },
+      }),
+    ).rejects.toThrow()
+    const completed = new Set(binary.mock.calls.map(([key]) => JSON.stringify(key)))
+    expect(completed.size).toBeGreaterThan(0)
+    binary.mockClear()
+    const result = await SessionHistory.executionMessages({ sessionID: session.id })
+    expect(result.find((message) => message.info.id === user.id)?.parts).toHaveLength(65)
+    expect(binary.mock.calls.length).toBeGreaterThan(0)
+    expect(binary.mock.calls.some(([key]) => completed.has(JSON.stringify(key)))).toBe(false)
+  }))
+
+test("deleting a message during prefix preparation cannot republish its facts", () =>
+  run(async () => {
+    const { session } = await fixture()
+    const reached = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const read = Storage.readBinary
+    let first = true
+    using binary = spyOn(Storage, "readBinary").mockImplementation(async (key) => {
+      if (first) {
+        first = false
+        reached.resolve()
+        await release.promise
+      }
+      return read(key)
+    })
+    const preparing = SessionHistory.executionMessages({ sessionID: session.id })
+    const settled = preparing.catch((error: unknown) => error)
+    try {
+      await reached.promise
+      await Session.remove(session.id)
+    } finally {
+      release.resolve()
+    }
+    expect(await settled).toEqual([])
+    await expect(Session.get(session.id)).rejects.toThrow()
+  }))

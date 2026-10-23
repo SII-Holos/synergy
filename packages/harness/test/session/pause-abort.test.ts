@@ -15,6 +15,7 @@ import { SessionHistory } from "../../src/session/history"
 import { SessionManager } from "../../src/session/manager"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionCortexRuntime } from "../../src/session/cortex-runtime"
+import { SessionInvoke } from "../../src/session/invoke"
 
 /** A reply-required root plus a non-terminal assistant: the persisted shape of
  *  a turn that stopped mid-work. */
@@ -48,6 +49,34 @@ async function latestAssistant(sessionID: string) {
   const messages = await SessionHistory.modelMessages({ sessionID })
   return messages.findLast((message) => message.info.role === "assistant")?.info as MessageV2.Assistant | undefined
 }
+
+test("terminal repair preserves an assistant completed after its header selection", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const assistant = await createInterruptedTurn(session.id)
+        if (assistant.role !== "assistant") throw new Error("Expected assistant fixture")
+        const completed = assistant.time.created + 1
+        const read = SessionHistory.modelMessageInfos
+        let replaced = false
+        using headers = spyOn(SessionHistory, "modelMessageInfos").mockImplementation(async (input) => {
+          const infos = await read(input)
+          if (!replaced) {
+            replaced = true
+            await Session.updateMessage({ ...assistant, finish: "stop", time: { ...assistant.time, completed } })
+          }
+          return infos
+        })
+        await SessionInvoke.repairAbortState(session.id, { terminalize: true, internalCancel: true })
+        expect(
+          await MessageV2.readInfo({ scopeID: session.scope.id, sessionID: session.id, messageID: assistant.id }),
+        ).toMatchObject({ finish: "stop", time: { completed } })
+      },
+    })
+  }))
 
 describe("abort leaves an interactive session paused", () => {
   test("waiting for a stopped execution also waits for its external lease owner", () =>
