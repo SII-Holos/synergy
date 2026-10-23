@@ -32,9 +32,9 @@ test("live revisions retain readers without writing permanent roots or retaining
             await Bun.write(file, `next ${index}\n`)
             await live.refresh(["a.txt"])
           }
-          const old = await Snapshot.liveFile(sessionID, first, "a.txt")
+          const old = await Snapshot.liveVersions(sessionID, first, "a.txt")
           expect(old.after.content).toBe("first\n")
-          expect(old.diff.patch).toContain("+first")
+          expect((await Snapshot.liveDiff(sessionID, first, "a.txt")).patch).toContain("+first")
           expect(
             await SnapshotStore.command(SnapshotStore.repository(ScopeContext.current.scope.id), [
               "for-each-ref",
@@ -42,7 +42,7 @@ test("live revisions retain readers without writing permanent roots or retaining
             ]),
           ).toBe(from)
           await release()
-          await expect(Snapshot.liveFile(sessionID, first, "a.txt")).rejects.toThrow("expired")
+          await expect(Snapshot.liveVersions(sessionID, first, "a.txt")).rejects.toThrow("expired")
           await Bun.write(file, "before\n")
           const reverted = await live.refresh(["a.txt"])
           expect(await Snapshot.liveStatistics(sessionID, reverted)).toEqual([])
@@ -100,6 +100,34 @@ test("dirty capture reads only affected bytes and preserves net changes, removal
         ])
         await fs.rm(path.join(directory.path, "nested/new.txt"))
         expect(await refresh(["nested/new.txt"])).toBe(baseline)
+      },
+    })
+  }))
+
+test("large live refreshes release every raw-content batch after hashing", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const sessionID = "live-batches"
+        const from = (await Snapshot.track(sessionID))!
+        const live = await SnapshotLive.create(sessionID, from)
+        try {
+          const files = Array.from({ length: 530 }, (_, index) => `file-${index}.txt`)
+          await Promise.all(files.map((file) => Bun.write(path.join(directory.path, file), file)))
+          const revision = await live.refresh(files)
+          const temporary = await SnapshotLive.read(sessionID, revision, async (value) =>
+            fs.readdir(value.owner.operation.temporary),
+          )
+          expect(temporary.filter((file) => file.startsWith("capture-"))).toEqual([])
+          expect(await Snapshot.liveStatistics(sessionID, revision)).toHaveLength(files.length)
+          await Promise.all(files.map((file) => fs.rm(path.join(directory.path, file))))
+          await live.refresh(files)
+          expect(await live.retainedObjects()).toBe(0)
+        } finally {
+          await live.close()
+        }
       },
     })
   }))

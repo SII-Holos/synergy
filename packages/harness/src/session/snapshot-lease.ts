@@ -1,5 +1,6 @@
 import path from "node:path"
 import { randomUUID } from "node:crypto"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { z } from "zod"
 import { FileLockTimeoutError, withFileLock } from "@ericsanchezok/synergy-util/fs-lock"
 import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
@@ -7,6 +8,7 @@ import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 
 export namespace SnapshotLease {
+  const admitted = new AsyncLocalStorage<ReadonlyMap<string, string>>()
   const Owner = z.object({
     token: z.string(),
     pid: z.number().int().positive(),
@@ -77,7 +79,7 @@ export namespace SnapshotLease {
     options: Options = {},
   ): Promise<T> {
     await using lease = await acquire(scopeID, exclusive, options)
-    return await fn()
+    return await lease.run(fn)
   }
 
   // Provenance: https://restic.readthedocs.io/en/stable/100_references.html#locks
@@ -91,6 +93,12 @@ export namespace SnapshotLease {
     try {
       const scope = await admit(scopeID, exclusive, { ...options, dataRoot }, deadline)
       return {
+        run<T>(fn: () => Promise<T>) {
+          const parents = new Map(admitted.getStore())
+          parents.set(`${dataRoot}\0`, home.token)
+          parents.set(`${dataRoot}\0${scopeID}`, scope.token)
+          return admitted.run(parents, fn)
+        },
         async [Symbol.asyncDispose]() {
           try {
             await scope[Symbol.asyncDispose]()
@@ -116,6 +124,7 @@ export namespace SnapshotLease {
     deadline = Date.now() + (options.timeoutMs ?? 15_000),
   ) {
     const dataRoot = options.dataRoot ?? Storage.current().artifactDirectory
+    const parent = admitted.getStore()?.get(`${dataRoot}\0${scopeID}`)
     const owner: Owner = {
       token: randomUUID(),
       pid: process.pid,
@@ -146,7 +155,8 @@ export namespace SnapshotLease {
           (state) => {
             options.signal?.throwIfAborted()
             if (Date.now() >= deadline) throw new BusyError()
-            if (!registered && !state.owners.some((entry) => entry.exclusive)) {
+            const nested = !exclusive && state.owners.some((entry) => entry.token === parent)
+            if (!registered && (nested || !state.owners.some((entry) => entry.exclusive))) {
               state.owners.push(owner)
               registered = true
             }
@@ -159,7 +169,7 @@ export namespace SnapshotLease {
         await pause(options.signal)
       }
       options.signal?.throwIfAborted()
-      return { [Symbol.asyncDispose]: release }
+      return { token: owner.token, [Symbol.asyncDispose]: release }
     } catch (error) {
       await release()
       if (options.signal?.aborted && error === options.signal.reason) throw error

@@ -2,6 +2,8 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { z } from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
+import { processStartIdentity } from "@ericsanchezok/synergy-util/process-identity"
+import { Global } from "../global"
 import { RuntimeContext } from "../lifecycle/context"
 import { ScopeContext } from "../scope/context"
 import { SnapshotCapture } from "./snapshot-capture"
@@ -30,6 +32,36 @@ export namespace SnapshotLive {
     release(): Promise<void>
   }
   const state = RuntimeContext.state(() => ({ revisions: new Map<string, Revision>(), owners: new Set<Owner>() }))
+  const ProcessOwner = z.object({ pid: z.number().int().positive(), identity: z.string().optional() })
+  const recovered = RuntimeContext.state(() => reclaim())
+
+  async function reclaim() {
+    const root = path.join(Global.Path.cache, "snapshot-live")
+    await fs.mkdir(root, { recursive: true, mode: 0o700 })
+    for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !entry.name.startsWith("live-")) continue
+      const directory = path.join(root, entry.name)
+      const result = ProcessOwner.safeParse(
+        await Bun.file(path.join(directory, "owner.json"))
+          .json()
+          .catch(() => undefined),
+      )
+      if (!result.success) continue
+      const owner = result.data
+      let dead = false
+      try {
+        process.kill(owner.pid, 0)
+      } catch (error) {
+        dead = (error as NodeJS.ErrnoException).code === "ESRCH"
+      }
+      if (!dead && owner.identity) {
+        const identity = await processStartIdentity(owner.pid)
+        dead = identity !== undefined && identity !== owner.identity
+      }
+      if (dead) await fs.rm(directory, { recursive: true, force: true })
+    }
+    return root
+  }
 
   function serial<T>(owner: Owner, action: () => Promise<T>) {
     const result = owner.serial.catch(() => {}).then(action)
@@ -100,13 +132,13 @@ export namespace SnapshotLive {
     }
   }
 
-  export async function create(sessionID: string, from: string) {
+  export async function create(sessionID: string, from: string, endpoint = from) {
     return SnapshotStore.withSession(sessionID, async () => {
-      if (!(await SnapshotStore.ownsCurrent(from)))
+      if (!(await SnapshotStore.ownsCurrentRoots([from, endpoint])))
         throw new Unavailable({ message: "The original baseline is unavailable" })
       const source = SnapshotStore.current()
+      const temporary = path.join(await recovered(), `live-${RuntimeContext.current().id}-${crypto.randomUUID()}`)
       const lease = await SnapshotLease.acquire(source.scopeID, false)
-      const temporary = path.join(source.temporary, `live-${RuntimeContext.current().id}-${crypto.randomUUID()}`)
       const operation: SnapshotStore.Operation = {
         ...source,
         temporary,
@@ -127,13 +159,19 @@ export namespace SnapshotLive {
         return result.text.trim()
       }
       try {
+        await fs.mkdir(temporary, { mode: 0o700 })
+        await Bun.write(
+          path.join(temporary, "owner.json"),
+          JSON.stringify({ pid: process.pid, identity: await processStartIdentity(process.pid) }),
+          { mode: 0o600 },
+        )
         await SnapshotStore.initializeBareRepository(operation.repository)
         await fs.writeFile(
           path.join(operation.repository, "objects/info/alternates"),
           path.join(source.repository, "objects") + "\n",
           { mode: 0o600 },
         )
-        await run(["read-tree", from])
+        await run(["read-tree", endpoint])
       } catch (error) {
         await fs.rm(temporary, { recursive: true, force: true })
         await lease[Symbol.asyncDispose]()
@@ -149,36 +187,49 @@ export namespace SnapshotLive {
       }
       state().owners.add(owner)
       return {
+        withBaselineLease: lease.run,
         refresh(paths: readonly string[], initialOmissions: SnapshotSchema.Omission[] = []) {
           return serial(owner, async () => {
             if (owner.closed) throw new Unavailable({ message: "Live observation has closed" })
             const previous = owner.latest ? state().revisions.get(owner.latest) : undefined
             let omissions = previous?.omissions ?? initialOmissions
-            await SnapshotCapture.refresh(
-              operation,
-              undefined,
-              undefined,
-              (value) => {
-                omissions = value
-              },
-              { paths, omissions },
-            )
-            const to = await run(["write-tree"])
-            if (previous?.to === to && JSON.stringify(previous.omissions) === JSON.stringify(omissions))
-              return owner.latest!
-            // Git's reachability walk excludes durable baseline objects; only live loose objects need reference counts.
-            const objects = new Set(
-              (await run(["rev-list", "--objects", "--no-object-names", to, "--not", from]))
-                .split("\n")
-                .filter(Boolean),
-            )
-            for (const object of objects) owner.references.set(object, (owner.references.get(object) ?? 0) + 1)
-            const revision = crypto.randomUUID()
-            state().revisions.set(revision, { owner, from, to, omissions, objects, readers: 0 })
-            const old = owner.latest
-            owner.latest = revision
-            if (old) await discard(old)
-            return revision
+            try {
+              await SnapshotCapture.refresh(
+                operation,
+                undefined,
+                undefined,
+                (value) => {
+                  omissions = value
+                },
+                { paths, omissions },
+              )
+              const to = await run(["write-tree"])
+              if (previous?.to === to && JSON.stringify(previous.omissions) === JSON.stringify(omissions))
+                return owner.latest!
+              // Git's reachability walk excludes durable baseline objects; only live loose objects need reference counts.
+              const objects = new Set(
+                (await run(["rev-list", "--objects", "--no-object-names", to, "--not", from]))
+                  .split("\n")
+                  .filter(Boolean),
+              )
+              for (const object of objects) owner.references.set(object, (owner.references.get(object) ?? 0) + 1)
+              const revision = crypto.randomUUID()
+              state().revisions.set(revision, { owner, from, to, omissions, objects, readers: 0 })
+              const old = owner.latest
+              owner.latest = revision
+              if (old) await discard(old)
+              return revision
+            } catch (error) {
+              await run(["read-tree", previous?.to ?? endpoint])
+              const objects = path.join(operation.repository, "objects")
+              for (const prefix of await fs.readdir(objects)) {
+                if (!/^[0-9a-f]{2}$/.test(prefix)) continue
+                for (const suffix of await fs.readdir(path.join(objects, prefix)))
+                  if (!owner.references.has(prefix + suffix))
+                    await fs.rm(path.join(objects, prefix, suffix), { force: true })
+              }
+              throw error
+            }
           })
         },
         retainedObjects: async () => {

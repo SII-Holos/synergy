@@ -1,3 +1,4 @@
+import { SnapshotEvidence } from "./snapshot-evidence"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { randomBytes } from "node:crypto"
@@ -202,7 +203,12 @@ export namespace SessionTransfer {
     const prefix = ["sessions", info.scope.id, info.id]
     const records = await Storage.snapshot(async () => {
       const result: Array<z.infer<typeof S.Record>> = []
-      for await (const { key, value } of Storage.records({ prefix })) result.push({ key, value })
+      for await (const { key, value } of Storage.records({ prefix }))
+        result.push({
+          key,
+          value:
+            key[3] === "messages" && key[5] === "info" ? SnapshotEvidence.portable(MessageV2.Info.parse(value)) : value,
+        })
       for await (const { key, value } of Storage.records({ prefix: ["usage", info.scope.id, `session_${info.id}`] }))
         result.push({ key, value })
       return result

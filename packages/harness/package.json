@@ -43,6 +43,8 @@
     "./workspace": "./src/workspace/index.ts",
     "./workspace/state": "./src/workspace/state.ts",
     "./workspace/events": "./src/workspace/events.ts",
+    "./workspace/observation": "./src/workspace/observation.ts",
+    "./session/file-change-view": "./src/session/file-change-view.ts",
     "./workspace/access": "./src/workspace/access.ts",
     "./workspace/claim": "./src/workspace/claim.ts",
     "./workspace/file-import": "./src/workspace/file-import.ts",

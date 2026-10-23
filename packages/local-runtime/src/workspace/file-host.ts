@@ -206,7 +206,7 @@ export class NativeWorkspaceFiles implements WorkspaceFileHost {
               },
               {
                 ignore: [
-                  ...FileWatcherEvents.workspaceSubscriptionIgnores([]).filter(
+                  ...FileWatcherEvents.workspaceSubscriptionIgnores().filter(
                     (pattern) => pattern !== ".git" && pattern !== "**/.git/**",
                   ),
                   ".git/objects",

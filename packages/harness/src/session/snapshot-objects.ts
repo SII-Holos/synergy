@@ -48,7 +48,6 @@ export namespace SnapshotObjects {
     const stats = { new: 0, reused: 0, bytes: 0, lookup: 0, write: 0, finalize: 0, wait: 0 }
     let bufferedBytes = 0
     let writer: Awaited<ReturnType<typeof SnapshotGit.blobWriter>> | undefined
-    let directory: string | undefined
     let lease: Awaited<ReturnType<typeof importLease>> | undefined
     const run = (args: string[], input: string) =>
       SnapshotGit.run(
@@ -104,19 +103,23 @@ export namespace SnapshotObjects {
       const started = performance.now()
       if (writer) await writer.write(blobs)
       else {
-        directory = await fs.mkdtemp(path.join(operation.temporary, "capture-"))
-        const filenames = blobs.map((blob) => path.join(directory!, blob.hash))
-        const writes = await Promise.allSettled(
-          blobs.map((blob, index) => fs.writeFile(filenames[index]!, blob.bytes, { flag: "wx", mode: 0o600 })),
-        )
-        for (const result of writes) if (result.status === "rejected") throw result.reason
-        // Provenance: https://git-scm.com/docs/git-hash-object (--no-filters).
-        const result = await run(
-          ["hash-object", "-w", "--no-filters", "--stdin-paths"],
-          filenames.map(quote).join("\n") + "\n",
-        )
-        if (result.exitCode !== 0 || result.text.trim() !== blobs.map((blob) => blob.hash).join("\n"))
-          throw new SnapshotStore.StorageError(`Snapshot object write failed: ${result.stderr}`)
+        const directory = await fs.mkdtemp(path.join(operation.temporary, "capture-"))
+        try {
+          const filenames = blobs.map((blob) => path.join(directory, blob.hash))
+          const writes = await Promise.allSettled(
+            blobs.map((blob, index) => fs.writeFile(filenames[index]!, blob.bytes, { flag: "wx", mode: 0o600 })),
+          )
+          for (const result of writes) if (result.status === "rejected") throw result.reason
+          // Provenance: https://git-scm.com/docs/git-hash-object (--no-filters).
+          const result = await run(
+            ["hash-object", "-w", "--no-filters", "--stdin-paths"],
+            filenames.map(quote).join("\n") + "\n",
+          )
+          if (result.exitCode !== 0 || result.text.trim() !== blobs.map((blob) => blob.hash).join("\n"))
+            throw new SnapshotStore.StorageError(`Snapshot object write failed: ${result.stderr}`)
+        } finally {
+          await fs.rm(directory, { recursive: true, force: true })
+        }
       }
       stats.write += performance.now() - started
       for (const blob of blobs) {
@@ -159,7 +162,6 @@ export namespace SnapshotObjects {
           await writer?.[Symbol.asyncDispose]()
         } finally {
           await lease?.[Symbol.asyncDispose]()
-          if (directory) await fs.rm(directory, { recursive: true, force: true })
         }
       },
     }

@@ -18,6 +18,7 @@ import { WorkspaceCatalog } from "../workspace/catalog"
 import { WorkspaceContent } from "../workspace/content"
 
 export namespace Snapshot {
+  export const excludedDirectories = SnapshotCapture.excludedDirectories
   const log = Log.create({ service: "snapshot" })
   async function gitSpawn(...args: Parameters<typeof SnapshotGit.run>) {
     const context = SnapshotStore.current()
@@ -380,24 +381,31 @@ export namespace Snapshot {
   }
 
   export function liveStatistics(sessionID: string, revision: string) {
-    return SnapshotLive.read(sessionID, revision, ({ from, to, omissions }) =>
-      diffSummaryImpl(from, to, sessionID, undefined, undefined, true).then((rows) =>
-        rows.filter((row) => !omissions.some((item) => item.file === row.file)),
-      ),
-    )
+    return SnapshotLive.read(sessionID, revision, async ({ from, to, omissions }) => {
+      const omitted = new Set(omissions.map((item) => item.file))
+      return (await diffSummaryImpl(from, to, sessionID, undefined, undefined, true)).filter(
+        (row) => !omitted.has(row.file),
+      )
+    })
   }
 
-  export function liveFile(sessionID: string, revision: string, file: string, signal?: AbortSignal) {
+  export function liveDiff(sessionID: string, revision: string, file: string, signal?: AbortSignal) {
     SnapshotSchema.FilePath.parse(file)
     return SnapshotLive.read(sessionID, revision, async ({ from, to, omissions }) => {
       if (omissions.some((item) => item.file === file))
         throw new SnapshotLive.Unavailable({ message: "This file was not fully recorded" })
-      const [diff, versions] = await Promise.all([
-        fileDiffImpl(from, to, file, sessionID, signal),
-        fileVersionsImpl(from, to, file, signal),
-      ])
+      const diff = await fileDiffImpl(from, to, file, sessionID, signal)
       if (!diff) throw new SnapshotLive.Unavailable({ message: "This file has no recorded difference" })
-      return { ...versions, diff }
+      return diff
+    })
+  }
+
+  export function liveVersions(sessionID: string, revision: string, file: string, signal?: AbortSignal) {
+    SnapshotSchema.FilePath.parse(file)
+    return SnapshotLive.read(sessionID, revision, async ({ from, to, omissions }) => {
+      if (omissions.some((item) => item.file === file))
+        throw new SnapshotLive.Unavailable({ message: "This file was not fully recorded" })
+      return fileVersionsImpl(from, to, file, signal)
     })
   }
 
@@ -667,10 +675,12 @@ export namespace Snapshot {
     const parsed = parseNumstatPatch(diff.text)
     const entries = await objectEntries(
       git,
-      parsed.stats.flatMap((stat) => [
-        { tree: from, file: stat.file },
-        { tree: to, file: stat.file },
-      ]),
+      parsed.stats
+        .filter((stat) => !statistics || stat.additions === "-")
+        .flatMap((stat) => [
+          { tree: from, file: stat.file },
+          { tree: to, file: stat.file },
+        ]),
       signal,
     )
     for (let index = 0; index < parsed.stats.length; index++) {
@@ -808,21 +818,19 @@ export namespace Snapshot {
     // Tree entries carry sizes without interpolating filenames into a line protocol.
     for (const tree of new Set(objects.map((object) => object.tree))) {
       const files = [...new Set(objects.filter((object) => object.tree === tree).map((object) => object.file))]
-      for (let offset = 0; offset < files.length; offset += 32) {
-        const listing = await gitSpawn(
-          ["git", "--git-dir", git, "ls-tree", "-r", "-l", "-z", tree, "--", ...files.slice(offset, offset + 32)],
-          path.dirname(git),
-          undefined,
-          signal,
-        )
-        if (listing.exitCode !== 0) throw new SnapshotStore.StorageError("Snapshot tree metadata is unavailable")
-        for (const entry of listing.text.split("\0")) {
-          if (!entry) continue
-          const separator = entry.indexOf("\t")
-          const [mode, , oid, size] = entry.slice(0, separator).trim().split(/\s+/)
-          const key = objectSizeKey(tree, entry.slice(separator + 1))
-          if (requested.has(key) && /^\d+$/.test(size)) result.set(key, { mode, oid, size: Number(size) })
-        }
+      const listing = await gitSpawn(
+        ["git", "--git-dir", git, "ls-tree", "-r", "-l", "-z", tree, "--", ...(files.length <= 32 ? files : [])],
+        path.dirname(git),
+        undefined,
+        signal,
+      )
+      if (listing.exitCode !== 0) throw new SnapshotStore.StorageError("Snapshot tree metadata is unavailable")
+      for (const entry of listing.text.split("\0")) {
+        if (!entry) continue
+        const separator = entry.indexOf("\t")
+        const [mode, , oid, size] = entry.slice(0, separator).trim().split(/\s+/)
+        const key = objectSizeKey(tree, entry.slice(separator + 1))
+        if (requested.has(key) && /^\d+$/.test(size)) result.set(key, { mode, oid, size: Number(size) })
       }
     }
     return result

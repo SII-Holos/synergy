@@ -744,10 +744,16 @@ import type {
   SessionExportEstimateErrors,
   SessionExportEstimateResponses,
   SessionExportMode,
+  SessionFilesComparisonErrors,
+  SessionFilesComparisonResponses,
+  SessionFilesCurrentErrors,
+  SessionFilesCurrentResponses,
   SessionFilesDiffErrors,
   SessionFilesDiffResponses,
   SessionFilesPreviewErrors,
   SessionFilesPreviewResponses,
+  SessionFilesReleaseErrors,
+  SessionFilesReleaseResponses,
   SessionFilesRestoreErrors,
   SessionFilesRestoreResponses,
   SessionFilesVersionsErrors,
@@ -1918,6 +1924,110 @@ export class Files extends HeyApiClient {
   }
 
   /**
+   * Read the current turn file summary
+   */
+  public current<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionFilesCurrentResponses, SessionFilesCurrentErrors, ThrowOnError>({
+      url: "/session/{sessionID}/files/current",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Acquire an immutable turn comparison
+   */
+  public comparison<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      messageID: string
+      revision?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "messageID" },
+            { in: "query", key: "revision" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionFilesComparisonResponses,
+      SessionFilesComparisonErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/files/comparison",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Release a turn comparison reader
+   */
+  public release<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      revision: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "path", key: "revision" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<
+      SessionFilesReleaseResponses,
+      SessionFilesReleaseErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/files/comparison/{revision}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Read a historical file diff
    *
    * Read captured file versions for a turn or session without reading the current workspace.
@@ -1931,6 +2041,7 @@ export class Files extends HeyApiClient {
       workspaceID: string
       generation: number
       file: string
+      revision?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1946,6 +2057,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "workspaceID" },
             { in: "query", key: "generation" },
             { in: "query", key: "file" },
+            { in: "query", key: "revision" },
           ],
         },
       ],
@@ -1969,6 +2081,7 @@ export class Files extends HeyApiClient {
       workspaceID: string
       generation: number
       file: string
+      revision?: string
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -1984,6 +2097,7 @@ export class Files extends HeyApiClient {
             { in: "query", key: "workspaceID" },
             { in: "query", key: "generation" },
             { in: "query", key: "file" },
+            { in: "query", key: "revision" },
           ],
         },
       ],

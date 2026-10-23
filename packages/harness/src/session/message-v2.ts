@@ -553,6 +553,10 @@ export namespace MessageV2 {
         diffs: SnapshotSchema.FileDiff.array(),
         diffState: SnapshotSchema.DiffState.optional(),
         diffIssues: SnapshotSchema.Issue.array().optional(),
+        diffTotals: SnapshotSchema.Totals.optional(),
+        diffRevision: z.string().optional(),
+        diffObservedAt: z.number().optional(),
+        diffHasChanges: z.boolean().optional(),
       })
       .optional(),
     agent: z.string(),

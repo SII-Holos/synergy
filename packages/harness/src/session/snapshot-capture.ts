@@ -145,9 +145,18 @@ export namespace SnapshotCapture {
       return file
     })
     const incremental = paths && !content && !paths.some((file) => !file || path.posix.basename(file) === ".gitignore")
-    const affected = (name: string) =>
-      !incremental || paths.some((file) => name === file || name.startsWith(file + "/"))
-    const traversed = (name: string) => affected(name) || paths?.some((file) => file.startsWith(name + "/"))
+    const selected = new Set(paths)
+    const ancestors = new Set<string>()
+    for (const file of paths ?? [])
+      for (let end = file.lastIndexOf("/"); end > 0; end = file.lastIndexOf("/", end - 1))
+        ancestors.add(file.slice(0, end))
+    const affected = (name: string) => {
+      if (!incremental || selected.has(name)) return true
+      for (let end = name.lastIndexOf("/"); end > 0; end = name.lastIndexOf("/", end - 1))
+        if (selected.has(name.slice(0, end))) return true
+      return false
+    }
+    const traversed = (name: string) => affected(name) || ancestors.has(name)
     const omissions: SnapshotSchema.Omission[] = (dirty?.omissions ?? []).filter((item) => !affected(item.file))
     const omit = (file: string, reason: SnapshotSchema.Omission["reason"]) => {
       if (!onOmissions) throw new Error(`Snapshot file could not be captured: ${file}`)

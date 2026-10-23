@@ -24,6 +24,7 @@ import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
 import { RolloutRecordingError } from "./rollout/error"
 import { SessionHistory } from "./history"
+import { SessionFileChanges } from "./file-changes"
 
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
@@ -38,6 +39,7 @@ export namespace SessionSummary {
   }
   type QueuedSummaryInput = SummaryInput & {
     historyRevision: number
+    fileRevision: number
     compared: ReturnType<typeof Promise.withResolvers<void>>
     completion: ReturnType<typeof Promise.withResolvers<void>>
     previous?: Promise<void>
@@ -133,6 +135,7 @@ export namespace SessionSummary {
         ...input,
         messages: input.messages ? compactQueuedMessages(input.messages, input.messageID) : undefined,
         historyRevision,
+        fileRevision: SessionFileChanges.revision(input.sessionID, input.messageID),
         compared: Promise.withResolvers<void>(),
         completion: Promise.withResolvers<void>(),
         previous: state.pending.findLast((item) => !item.diffOnly && item.messageID === input.messageID)?.completion
@@ -211,6 +214,10 @@ export namespace SessionSummary {
       abort,
       onPending: pendingWritten.resolve,
       diffOnly: input.diffOnly,
+      valid: () =>
+        input.historyRevision === SessionManager.historyRevision(input.sessionID) &&
+        input.fileRevision === SessionFileChanges.revision(input.sessionID, input.messageID) &&
+        !SessionFileChanges.observing(input.sessionID, input.messageID),
     })
     await pendingWritten.promise
     const settled = await Promise.allSettled([
@@ -387,33 +394,39 @@ export namespace SessionSummary {
             code: issues.every((issue) => issue.code === "comparison_failed") ? "git_failure" : "incomplete",
           }
         : { status: "ready" }
-    return { diffs: SnapshotSchema.boundArray(diffs), issues, unavailable, state }
+    return { diffs, issues, unavailable, state }
   }
 
   function retainAvailable(compared: Awaited<ReturnType<typeof compareRanges>>, previous: SnapshotSchema.FileDiff[]) {
-    return SnapshotSchema.boundArray([
-      ...compared.diffs,
-      ...previous.filter((diff) => compared.unavailable.has(SnapshotRanges.key(diff))),
-    ])
+    return [...compared.diffs, ...previous.filter((diff) => compared.unavailable.has(SnapshotRanges.key(diff)))]
   }
 
   type UserSummary = NonNullable<MessageV2.User["summary"]>
 
-  async function markPendingSummaryTimedOut(input: SummaryInput) {
-    const session = await SessionManager.requireSession(input.sessionID)
-    const scopeID = asScopeID((session.scope as Scope).id)
-    const fresh = await Storage.read<MessageV2.User>(
-      StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
-    )
-    if (!fresh || fresh.role !== "user" || fresh.summary?.diffState?.status !== "pending") return
-    fresh.summary = {
-      ...fresh.summary,
-      diffState: { status: "error", code: "timeout" },
-    }
-    await Session.updateMessage(fresh)
+  export function publishLive(input: { sessionID: string; messageID: string; valid(): boolean } & UserSummary) {
+    const { sessionID, messageID, valid, ...summary } = input
+    return updateSummary({ sessionID, messageID }, summary, undefined, valid)
   }
 
-  async function updateSummary(input: SummaryInput, patch: Partial<UserSummary>, abort?: AbortSignal) {
+  async function markPendingSummaryTimedOut(input: QueuedSummaryInput) {
+    await updateSummary(
+      input,
+      { diffState: { status: "error", code: "timeout" } },
+      undefined,
+      (fresh) =>
+        fresh.summary?.diffState?.status === "pending" &&
+        input.historyRevision === SessionManager.historyRevision(input.sessionID) &&
+        input.fileRevision === SessionFileChanges.revision(input.sessionID, input.messageID) &&
+        !SessionFileChanges.observing(input.sessionID, input.messageID),
+    )
+  }
+
+  async function updateSummary(
+    input: SummaryInput,
+    patch: Partial<UserSummary>,
+    abort?: AbortSignal,
+    valid?: (fresh: MessageV2.User) => boolean,
+  ) {
     return Storage.transaction(async () => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
@@ -422,10 +435,15 @@ export namespace SessionSummary {
       )
       if (!fresh || fresh.role !== "user") return
       abort?.throwIfAborted()
+      if (valid && !valid(fresh)) return
+      if (!valid && patch.diffState && SessionFileChanges.observing(input.sessionID, input.messageID)) return fresh
       fresh.summary = {
         diffs: fresh.summary?.diffs ?? [],
         ...fresh.summary,
         ...patch,
+        ...(patch.diffState?.status === "live"
+          ? { diffHasChanges: fresh.summary?.diffHasChanges || !!patch.diffTotals?.files }
+          : {}),
       }
       return (await Session.updateMessage(fresh)) as MessageV2.User
     })
@@ -446,6 +464,7 @@ export namespace SessionSummary {
     abort: AbortSignal
     onPending: () => void
     diffOnly?: boolean
+    valid(): boolean
   }) {
     let pendingNotified = false
     const notifyPending = () => {
@@ -471,28 +490,41 @@ export namespace SessionSummary {
           },
         },
         input.abort,
+        input.valid,
       )
       notifyPending()
 
       let diffs: SnapshotSchema.FileDiff[] | undefined
       try {
-        const compared = await compareRanges(
-          SnapshotRanges.fromMessages(messages),
-          input.sessionID,
-          input.diffCache,
-          input.abort,
-        )
+        const ranges = SnapshotRanges.fromMessages(messages)
+        const compared = await compareRanges(ranges, input.sessionID, input.diffCache, input.abort)
         diffs = retainAvailable(compared, latestUser?.summary?.diffs ?? [])
+        const retainLive =
+          latestUser?.summary?.diffRevision &&
+          (compared.unavailable.size > 0 ||
+            SnapshotRanges.net(ranges).some((range) => range.incomplete && range.issue !== "legacy_range"))
         latestUser = await updateSummary(
           { sessionID: input.sessionID, messageID: input.messageID },
-          { diffs, diffState: compared.state, diffIssues: compared.issues },
+          retainLive
+            ? { diffState: { status: "error", code: "incomplete" }, diffIssues: compared.issues }
+            : {
+                diffs: SnapshotSchema.boundArray(diffs),
+                diffState: compared.state,
+                diffIssues: compared.issues,
+                diffTotals: SnapshotSchema.totals(diffs),
+                diffRevision: undefined,
+                diffObservedAt: Date.now(),
+              },
           input.abort,
+          input.valid,
         )
       } catch (error) {
         if (input.abort.aborted) throw abortError(input.abort)
         latestUser = await updateSummary(
           { sessionID: input.sessionID, messageID: input.messageID },
           { diffState: { status: "error", code: diffErrorCode(error) } },
+          undefined,
+          input.valid,
         )
       }
 
@@ -615,7 +647,7 @@ export namespace SessionSummary {
     const key = JSON.stringify([SnapshotRanges.key(range), range.operationID, range.from, range.to])
     let cached = cache.get(key)
     if (!cached) {
-      cached = Snapshot.diffSummary(range.from, range.to, sessionID, abort).then((diffs) =>
+      cached = Snapshot.statistics(range.from, range.to, sessionID, abort).then((diffs) =>
         diffs
           .filter((diff) => !range.operationID || range.files.includes(diff.file))
           .map((diff) => ({
