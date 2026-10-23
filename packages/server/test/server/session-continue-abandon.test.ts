@@ -95,7 +95,7 @@ describe("POST /session/:sessionID/continue", () => {
       })
     }))
 
-  test("clears the pause latch and reports the drive result", () =>
+  test("reports an empty paused session as blocked without clearing its pause", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       const scope = await tmp.scope()
@@ -109,11 +109,12 @@ describe("POST /session/:sessionID/continue", () => {
           const response = await Server.App().request(`/session/${session.id}/continue`, { method: "POST" })
 
           expect(response.status).toBe(200)
-          const body = (await response.json()) as { handled: boolean }
-          expect(typeof body.handled).toBe("boolean")
-          // The session is taking a user action, so the latch must not survive the
-          // call — otherwise a later drive would keep refusing the resumed work.
-          expect(await SessionLifecycle.snapshot(session.id)).toBeUndefined()
+          expect(await response.json()).toMatchObject({
+            handled: false,
+            outcome: "blocked",
+            status: { type: "paused" },
+          })
+          expect(await SessionLifecycle.snapshot(session.id)).toBeDefined()
         },
       })
     }))

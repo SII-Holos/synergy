@@ -73,10 +73,9 @@ export namespace SessionAbort {
     // releases the runtime, so a later sample cannot distinguish a loop that was
     // healthily driving this turn from one orphaned by a dead runtime.
     const turnWasRunning = SessionManager.isRunning(sessionID)
-    // A stop that leaves the session resumable must not terminalize the
-    // interrupted turn: `finish:"error"` plus `time.completed` is what makes
-    // `session.continue` a silent no-op, and that terminal record belongs to the
-    // Abandon path alone. The intent rides on the abort signal itself, so every
+    // A user pause preserves the interrupted turn's breakpoint; Abandon
+    // terminalizes it. Recovery from a terminal failure instead admits a new
+    // attempt through SessionResume. The intent rides on the abort signal, so every
     // writer that would terminalize the turn reads it from the abort it is
     // already reacting to rather than racing this call.
     //

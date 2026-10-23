@@ -12699,7 +12699,7 @@
           }
         ],
         "summary": "Continue a paused session",
-        "description": "Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.",
+        "description": "Persist one recovery request for the current task, preserving prior failures. Returns after admission without waiting for model execution. Request identity and the observed pause protect duplicate and stale actions.",
         "responses": {
           "200": {
             "description": "Continue result",
@@ -12747,6 +12747,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "requestID": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "pausedSince": {
+                    "type": "number"
+                  }
                 }
               }
             }
@@ -53014,6 +53033,34 @@
           "paused": {
             "$ref": "#/components/schemas/SessionPaused"
           },
+          "resume": {
+            "type": "object",
+            "properties": {
+              "requestID": {
+                "type": "string"
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "itemID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "pausedSince": {
+                "type": "number"
+              },
+              "created": {
+                "type": "number"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["queued", "consumed", "cancelled"]
+              }
+            },
+            "required": ["requestID", "itemID", "messageID", "created", "state"]
+          },
           "interaction": {
             "$ref": "#/components/schemas/SessionInteraction"
           },
@@ -68788,11 +68835,48 @@
         "type": "object",
         "properties": {
           "handled": {
-            "type": "boolean",
-            "description": "Whether the drive accepted the session; a paused or already-running session reports false"
+            "type": "boolean"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["accepted", "already_accepted", "running", "idle", "stale", "blocked"]
+          },
+          "receipt": {
+            "type": "object",
+            "properties": {
+              "requestID": {
+                "type": "string"
+              },
+              "rootID": {
+                "type": "string"
+              },
+              "itemID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "pausedSince": {
+                "type": "number"
+              },
+              "created": {
+                "type": "number"
+              },
+              "state": {
+                "type": "string",
+                "enum": ["queued", "consumed", "cancelled"]
+              }
+            },
+            "required": ["requestID", "itemID", "messageID", "created", "state"]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
+          "reason": {
+            "type": "string"
           }
         },
-        "required": ["handled"]
+        "required": ["handled", "outcome", "status"]
       },
       "SessionExecutionOwnerUnavailableError": {
         "type": "object",

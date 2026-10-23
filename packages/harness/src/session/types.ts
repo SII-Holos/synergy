@@ -157,6 +157,17 @@ export const PausedInfo = z
   .meta({ ref: "SessionPaused" })
 export type PausedInfo = z.infer<typeof PausedInfo>
 
+export const ResumeInfo = z.object({
+  requestID: z.string(),
+  rootID: z.string().optional(),
+  itemID: z.string(),
+  messageID: z.string(),
+  pausedSince: z.number().optional(),
+  created: z.number(),
+  state: z.enum(["queued", "consumed", "cancelled"]),
+})
+export type ResumeInfo = z.infer<typeof ResumeInfo>
+
 export const Activity = z
   .object({
     phase: z.enum([
@@ -311,6 +322,7 @@ const BaseInfo = BaseInfoInput.pipe(
     modelSelection: ModelSelection.State.optional(),
     agentOverride: z.string().optional().describe("Per-session agent override set by session control"),
     paused: PausedInfo.optional(),
+    resume: ResumeInfo.optional(),
     interaction: SessionInteraction.Info.optional(),
     lastExchange: z
       .object({

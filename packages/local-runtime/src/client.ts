@@ -18,7 +18,7 @@ import { PermissionNext } from "@ericsanchezok/synergy-harness/permission/next"
 import { Question } from "./question"
 import {
   abandonSession,
-  continueSession,
+  resumeSession,
   createSession,
   submitInput,
   submitCommand,
@@ -152,8 +152,8 @@ export function createLocalClient(runtime: RuntimeHandle.Handle, selector: Scope
       // The explicit exits from the paused state. They live here so in-process
       // callers (Desktop main, the CLI) reach the same implementation the HTTP
       // routes use, rather than a second definition that can drift.
-      continue: inScope(async (input: { sessionID: string }, _options?: RequestOptions) =>
-        success({ handled: await continueSession(input.sessionID) }),
+      continue: inScope(async (input: Parameters<typeof resumeSession>[0], _options?: RequestOptions) =>
+        success(await resumeSession(input)),
       ),
       retryRequest: inScope(async (input: Parameters<typeof retrySessionRequest>[0], _options?: RequestOptions) =>
         success(await retrySessionRequest(input)),

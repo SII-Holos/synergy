@@ -49,7 +49,7 @@ export namespace SessionLifecycle {
     const paused: PausedInfo = {
       reason: input.reason,
       ...(input.description ? { description: input.description } : {}),
-      since: Date.now(),
+      since: Math.max(Date.now(), (session?.resume?.pausedSince ?? 0) + 1),
     }
     let changed = false
     await Session.update(
@@ -75,7 +75,7 @@ export namespace SessionLifecycle {
    * Clear the latch without touching the stopping turn or the rollout run.
    *
    * This is the low-level write, not the take-back entry point: a caller that
-   * resumes work must use `startNewTask` or `resume`, which drain the stopping
+   * resumes work must use `startNewTask`, `resume` or `SessionResume.request`, which drain the stopping
    * turn first and settle the interrupted run. Use this directly only where the
    * caller already owns that settlement — a domain releasing a pause it wrote
    * itself, or abandoning work that is about to be cancelled anyway.
@@ -89,9 +89,13 @@ export namespace SessionLifecycle {
       throw error
     })
     if (!session?.paused) return false
-    await Session.update(sessionID, (draft) => {
+    const updated = await Session.update(sessionID, (draft) => {
       draft.paused = undefined
     })
+    const working = await import("./working")
+    const { SessionManager } = await import("./manager")
+    const status = await working.resolve(sessionID, updated)
+    await SessionManager.publishStatusOnly(sessionID, status ? working.toStatus(status) : { type: "idle" })
     log.info("session pause cleared", { sessionID })
     return true
   }
@@ -116,6 +120,10 @@ export namespace SessionLifecycle {
     })
     if (!session?.paused) return false
     await SessionManager.waitForIdle(sessionID)
+    if (session.resume?.state === "queued") {
+      const { SessionInbox } = await import("./inbox")
+      await SessionInbox.remove({ sessionID, itemID: session.resume.itemID })
+    }
     return clear(sessionID)
   }
 
@@ -123,9 +131,9 @@ export namespace SessionLifecycle {
    * Resume the interrupted task: drain the stopping turn, reopen its rollout
    * run, then clear the latch.
    *
-   * Explicit continue and steering input both need these three steps in this
-   * order, so neither may keep a private copy. A caller that clears the latch
-   * alone leaves the run closed and the next turn cannot append to it.
+   * Steering input uses this settlement before scheduling its saved Inbox item.
+   * Explicit Continue additionally admits a recovery item in `SessionResume`.
+   * Clearing the latch alone leaves a closed run unable to accept new evidence.
    */
   export async function resume(sessionID: string): Promise<boolean> {
     const { Session } = await import(".")

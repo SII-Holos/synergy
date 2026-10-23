@@ -513,7 +513,7 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       )
       await new Promise((resolve) => setTimeout(resolve, 0))
 
-      // A paused latch reaches the client only through the snapshot route or a
+      // A recovered latch reaches the client through a snapshot or a
       // session.updated `working` field, so the fallback fills a status the
       // index has no entry for and never overwrites one it does have — a real
       // status event always wins, mirroring SessionManager.listStatuses.
@@ -543,6 +543,11 @@ test("bootstrap snapshots behind the applied watermark keep event state; store r
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
       h.emit("index-scope", 12, "session.updated", { info: { id: "derived", time: {}, working: paused } })
       expect(api.sessionStatus["derived"]).toEqual({ type: "busy" })
+      const queuedResume = { type: "busy", activity: { phase: "queued_agent", startedAt: 2, rootID: "saved-root" } }
+      h.emit("index-scope", 13, "session.status", { sessionID: "derived", status: queuedResume })
+      expect(api.sessionStatus["derived"]).toEqual(queuedResume)
+      h.emit("index-scope", 14, "session.status", { sessionID: "derived", status: { type: "idle" } })
+      expect(api.sessionStatus["derived"]).toBeUndefined()
       // Convergence across eviction. A Scope's bootstrap response used to be
       // authoritative for its whole status bucket *including omissions*, so a
       // status left stale by a missed idle could not survive a resync. A flat

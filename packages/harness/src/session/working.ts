@@ -7,18 +7,22 @@ const log = Log.create({ service: "session.working" })
 /**
  * The runtime projection of a session's status.
  *
- * Two sources only, in priority order:
+ * Sources in priority order:
  *
  * 1. The live turn — `busy` or `retry`, owned by the runtime.
  * 2. The persisted pause latch — a session stopped mid-work that will stay
  *    stopped until the user acts.
+ * 3. A committed recovery request waiting for its execution lease.
  *
  * Anything else is idle. Notably absent is any inference from persisted
  * workflow state: a stored `active` loop is a record of intent, not evidence
  * that a turn is running, and projecting it as work is what let a dead process
  * pin a session in a state no control could clear.
  */
-export async function resolve(sessionID: string, stored?: Pick<Info, "paused">): Promise<WorkingInfo | undefined> {
+export async function resolve(
+  sessionID: string,
+  stored?: Pick<Info, "paused" | "resume">,
+): Promise<WorkingInfo | undefined> {
   if (SessionManager.isRunning(sessionID)) {
     const runtime = SessionManager.getRuntime(sessionID)
     const status = runtime?.status
@@ -30,7 +34,14 @@ export async function resolve(sessionID: string, stored?: Pick<Info, "paused">):
   }
 
   const session = stored ?? (await SessionManager.getSession(sessionID))
-  if (!session?.paused) return undefined
+  if (!session?.paused) {
+    if (session?.resume?.state === "queued")
+      return {
+        status: "busy",
+        activity: { phase: "queued_agent", startedAt: session.resume.created, rootID: session.resume.rootID },
+      }
+    return undefined
+  }
   log.info("resolved paused session", { sessionID, reason: session.paused.reason })
   return {
     status: "paused",

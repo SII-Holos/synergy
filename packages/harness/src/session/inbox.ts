@@ -324,6 +324,15 @@ export namespace SessionInbox {
           Storage.remove(StoragePath.sessionInboxItem(scopeID, Identifier.asSessionID(sessionID), id)),
         ),
       )
+      if (session.resume?.state === "queued" && itemIDs.includes(session.resume.itemID))
+        await Session.update(
+          sessionID,
+          (draft) => {
+            if (draft.resume?.state === "queued" && itemIDs.includes(draft.resume.itemID))
+              draft.resume.state = "cancelled"
+          },
+          { preserveActivityAt: true },
+        )
       if (notify) await publish(sessionID)
     })
   }
@@ -1195,6 +1204,14 @@ export namespace SessionInbox {
           deliveryKey: item.deliveryKey,
           completedAt: Date.now(),
         })
+        if (session.resume?.messageID === item.messageID)
+          await Session.update(
+            item.sessionID,
+            (draft) => {
+              if (draft.resume?.messageID === item.messageID) draft.resume.state = "consumed"
+            },
+            { preserveActivityAt: true },
+          )
         await removeItems(item.sessionID, [item.id])
       },
     }

@@ -7,6 +7,7 @@ import { transformAsync } from "@babel/core"
 import { setupI18n } from "@lingui/core"
 import { createComponent, createSignal, onCleanup } from "solid-js"
 import { render } from "solid-js/web"
+import type { SessionContinueResult, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import type { Prompt } from "../../../src/context/prompt"
 import type { LoopTerminal } from "../../../src/components/prompt-input/loop-status"
 
@@ -53,7 +54,8 @@ let draftResets = 0
 const toastTitles: string[] = []
 let abandonFails = false
 const abortCalls: Array<{ sessionID?: string }> = []
-const continueCalls: Array<{ sessionID?: string }> = []
+type ContinueInput = Parameters<SynergyClient["session"]["continue"]>[0]
+const continueCalls: ContinueInput[] = []
 const abandonCalls: Array<{ sessionID?: string }> = []
 let abandonBarrier: Promise<void> | undefined
 const installedFeatures = ["blueprint", "lattice", "light-loop", "boss", "note", "workbench"]
@@ -112,9 +114,9 @@ const sdkClient = () => ({
       abortCalls.push(input)
       return { data: {} }
     },
-    continue: async (input: { sessionID?: string }) => {
+    continue: async (input: ContinueInput) => {
       continueCalls.push(input)
-      return { data: { handled: true } }
+      return { data: { handled: true, outcome: "accepted", status: { type: "busy" } } satisfies SessionContinueResult }
     },
     abandon: async (input: { sessionID?: string }) => {
       abandonCalls.push(input)
@@ -201,6 +203,7 @@ mock.module("../../../src/context/sync", () => ({
     session: {
       get: () => ({
         id: "ses_prompt",
+        paused: statusType() === "paused" ? { reason: "aborted", since: 1 } : undefined,
         blueprint: sessionBinding(),
         workflow: sessionWorkflow(),
         controlProfile: undefined,
@@ -713,8 +716,9 @@ describe("single composer control", () => {
       control!.click()
       await settle()
 
-      expect(continueCalls).toEqual([{ sessionID: "ses_prompt" }])
+      expect(continueCalls).toEqual([{ sessionID: "ses_prompt", requestID: expect.any(String), pausedSince: 1 }])
       expect(abortCalls).toEqual([])
+      expect(toastTitles).toEqual([])
     } finally {
       harness.dispose()
     }
