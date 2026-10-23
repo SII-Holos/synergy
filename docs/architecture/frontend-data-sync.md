@@ -89,6 +89,8 @@ Global bootstrap starts health, capabilities, shared preferences/providers, path
 
 Targeted configuration refresh reconciles both the global preferences and retained Scope stores through bootstrap snapshots. Global consumers, including Kanban, observe saved display preferences without requiring a Home Scope lease or a page reload.
 
+The essential preference projection includes Digital Twin's automatic-prediction opt-in and model selection when its owner is registered. The composer and background predictor consume that same snapshot on initialization and configuration refresh; neither requires a separate full-configuration fetch. Unregistered owners remain absent from the projection.
+
 ## Request Interaction State
 
 `SessionDecisionProvider` lives below SDK/Sync in the directory owner and above the replaceable Session page. `SessionDecisionHost` owns presentation, accepts an inline native outlet and supplies a host fallback when a replacement page provides none. Both card actions and `DataProvider` permission replies use the same coordinator; `DataProvider` forwards the captured session/request identity even while reconnect temporarily empties the pending index. Pending facts stay in `GlobalSync` and are read through `SessionDataView`.

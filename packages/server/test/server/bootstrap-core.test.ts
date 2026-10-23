@@ -86,6 +86,7 @@ test("core bootstrap is bounded and never awaits an auxiliary command resource",
         expect(data.agent.every((agent: Record<string, unknown>) => !("prompt" in agent))).toBe(true)
         expect(data.agent.every((agent: Record<string, unknown>) => !("permission" in agent))).toBe(true)
         expect(data.config.provider).toBeUndefined()
+        expect(data.config.digitalTwin).toBeUndefined()
         expect(commands).not.toHaveBeenCalled()
         expect(statuses).not.toHaveBeenCalled()
         expect(workspaces).not.toHaveBeenCalled()

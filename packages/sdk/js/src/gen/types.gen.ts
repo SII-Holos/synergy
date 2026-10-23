@@ -4119,6 +4119,23 @@ export type QuickSwitcherConfig = {
   models?: Array<QuickSwitcherModelConfig>
 }
 
+/**
+ * Next-input prediction: automatic defaults to false; model defaults to the current Session model
+ */
+export type DigitalTwinSettings = {
+  /**
+   * Automatically predict the next input after a completed task (default: false)
+   */
+  automatic?: boolean
+  /**
+   * Prediction model; null or absent follows the current Session
+   */
+  model?: {
+    providerID: string
+    modelID: string
+  } | null
+}
+
 export type ScopeUiPreferences = {
   /**
    * Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5. null clears the role
@@ -4169,6 +4186,7 @@ export type ScopeUiPreferences = {
    * Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.
    */
   fullAccessAcknowledged?: boolean
+  digitalTwin?: DigitalTwinSettings
   boss?: {
     enabled?: boolean
   }
@@ -5701,23 +5719,6 @@ export type GithubWatchConfig = {
 export type GithubConfig = {
   identitySync?: GithubIdentitySyncConfig
   watch?: GithubWatchConfig
-}
-
-/**
- * Next-input prediction: automatic defaults to false; model defaults to the current Session model
- */
-export type DigitalTwinSettings = {
-  /**
-   * Automatically predict the next input after a completed task (default: false)
-   */
-  automatic?: boolean
-  /**
-   * Prediction model; null or absent follows the current Session
-   */
-  model?: {
-    providerID: string
-    modelID: string
-  } | null
 }
 
 /**
