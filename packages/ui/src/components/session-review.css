@@ -85,6 +85,7 @@
     flex: 1;
   }
   [data-slot="session-review-directory"] {
+    flex: 1 1 0;
     min-width: 0;
     color: var(--text-weak);
     overflow: hidden;

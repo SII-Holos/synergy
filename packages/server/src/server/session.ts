@@ -36,6 +36,7 @@ import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Todo } from "@ericsanchezok/synergy-harness/session/todo"
 import { Dag } from "@ericsanchezok/synergy-harness/session/dag"
 import { Snapshot } from "@ericsanchezok/synergy-harness/session/snapshot"
+import { SessionFileChangeView } from "@ericsanchezok/synergy-harness/session/file-change-view"
 import { SnapshotSchema } from "@ericsanchezok/synergy-harness/session/snapshot-schema"
 import { Agent } from "@ericsanchezok/synergy-harness/agent/agent"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -59,6 +60,7 @@ function fileHistoryFailure(error: unknown): Response {
     (error instanceof Error &&
       [
         "SnapshotRestoreUnavailable",
+        "LiveComparisonUnavailable",
         "SnapshotStorageError",
         "WorkspaceFileWriteConflictError",
         "WorkspaceFileAccessDeniedError",
@@ -2025,6 +2027,69 @@ export const SessionRoute = () =>
         } catch (error) {
           return fileHistoryFailure(error)
         }
+      },
+    )
+    .get(
+      "/:sessionID/files/current",
+      describeRoute({
+        summary: "Read the current turn file summary",
+        operationId: "session.files.current",
+        responses: {
+          200: {
+            description: "Current root summary",
+            content: { "application/json": { schema: resolver(SessionFileChangeView.Current) } },
+          },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      async (c) => c.json(await SessionFileChangeView.current(c.req.valid("param").sessionID)),
+    )
+    .get(
+      "/:sessionID/files/comparison",
+      describeRoute({
+        summary: "Acquire an immutable turn comparison",
+        operationId: "session.files.comparison",
+        responses: {
+          200: {
+            description: "Complete file metadata and leased revision",
+            content: { "application/json": { schema: resolver(SessionFileChangeView.Comparison) } },
+          },
+          ...errors(400, 404, 409),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session") })),
+      validator("query", z.object({ messageID: Identifier.schema("message"), revision: z.string().optional() })),
+      async (c) => {
+        try {
+          return c.json(
+            await SessionFileChangeView.acquire(
+              c.req.valid("param").sessionID,
+              c.req.valid("query").messageID,
+              c.req.valid("query").revision,
+            ),
+          )
+        } catch (error) {
+          return fileHistoryFailure(error)
+        }
+      },
+    )
+    .delete(
+      "/:sessionID/files/comparison/:revision",
+      describeRoute({
+        summary: "Release a turn comparison reader",
+        operationId: "session.files.release",
+        responses: {
+          200: { description: "Reader released", content: { "application/json": { schema: resolver(z.boolean()) } } },
+          ...errors(400, 404),
+        },
+      }),
+      validator("param", z.object({ sessionID: Identifier.schema("session"), revision: z.string() })),
+      async (c) => {
+        const { sessionID, revision } = c.req.valid("param")
+        await SessionManager.requireSession(sessionID)
+        await SessionFileChangeView.release(sessionID, revision)
+        return c.json(true)
       },
     )
     .get(

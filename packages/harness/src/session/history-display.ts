@@ -4,6 +4,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { MessageV2 } from "./message-v2"
+import { SnapshotSchema } from "./snapshot-schema"
 import { PartContent as SessionPartContent } from "./part-content"
 import { UpgradeWork } from "../storage/upgrade-work"
 import { SessionHistorySearch } from "./history-search"
@@ -357,6 +358,7 @@ export namespace SessionHistoryDisplay {
         let bytes = 0
         projected.summary = {
           ...projected.summary,
+          diffIssues: SnapshotSchema.summarizeIssues(projected.summary.diffIssues),
           title: projected.summary.title?.slice(0, 256),
           body: projected.summary.body?.slice(0, 2048),
           diffs: projected.summary.diffs.flatMap((diff) => {

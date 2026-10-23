@@ -517,6 +517,10 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       return promise
     }
 
+    const loadCurrentTurn = (sessionID: string, force = false) => {
+      if (!force && store.currentTurnChanges[sessionID] !== undefined) return Promise.resolve()
+      return globalSync.loadCurrentTurn(sdk.scopeKey, sessionID)
+    }
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
 
@@ -667,6 +671,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        currentTurn: (sessionID: string) => store.currentTurnChanges[sessionID],
+        loadCurrentTurn,
         content: {
           summaries: loadPartSummaries,
           earlier: (sessionID: string, messageID: string) =>
@@ -815,7 +821,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               ? trackSessionSync(inflight, sessionID, target, refreshSessionAfterPending(active.request, runBaseSync))
               : queueSessionSync(inflight, sessionID, target, runBaseSync)
 
-          const requests = [baseReq, ...(!plan.ready ? [syncPermissions()] : [])]
+          const requests = [
+            baseReq,
+            loadCurrentTurn(sessionID, !plan.ready),
+            ...(!plan.ready ? [syncPermissions()] : []),
+          ]
           if (options?.refreshVolatile && !plan.ready) {
             requests.push(refreshVolatile(sessionID))
           } else {
@@ -838,6 +848,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               loadSession(sessionID, { force: true }).catch(() => {}),
               loadLatestMessages(sessionID, { force: true, reconnectVersion }),
               refreshVolatile(sessionID),
+              loadCurrentTurn(sessionID, true),
             ])
           })
         },

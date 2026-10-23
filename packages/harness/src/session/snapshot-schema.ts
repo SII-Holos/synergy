@@ -33,11 +33,27 @@ export namespace SnapshotSchema {
     .meta({ ref: "ReviewFileVersions" })
   export type FileVersions = z.infer<typeof FileVersions>
   export const DiffState = z.discriminatedUnion("status", [
+    z.object({ status: z.literal("live"), code: z.enum(["incomplete", "unavailable"]).optional() }),
     z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
     z.object({ status: z.literal("ready") }),
     z.object({ status: z.literal("partial"), code: z.enum(["timeout", "git_failure", "incomplete", "unknown"]) }),
     z.object({ status: z.literal("error"), code: z.enum(["timeout", "git_failure", "incomplete", "unknown"]) }),
   ])
+  export const Totals = z.object({
+    files: z.number().int().nonnegative(),
+    additions: z.number().int().nonnegative(),
+    deletions: z.number().int().nonnegative(),
+  })
+  export function totals(files: readonly FileDiff[]) {
+    return files.reduce(
+      (total, file) => ({
+        files: total.files + 1,
+        additions: total.additions + file.additions,
+        deletions: total.deletions + file.deletions,
+      }),
+      { files: 0, additions: 0, deletions: 0 },
+    )
+  }
   export const Workspace = z
     .object({
       id: z.string().min(1),
@@ -65,6 +81,18 @@ export namespace SnapshotSchema {
       "read_failed",
     ]),
   })
+
+  export function summarizeIssues(issues: readonly z.infer<typeof Issue>[] | undefined) {
+    if (!issues) return
+    const result: z.infer<typeof Issue>[] = []
+    let bytes = 2
+    for (const issue of issues) {
+      bytes += Buffer.byteLength(JSON.stringify(issue)) + 1
+      if (result.length === 32 || bytes > 8 * 1024) break
+      result.push(issue)
+    }
+    return result
+  }
 
   export const FileDiff = z
     .object({

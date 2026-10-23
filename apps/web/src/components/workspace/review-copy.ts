@@ -1,4 +1,5 @@
 export const reviewCopy = {
+  live: { id: "review.panel.live", message: "Recorded during this task. Refresh to load the latest changes." },
   workspaceRequired: { id: "review.panel.workspaceRequired", message: "Select a workspace to compare files." },
   sessionRequired: { id: "review.panel.sessionRequired", message: "Open a conversation to review changes." },
   turnUnavailable: { id: "review.panel.turnUnavailable", message: "The selected turn is unavailable." },

@@ -1,3 +1,4 @@
+import { SnapshotEvidence } from "./snapshot-evidence"
 import { z } from "zod"
 import { WorkspaceTransfer } from "./workspace-transfer"
 import { WorkspaceCatalog } from "../workspace/catalog"
@@ -130,7 +131,18 @@ export namespace SessionExport {
   export async function generate(input: { sessionID: string; mode: Mode }): Promise<Report> {
     const sessions = await collectSessionTree(input.sessionID)
     const collected = await Promise.all(sessions.map(collectSessionData))
-    const shaped = collected.map((data) => applyMode(data, input.mode))
+    const shaped = collected.map((data) =>
+      applyMode(
+        {
+          ...data,
+          messages: data.messages.map((message) => ({
+            info: SnapshotEvidence.portable(message.info),
+            parts: message.parts.map(SnapshotEvidence.interrupt),
+          })),
+        },
+        input.mode,
+      ),
+    )
     const workspaces = await WorkspaceCatalog.list(sessions[0]!.scope.id)
     const referenced = WorkspaceTransfer.references(collected)
 

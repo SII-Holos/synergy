@@ -86,12 +86,26 @@ test("file history routes require confirmed previews, preserve conflicts and enf
         const diff = await app.request(`/session/${session.id}/files/diff?${query}`)
         expect(diff.status).toBe(200)
         expect(((await diff.json()) as { patch: string }).patch).toContain("+recorded")
+        const current = await app.request(`/session/${session.id}/files/current`)
+        expect(await current.json()).toMatchObject({ rootID: root.id })
+        const comparison = await app.request(`/session/${session.id}/files/comparison?messageID=${root.id}`)
+        expect(comparison.status).toBe(200)
+        const leased = (await comparison.json()) as { revision: string; files: unknown[] }
+        expect(leased.files).toHaveLength(1)
+        query.set("revision", leased.revision)
+        expect((await app.request(`/session/${session.id}/files/versions?${query}`)).status).toBe(200)
+        expect(
+          (await app.request(`/session/${session.id}/files/comparison/${leased.revision}`, { method: "DELETE" }))
+            .status,
+        ).toBe(200)
+        expect((await app.request(`/session/${session.id}/files/versions?${query}`)).status).toBe(409)
         return session.id
       },
     })
     await ScopeContext.provide({
       scope: await other.scope(),
       fn: async () => {
+        expect((await app.request(`/session/${sessionID}/files/current`)).status).toBe(404)
         expect(
           (
             await app.request(`/session/${sessionID}/files/preview`, {

@@ -16372,6 +16372,10 @@ msgid "review.panel.layoutState"
 msgstr "Diff layout: {layout}"
 
 #. js-lingui-explicit-id
+msgid "review.panel.live"
+msgstr "Recorded during this task. Refresh to load the latest changes."
+
+#. js-lingui-explicit-id
 msgid "review.panel.loading"
 msgstr "Loading comparison…"
 
@@ -17208,6 +17212,30 @@ msgstr "seconds"
 #. js-lingui-explicit-id
 msgid "session.agenda.wake.unit.w"
 msgstr "weeks"
+
+#. js-lingui-explicit-id
+msgid "session.changes.fileCount"
+msgstr "{count, plural, one {# file} other {# files}}"
+
+#. js-lingui-explicit-id
+msgid "session.changes.incompleteHint"
+msgstr "Showing the last recorded changes. Some files or updates may be unavailable."
+
+#. js-lingui-explicit-id
+msgid "session.changes.recorded"
+msgstr "Recorded changes"
+
+#. js-lingui-explicit-id
+msgid "session.changes.reviewHint"
+msgstr "Open this turn’s recorded changes"
+
+#. js-lingui-explicit-id
+msgid "session.changes.turn"
+msgstr "Turn changes"
+
+#. js-lingui-explicit-id
+msgid "session.changes.unavailable"
+msgstr "Unavailable"
 
 #. js-lingui-explicit-id
 msgid "session.cmd.category.agent"

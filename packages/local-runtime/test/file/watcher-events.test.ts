@@ -44,9 +44,9 @@ describe("FileWatcherEvents ownership", () => {
   test("keeps .synergy browsable while excluding it from the root watcher", () =>
     runtime.run(() => {
       expect(FileIgnore.match(".synergy/worktrees/example/src/index.ts")).toBe(false)
-      expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain(".synergy")
-      expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/.synergy/**")
-      expect(FileWatcherEvents.workspaceSubscriptionIgnores([])).toContain("**/node_modules/**")
+      expect(FileWatcherEvents.workspaceSubscriptionIgnores()).toContain(".synergy")
+      expect(FileWatcherEvents.workspaceSubscriptionIgnores()).toContain("**/.synergy/**")
+      expect(FileWatcherEvents.workspaceSubscriptionIgnores()).toContain("**/node_modules/**")
       expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("worktrees")
       expect(FileWatcherEvents.projectRuntimeSubscriptionIgnores()).toContain("**/worktrees/**")
     }))
@@ -114,7 +114,7 @@ describe("FileWatcherEvents ownership", () => {
 describe("FileWatcherEvents native subscription policy", () => {
   test("keeps top-level ignore paths and adds recursive globs", () =>
     runtime.run(() => {
-      const ignores = FileWatcherEvents.workspaceSubscriptionIgnores([])
+      const ignores = FileWatcherEvents.workspaceSubscriptionIgnores()
       // Plain folder names become native top-level ignorePaths (FSEvents kernel
       // exclusions, Windows prefix pruning); recursive globs prune nested
       // occurrences during the Linux inotify tree walk. Dropping either half

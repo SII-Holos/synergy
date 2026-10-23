@@ -3652,6 +3652,10 @@ export type Session = {
     diffs?: Array<FileDiff>
     diffState?:
       | {
+          status: "live"
+          code?: "incomplete" | "unavailable"
+        }
+      | {
           status: "pending"
           deadlineAt: number
         }
@@ -10384,6 +10388,10 @@ export type UserMessage = {
     diffs: Array<FileDiff>
     diffState?:
       | {
+          status: "live"
+          code?: "incomplete" | "unavailable"
+        }
+      | {
           status: "pending"
           deadlineAt: number
         }
@@ -10410,6 +10418,14 @@ export type UserMessage = {
         | "size_limit"
         | "read_failed"
     }>
+    diffTotals?: {
+      files: number
+      additions: number
+      deletions: number
+    }
+    diffRevision?: string
+    diffObservedAt?: number
+    diffHasChanges?: boolean
   }
   agent: string
   model: {
@@ -11024,6 +11040,81 @@ export type SessionFileRestorePreview = {
     truncated: boolean
     binary: boolean
   }>
+}
+
+export type CurrentTurnChanges = {
+  rootID: string
+  createdAt: number
+  summary?: {
+    title?: string
+    body?: string
+    diffs: Array<FileDiff>
+    diffState?:
+      | {
+          status: "live"
+          code?: "incomplete" | "unavailable"
+        }
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "partial"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "incomplete" | "unknown"
+        }
+    diffIssues?: Array<{
+      workspace?: SnapshotWorkspace
+      file?: string
+      code:
+        | "baseline_unavailable"
+        | "capture_failed"
+        | "interrupted"
+        | "legacy_range"
+        | "comparison_failed"
+        | "size_limit"
+        | "read_failed"
+    }>
+    diffTotals?: {
+      files: number
+      additions: number
+      deletions: number
+    }
+    diffRevision?: string
+    diffObservedAt?: number
+    diffHasChanges?: boolean
+  }
+} | null
+
+export type TurnFileComparison = {
+  revision: string
+  files: Array<FileDiff>
+  recording?:
+    | {
+        status: "live"
+        code?: "incomplete" | "unavailable"
+      }
+    | {
+        status: "pending"
+        deadlineAt: number
+      }
+    | {
+        status: "ready"
+      }
+    | {
+        status: "partial"
+        code: "timeout" | "git_failure" | "incomplete" | "unknown"
+      }
+    | {
+        status: "error"
+        code: "timeout" | "git_failure" | "incomplete" | "unknown"
+      }
 }
 
 export type ReviewFileVersions = {
@@ -23012,6 +23103,130 @@ export type SessionFilesPreviewResponses = {
 
 export type SessionFilesPreviewResponse = SessionFilesPreviewResponses[keyof SessionFilesPreviewResponses]
 
+export type SessionFilesCurrentData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/current"
+}
+
+export type SessionFilesCurrentErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesCurrentError = SessionFilesCurrentErrors[keyof SessionFilesCurrentErrors]
+
+export type SessionFilesCurrentResponses = {
+  /**
+   * Current root summary
+   */
+  200: CurrentTurnChanges
+}
+
+export type SessionFilesCurrentResponse = SessionFilesCurrentResponses[keyof SessionFilesCurrentResponses]
+
+export type SessionFilesComparisonData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query: {
+    directory?: string
+    scopeID?: string
+    messageID: string
+    revision?: string
+  }
+  url: "/session/{sessionID}/files/comparison"
+}
+
+export type SessionFilesComparisonErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Conflict
+   */
+  409: {
+    name: string
+    data: unknown
+  }
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesComparisonError = SessionFilesComparisonErrors[keyof SessionFilesComparisonErrors]
+
+export type SessionFilesComparisonResponses = {
+  /**
+   * Complete file metadata and leased revision
+   */
+  200: TurnFileComparison
+}
+
+export type SessionFilesComparisonResponse = SessionFilesComparisonResponses[keyof SessionFilesComparisonResponses]
+
+export type SessionFilesReleaseData = {
+  body?: never
+  path: {
+    sessionID: string
+    revision: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/{sessionID}/files/comparison/{revision}"
+}
+
+export type SessionFilesReleaseErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type SessionFilesReleaseError = SessionFilesReleaseErrors[keyof SessionFilesReleaseErrors]
+
+export type SessionFilesReleaseResponses = {
+  /**
+   * Reader released
+   */
+  200: boolean
+}
+
+export type SessionFilesReleaseResponse = SessionFilesReleaseResponses[keyof SessionFilesReleaseResponses]
+
 export type SessionFilesDiffData = {
   body?: never
   path: {
@@ -23024,6 +23239,7 @@ export type SessionFilesDiffData = {
     workspaceID: string
     generation: number
     file: string
+    revision?: string
   }
   url: "/session/{sessionID}/files/diff"
 }
@@ -23073,6 +23289,7 @@ export type SessionFilesVersionsData = {
     workspaceID: string
     generation: number
     file: string
+    revision?: string
   }
   url: "/session/{sessionID}/files/versions"
 }

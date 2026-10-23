@@ -60,15 +60,16 @@ export function DefaultComposer(props: PluginComponentProps<{ input: PluginInput
           ?.getBoundingClientRect().height ?? 0
       const topbar = pane?.querySelector("[data-conversation-current] [data-session-top-bar]")?.getBoundingClientRect()
       const request = outlet?.querySelector("[data-session-decision-stack]")
-      const reserved = expanded()
-        ? 0
-        : (activity?.getBoundingClientRect().height ?? 0) +
-          (pending?.getBoundingClientRect().height ?? 0) +
-          (request
-            ? [
-                ...request.querySelectorAll(".decision-header, .decision-origin, .decision-footer, .decision-notice"),
-              ].reduce((height, element) => height + element.getBoundingClientRect().height, 0) + 36
-            : 0)
+      const reserved =
+        (activity?.getBoundingClientRect().height ?? 0) +
+        (expanded()
+          ? 0
+          : (pending?.getBoundingClientRect().height ?? 0) +
+            (request
+              ? [
+                  ...request.querySelectorAll(".decision-header, .decision-origin, .decision-footer, .decision-notice"),
+                ].reduce((height, element) => height + element.getBoundingClientRect().height, 0) + 36
+              : 0))
       const unreservedHeight =
         Math.min(
           rect?.bottom ?? window.innerHeight,

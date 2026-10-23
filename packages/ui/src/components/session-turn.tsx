@@ -269,10 +269,11 @@ export function shouldShowTurnDiffs(
   const summary = message.summary
   const diffState = summary?.diffState
   if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
+  if (diffState.status === "live") return "hidden"
   if (diffState.status === "pending") return "pending"
   if (diffState.status === "error") return "error"
   if (diffState.status === "partial") return "partial"
-  return summary.diffs.length > 0 ? "ready" : "hidden"
+  return (summary.diffTotals?.files ?? summary.diffs.length) > 0 ? "ready" : "hidden"
 }
 
 export function shouldShowTurnUserChrome(
@@ -1326,7 +1327,10 @@ export function SessionTurn(
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
     })
-    return resolveTurnDiffPanelState(projected, (msg?.summary?.diffs.length ?? 0) > 0)
+    return resolveTurnDiffPanelState(
+      projected,
+      (msg?.summary?.diffTotals?.files ?? msg?.summary?.diffs.length ?? 0) > 0,
+    )
   })
   const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
     const state = diffPanelState()
@@ -1931,6 +1935,7 @@ export function SessionTurn(
                             >
                               <TurnChangeSummaryPanel
                                 diffs={msg().summary?.diffs ?? []}
+                                totals={msg().summary?.diffTotals}
                                 state={state()}
                                 animateReady={animateReadyDiffPanel()}
                                 onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}

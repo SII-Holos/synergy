@@ -386,26 +386,33 @@ Session file history describes workspace net changes during execution, including
 
 Continuation retains the root's first baseline and appends a new execution segment. A new root receives a new baseline. `SnapshotRanges.net` compares the earliest baseline with the latest available endpoint for each Workspace binding. The session comparison spans each binding's first baseline and latest endpoint; it does not sum operation statistics. Restoring a file to its baseline removes its net difference. Independent workspaces with equal relative filenames remain separate.
 
+Native Workspace invalidations feed a coalesced Session observer with one capture in flight. Dirty capture and lightweight statistics use the same effective path set, including recorded or omitted file ancestors affected by file/directory replacement. A revision reuses unaffected statistics from its predecessor and compares changed paths against the original baseline; broad invalidations, ignore changes and failed refresh recovery request full calibration. Live trees and their cached statistics remain Runtime-owned, with immutable read leases and no durable intermediate roots. Object Workspaces without native observation retain checkpoint-only behavior.
+
 Background process ownership and save receipts remain with the Runtime. A segment endpoint freezes only the bytes observed during that capture, without waiting for background completion. Later process writes cannot revise that endpoint; another segment may capture them. Concrete tool evidence remains owned by its tool domain and is not inferred from the workspace comparison.
 
 ### Settlement and synchronization
 
-Both the user message and session summary carry `diffState` and optional `diffIssues`. The turn's `summary.diffs` is the UI projection; session totals and the existing session Diff query use the same net comparison.
+Both the user message and session summary carry `diffState` and optional `diffIssues`. The turn's `summary.diffs` is a bounded metadata projection. `diffTotals` covers the complete comparison independently of that projection; `diffRevision` identifies Runtime-owned live evidence. Session totals and the existing session Diff query use the same net comparison.
 
-| State     | Meaning                                                                                               |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| `pending` | Comparison is in progress. `deadlineAt` is a server recovery marker; existing results remain visible. |
-| `ready`   | The configured capture scope was recorded, including a verified empty net change.                     |
-| `partial` | Usable comparisons exist, with identified missing workspaces or files.                                |
-| `error`   | No usable comparison can establish the change set. This is not evidence of no changes.                |
+| State     | Meaning                                                                                                                       |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `live`    | Native Workspace observation is active. An optional code marks unavailable or incomplete coverage.                            |
+| `pending` | Comparison is in progress. `deadlineAt` is a server recovery marker; existing results remain visible.                         |
+| `ready`   | The configured capture scope was recorded, including a verified empty net change.                                             |
+| `partial` | Usable comparisons exist, with identified missing workspaces or files.                                                        |
+| `error`   | The current change set cannot be established; last recorded evidence may remain readable. This is not evidence of no changes. |
 
 Safe issue codes distinguish unavailable baselines, capture failures, interrupted execution, legacy ranges, comparison failures, file read failures and size limits. A preview's truncation does not make its retained source incomplete. Capture omissions exclude affected paths from full statistics, historical detail and restoration; available files remain visible. An unavailable workspace comparison preserves its previous displayed evidence. A failed initial capture cannot acquire a replacement baseline from later filesystem contents.
 
-File comparisons run FIFO per session and coalesce duplicate root/revision jobs. Their queue releases before title/body inference; same-root model summaries retain their own publication order across diff-only jobs. Completion schedules diff-only settlement through `LoopJob`. Partial title/body writes merge atomically with current file evidence, and inference timeout does not invalidate settled comparisons. Summary reads hydrate the requested root only and extend the aggregate cursor; a missing cursor requires owner-local reconstruction. Pending checkpoint parts are refreshed before comparison. `message.updated` publishes turn settlement; `session.updated` and the established session Diff event publish session projections. Clients do not infer failure from their own clock or issue requests for every streamed token.
+File comparisons run FIFO per session and coalesce duplicate root/revision jobs. Their queue releases before title/body inference; same-root model summaries retain their own publication order across diff-only jobs. Completion without live evidence schedules diff-only settlement through `LoopJob`; live evidence remains until final publication is accepted. Partial title/body writes merge atomically with current file evidence, and inference timeout does not invalidate settled comparisons. Summary reads hydrate the requested root only and extend the aggregate cursor; a missing cursor requires owner-local reconstruction. Pending checkpoint parts are refreshed before comparison. `message.updated` publishes turn settlement; `session.updated` and the established session Diff event publish session projections. Clients do not infer failure from their own clock or issue requests for every streamed token.
 
 Foreground segment completion is persisted and published before endpoint capture. The execution lease retains capture ownership until checkpoints are published, preserving the next segment's baseline ordering. Terminal buffered Part writes flush only the owning Session. Paired snapshot roots share one bounded cache-object validation without weakening durable manifest ownership or repair. See [foreground reply completion](../decisions/implemented/bug-fix/2026-10-09-foreground-reply-completion.md).
 
+Native file invalidations are coalesced per segment and Workspace generation. Observation starts before the baseline capture and compares the root's original baseline with the latest observed bytes. Live summaries carry totals and an opaque revision through sequenced `message.updated`, without streaming file bodies. Failed refresh retains the previous consistent revision and requests complete calibration on the next invalidation. Final capture or summary failure retains explicitly incomplete evidence for a bounded read window. Remote object Workspaces keep their checkpoint boundaries without local polling.
+
 ### Historical reads and upgrades
+
+`GET /session/{sessionID}/files/current` reads the indexed latest root and compact summary independently of the transcript window. `files/comparison` admits a bounded-lifetime comparison lease containing the complete file list. Review sends this revision to both diff and version reads, and releases it on refresh or close; expiry is explicit. Fork, export, import and transfer remove Runtime-only evidence from the copy.
 
 `GET /session/{sessionID}/files/diff` reads one retained file comparison for an optional root message and a qualified Workspace/generation/path. It never rereads the live file. Review requests full content only when a truncated file is expanded and releases the request/renderers on close.
 

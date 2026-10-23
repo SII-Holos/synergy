@@ -694,6 +694,7 @@ export namespace SessionHistory {
     workspaceID: z.string(),
     generation: z.number().int().positive(),
     file: z.string().min(1),
+    revision: z.string().optional(),
   })
   export const fileDiff = fn(FileDiffInput, async (input) => {
     return fileDiffWithSignal(input)
@@ -714,6 +715,18 @@ export namespace SessionHistory {
     return range as typeof range & { from: string; to: string }
   }
   export async function fileDiffWithSignal(input: z.infer<typeof FileDiffInput>, signal?: AbortSignal) {
+    if (input.revision) {
+      const { SessionFileChangeView } = await import("./file-change-view")
+      return SessionFileChangeView.read({ ...input, revision: input.revision }, async (range) => {
+        const diff = range.live
+          ? await Snapshot.liveDiff(input.sessionID, range.live, input.file, signal)
+          : range.from && range.to
+            ? await Snapshot.fileDiff(range.from, range.to, input.file, input.sessionID, signal)
+            : undefined
+        if (!diff) throw new SnapshotRestore.Invalid({ message: "This file has no recorded difference" })
+        return { ...diff, workspace: range.workspace }
+      })
+    }
     const range = await fileRange(FileDiffInput.parse(input))
     const diff = await Snapshot.fileDiff(
       range.from,
@@ -726,6 +739,18 @@ export namespace SessionHistory {
     return { ...diff, workspace: range.workspace }
   }
   export async function fileVersions(input: z.infer<typeof FileDiffInput>, signal?: AbortSignal) {
+    if (input.revision) {
+      const { SessionFileChangeView } = await import("./file-change-view")
+      return SessionFileChangeView.read({ ...input, revision: input.revision }, async (range) => {
+        if (range.live) {
+          const value = await Snapshot.liveVersions(input.sessionID, range.live, input.file, signal)
+          return { before: value.before, after: value.after }
+        }
+        if (!range.from || !range.to)
+          throw new SnapshotRestore.Invalid({ message: "Historical file versions are unavailable" })
+        return Snapshot.fileVersions(range.from, range.to, input.file, input.sessionID, signal)
+      })
+    }
     const range = await fileRange(FileDiffInput.parse(input))
     return Snapshot.fileVersions(
       range.from,

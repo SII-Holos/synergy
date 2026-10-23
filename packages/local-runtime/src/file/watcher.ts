@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { WorkspaceState } from "@ericsanchezok/synergy-harness/workspace/state"
+import { WorkspaceObservation } from "@ericsanchezok/synergy-harness/workspace/observation"
 import { WorkspaceEvents } from "@ericsanchezok/synergy-harness/workspace/events"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import type { Scope } from "@ericsanchezok/synergy-harness/scope"
@@ -132,6 +133,7 @@ export namespace FileWatcher {
     options: ParcelWatcher.Options
     onEvents: (events: ParcelWatcher.Event[]) => void
     resync?: () => void | Promise<void>
+    onError?: () => void
   }): Promise<SubscriptionRecovery> {
     // The native inotify backend and its kernel watch budget are process-wide:
     // once one subscription exhausts the table, any further native scan can
@@ -228,6 +230,7 @@ export namespace FileWatcher {
           })
       },
       onError: async (error) => {
+        input.onError?.()
         const terminalError = FileWatcherEvents.isLinuxInotifyTerminalError(error)
         if (!terminalError) {
           log.error("file watcher subscription failed", {
@@ -407,19 +410,32 @@ export namespace FileWatcher {
 
       drain = workspaceDrain
       const cfgIgnores = cfg?.watcher?.ignore ?? []
+      const visibleIgnores = cfgIgnores.map((value) => new Bun.Glob(value))
 
       const workspaceRecovery = await subscribeWithRecovery({
         directory: ScopeContext.current.directory,
         label: "workspace",
         options: {
-          ignore: FileWatcherEvents.workspaceSubscriptionIgnores(cfgIgnores),
+          ignore: FileWatcherEvents.workspaceSubscriptionIgnores(),
           backend,
         },
         resync: async () => {
+          WorkspaceObservation.invalidate({ paths: null, available: true })
           workspaceDrain.resync()
           await workspaceDrain.idle()
         },
-        onEvents: (events) => workspaceDrain.enqueue(FileWatcherEvents.normalize(events)),
+        onError: () => WorkspaceObservation.invalidate({ paths: [], available: false }),
+        onEvents: (events) => {
+          const root = ScopeContext.current.directory
+          WorkspaceObservation.invalidate({
+            paths: events.map((event) => path.relative(root, event.path).split(path.sep).join("/")),
+          })
+          workspaceDrain.enqueue(
+            FileWatcherEvents.normalize(
+              events.filter((event) => FileWatcherEvents.visibleWorkspaceEvent(event.path, root, visibleIgnores)),
+            ),
+          )
+        },
       })
       subs.push(workspaceRecovery)
 
@@ -463,7 +479,7 @@ export namespace FileWatcher {
         subs.push(vcsRecovery)
       }
 
-      return { subs, drain, key }
+      return { subs, drain, key, workspaceActive: workspaceRecovery.active }
     } catch (error) {
       runtimeState().liveWatchers.delete(key)
       try {
@@ -532,6 +548,12 @@ export namespace FileWatcher {
     if (!bindingAvailable()) return
     if (ScopeContext.current.workspace) await workspaceState()
     else await scopeState()
+  }
+
+  export async function observe() {
+    if (Flag.SYNERGY_DISABLE_FILEWATCHER || !FileView.native() || !bindingAvailable()) return false
+    const current = await workspaceState()
+    return current.workspaceActive?.() ?? false
   }
 
   export async function initScope() {

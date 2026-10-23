@@ -452,10 +452,12 @@ export namespace SessionImport {
     sessionID: string,
     idMap: Map<string, string>,
   ): Promise<MessageV2.Info> {
-    info = upgradeImportedRecord(
-      ["sessions", ScopeContext.current.scope.id, sessionID, "messages", info.id, "info"],
-      info,
-    ) as MessageV2.Info
+    info = SnapshotEvidence.portable(
+      upgradeImportedRecord(
+        ["sessions", ScopeContext.current.scope.id, sessionID, "messages", info.id, "info"],
+        info,
+      ) as MessageV2.Info,
+    )
     const metadata = info.metadata ? (remapSessionIDs(info.metadata, idMap) as Record<string, any>) : undefined
     if (info.role === "assistant") {
       return {

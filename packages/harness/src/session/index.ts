@@ -833,7 +833,7 @@ export namespace Session {
         const messageMap = new Map(selected.map((msg) => [msg.info.id, Identifier.ascending("message")]))
         const prepared: MessageV2.WithParts[] = selected.map((msg) => ({
           info: {
-            ...msg.info,
+            ...SnapshotEvidence.portable(msg.info),
             ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
             sessionID,
             id: messageMap.get(msg.info.id)!,

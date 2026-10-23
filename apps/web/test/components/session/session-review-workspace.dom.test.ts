@@ -21,9 +21,10 @@ beforeAll(async () => {
     path.join(fixture, "main.tsx"),
     `
     import {render} from "solid-js/web"
-    import {createSignal} from "solid-js"
+    import {createSignal,Show} from "solid-js"
     import {MetaProvider} from "@solidjs/meta"
     import {Font} from "@ericsanchezok/synergy-ui/font"
+
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {messages as enMessages} from ${JSON.stringify(`${appSrc}/locales/en/messages.po`)}
@@ -37,14 +38,20 @@ beforeAll(async () => {
     const [failed,setFailed]=createSignal(false)
     const [workspace,setWorkspace]=createSignal({id:"wsp_a",generation:1,path:"/a"})
     const [open,setOpen]=createSignal([])
+    const [selected,setSelected]=createSignal()
+    const [shown,setShown]=createSignal(true)
+    const [comparison,setComparison]=createSignal("first")
     const [diffs,setDiffs]=createSignal([{id:"wsp_a",generation:1,root:"/a"},{id:"wsp_b",generation:1,root:"/b"}].map(workspace=>({file:"same.txt",workspace,additions:1,deletions:0,preview:"+"+workspace.root})))
     const h=window.fixture={calls:[],loads:[],reviews:0,metadata:()=>setDiffs([{file:"compact.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},additions:1,deletions:0}]),pending:()=>setPending(true),ready:()=>setPending(false),incomplete:()=>setIncomplete(true),error:()=>setFailed(true),empty:()=>setDiffs([]),locale:(locale)=>i18n.activate(locale),operations:()=>setDiffs(["first","last"].map(operationID=>({file:"same.txt",workspace:{id:"wsp_a",generation:1,root:"/a"},operationID,additions:1,deletions:1,preview:"+"+operationID}))),legacy:()=>setDiffs(["/legacy-a","/legacy-b"].map(legacyRoot=>({file:"same.txt",legacyRoot,additions:1,deletions:0,preview:"+"+legacyRoot}))),switch:()=>setWorkspace({id:"wsp_b",generation:1,path:"/b"}),rebind:()=>setWorkspace({id:"wsp_b",generation:2,path:"/b"})}
-    const view=()=>({review:{open,setOpen},scroll:()=>undefined,setScroll(){}})
+    h.large=()=>{setOpen([]);setDiffs(Array.from({length:512},(_,i)=>({file:"file-"+String(i).padStart(4,"0")+".txt",workspace:{id:"wsp_a",generation:1,root:"/a"},additions:1,deletions:0})));};h.select=(file)=>setSelected(file);h.reverse=()=>setDiffs(files=>[...files].reverse());h.long=()=>setDiffs(files=>files.map(file=>({...file,workspace:{...file.workspace,root:"/workspaces/engineering/large-workspace"}})));h.nextComparison=()=>setComparison("second");h.close=()=>setShown(false);h.open=()=>setShown(true);h.stats=()=>setDiffs(files=>files.map(file=>({...file,additions:file.additions+1})));h.tall=()=>setDiffs(files=>files.map((file,index)=>index?file:{...file,preview:Array.from({length:100},(_,i)=>"+line "+i).join("\\n")}))
+    let savedScroll;const savedView={review:{open,setOpen},scroll:()=>savedScroll,setScroll(_tab,value){savedScroll=value}};const view=()=>savedView
+
     const i18n=setupI18n({locale:"en",messages:{en:enMessages,"zh-CN":zhMessages}})
     function Content(){
       const theme=useTheme()
       h.theme=theme.setColorScheme
-      return <><div style="height:360px;display:flex;flex-direction:column;min-height:0"><SessionReviewTab workspace={workspace} diffs={diffs} loadDiff={async(diff)=>{h.loads.push(diff.file);return {...diff,preview:"+complete historical content"}}} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/></div><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":failed()?"error":incomplete()?"partial":"ready"} onReviewRequested={()=>h.reviews++} onFileSelected={file=>h.calls.push(file)}/></>
+      return <><div style="height:360px;display:flex;flex-direction:column;min-height:0"><Show when={shown()}><SessionReviewTab comparisonKey={comparison()} selectedFile={selected} workspace={workspace} diffs={diffs} loadDiff={async(diff)=>{h.loads.push(diff.file);return {...diff,preview:diff.additions>1?"+refreshed historical content":"+complete historical content"}}} diffState={()=>incomplete()?{status:"error",code:"incomplete"}:undefined} view={view} diffStyle="unified" onViewFile={file=>h.calls.push(file)}/></Show></div><Show when={diffs().length<100}><TurnChangeSummaryPanel diffs={diffs()} state={pending()?"pending":failed()?"error":incomplete()?"partial":"ready"} onReviewRequested={()=>h.reviews++} onFileSelected={file=>h.calls.push(file)}/></Show></>
+
     }
     render(()=><MetaProvider><Font/><I18nProvider i18n={i18n}><ThemeProvider><Content/></ThemeProvider></I18nProvider></MetaProvider>,document.getElementById("root"))
   `,
@@ -292,4 +299,207 @@ test("the change card keeps a compact summary and reachable actions in both loca
     }),
   ).toBe(1)
   expect(errors).toEqual([])
+}, 30_000)
+
+test("large reviews keep rendering bounded while keyboard navigation and selected files reach the full comparison", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(base)
+  await page.locator('[data-slot="accordion-item"][data-file]').nth(1).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { large(): void } }).fixture.large())
+  const review = page.locator('[data-component="session-review"]')
+  const rows = review.locator('[data-slot="accordion-item"][data-file]')
+  await review.getByText("file-0000.txt", { exact: true }).waitFor()
+  expect(await rows.count()).toBeLessThan(80)
+  expect(await page.evaluate(() => (window as unknown as { fixture: { loads: string[] } }).fixture.loads)).toEqual([])
+  await rows.first().locator('[data-slot="accordion-trigger"]').focus()
+  await page.keyboard.press("End")
+  const last = review.getByText("file-0511.txt", { exact: true })
+  await last.waitFor()
+  expect(await last.evaluate((el) => el.closest("button") === document.activeElement)).toBe(true)
+  await page.keyboard.press("Enter")
+  await review.getByText("+complete historical content", { exact: true }).waitFor()
+  expect(await rows.count()).toBeLessThan(80)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: { select(file: string): void } }).fixture.select("file-0250.txt"),
+  )
+  const selected = review.locator('[data-slot="accordion-item"][data-selected="true"]')
+  await selected.getByText("file-0250.txt", { exact: true }).waitFor()
+  expect(
+    await selected.evaluate((el) => {
+      const a = el.getBoundingClientRect(),
+        b = el.closest('[data-component="session-review"]')!.getBoundingClientRect()
+      return a.bottom > b.top && a.top < b.bottom
+    }),
+  ).toBe(true)
+  await selected.getByText("+complete historical content", { exact: true }).waitFor()
+  await selected.evaluate((el) => el.setAttribute("data-retained", "yes"))
+  await page.evaluate(() => (window as unknown as { fixture: { reverse(): void } }).fixture.reverse())
+  expect(await selected.getAttribute("data-retained")).toBe("yes")
+  const content = selected.getByText("+complete historical content", { exact: true })
+  await content.evaluate((el) => {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const selection = document.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+  })
+  await review.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await review.getByText("file-0000.txt", { exact: true }).waitFor()
+  expect(await selected.count()).toBe(1)
+  expect(await page.evaluate(() => document.getSelection()?.toString())).toBe("+complete historical content")
+  await page.evaluate(() => document.getSelection()?.removeAllRanges())
+  await page.getByRole("button", { name: "Collapse all" }).click()
+  await page.getByRole("button", { name: "Expand all" }).click()
+  expect(await rows.count()).toBeLessThan(80)
+  expect(
+    (await page.evaluate(() => (window as unknown as { fixture: { loads: string[] } }).fixture.loads)).length,
+  ).toBeLessThan(80)
+  await page.evaluate(() => (window as unknown as { fixture: { close(): void } }).fixture.close())
+  await review.waitFor({ state: "hidden" })
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("refreshing identical file identities preserves the current reading position", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="accordion-item"][data-file]').nth(1).waitFor()
+  await page.evaluate(() => {
+    const h = (window as unknown as { fixture: { large(): void; select(file: string): void } }).fixture
+    h.large()
+    h.select("file-0000.txt")
+  })
+  const review = page.locator('[data-component="session-review"]')
+  await page.waitForFunction(() =>
+    document.activeElement?.closest("[data-file]")?.textContent?.includes("file-0000.txt"),
+  )
+  await review.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await review.getByText("file-0511.txt", { exact: true }).waitFor()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 10
+        const tick = () => (--frames ? requestAnimationFrame(tick) : resolve())
+        requestAnimationFrame(tick)
+      }),
+  )
+  const before = await review.evaluate((el) => el.scrollTop)
+  await page.evaluate(() => (window as unknown as { fixture: { stats(): void } }).fixture.stats())
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 10
+        const tick = () => (--frames ? requestAnimationFrame(tick) : resolve())
+        requestAnimationFrame(tick)
+      }),
+  )
+  expect(Math.abs((await review.evaluate((el) => el.scrollTop)) - before)).toBeLessThan(2)
+}, 30_000)
+
+test("reopening a review restores its file anchor after an earlier large expanded diff", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="accordion-item"][data-file]').nth(1).waitFor()
+  await page.evaluate(() => {
+    const h = (window as unknown as { fixture: { large(): void; tall(): void } }).fixture
+    h.large()
+    h.tall()
+  })
+  const review = page.locator('[data-component="session-review"]')
+  await review.getByText("file-0000.txt", { exact: true }).click()
+  await page.waitForFunction(
+    () => document.querySelector('[data-slot="accordion-item"][data-file]')!.getBoundingClientRect().height > 400,
+  )
+  await review.evaluate((el) => {
+    el.scrollTop = 4000
+  })
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const reading = () =>
+    review.evaluate((el) => {
+      const top = el.getBoundingClientRect().top
+      const row = [...el.querySelectorAll<HTMLElement>('[data-slot="accordion-item"][data-file]')].find((row) => {
+        const bounds = row.getBoundingClientRect()
+        return bounds.top <= top + 100 && bounds.bottom > top + 100
+      })!
+      return { key: row.dataset.file, offset: row.getBoundingClientRect().top - top }
+    })
+  const before = await reading()
+  await page.evaluate(() => (window as unknown as { fixture: { close(): void } }).fixture.close())
+  await review.waitFor({ state: "hidden" })
+  await page.evaluate(() => (window as unknown as { fixture: { open(): void } }).fixture.open())
+  await review.waitFor()
+  await page.waitForFunction(
+    (key) =>
+      [...document.querySelectorAll<HTMLElement>('[data-slot="accordion-item"][data-file]')].some(
+        (row) => row.dataset.file === key,
+      ),
+    before.key,
+  )
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  const after = await reading()
+  expect(after.key).toBe(before.key)
+  expect(Math.abs(after.offset - before.offset)).toBeLessThan(3)
+}, 30_000)
+
+test("refreshing metadata reloads an expanded file without replacing its disclosure", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="accordion-item"][data-file]').nth(1).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { large(): void } }).fixture.large())
+  const review = page.locator('[data-component="session-review"]')
+  await review.getByText("file-0000.txt", { exact: true }).click()
+  await review.getByText("+complete historical content", { exact: true }).waitFor()
+  const header = await review.getByText("file-0000.txt", { exact: true }).elementHandle()
+  await page.evaluate(() => (window as unknown as { fixture: { stats(): void } }).fixture.stats())
+  await review.getByText("+refreshed historical content", { exact: true }).waitFor()
+  expect(await header!.evaluate((el) => el.isConnected)).toBe(true)
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("a different comparison does not inherit the previous turn reading position", async () => {
+  await page.goto(base)
+  await page.locator('[data-slot="accordion-item"][data-file]').nth(1).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { large(): void } }).fixture.large())
+  const review = page.locator('[data-component="session-review"]')
+  await review.getByText("file-0000.txt", { exact: true }).waitFor()
+  await review.evaluate((el) => {
+    el.scrollTop = el.scrollHeight
+  })
+  await review.getByText("file-0511.txt", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: { close(): void } }).fixture.close())
+  await review.waitFor({ state: "hidden" })
+  await page.evaluate(() => {
+    const h = (window as unknown as { fixture: { nextComparison(): void; open(): void } }).fixture
+    h.nextComparison()
+    h.open()
+  })
+  await review.waitFor()
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        let frames = 10
+        const tick = () => (--frames ? requestAnimationFrame(tick) : resolve())
+        requestAnimationFrame(tick)
+      }),
+  )
+  expect(await review.evaluate((el) => el.scrollTop)).toBe(0)
+}, 30_000)
+
+test("narrow Review prioritizes the filename over long workspace prefixes", async () => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  try {
+    await page.goto(base)
+    await page.locator('[data-slot="accordion-item"][data-file]').nth(1).waitFor()
+    await page.evaluate(() => {
+      const h = (window as unknown as { fixture: { large(): void; long(): void } }).fixture
+      h.large()
+      h.long()
+    })
+    const filename = page.locator('[data-slot="session-review-filename"]').filter({ hasText: "file-0000.txt" })
+    await filename.waitFor()
+    expect(await filename.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  } finally {
+    await page.setViewportSize({ width: 1280, height: 720 })
+  }
 }, 30_000)

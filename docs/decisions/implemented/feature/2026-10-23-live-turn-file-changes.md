@@ -1,0 +1,31 @@
+# Decision Record: Observe turn file changes incrementally
+
+Status: implemented
+
+## Problem
+
+Task file changes need timely net statistics without rescanning unchanged file contents, generating full patches or retaining every intermediate edit as permanent history.
+
+## Decision
+
+Snapshot capture accepts Workspace-relative dirty paths and uses the existing byte, link, executable-mode, ignore and omission rules. Ignore-file changes request full calibration. The same Git comparison supplies lightweight statistics and on-demand patches; lightweight results retain every file row. Each live revision inherits complete immutable statistics and replaces only rows affected by its capture. Capture expands child invalidations to recorded or omitted file ancestors so file-to-directory replacements update both endpoints. Missing prior statistics, broad resynchronization and path arguments exceeding 64 KiB use complete comparison; failed statistics discard the cache before recovery.
+
+Runtime-owned live trees use a private temporary object repository with the verified durable baseline as an alternate. Only transient loose objects are written during observation. Their repository disables per-object fsync because live tokens never survive a restart; durable snapshot repositories retain their existing synchronization policy. Reachability excluding the baseline determines reference counts for the latest revision and admitted readers. Releasing the last reference removes only those temporary objects. No live refresh retains a permanent root, creates a durable pack or runs shared-store garbage collection. Session and Scope-qualified opaque revisions expire with their Runtime; unavailable reads fail explicitly.
+
+The Session owner combines Workspace-qualified revisions, publishes exact totals through the existing sequenced root-message event and exposes a compact current-root query independent of transcript residency. Review acquires one opaque comparison lease for its file list, patch and content reads. Refresh is explicit; final publication releases current live ownership only after acceptance. Failure preserves recorded counts with incomplete status. Failed checkpoint admission and rejected publications release unaccepted watchers and revisions. Diagnostic summaries retain at most 32 issues within 8 KiB; checkpoint omission evidence remains complete. Portable copies remove Runtime-only tokens.
+
+The composer activity area wraps according to available conversation width. Subagent avatars and turn changes precede the longer progress summary in DOM order, so ordinary wrapping keeps compact controls together above progress. The width cap belongs to the progress flex item, avoiding unused outer width that would force early wrapping. This keeps wide layouts on one row and gives wrapped layouts a wider base next to the Composer without resize observers or visual reordering that diverges from keyboard navigation. The complete changes surface opens Review through the existing desktop or mobile route; there is no separate action button. Expanded progress uses the stable activity-row positioning container so changing summary widths cannot displace the panel. Current-root recovery respects rollback visibility and event watermarks without depending on loaded messages. Mobile Review waits for an accepted comparison before showing empty-state or restoration controls. Its lazy content stays inside the mobile dialog’s Suspense boundary so loading cannot detach the conversation or its focus-return target.
+
+## Alternatives considered
+
+**Accumulating tool patches** measures edit activity rather than the net file state and misses other writers.
+
+**Repeating complete capture and comparison** reads unchanged bytes, increases durable storage with edit frequency and repeatedly compares every accumulated change after a small edit.
+
+## Consequences
+
+Final checkpoints remain authoritative durable evidence. Live readers preserve immutable endpoints while later edits proceed. Directory and ignore-policy invalidation can require broader traversal; ordinary file invalidation reads only the affected bytes. Large text statistics avoid per-file object-tree subprocesses. Temporary raw-content batches are deleted after hashing, including batches before the final flush. Immutable readers and maintenance contention have behavioral coverage.
+
+Complete comparisons can contain thousands of rows, which exposed excessive mount and disposal work in the shared Review accordion. Review virtualizes its file rows through the existing variable-height list owner. File identity, focused rows, selected text and explicit navigation remain stable; expanding all files requests bodies only for mounted rows. The list retains complete metadata and keyboard access to every file without mounting every disclosure control. Stable file keys preserve disclosure identity across metadata refreshes. Reading positions use file identity and an offset within the row, scoped to the comparison and selected file; reopening another comparison cannot inherit the previous scroll position. Unmounted rows release shared read subscriptions, and only the last reader cancels the underlying queued or active request.
+
+The opt-in `packages/harness/test/snapshot/live-benchmark.test.ts` measures capture and comparison on 14,000 replicated source files. On macOS with Bun 1.4.3, 20 small edits after 4,096 accumulated net changes had a 166 ms p95, reading approximately 6 KiB and issuing nine Git commands per sample without growing durable packs. A production Web run against an isolated historical-data copy and real model session measured 20 ordinary writes at 338 ms p95 and 20 writes after 4,097 accumulated changed files at 412 ms p95, from filesystem write to visible totals. Its 476 health requests had no failures; 1,600 px and 375 px layouts had no horizontal overflow or page errors. Three production mobile Review openings for that 4,097-file comparison mounted 24 rows, took 280–786 ms to present the list and 15–16 ms to close, with focus returning to the original entry each time. These are local measurements, not a latency guarantee: a single 4,095-file burst took 4.4 seconds, and full calibration remains proportional to the captured workspace.

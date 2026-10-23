@@ -16399,6 +16399,288 @@
         ]
       }
     },
+    "/session/{sessionID}/files/current": {
+      "get": {
+        "operationId": "session.files.current",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read the current turn file summary",
+        "responses": {
+          "200": {
+            "description": "Current root summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentTurnChanges"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.current({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/files/comparison": {
+      "get": {
+        "operationId": "session.files.comparison",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "messageID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^msg.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Acquire an immutable turn comparison",
+        "responses": {
+          "200": {
+            "description": "Complete file metadata and leased revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnFileComparison"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "data": {}
+                  },
+                  "required": ["name", "data"]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.comparison({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/files/comparison/{revision}": {
+      "delete": {
+        "operationId": "session.files.release",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Release a turn comparison reader",
+        "responses": {
+          "200": {
+            "description": "Reader released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.files.release({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/files/diff": {
       "get": {
         "operationId": "session.files.diff",
@@ -16462,6 +16744,13 @@
               "minLength": 1
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Read a historical file diff",
@@ -16596,6 +16885,13 @@
               "minLength": 1
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "revision",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "summary": "Read captured before and after file versions",
@@ -52871,6 +53167,20 @@
                     "properties": {
                       "status": {
                         "type": "string",
+                        "const": "live"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["incomplete", "unavailable"]
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
                         "const": "pending"
                       },
                       "deadlineAt": {
@@ -70070,6 +70380,20 @@
                     "properties": {
                       "status": {
                         "type": "string",
+                        "const": "live"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["incomplete", "unavailable"]
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
                         "const": "pending"
                       },
                       "deadlineAt": {
@@ -70144,6 +70468,36 @@
                   },
                   "required": ["code"]
                 }
+              },
+              "diffTotals": {
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "additions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "deletions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["files", "additions", "deletions"]
+              },
+              "diffRevision": {
+                "type": "string"
+              },
+              "diffObservedAt": {
+                "type": "number"
+              },
+              "diffHasChanges": {
+                "type": "boolean"
               }
             },
             "required": ["diffs"]
@@ -72136,6 +72490,253 @@
           }
         },
         "required": ["id", "expiresAt", "files"]
+      },
+      "CurrentTurnChanges": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "rootID": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "number"
+              },
+              "summary": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "diffs": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/FileDiff"
+                    }
+                  },
+                  "diffState": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "live"
+                          },
+                          "code": {
+                            "type": "string",
+                            "enum": ["incomplete", "unavailable"]
+                          }
+                        },
+                        "required": ["status"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "pending"
+                          },
+                          "deadlineAt": {
+                            "type": "number"
+                          }
+                        },
+                        "required": ["status", "deadlineAt"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "ready"
+                          }
+                        },
+                        "required": ["status"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "partial"
+                          },
+                          "code": {
+                            "type": "string",
+                            "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                          }
+                        },
+                        "required": ["status", "code"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "string",
+                            "const": "error"
+                          },
+                          "code": {
+                            "type": "string",
+                            "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                          }
+                        },
+                        "required": ["status", "code"]
+                      }
+                    ]
+                  },
+                  "diffIssues": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "workspace": {
+                          "$ref": "#/components/schemas/SnapshotWorkspace"
+                        },
+                        "file": {
+                          "type": "string"
+                        },
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "baseline_unavailable",
+                            "capture_failed",
+                            "interrupted",
+                            "legacy_range",
+                            "comparison_failed",
+                            "size_limit",
+                            "read_failed"
+                          ]
+                        }
+                      },
+                      "required": ["code"]
+                    }
+                  },
+                  "diffTotals": {
+                    "type": "object",
+                    "properties": {
+                      "files": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "additions": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "deletions": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["files", "additions", "deletions"]
+                  },
+                  "diffRevision": {
+                    "type": "string"
+                  },
+                  "diffObservedAt": {
+                    "type": "number"
+                  },
+                  "diffHasChanges": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["diffs"]
+              }
+            },
+            "required": ["rootID", "createdAt"]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "TurnFileComparison": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "string"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileDiff"
+            }
+          },
+          "recording": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "live"
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": ["incomplete", "unavailable"]
+                  }
+                },
+                "required": ["status"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "pending"
+                  },
+                  "deadlineAt": {
+                    "type": "number"
+                  }
+                },
+                "required": ["status", "deadlineAt"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "ready"
+                  }
+                },
+                "required": ["status"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "partial"
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                  }
+                },
+                "required": ["status", "code"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "const": "error"
+                  },
+                  "code": {
+                    "type": "string",
+                    "enum": ["timeout", "git_failure", "incomplete", "unknown"]
+                  }
+                },
+                "required": ["status", "code"]
+              }
+            ]
+          }
+        },
+        "required": ["revision", "files"]
       },
       "ReviewFileVersions": {
         "type": "object",

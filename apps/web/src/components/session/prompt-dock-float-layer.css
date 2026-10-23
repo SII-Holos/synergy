@@ -1,23 +1,92 @@
 .prompt-dock-float-layer {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
   pointer-events: none;
 }
 
-@media (min-width: 768px) {
-  .session-workbench-pane:has([data-conversation-current] [data-conversation-latest][data-anchored])
-    .prompt-dock-float-layer {
-    padding-inline: 52px;
-  }
+.prompt-dock-float-layer > .session-progress-panel {
+  position: static;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: min(240px, 100%);
+  max-width: min(620px, 100%);
 }
 
-.session-prompt-dock-content:has(.session-composer[data-expanded]) > .prompt-dock-float-layer,
+.prompt-dock-float-layer > .session-progress-panel:has([data-expanded="true"]) {
+  z-index: 50;
+}
+
+.prompt-dock-float-layer .session-progress-island {
+  position: static;
+  padding: 0;
+}
+
+.prompt-dock-float-layer > .subagent-dock {
+  flex: 0 1 auto;
+  padding: 0;
+  min-width: 0;
+}
+
+.prompt-dock-float-layer:has(> :not([hidden])) {
+  padding-block-end: 8px;
+}
+
+.session-prompt-dock-content:has(.session-composer[data-expanded])
+  .prompt-dock-float-layer:not(:has(.turn-change-status)) {
+  padding: 0;
+}
+
+.session-prompt-dock-content:has(.session-composer[data-expanded]) .subagent-dock,
+.session-prompt-dock-content:has(.session-composer[data-expanded]) .prompt-dock-control-slot,
+.session-prompt-dock-content:has(.session-composer[data-expanded]) .session-progress-island,
 .session-prompt-dock-content:has(.session-composer[data-expanded]) > [data-session-decision-outlet] {
   display: none;
 }
 
 .prompt-dock-control-slot {
   display: flex;
-  width: 100%;
+  max-width: 100%;
   justify-content: center;
-  padding: 0 12px 6px;
+  padding: 0;
   pointer-events: auto;
+}
+
+.turn-change-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border-weak-base);
+  border-radius: 12px;
+  background: var(--workbench-card-bg);
+  color: var(--text-weak);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.turn-change-status:hover {
+  background: var(--workbench-row-bg-hover);
+  color: var(--text-base);
+}
+.turn-change-status:focus-visible {
+  outline: 2px solid var(--border-interactive-base);
+  outline-offset: 2px;
+}
+.turn-change-status-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.turn-change-status-count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }

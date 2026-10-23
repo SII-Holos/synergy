@@ -41,7 +41,19 @@ import { PluginPageOutlet } from "@/plugin/shell-outlet"
 import { WorkspaceOutputEffects } from "@/components/workspace/workspace-output-effects"
 import { createPromptInputController } from "@/components/prompt-input/prompt-controller"
 import { SessionDecisionHost } from "@/components/session/decision-surface"
-import { Show, Match, Switch, createMemo, createEffect, createSignal, on, onCleanup, untrack, type JSX } from "solid-js"
+import {
+  lazy,
+  Show,
+  Match,
+  Switch,
+  createMemo,
+  createEffect,
+  createSignal,
+  on,
+  onCleanup,
+  untrack,
+  type JSX,
+} from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -72,13 +84,7 @@ import { useCommand } from "@/context/command"
 import { useNavigate } from "@solidjs/router"
 import { useLocation, useParams } from "@/context/session-route"
 import { UserMessage, AssistantMessage, Message } from "@ericsanchezok/synergy-sdk"
-import type {
-  FileDiff,
-  Session,
-  SessionInboxItem,
-  SessionStatus,
-  SessionInputProgress,
-} from "@ericsanchezok/synergy-sdk/client"
+import type { Session, SessionInboxItem, SessionStatus, SessionInputProgress } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
 import { observeSessionInput } from "@/components/session/session-input-observer"
 import { recoverSessionInputReceipt } from "@/components/prompt-input/input-receipt"
@@ -86,7 +92,6 @@ import { usePrompt } from "@/context/prompt"
 import { extractPromptDraft } from "@/utils/prompt"
 import { inlineLength } from "@/components/prompt-input/content"
 
-import { SessionReviewTab } from "@/components/session"
 import { navMark, navParams } from "@/utils/perf"
 import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -165,6 +170,10 @@ import { sessionSyncWatchKey, shouldRunSessionSync } from "@/context/session-syn
 import { messageAllowsCanonicalActions } from "@/context/session-optimistic-message"
 import { createBottomRecoveryTrigger } from "@/context/session-bottom-recovery"
 import { isWorkingStatus, resolveSessionStatus } from "@/utils/session-status"
+
+const MobileSessionReview = lazy(() =>
+  import("@/components/session/mobile-session-review").then((module) => ({ default: module.MobileSessionReview })),
+)
 
 const handoff = {
   prompt: "",
@@ -2288,7 +2297,13 @@ function SessionPageContent() {
       if (part === "priority")
         return (
           <Show when={params.id}>
-            {(id) => <PromptDockFloatLayer sessionID={id()} priorityControl={priorityControl()} />}
+            {(id) => (
+              <PromptDockFloatLayer
+                sessionID={id()}
+                priorityControl={priorityControl()}
+                onReview={(messageID) => conversation.onReviewChanges?.({ messageID })}
+              />
+            )}
           </Show>
         )
       if (part === "greeting")
@@ -2505,90 +2520,37 @@ function SessionPageContent() {
           <MobileWorkspaceDialog onClose={() => setStore("mobileReviewOpen", false)}>
             <div class="flex h-full min-h-0 flex-col">
               <div class="flex-1 min-h-0 overflow-auto">
-                <Show
-                  // Explicit exemption: undefined session_diff shows the
-                  // "loading changes" fallback; the view layer's shared empty
-                  // array (truthy) would flip that loading semantics.
-                  when={
-                    params.id &&
-                    (store.mobileReviewMessageID
-                      ? (
-                          dataView()
-                            .messagesFor(params.id)
-                            .find((message) => message.id === store.mobileReviewMessageID) as UserMessage | undefined
-                        )?.summary?.diffs
-                      : sync.data.session_diff[params.id])
+                <MobileSessionReview
+                  onClose={() => setStore("mobileReviewOpen", false)}
+                  messageID={store.mobileReviewMessageID}
+                  workspace={() => file.workspace}
+                  title={
+                    store.mobileReviewMessageID
+                      ? i18n._({ id: "session.review.turnTitle", message: "Turn changes" })
+                      : i18n._({ id: "session.review.sessionTitle", message: "Session changes" })
                   }
-                  fallback={
-                    <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>
+                  actions={
+                    <Button
+                      variant="ghost"
+                      onClick={() => void restoreFiles({ messageID: store.mobileReviewMessageID })}
+                    >
+                      {i18n._({ id: "session.review.undo", message: "Undo changes" })}
+                    </Button>
                   }
-                >
-                  {(rawDiffs) => {
-                    const diffsArr = () => (Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[]))
-                    return (
-                      <SessionReviewTab
-                        workspace={() => file.workspace}
-                        diffs={diffsArr}
-                        title={
-                          store.mobileReviewMessageID
-                            ? i18n._({ id: "session.review.turnTitle", message: "Turn changes" })
-                            : i18n._({ id: "session.review.sessionTitle", message: "Session changes" })
-                        }
-                        diffState={() =>
-                          store.mobileReviewMessageID
-                            ? (
-                                dataView()
-                                  .messagesFor(params.id!)
-                                  .find((message) => message.id === store.mobileReviewMessageID) as
-                                  UserMessage | undefined
-                              )?.summary?.diffState
-                            : info()?.summary?.diffState
-                        }
-                        actions={
-                          <Button
-                            variant="ghost"
-                            onClick={() => void restoreFiles({ messageID: store.mobileReviewMessageID })}
-                          >
-                            {i18n._({ id: "session.review.undo", message: "Undo changes" })}
-                          </Button>
-                        }
-                        onRestoreFile={(diff) =>
-                          diff.workspace &&
-                          void restoreFiles({
-                            messageID: store.mobileReviewMessageID,
-                            selectedFiles: [
-                              {
-                                workspaceID: diff.workspace!.id,
-                                generation: diff.workspace!.generation,
-                                file: diff.file,
-                              },
-                            ],
-                          })
-                        }
-                        loadDiff={async (diff, signal) =>
-                          diff.workspace
-                            ? (
-                                await sdk.client.session.files.diff(
-                                  {
-                                    sessionID: params.id!,
-                                    messageID: store.mobileReviewMessageID,
-                                    workspaceID: diff.workspace.id,
-                                    generation: diff.workspace.generation,
-                                    file: diff.file,
-                                  },
-                                  { signal, throwOnError: true },
-                                )
-                              ).data!
-                            : diff
-                        }
-                        view={view}
-                        diffStyle="unified"
-                        selectedFile={() => store.mobileReviewSelectedFile}
-                        onViewFile={(path) => void file.openWorkspaceFile(path)}
-                      />
-                    )
-                  }}
-                </Show>
+                  onRestoreFile={(diff) =>
+                    diff.workspace &&
+                    void restoreFiles({
+                      messageID: store.mobileReviewMessageID,
+                      selectedFiles: [
+                        { workspaceID: diff.workspace.id, generation: diff.workspace.generation, file: diff.file },
+                      ],
+                    })
+                  }
+                  view={view}
+                  diffStyle="unified"
+                  selectedFile={() => store.mobileReviewSelectedFile}
+                  onViewFile={(path) => void file.openWorkspaceFile(path)}
+                />
               </div>
             </div>
           </MobileWorkspaceDialog>
