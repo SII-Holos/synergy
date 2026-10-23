@@ -78,16 +78,15 @@ describe("shared snapshot storage", () => {
         fn: async () => {
           await Bun.write(path.join(tmp.path, "file.txt"), "before")
           const hash = (await Snapshot.track("session-cancel"))!
-          await SnapshotLease.use(scope.id, true, async () => {
-            const controller = new AbortController()
-            const capturing = Snapshot.track("session-cancel", controller.signal)
-            const patching = Snapshot.patch(hash, "session-cancel", { signal: controller.signal })
-            const diffing = Snapshot.diff(hash, "session-cancel", { signal: controller.signal })
-            setTimeout(() => controller.abort(), 50)
-            expect(await capturing).toBeUndefined()
-            expect((await patching).files).toEqual([])
-            expect(await diffing).toBe("")
-          })
+          await using maintenance = await SnapshotLease.acquire(scope.id, true)
+          const controller = new AbortController()
+          const capturing = Snapshot.track("session-cancel", controller.signal)
+          const patching = Snapshot.patch(hash, "session-cancel", { signal: controller.signal })
+          const diffing = Snapshot.diff(hash, "session-cancel", { signal: controller.signal })
+          setTimeout(() => controller.abort(), 50)
+          expect(await capturing).toBeUndefined()
+          expect((await patching).files).toEqual([])
+          expect(await diffing).toBe("")
         },
       })
     }))

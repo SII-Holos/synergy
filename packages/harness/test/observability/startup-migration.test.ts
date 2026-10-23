@@ -74,6 +74,7 @@ test("an existing canonical store still receives metric schema cleanup", async (
 test("upgrade suppresses only legacy open default aggregates without rewriting their attribution or lifetime", async () => {
   await using fixture = await migrationFixture({ env: { SYNERGY_OBSERVABILITY_INLINE: "1" } })
   await fixture.run(async () => {
+    ObservabilityConfig.refresh({ observability: { enabled: false } })
     const db = ObservabilityStore.initializeForMigration()
     for (const [issueID, status, fingerprint] of [
       ["legacy_open", "open", "PERF_TOOL_STALLED:tool"],
@@ -134,6 +135,7 @@ test("upgrade suppresses only legacy open default aggregates without rewriting t
 test("condition upgrade preserves historical evidence without leaving ownerless pressure aggregates open", async () => {
   await using fixture = await migrationFixture({ env: { SYNERGY_OBSERVABILITY_INLINE: "1" } })
   await fixture.run(async () => {
+    ObservabilityConfig.refresh({ observability: { enabled: false } })
     const db = ObservabilityStore.initializeForMigration()
     for (const [id, status, code, scope, fingerprint] of [
       ["old_global", "open", "PERF_MEMORY_HIGH_RSS", null, "PERF_MEMORY_HIGH_RSS:process:global"],

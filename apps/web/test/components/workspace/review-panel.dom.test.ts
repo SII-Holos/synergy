@@ -718,7 +718,7 @@ test("global commands dismiss their menu while advanced toggles remain available
 test("file headers respond to native folding, version and menu actions", async () => {
   await mount()
   await page.addStyleTag({ content: '[role="menu"][data-closed] { animation-duration: 1s; }' })
-  const toggle = page.getByRole("button", { name: "src/first.ts", exact: true })
+  const toggle = page.getByRole("button", { name: "src/first.ts", exact: true, includeHidden: true })
   const header = page.locator(".review-file-header").filter({ has: toggle })
   await toggle.click()
   expect(await toggle.getAttribute("aria-expanded")).toBe("false")
@@ -728,7 +728,7 @@ test("file headers respond to native folding, version and menu actions", async (
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor()
   await page.keyboard.press("Escape")
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
-  const options = header.getByRole("button", { name: "File options", exact: true })
+  const options = header.getByRole("button", { name: "File options", exact: true, includeHidden: true })
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"])
   await options.click()
   const copy = page.getByText("Copy path", { exact: true })
