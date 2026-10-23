@@ -1,4 +1,6 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import { RolloutJournal } from "../../src/session/rollout/journal"
+import { Storage } from "../../src/storage/storage"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutSnapshot } from "../../src/session/rollout/snapshot"
 import { RolloutTransportRecorder } from "../../src/session/rollout/transport-recorder"
@@ -16,6 +18,27 @@ function invocation() {
     request: {},
   }
 }
+
+test("presentation keeps unknown gaps explicit until a matching audit checkpoint is available", () =>
+  runtime.run(async () => {
+    const input = invocation()
+    const root = RolloutArtifact.root(input.owner)
+    await Storage.write([...root, "journal", "head"], { allocated: 1, committed: 0 })
+    await RolloutLedger.beginCall(input)
+    const first = await RolloutSnapshot.presentation(input.owner)
+    expect(first.verified).toBe(false)
+    expect(first.snapshot.calls).toHaveLength(1)
+    const verified = await RolloutSnapshot.current(input.owner)
+    expect(verified.gaps).toEqual([1])
+    using events = spyOn(RolloutJournal, "events")
+    expect(await RolloutSnapshot.presentation(input.owner)).toEqual({ snapshot: verified, verified: true })
+    expect(events).not.toHaveBeenCalled()
+    await RolloutLedger.beginCall({ ...input, runID: "next" })
+    const changed = await RolloutSnapshot.presentation(input.owner)
+    expect(changed.verified).toBe(false)
+    expect(changed.snapshot.calls).toHaveLength(2)
+    expect((await RolloutSnapshot.current(input.owner)).gaps).toEqual([1])
+  }))
 
 test("snapshot freezes both metadata and the acknowledged response prefix", () =>
   runtime.run(async () => {

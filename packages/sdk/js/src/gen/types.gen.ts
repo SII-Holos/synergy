@@ -8433,7 +8433,7 @@ export type ExecutionSummary = {
   coverage: {
     recorded: number
     messages: number
-    gaps: number
+    gaps: number | null
     partial: boolean
   }
   lanes: Array<{

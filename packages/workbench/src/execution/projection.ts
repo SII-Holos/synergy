@@ -154,6 +154,24 @@ export namespace ExecutionProjection {
             processRemoved: [],
             removed: [],
           })
+          await ExecutionService.verifyJournal(session.id, abort)
+          abort.throwIfAborted()
+          const verified = await ExecutionService.summary(session.id, undefined, abort)
+          const verifiedRounds = interest.runID
+            ? [await ExecutionService.summary(session.id, interest.runID, abort)]
+            : []
+          if (current.state === "ready" && current.summary.revision > verified.revision) return
+          publish({
+            ...current,
+            state: "ready",
+            summary: verified,
+            roundSummaries: verifiedRounds,
+            detailPreviousRevision: verified.revision,
+            upserts: [],
+            processUpserts: [],
+            processRemoved: [],
+            removed: [],
+          })
         }).catch((error) => {
           if (!disposed)
             publish({

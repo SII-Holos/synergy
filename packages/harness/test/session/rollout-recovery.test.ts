@@ -1,4 +1,5 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
+import { Storage } from "../../src/storage/storage"
 import { tmpdir } from "../support/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
@@ -41,7 +42,13 @@ test("recovery preserves historical runtime configuration and committed journal 
     const evidence = []
     for await (const event of RolloutJournal.events(owner, head)) evidence.push(event)
 
-    await RolloutRecovery.owner(owner)
+    const reads = spyOn(Storage, "readMany")
+    try {
+      await RolloutRecovery.owner(owner)
+      expect(reads.mock.calls.flatMap(([keys]) => keys).filter((key) => key.includes("events"))).toEqual([])
+    } finally {
+      reads.mockRestore()
+    }
     const restored = await RolloutLedger.getRun(owner, run.id)
     expect(restored.status).toBe("interrupted")
     expect(restored.configuration).toEqual(configuration)

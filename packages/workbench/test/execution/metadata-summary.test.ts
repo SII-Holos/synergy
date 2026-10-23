@@ -7,9 +7,56 @@ import { fixture } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { testRuntime } from "../support/runtime"
 import { ExecutionService } from "../../src/execution/service"
 import { ExecutionSchema } from "../../src/execution/schema"
+import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/rollout"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("current statistics and trajectory do not wait for historical journal verification", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      using replay = spyOn(RolloutSnapshot, "currentAll").mockRejectedValue(new Error("historical audit unavailable"))
+      const summary = await ExecutionService.summary(session.id)
+      expect(summary.coverage.gaps).toBeNull()
+      const page = await ExecutionService.trajectory(session.id, ExecutionSchema.Query.parse({ limit: 10 }))
+      expect(page.items.length).toBeGreaterThan(0)
+      expect(replay).not.toHaveBeenCalled()
+    }),
+  ))
+
+test("journal verification is shared, cancellable and leaves current interactions available", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      await ExecutionService.summary(session.id)
+      const original = RolloutSnapshot.currentAll
+      const reached = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      using audit = spyOn(RolloutSnapshot, "currentAll").mockImplementation(async (owners, signal) => {
+        reached.resolve()
+        await release.promise
+        signal?.throwIfAborted()
+        return original(owners, signal)
+      })
+      const controller = new AbortController()
+      const first = ExecutionService.verifyJournal(session.id, controller.signal)
+      const settled = first.catch((error: unknown) => error)
+      await reached.promise
+      const second = ExecutionService.verifyJournal(session.id)
+      try {
+        expect((await ExecutionService.summary(session.id)).coverage.gaps).toBeNull()
+        expect(
+          (await ExecutionService.trajectory(session.id, ExecutionSchema.Query.parse({ limit: 10 }))).items.length,
+        ).toBeGreaterThan(0)
+        controller.abort(new Error("view closed"))
+        expect(await settled).toBeInstanceOf(Error)
+      } finally {
+        release.resolve()
+      }
+      await second
+      expect(audit).toHaveBeenCalledTimes(1)
+      expect((await ExecutionService.summary(session.id)).coverage.gaps).toBe(0)
+    }),
+  ))
 
 test("message-only completion and accounting changes reproject compact facts", () =>
   runtime.run(() =>

@@ -63699,7 +63699,7 @@
                 "type": "number"
               },
               "gaps": {
-                "type": "number"
+                "type": ["number", "null"]
               },
               "partial": {
                 "type": "boolean"

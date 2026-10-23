@@ -221,7 +221,12 @@ export namespace ExecutionSchema {
           elapsedLowerBound: z.boolean(),
         }),
       ),
-      coverage: z.object({ recorded: z.number(), messages: z.number(), gaps: z.number(), partial: z.boolean() }),
+      coverage: z.object({
+        recorded: z.number(),
+        messages: z.number(),
+        gaps: z.number().nullable(),
+        partial: z.boolean(),
+      }),
       lanes: z.array(
         z.object({
           kind: z.enum(["input", "model", "tool"]),

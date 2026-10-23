@@ -37,6 +37,7 @@ export namespace ExecutionService {
     root: Session.Info
     sessions: Session.Info[]
     snapshots: RolloutSnapshot.Info[]
+    verified: Set<string>
     nodes: ExecutionSchema.Node[]
     sessionsByID: Map<string, Session.Info>
     snapshotsByID: Map<string, RolloutSnapshot.Info>
@@ -90,6 +91,7 @@ export namespace ExecutionService {
     root: Session.Info
     touched: number
     tree?: Data
+    audit?: Loading
     metadata?: RootData
     metadataLoading?: RootLoading
     metadataChanges: Map<string, (value: RootData) => void>
@@ -151,6 +153,7 @@ export namespace ExecutionService {
         .filter(
           (entry) =>
             !cache.pending.has(entry.root.id) &&
+            !entry.audit?.readers &&
             !entry.metadataLoading &&
             !entry.metadataListeners.size &&
             !cache.subscriptions.has(entry.root.id),
@@ -158,6 +161,7 @@ export namespace ExecutionService {
         .sort((a, b) => a.touched - b.touched)[0]
       if (!oldest) return
       clearTimeout(oldest.metadataTimer)
+      oldest.audit?.controller.abort()
       clearTimeout(cache.timers.get(oldest.root.id))
       cache.entries.delete(oldest.root.id)
       cache.dirty.delete(oldest.root.id)
@@ -394,10 +398,10 @@ export namespace ExecutionService {
       }
     }
     checkpoint(signal)
-    const snapshots = await ObservabilitySpans.measure(
+    const presentation = await ObservabilitySpans.measure(
       { name: "execution.snapshot", module: "session", kind: "session" },
       () =>
-        RolloutSnapshot.currentAll(
+        RolloutSnapshot.presentationAll(
           sessions.map((session) => ({
             kind: "session",
             scopeID: session.scope.id,
@@ -406,6 +410,7 @@ export namespace ExecutionService {
           signal,
         ),
     )
+    const snapshots = presentation.map((value) => value.snapshot)
     const nodes: ExecutionSchema.Node[] = []
     const contexts: Data["contexts"] = new Map()
     for (const [index, session] of sessions.entries()) {
@@ -473,6 +478,7 @@ export namespace ExecutionService {
       root,
       sessions,
       snapshots,
+      verified: new Set(sessions.filter((_, index) => presentation[index].verified).map((session) => session.id)),
       nodes,
       sessionsByID: new Map(sessions.map((session) => [session.id, session])),
       snapshotsByID: new Map(
@@ -693,8 +699,14 @@ export namespace ExecutionService {
       coverage: {
         recorded: nodes.filter((node) => node.source === "recorded").length,
         messages: nodes.filter((node) => node.source === "messages").length,
-        gaps: data.snapshots.reduce((sum, snapshot) => sum + snapshot.gaps.length, 0),
-        partial: runs.some((run) => run.recording !== "complete") || (!runs.length && !!nodes.length),
+        gaps:
+          data.verified.size === data.sessions.length
+            ? data.snapshots.reduce((sum, snapshot) => sum + snapshot.gaps.length, 0)
+            : null,
+        partial:
+          data.verified.size !== data.sessions.length ||
+          runs.some((run) => run.recording !== "complete") ||
+          (!runs.length && !!nodes.length),
       },
       activityTotal: activities.length,
       humanInputs: activity.humanInputs,
@@ -767,6 +779,8 @@ export namespace ExecutionService {
         }
       entry.nodes = entry.nodes.filter((node) => !replaced.has(node.sessionID))
       for (const [index, info] of branch.sessions.entries()) {
+        if (branch.verified.has(info.id)) entry.verified.add(info.id)
+        else entry.verified.delete(info.id)
         const position = entry.sessions.findIndex((item) => item.id === info.id)
         if (position < 0) {
           entry.sessions.push(info)
@@ -1211,6 +1225,7 @@ export namespace ExecutionService {
         const id = event.properties.info.id
         const entry = cache.entries.get(id)
         entry?.metadataLoading?.controller.abort()
+        entry?.audit?.controller.abort()
         cache.pending.get(id)?.controller.abort()
         clearTimeout(entry?.metadataTimer)
         clearTimeout(cache.timers.get(id))
@@ -1253,6 +1268,7 @@ export namespace ExecutionService {
       for (const loading of cache.pending.values()) loading.controller.abort()
       for (const entry of cache.entries.values()) {
         entry.metadataLoading?.controller.abort()
+        entry.audit?.controller.abort()
         clearTimeout(entry.metadataTimer)
         entry.metadataListeners.clear()
         entry.progressListeners.clear()
@@ -1674,6 +1690,53 @@ export namespace ExecutionService {
     value.selections.set(runID, { summary, touched: Date.now() })
     if (value.selections.size > 4) value.selections.delete(value.selections.keys().next().value!)
     return summary
+  }
+  export async function verifyJournal(sessionID: string, signal?: AbortSignal): Promise<void> {
+    const value = await data(sessionID, true, signal)
+    const entry = entryFor(value.root)
+    if (entry.audit?.controller.signal.aborted) {
+      await entry.audit.promise.catch(() => checkpoint(signal))
+      return verifyJournal(sessionID, signal)
+    }
+    if (entry.audit) {
+      await consume(sessionID, entry.audit, signal)
+      return
+    }
+    const owners = value.snapshots.filter(
+      (snapshot) => snapshot.owner.kind === "session" && !value.verified.has(snapshot.owner.sessionID),
+    )
+    if (!owners.length) return
+    const controller = new AbortController()
+    const loading: Loading = {
+      scopeID: value.root.scope.id,
+      changes: value.changes,
+      readers: 0,
+      controller,
+      promise: Promise.resolve()
+        .then(async () => {
+          const snapshots = await RolloutSnapshot.currentAll(
+            owners.map((snapshot) => snapshot.owner),
+            controller.signal,
+          )
+          checkpoint(controller.signal)
+          for (const verified of snapshots) {
+            if (verified.owner.kind !== "session") continue
+            const current = value.snapshotsByID.get(verified.owner.sessionID)
+            if (!current || current.revision !== verified.revision) continue
+            current.gaps = verified.gaps
+            value.verified.add(verified.owner.sessionID)
+          }
+          value.revision = ++state().sequence
+          value.summary = summarize(value)
+          for (const [runID, selection] of value.selections) selection.summary = summarize(value, runID)
+          return value
+        })
+        .finally(() => {
+          if (entry.audit === loading) entry.audit = undefined
+        }),
+    }
+    entry.audit = loading
+    await consume(sessionID, loading, signal)
   }
   export async function trajectory(sessionID: string, input: ExecutionSchema.Query, signal?: AbortSignal) {
     const value = await data(sessionID, true, signal)
