@@ -17,6 +17,20 @@ describe("theme generated artifacts", () => {
     expect(names).toEqual([...THEME_TOKEN_NAMES])
   })
 
+  test("generates ribbon fallback colors in both modes and canonical Tailwind mappings", () => {
+    const fallback = renderThemeFallbackCss(synergyTheme)
+    const tailwind = renderTailwindColorsCss()
+    for (const [token, color] of [
+      ["brand-ribbon-start", "#92bf46"],
+      ["brand-ribbon-middle", "#4f9bb6"],
+      ["brand-ribbon-end", "#5e52b4"],
+    ]) {
+      const values = [...fallback.matchAll(new RegExp(`--${token}: (#[0-9a-fA-F]+);`, "g"))].map((match) => match[1])
+      expect(values).toEqual([color, color])
+      expect(tailwind).toContain(`--color-${token}: var(--${token});`)
+    }
+  })
+
   test("checked-in Tailwind mappings match the canonical generator", async () => {
     const css = await Bun.file("src/styles/tailwind/colors.css").text()
     expect(css).toBe(renderTailwindColorsCss())

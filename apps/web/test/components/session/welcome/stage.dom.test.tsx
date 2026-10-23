@@ -90,7 +90,7 @@ beforeAll(async () => {
         const dpr = Math.min(devicePixelRatio || 1, 2)
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         const random = sceneRandom(8)
-        const masks = [sprites.star, sprites.ring, sprites.bolt, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0")))
+         const masks = [...[sprites.star, sprites.ring, sprites.bolt, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0"))), sprites.ribbon]
         for (let index = 0; index < 240; index++) {
           const column = index % 20, row = Math.floor(index / 20)
           const offset = random(), depth = 0.35 + random() * 0.65
@@ -683,7 +683,7 @@ test("ambient frames reuse pixel motifs instead of repainting their cells", asyn
     const moving = await readCounts()
     expect(moving.cells - initial.cells).toBe(0)
     expect(moving.images).toBeGreaterThan(initial.images)
-    expect(moving.buffers).toHaveLength(7)
+    expect(moving.buffers).toHaveLength(9)
     await page.emulateMedia({ reducedMotion: "reduce" })
     const ambient = page.locator(".welcome-ambient")
     const frame = () => ambient.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
@@ -706,13 +706,87 @@ test("ambient frames reuse pixel motifs instead of repainting their cells", asyn
     )
     expect((await readCounts()).cells).toBe(themed.cells)
     await page.getByRole("button", { name: "Mount", exact: true }).click()
-    expect((await readCounts()).buffers).toEqual(Array.from({ length: 7 }, () => ({ width: 0, height: 0 })))
+    expect((await readCounts()).buffers).toEqual(Array.from({ length: 9 }, () => ({ width: 0, height: 0 })))
     expect(await page.locator(".welcome-ambient").count()).toBe(0)
     expect(errors).toEqual([])
   } finally {
     await page.evaluate(() => (window as unknown as { restoreAmbientDrawing: () => void }).restoreAmbientDrawing())
     await page.emulateMedia({ reducedMotion: "no-preference" })
   }
+})
+
+test("nearby ribbons reveal theme color without moving reduced-motion scenery or intercepting input", async () => {
+  await page.setViewportSize({ width: 960, height: 920 })
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" })
+  await page.mouse.move(0, 0)
+  await open("stack")
+  const ambient = page.locator(".welcome-ambient")
+  const inspect = () =>
+    ambient.evaluate((element) => {
+      const canvas = element as HTMLCanvasElement
+      const data = canvas.getContext("2d")!.getImageData(0, 0, canvas.width, canvas.height).data
+      const occupied: number[] = []
+      let colored = 0
+      for (let offset = 0; offset < data.length; offset += 4) {
+        if (!data[offset + 3]) continue
+        occupied.push(offset / 4)
+        if (
+          data[offset + 3]! > 30 &&
+          Math.max(...data.slice(offset, offset + 3)) - Math.min(...data.slice(offset, offset + 3)) > 25
+        )
+          colored++
+      }
+      return { occupied, colored, image: canvas.toDataURL() }
+    })
+  const initial = await inspect()
+  expect(initial.colored).toBe(0)
+  const pane = (await page.locator(".session-workbench-pane").boundingBox())!
+  let revealed = initial
+  for (const x of [0.25, 0.5, 0.75]) {
+    await page.mouse.move(pane.x + pane.width * x, pane.y + pane.height * 0.4)
+    revealed = await inspect()
+    if (revealed.colored > 0) break
+  }
+  expect(revealed.colored).toBeGreaterThan(0)
+  expect(revealed.occupied).toEqual(initial.occupied)
+  expect(await ambient.evaluate((el) => getComputedStyle(el).pointerEvents)).toBe("none")
+  await page.waitForTimeout(160)
+  expect((await inspect()).image).toBe(revealed.image)
+  await page.getByRole("textbox").fill("The background does not capture typing")
+  expect(await page.getByRole("textbox").inputValue()).toBe("The background does not capture typing")
+  await page.getByRole("button", { name: "Theme", exact: true }).evaluate((el) => (el as HTMLButtonElement).click())
+  await page.waitForFunction(
+    (image) => document.querySelector<HTMLCanvasElement>(".welcome-ambient")?.toDataURL() !== image,
+    revealed.image,
+  )
+  const themed = await inspect()
+  expect(themed.colored).toBeGreaterThan(0)
+  expect(themed.occupied).toEqual(initial.occupied)
+  await page.getByRole("button", { name: "Theme", exact: true }).evaluate((el) => (el as HTMLButtonElement).click())
+  await page.waitForFunction(
+    (image) => document.querySelector<HTMLCanvasElement>(".welcome-ambient")?.toDataURL() === image,
+    revealed.image,
+  )
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "hidden" })
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+  expect((await inspect()).colored).toBe(0)
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" })
+    document.dispatchEvent(new Event("visibilitychange"))
+  })
+  expect((await inspect()).colored).toBe(0)
+  await page.locator(".session-workbench-pane").dispatchEvent("pointermove", {
+    pointerType: "touch",
+    clientX: pane.x + pane.width / 4,
+    clientY: pane.y + pane.height * 0.4,
+  })
+  expect((await inspect()).colored).toBe(0)
+  await page.mouse.move(0, 0)
+  expect((await inspect()).image).toBe(initial.image)
+  await page.emulateMedia({ reducedMotion: "no-preference" })
+  expect(errors).toEqual([])
 })
 
 test("ambient caching preserves cell coverage at real integer and fractional device scales", async () => {

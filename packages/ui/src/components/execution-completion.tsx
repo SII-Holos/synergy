@@ -1,5 +1,6 @@
 import { Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { CompletionRibbon } from "./completion-ribbon"
 
 export interface TurnExecutionSummary {
   status: "running" | "completed" | "failed" | "cancelled" | "interrupted" | "unknown" | "queued" | "paused" | "waiting"
@@ -31,7 +32,12 @@ export function executionDuration(value: number, lowerBound = false) {
   )
 }
 
-export function ExecutionCompletion(props: { summary?: TurnExecutionSummary; onDetails?: () => void }) {
+export function ExecutionCompletion(props: {
+  summary?: TurnExecutionSummary
+  onDetails?: () => void
+  showSignature?: boolean
+  ribbonRef?: (element: SVGSVGElement) => void
+}) {
   const { _ } = useLingui()
   const status = () => {
     switch (props.summary?.status) {
@@ -57,6 +63,9 @@ export function ExecutionCompletion(props: { summary?: TurnExecutionSummary; onD
   }
   return (
     <div data-component="execution-completion" data-state={props.summary?.status}>
+      <Show when={props.summary?.status === "completed" && props.showSignature !== false}>
+        <CompletionRibbon ref={props.ribbonRef} />
+      </Show>
       <Show when={props.summary}>
         <span>{status()}</span>
         <Show when={props.summary?.elapsedMs != null}>

@@ -9,6 +9,7 @@ import {
   THEME_TOKEN_NAMES,
   THEME_TOKEN_SET,
   ThemeSchema,
+  generateScale,
   parseTheme,
   renderThemeSchemaJson,
   resolveTheme,
@@ -53,6 +54,7 @@ function fixtureTheme(overrides: Partial<Theme> = {}): Theme {
 }
 
 const hexValue = /^#[0-9a-fA-F]{3,8}$/
+const ribbonTokens = ["brand-ribbon-start", "brand-ribbon-middle", "brand-ribbon-end"] as const
 
 describe("theme schema contract", () => {
   test("exposes the seed names, token names, and regex contracts", () => {
@@ -65,6 +67,7 @@ describe("theme schema contract", () => {
     expect(THEME_TOKEN_SET.has("chart-series-9")).toBe(true)
     expect(THEME_TOKEN_SET.has("avatar-background-cyan")).toBe(true)
     expect(THEME_TOKEN_SET.has("not-a-token")).toBe(false)
+    for (const token of ribbonTokens) expect(THEME_TOKEN_SET.has(token)).toBe(true)
 
     expect(new RegExp(HEX_COLOR_PATTERN).test("#abc")).toBe(true)
     expect(new RegExp(HEX_COLOR_PATTERN).test("#abcd")).toBe(true)
@@ -87,6 +90,11 @@ describe("theme schema contract", () => {
     expect(schema.definitions.ThemeSeedColors.required).toHaveLength(9)
     expect(schema.definitions.CssVarRef.enum).toHaveLength(THEME_TOKEN_NAMES.length)
     expect(schema.definitions.OpaqueHexColor.pattern).toBe(OPAQUE_HEX_COLOR_PATTERN)
+    for (const token of ribbonTokens) {
+      expect(schema.definitions.ThemeVariant.properties.overrides.propertyNames.enum).toContain(token)
+      expect(schema.definitions.CssVarRef.enum).toContain(`var(--${token})`)
+      expect(schema.definitions.ColorValue.oneOf[1].enum).toContain(`var(--${token})`)
+    }
   })
 })
 
@@ -141,6 +149,47 @@ describe("resolveTheme", () => {
   test("resolveThemeVariant and resolveTheme agree for the light variant", () => {
     const theme = fixtureTheme()
     expect(resolveThemeVariant(theme.light, false)).toEqual(resolveTheme(theme).light)
+  })
+
+  test("seed-only ribbon colors follow three adjacent primary tones in both modes", () => {
+    for (const [seeds, isDark] of [
+      [lightSeeds, false],
+      [darkSeeds, true],
+    ] as const) {
+      for (const primary of [seeds.primary, "#d48652"] as const) {
+        const resolved = resolveThemeVariant({ seeds: { ...seeds, primary } }, isDark)
+        const colors = ribbonTokens.map((token) => resolveThemeColor(resolved, token))
+        expect(colors).toEqual(generateScale(primary, isDark).slice(7, 10))
+        expect(new Set(colors).size).toBe(3)
+      }
+    }
+  })
+
+  test("ribbon overrides accept hex and canonical references without recoloring status roles", () => {
+    const theme = fixtureTheme()
+    const baseline = resolveTheme(theme)
+    for (const [mode, color] of [
+      ["light", "#123456"],
+      ["dark", "#abcdef"],
+    ] as const) {
+      theme[mode].overrides = {
+        "brand-ribbon-start": color,
+        "brand-ribbon-middle": "var(--brand-ribbon-start)",
+        "brand-ribbon-end": "var(--brand-ribbon-middle)",
+      }
+    }
+    const parsed = parseTheme(theme)
+    expect(parsed).toEqual(theme)
+    const resolved = resolveTheme(parsed)
+    for (const [mode, color] of [
+      ["light", "#123456"],
+      ["dark", "#abcdef"],
+    ] as const) {
+      expect(ribbonTokens.map((token) => resolveThemeColor(resolved[mode], token))).toEqual([color, color, color])
+      for (const token of THEME_TOKEN_NAMES.filter((name) => /success|warning|critical|info/.test(name))) {
+        expect(resolved[mode][token]).toBe(baseline[mode][token])
+      }
+    }
   })
 
   test("Full Access inherits warning overrides unless its own foreground is provided", () => {

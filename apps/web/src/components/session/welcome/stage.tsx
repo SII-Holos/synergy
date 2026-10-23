@@ -112,7 +112,7 @@ export function WelcomeStage(props: {
       <Show when={pane()}>
         {(target) => (
           <Portal mount={target()}>
-            <AmbientField seed={props.seed} active={visible} reducedMotion={reducedMotion} />
+            <AmbientField seed={props.seed} active={visible} reducedMotion={reducedMotion} surface={target()} />
           </Portal>
         )}
       </Show>

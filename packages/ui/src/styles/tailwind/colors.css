@@ -65,6 +65,9 @@
   --color-border-weaker-focus: var(--border-weaker-focus);
   --color-border-weaker-hover: var(--border-weaker-hover);
   --color-border-weaker-selected: var(--border-weaker-selected);
+  --color-brand-ribbon-end: var(--brand-ribbon-end);
+  --color-brand-ribbon-middle: var(--brand-ribbon-middle);
+  --color-brand-ribbon-start: var(--brand-ribbon-start);
   --color-button-ghost-hover: var(--button-ghost-hover);
   --color-button-ghost-hover2: var(--button-ghost-hover2);
   --color-button-secondary-base: var(--button-secondary-base);

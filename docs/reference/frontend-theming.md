@@ -46,6 +46,10 @@ Without an override, every theme resolves this role to `var(--text-on-warning-ba
 
 The TypeScript output contract is additive but exhaustive consumers need a source update: `ResolvedTheme` and `Record<ThemeTokenName, …>` now require this key, and exhaustive switches must handle the new union member. Prefer constructing complete output with `resolveTheme()` or `resolveThemeVariant()`. Handwritten resolved maps can add `"text-permission-full-access": "var(--text-on-warning-base)"` to preserve their previous behavior.
 
+### Decorative ribbon colors
+
+The decorative SII ribbon roles are `brand-ribbon-start`, `brand-ribbon-middle` and `brand-ribbon-end`. Synergy overrides them with its green, cyan and violet brand colors; seed-only themes resolve them from adjacent primary tones. They are not success or activity status colors. The [ribbon decision](../decisions/implemented/feature/2026-10-23-sii-ribbon-signature.md) limits their product uses to completion signatures and welcome motifs. Existing serialized themes need no migration, while exhaustive resolved-token maps must include the three added keys.
+
 ### Imperative renderers
 
 Canvas, Chart.js, Monaco, terminal engines, SVG renderers, and isolated documents cannot assume that a CSS custom-property string is directly usable. Read the active resolved theme and flatten references with `resolveThemeColor`:

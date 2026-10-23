@@ -123,7 +123,7 @@ Read `docs/reference/frontend-theming.md` before changing the color contract, ad
 3. Edit `packages/ui/src/theme/themes/synergy.json` for Synergy-specific seed or override values. Run `bun run --cwd packages/ui generate:theme`; never hand-edit `theme.generated.css`, `tailwind/colors.css`, or `theme.schema.json`.
 4. Keep common text/background and status foreground/surface pairs at WCAG AA contrast in both modes. Preserve the product polarity rule independently of accent hue.
 5. Plugin themes are complete structured JSON themes validated by the same schema and resolved by the same runtime. Do not add arbitrary plugin CSS theme overrides or theme-only token paths.
-6. Imperative consumers such as Canvas, Monaco, terminals, and embedded documents must use the resolved theme tokens and react to the canonical theme-change event. Do not maintain component-local light/dark palettes or infer a theme change only from `data-color-scheme`.
+6. Imperative consumers such as Canvas, Monaco, terminals, and embedded documents must use the resolved theme tokens and react to the canonical theme-change event. Do not maintain component-local light/dark palettes or infer a theme change only from `data-color-scheme`. Check color-helper units when interpolating: the public `hexToRgb` returns normalized 0–1 channels, while numeric CSS `rgb()` channels use 0–255. Assert painted color values during animation, not just the presence of nontransparent pixels or a correctly colored final frame.
 7. Run the theme contract, artifact parity, and consumer-utility tests before visual inspection:
 
 ```bash
