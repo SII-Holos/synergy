@@ -1,5 +1,5 @@
 import { createEffect, createMemo, on, onCleanup, Show, For, type JSX } from "solid-js"
-import { SessionReview, reviewFileKey } from "@ericsanchezok/synergy-ui/session-review"
+import { SessionReview, reviewFileKey, type SessionReviewPosition } from "@ericsanchezok/synergy-ui/session-review"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
@@ -9,6 +9,8 @@ import { translateDescriptor } from "@/locales/translate"
 
 type DiffStyle = "unified" | "split"
 type DiffState = NonNullable<UserMessage["summary"]>["diffState"]
+type ReviewView = ReturnType<ReturnType<typeof useLayout>["view"]>
+const positions = new WeakMap<ReviewView, { comparison?: string; selected?: string; position: SessionReviewPosition }>()
 const recordingErrors: Record<Extract<DiffState, { status: "error" }>["code"], MessageDescriptor> = {
   incomplete: { id: "session.review.recording.incomplete", message: "File change recording is incomplete." },
   timeout: { id: "session.review.recording.timeout", message: "File change recording timed out." },
@@ -42,13 +44,14 @@ export interface SessionReviewTabProps {
   title?: string
   actions?: JSX.Element
   onRestoreFile?: (diff: FileDiff) => void
-  loadDiff?: (diff: FileDiff, signal: AbortSignal) => Promise<FileDiff>
+  loadDiff?: (diff: FileDiff, signal: AbortSignal, retry?: boolean) => Promise<FileDiff>
   workspace?: () => { id: string; generation: number; path: string } | null
   view: () => ReturnType<ReturnType<typeof useLayout>["view"]>
   diffStyle: DiffStyle
   onDiffStyleChange?: (style: DiffStyle) => void
   onViewFile?: (file: string) => void
   selectedFile?: () => string | undefined
+  comparisonKey?: string
   classes?: {
     root?: string
     header?: string
@@ -58,6 +61,16 @@ export interface SessionReviewTabProps {
 
 export function SessionReviewTab(props: SessionReviewTabProps) {
   const { _, i18n } = useLingui()
+  const owner = props.view()
+  const comparison = props.comparisonKey
+  const saved = positions.get(owner)
+  const initialPosition =
+    saved &&
+    saved.comparison === comparison &&
+    saved.selected === props.selectedFile?.() &&
+    props.diffs().some((diff) => reviewFileKey(diff) === saved.position.key)
+      ? saved.position
+      : undefined
   const recordingNotice = () => {
     const state = props.diffState?.()
     if (state?.status === "live")
@@ -120,6 +133,7 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
   }
 
   const restoreScroll = (retries = 0) => {
+    if (saved) return
     const el = scroll
     if (!el) return
 
@@ -163,7 +177,14 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
     ),
   )
 
-  createEffect(on(() => [selectedKey(), props.diffs().map(reviewFileKey).join("\u0000")] as const, openSelectedFile))
+  let initialSelection = true
+  createEffect(
+    on(selectedKey, () => {
+      const restore = initialSelection && initialPosition
+      initialSelection = false
+      if (!restore) openSelectedFile()
+    }),
+  )
 
   onCleanup(() => {
     if (frame === undefined) return
@@ -224,6 +245,15 @@ export function SessionReviewTab(props: SessionReviewTabProps) {
         if (canViewFile(diff)) props.onViewFile?.(file)
       }}
       selectedFile={selectedKey()}
+      initialPosition={initialPosition}
+      onPositionChange={(position) => {
+        if (props.view() !== owner || props.comparisonKey !== comparison) return
+        positions.set(owner, {
+          comparison,
+          selected: props.selectedFile?.(),
+          position,
+        })
+      }}
     />
   )
 }

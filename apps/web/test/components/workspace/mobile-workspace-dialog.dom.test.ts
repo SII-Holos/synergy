@@ -30,13 +30,14 @@ beforeAll(async () => {
     import { I18nProvider } from "@lingui/solid"
     import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
-    import { createSignal, Show } from "solid-js"
+    import { createSignal, Show, Suspense, lazy } from "solid-js"
     import { MobileWorkspaceDialog } from ${JSON.stringify(`/@fs/${source}/components/workspace/mobile-workspace-dialog.tsx`)}
     import { messages as en } from ${JSON.stringify(`/@fs/${source}/locales/en/messages.po`)}
     import "@ericsanchezok/synergy-ui/styles"
     import ${JSON.stringify(`/@fs/${source}/index.css`)}
     const i18n = setupI18n({ locale: "en", messages: { en } })
     window.closeCount = 0
+    const Delayed = lazy(() => new Promise(resolve => { window.resolveWorkspace = () => resolve({default: () => <button>Loaded workspace</button>}) }))
     function Fixture() {
       const dialog = useDialog()
       const [open, setOpen] = createSignal(false)
@@ -46,11 +47,11 @@ beforeAll(async () => {
         <button onClick={() => setOpen(true)}>Open mobile workspace</button><button>Background action</button>
         <button onClick={() => dialog.push(() => <Dialog title="Restore preview"><button>Confirm restoration</button></Dialog>)}>Preview restore</button>
         <Show when={open()}><MobileWorkspaceDialog onClose={() => { window.closeCount++; setOpen(false) }}>
-          <button>Workspace action</button><input aria-label="Workspace input" />
+          {new URLSearchParams(location.search).has("delayed") ? <Delayed /> : <><button>Workspace action</button><input aria-label="Workspace input" /></>}
         </MobileWorkspaceDialog></Show>
       </>
     }
-    render(() => <I18nProvider i18n={i18n}><DialogProvider><Fixture /></DialogProvider></I18nProvider>, document.querySelector("#root"))
+    render(() => <I18nProvider i18n={i18n}><Suspense fallback={<div>Loading session</div>}><DialogProvider><Fixture /></DialogProvider></Suspense></I18nProvider>, document.querySelector("#root"))
   `,
   )
   server = await createServer({
@@ -177,3 +178,25 @@ test("reduced motion removes expanded workspace and overlay animations", async (
     await page.emulateMedia({ reducedMotion: "no-preference" })
   }
 }, 20000)
+
+test("lazy mobile content keeps its conversation opener mounted and restores focus", async () => {
+  await page.goto(baseUrl + "?delayed")
+  const opener = page.getByRole("button", { name: "Open mobile workspace", exact: true })
+  const original = await opener.elementHandle()
+  await opener.click()
+  await page.waitForFunction(
+    () => typeof (window as unknown as { resolveWorkspace?: () => void }).resolveWorkspace === "function",
+  )
+  try {
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    expect(await original!.evaluate((el) => el.isConnected)).toBe(true)
+    expect(await page.getByText("Loading session", { exact: true }).count()).toBe(0)
+  } finally {
+    await page.evaluate(() => (window as unknown as { resolveWorkspace(): void }).resolveWorkspace())
+  }
+  await page.getByRole("button", { name: "Loaded workspace", exact: true }).waitFor()
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.textContent === "Open mobile workspace")
+  expect(await original!.evaluate((el) => el === document.activeElement)).toBe(true)
+}, 30_000)

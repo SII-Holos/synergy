@@ -325,7 +325,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
       patches: string[] = []
     try {
       for (const row of data.rows()) {
-        const value = await data.load(row, true)
+        const value = await data.load(row, { retry: true })
         if (key !== data.key()) return
         if (!value?.diff.patch) throw new Error(_(C.patchUnavailable))
         patches.push(value.diff.patch)
@@ -513,7 +513,7 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                   <ReviewIcon
                     token="action.refresh"
                     label={`${_(C.retry)}: ${data.fileError(id)}`}
-                    action={() => void data.load(value(), true)}
+                    action={() => void data.load(value(), { retry: true })}
                   />
                 </span>
               </Show>

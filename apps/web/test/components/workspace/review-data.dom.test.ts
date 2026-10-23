@@ -27,6 +27,15 @@ beforeAll(async () => {
     export const turn=new URLSearchParams(location.search).has("turn")
     let latest=1
     export const reads=[]
+    let fileFailing=false
+    export const failFile=()=>{fileFailing=true}
+    export const transports=[]
+    let holding=false
+    const waiting=[]
+    export const hold=()=>{holding=true}
+    export const release=()=>{holding=false;waiting.splice(0).forEach(fn=>fn())}
+    const wait=async(query,signal)=>{transports.push({file:query.file,signal});if(holding)await new Promise((resolve,reject)=>{const finish=()=>{signal.removeEventListener("abort",abort);resolve()};const abort=()=>reject(signal.reason);signal.addEventListener("abort",abort,{once:true});waiting.push(finish)});signal.throwIfAborted()}
+
     export const released=[]
     export const advance=()=>{latest++;setSummary({diffRevision:String(latest)})}
     export const requests={comparison:0,notes:0}
@@ -40,8 +49,8 @@ beforeAll(async () => {
       session:{files:{
         comparison:async()=>{requests.comparison++;return {data:{revision:String(latest),recording:{status:"live"},files:Array.from({length:300},(_,i)=>({file:"file-"+i+".txt",additions:latest,deletions:0,workspace:{id:"workspace",generation:1,root:"/fixture"}}))}}},
         release:async(query)=>{released.push(query.revision)},
-        diff:async(query)=>{reads.push({kind:"diff",revision:query.revision});return {data:{file:query.file,additions:Number(query.revision),deletions:0,patch:"revision "+query.revision}}},
-        versions:async(query)=>{reads.push({kind:"versions",revision:query.revision});return {data:{before:{version:"before",content:"before"},after:{version:query.revision,content:"revision "+query.revision}}}},
+        diff:async(query,{signal})=>{await wait(query,signal);reads.push({kind:"diff",revision:query.revision});if(fileFailing){fileFailing=false;throw new Error("temporary file failure")};return {data:{file:query.file,additions:Number(query.revision),deletions:0,preview:"+revision "+query.revision}}},
+        versions:async(query,{signal})=>{await wait(query,signal);reads.push({kind:"versions",revision:query.revision});return {data:{before:{version:"before",content:"before"},after:{version:query.revision,content:"revision "+query.revision}}}},
       },diff:async(_input,{signal})=>{requests.comparison++;await Promise.resolve();signal.throwIfAborted();if(failing)throw new Error("comparison unavailable");return {data:[{file:"first.txt",additions:1,deletions:0}]}}},
       review:{state:{get:async()=>{requests.notes++;await Promise.resolve();if(failing)throw new Error("notes unavailable");return {data:{revision:1,state:{version:1,viewed:{},comments:[]}}}}}}
     }})
@@ -51,15 +60,25 @@ beforeAll(async () => {
     path.join(fixture, "main.tsx"),
     `
     import {render} from "solid-js/web"
-    import {ErrorBoundary} from "solid-js"
+    import {ErrorBoundary,createSignal} from "solid-js"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import "@ericsanchezok/synergy-ui/styles"
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {useReviewData} from ${JSON.stringify(`/@fs/${appSrc}/components/workspace/review-data.ts`)}
-    import {recover,switchSession,requests,turn,advance,reads,released} from "./contexts"
+    import {MobileSessionReview} from ${JSON.stringify(`/@fs/${appSrc}/components/session/mobile-session-review.tsx`)}
+    import {recover,switchSession,requests,turn,advance,reads,released,transports,hold,release,failFile} from "./contexts"
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
+    window.mobileReview={advance,failFile,facts:()=>({reads,requests})}
     function Panel(){
+      if(new URLSearchParams(location.search).has("mobile")){
+        const [open,setOpen]=createSignal([])
+        const view={review:{open,setOpen},scroll:()=>undefined,setScroll(){}}
+        return <ThemeProvider><div style="height:640px;display:flex;flex-direction:column"><MobileSessionReview onClose={()=>{}} messageID="root-outside-window" view={()=>view} diffStyle="unified" /></div></ThemeProvider>
+      }
       const data=useReviewData({source:()=>turn?"turn":"session",messageID:()=>turn?"root-outside-window":undefined,from:()=>"HEAD",to:()=>"HEAD"})
-      window.turnReview={advance,refresh:data.refresh,load:()=>data.load(data.rows()[0]),facts:()=>({requests,reads,released,count:data.rows().length,revision:data.context()?.revision})}
+      const consumers=new Map()
+      window.turnReview={hold,release,start:(index,consumer)=>{const controller=new AbortController();consumers.set(consumer,controller);void data.load(data.rows()[index],{signal:controller.signal}).catch(()=>{})},cancel:(consumer)=>consumers.get(consumer).abort(),transports:()=>transports.map(x=>({file:x.file,aborted:x.signal.aborted})),advance,refresh:data.refresh,load:()=>data.load(data.rows()[0]),facts:()=>({requests,reads,released,count:data.rows().length,revision:data.context()?.revision})}
       return <><output data-testid="rows">{data.rows().map(row=>row.file).join(",")}</output>
         <output data-testid="notes">{data.state()?.comments.length}</output>
         <output data-testid="error">{data.comparison.error?.message} {data.notes.error?.message}</output>
@@ -185,5 +204,92 @@ test("turn Review retains a complete immutable comparison until explicit refresh
       { kind: "versions", revision: "6" },
     ],
   })
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("unmounted Review readers cancel queued work without aborting another reader of the same file", async () => {
+  await page.goto(base + "?turn")
+  await page
+    .getByTestId("rows")
+    .getByText(/file-299.txt/)
+    .waitFor()
+  await page.evaluate(() => {
+    const h = (
+      window as unknown as {
+        turnReview: { hold(): void; start(index: number, consumer: string): void; cancel(consumer: string): void }
+      }
+    ).turnReview
+    h.hold()
+    for (let i = 0; i < 6; i++) h.start(i, String(i))
+    h.start(0, "peer")
+    h.cancel("4")
+    h.cancel("0")
+    h.cancel("1")
+  })
+  await page.waitForFunction(() =>
+    (window as unknown as { turnReview: { transports(): Array<{ file: string; aborted: boolean }> } }).turnReview
+      .transports()
+      .some((x) => x.file === "file-5.txt"),
+  )
+  const facts = () =>
+    page.evaluate(() =>
+      (
+        window as unknown as { turnReview: { transports(): Array<{ file: string; aborted: boolean }> } }
+      ).turnReview.transports(),
+    )
+  expect((await facts()).filter((x) => x.file === "file-0.txt")).toEqual([
+    { file: "file-0.txt", aborted: false },
+    { file: "file-0.txt", aborted: false },
+  ])
+  expect((await facts()).filter((x) => x.file === "file-1.txt").every((x) => x.aborted)).toBe(true)
+  expect((await facts()).some((x) => x.file === "file-4.txt")).toBe(false)
+  await page.evaluate(() => (window as unknown as { turnReview: { release(): void } }).turnReview.release())
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  expect((await facts()).some((x) => x.file === "file-4.txt")).toBe(false)
+  await page.evaluate(() =>
+    (window as unknown as { turnReview: { start(index: number, consumer: string): void } }).turnReview.start(
+      4,
+      "retry",
+    ),
+  )
+  await page.waitForFunction(() =>
+    (window as unknown as { turnReview: { transports(): Array<{ file: string; aborted: boolean }> } }).turnReview
+      .transports()
+      .some((x) => x.file === "file-4.txt"),
+  )
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("mobile expanded content adopts the explicitly refreshed comparison while retaining its disclosure", async () => {
+  await page.goto(base + "?turn&mobile")
+  const file = page.getByText("file-0.txt", { exact: true })
+  await file.click()
+  await page.getByText("+revision 1", { exact: true }).waitFor()
+  const header = await file.elementHandle()
+  await page.evaluate(() => (window as unknown as { mobileReview: { advance(): void } }).mobileReview.advance())
+  await page.getByRole("button", { name: "Refresh comparison", exact: true }).click()
+  await page.getByText("+revision 2", { exact: true }).waitFor()
+  expect(await header!.evaluate((el) => el.isConnected)).toBe(true)
+  expect(await page.getByText("+revision 1", { exact: true }).count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("mobile file Retry repeats a failed read without refreshing the comparison", async () => {
+  await page.goto(base + "?turn&mobile")
+  const file = page.getByText("file-0.txt", { exact: true })
+  await file.waitFor()
+  await page.evaluate(() => (window as unknown as { mobileReview: { failFile(): void } }).mobileReview.failFile())
+  await file.click()
+  await page.getByRole("button", { name: "Retry loading historical content", exact: true }).click()
+  await page.getByText("+revision 1", { exact: true }).waitFor()
+  const facts = await page.evaluate(() =>
+    (
+      window as unknown as {
+        mobileReview: { facts(): { reads: Array<{ kind: string }>; requests: { comparison: number } } }
+      }
+    ).mobileReview.facts(),
+  )
+  expect(facts.reads.filter((read) => read.kind === "diff")).toHaveLength(2)
+  expect(facts.requests.comparison).toBe(1)
   expect(errors).toEqual([])
 }, 30_000)

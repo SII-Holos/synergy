@@ -226,7 +226,8 @@ test("mobile Review targets a cold root, loads details on expansion and exposes 
   document.body.append(root)
   setComparisonReady(false)
   const [messageID, setMessageID] = createSignal<string | undefined>("cold-root")
-  let restored = 0
+  let restored = 0,
+    closed = 0
   dispose = render(
     () =>
       createComponent(MobileSessionReview, {
@@ -236,12 +237,17 @@ test("mobile Review targets a cold root, loads details on expansion and exposes 
         view: () => ({}) as ReturnType<SessionReviewTabProps["view"]>,
         diffStyle: "unified",
         onRestoreFile: () => restored++,
+        onClose: () => closed++,
       }),
     root,
   )
   await tick()
   expect(requests).toEqual([{ source: "turn", root: "cold-root" }])
   expect(root.textContent).toContain("Loading comparison")
+  const close = root.querySelector<HTMLButtonElement>('[aria-label="Close workspace"]')
+  expect(close).not.toBeNull()
+  close!.click()
+  expect(closed).toBe(1)
   expect(root.querySelector("section")).toBeNull()
   setFailure(new Error("Comparison unavailable"))
   await tick()

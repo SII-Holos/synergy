@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js"
+import { batch, createEffect, createMemo, createResource, createSignal, onCleanup } from "solid-js"
 import { useParams } from "@/context/session-route"
 import { useSDK } from "@/context/sdk"
 import { useFile } from "@/context/file"
@@ -6,6 +6,7 @@ import { useSync } from "@/context/sync"
 import { useLingui } from "@lingui/solid"
 import { reviewCopy as C } from "./review-copy"
 import { createReviewReadQueue } from "./review-read-queue"
+import { createSharedRequests } from "@/utils/shared-requests"
 import { reviewFileKey } from "@ericsanchezok/synergy-ui/session-review"
 import type {
   FileDiff,
@@ -47,6 +48,7 @@ export function useReviewData(input: {
   const pending = new Map<string, Promise<ReviewContent | undefined>>()
   const failures = new Map<string, string>()
   const queue = createReviewReadQueue(4)
+  const readers = createSharedRequests({ capacity: 0 })
   let controller = new AbortController()
   let comparisonController = new AbortController()
   let notesController = new AbortController()
@@ -147,8 +149,10 @@ export function useReviewData(input: {
     pending.clear()
     failures.clear()
     for (const id of cache.keys()) if (!live.has(id)) cache.delete(id)
-    setAccepted(value)
-    for (const row of rows) if (loaded.has(reviewFileKey(row))) void load(row, true)
+    batch(() => {
+      setAccepted(value)
+      for (const row of rows) if (loaded.has(reviewFileKey(row))) void load(row, { retry: true })
+    })
     setRevision((value) => value + 1)
     return value
   })
@@ -200,78 +204,86 @@ export function useReviewData(input: {
       setSaving(false)
     }
   }
-  async function load(row: ReviewRow, retry = false) {
+  async function load(row: ReviewRow, options: { retry?: boolean; signal?: AbortSignal } = {}) {
     const id = reviewFileKey(row)
-    if (pending.has(id)) return pending.get(id)
-    if (cache.has(id) && !retry) return cache.get(id)
-    if (failures.has(id) && !retry) return undefined
+    if (options.signal?.aborted) return undefined
+    if (!pending.has(id) && cache.has(id) && !options.retry) return cache.get(id)
+    if (failures.has(id) && !options.retry) return undefined
     failures.delete(id)
     const captured = key(),
       sessionID = params.id!,
       comparisonRevision = context()?.revision,
-      signal = controller.signal
-    const operation = queue
-      .run(signal, async () => {
-        try {
-          let value: ReviewContent
-          if (historical()) {
-            if (!row.workspace) throw new Error(_(C.authorityUnavailable))
-            const query = {
-              sessionID,
-              messageID: input.source() === "turn" ? input.messageID() : undefined,
-              workspaceID: row.workspace.id,
-              generation: row.workspace.generation,
-              file: row.file,
-              revision: comparisonRevision,
-            }
-            const [diff, versions] = await Promise.all([
-              sdk.client.session.files.diff(query, { signal, throwOnError: true }),
-              sdk.client.session.files.versions(query, { signal, throwOnError: true }),
-            ])
-            if (!diff.data || !versions.data) throw new Error(_(C.contentUnavailable))
-            value = {
-              ...versions.data,
-              diff: diff.data,
-              version: `${versions.data.before.version}:${versions.data.after.version}`,
-            }
-          } else {
-            const result = await sdk.client.review.file(
-              { ...gitInput(), file: row.file, version: (row as ReviewComparisonFile).version },
-              { signal, throwOnError: true },
-            )
-            if (!result.data) throw new Error(_(C.contentUnavailable))
-            value = result.data
-          }
-          if (captured !== key() || signal.aborted) return undefined
-          const retained = cache.get(id)
-          cache.set(id, retained?.version === value.version ? retained : value)
-          failures.delete(id)
-          let bytes = [...cache.values()].reduce((total, item) => total + item.before.bytes + item.after.bytes, 0)
-          for (const [old, item] of cache) {
-            if (cache.size <= 48 && bytes <= 24 * 1024 * 1024) break
-            if (old === id) continue
-            cache.delete(old)
-            bytes -= item.before.bytes + item.after.bytes
-          }
-          return value
-        } catch (error) {
-          if (captured === key() && !signal.aborted) failures.set(id, errorText(error))
-          return undefined
-        }
-      })
-      .catch((error: unknown) => {
-        if (!signal.aborted && captured === key()) failures.set(id, errorText(error))
-        return undefined
-      })
-      .finally(() => {
-        if (pending.get(id) === operation) {
-          pending.delete(id)
+      consumer = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal
+    return readers
+      .request(
+        id,
+        (signal) => {
+          const operation = queue
+            .run(signal, async () => {
+              try {
+                let value: ReviewContent
+                if (historical()) {
+                  if (!row.workspace) throw new Error(_(C.authorityUnavailable))
+                  const query = {
+                    sessionID,
+                    messageID: input.source() === "turn" ? input.messageID() : undefined,
+                    workspaceID: row.workspace.id,
+                    generation: row.workspace.generation,
+                    file: row.file,
+                    revision: comparisonRevision,
+                  }
+                  const [diff, versions] = await Promise.all([
+                    sdk.client.session.files.diff(query, { signal, throwOnError: true }),
+                    sdk.client.session.files.versions(query, { signal, throwOnError: true }),
+                  ])
+                  if (!diff.data || !versions.data) throw new Error(_(C.contentUnavailable))
+                  value = {
+                    ...versions.data,
+                    diff: diff.data,
+                    version: `${versions.data.before.version}:${versions.data.after.version}`,
+                  }
+                } else {
+                  const result = await sdk.client.review.file(
+                    { ...gitInput(), file: row.file, version: (row as ReviewComparisonFile).version },
+                    { signal, throwOnError: true },
+                  )
+                  if (!result.data) throw new Error(_(C.contentUnavailable))
+                  value = result.data
+                }
+                if (captured !== key() || signal.aborted) return undefined
+                const retained = cache.get(id)
+                cache.set(id, retained?.version === value.version ? retained : value)
+                failures.delete(id)
+                let bytes = [...cache.values()].reduce((total, item) => total + item.before.bytes + item.after.bytes, 0)
+                for (const [old, item] of cache) {
+                  if (cache.size <= 48 && bytes <= 24 * 1024 * 1024) break
+                  if (old === id) continue
+                  cache.delete(old)
+                  bytes -= item.before.bytes + item.after.bytes
+                }
+                return value
+              } catch (error) {
+                if (captured === key() && !signal.aborted) failures.set(id, errorText(error))
+                return undefined
+              }
+            })
+            .catch((error: unknown) => {
+              if (!signal.aborted && captured === key()) failures.set(id, errorText(error))
+              return undefined
+            })
+            .finally(() => {
+              if (pending.get(id) === operation) {
+                pending.delete(id)
+                setRevision((value) => value + 1)
+              }
+            })
+          pending.set(id, operation)
           setRevision((value) => value + 1)
-        }
-      })
-    pending.set(id, operation)
-    setRevision((value) => value + 1)
-    return operation
+          return operation
+        },
+        { signal: consumer, ttlMs: 0 },
+      )
+      .catch(() => undefined)
   }
   return {
     key,

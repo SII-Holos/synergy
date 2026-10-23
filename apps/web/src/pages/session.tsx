@@ -2521,6 +2521,7 @@ function SessionPageContent() {
             <div class="flex h-full min-h-0 flex-col">
               <div class="flex-1 min-h-0 overflow-auto">
                 <MobileSessionReview
+                  onClose={() => setStore("mobileReviewOpen", false)}
                   messageID={store.mobileReviewMessageID}
                   workspace={() => file.workspace}
                   title={
