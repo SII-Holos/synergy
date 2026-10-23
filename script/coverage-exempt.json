@@ -1521,6 +1521,18 @@
         {
           "glob": "src/components/text-selection/selection-toolbar.tsx",
           "reason": "Real selection, copy, quote dispatch and stale asynchronous action completion run in test/components/text-selection/toolbar.dom.test.ts through Vite/Chromium, outside Bun coverage. Controller, ownership and positioning have direct unit coverage."
+        },
+        {
+          "glob": "src/components/session/welcome/pointer.ts",
+          "reason": "Browser-only media-query wrapper exercised by the touch-first and mouse-copy cases in apps/web/test/components/session/welcome/stage.dom.test.tsx. Chromium execution does not contribute Bun source LCOV."
+        },
+        {
+          "glob": "src/components/settings/feature-copy.ts",
+          "reason": "Generated message descriptors verified by script/gen/gen-feature-catalog.ts --check and rendered by the experimental settings browser scenarios; this file contains no runtime behavior."
+        },
+        {
+          "glob": "src/components/settings/panels/ExperimentsPanel.tsx",
+          "reason": "apps/web/test/components/settings/settings-details.dom.test.tsx renders the real panel and controller in Chromium, covering unavailable choices, retained failed drafts, retry, restart status and empty catalogs. The controller remains measured directly; browser rendering does not contribute Bun source LCOV."
         }
       ]
     },
