@@ -82,6 +82,18 @@ export namespace SnapshotSchema {
     ]),
   })
 
+  export function summarizeIssues(issues: readonly z.infer<typeof Issue>[] | undefined) {
+    if (!issues) return
+    const result: z.infer<typeof Issue>[] = []
+    let bytes = 2
+    for (const issue of issues) {
+      bytes += Buffer.byteLength(JSON.stringify(issue)) + 1
+      if (result.length === 32 || bytes > 8 * 1024) break
+      result.push(issue)
+    }
+    return result
+  }
+
   export const FileDiff = z
     .object({
       file: z.string(),

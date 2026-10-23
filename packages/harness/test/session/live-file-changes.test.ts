@@ -258,3 +258,143 @@ test("a failed statistics refresh preserves the last revision and resynchronizes
       },
     })
   }))
+
+test("rejected live publications release unpublished comparison owners before recovery and settlement", () =>
+  runtime.run(async () => {
+    const fs = await import("node:fs/promises")
+    const { Global } = await import("../../src/global")
+    const liveRoot = path.join(Global.Path.cache, "snapshot-live")
+    const before = (await fs.readdir(liveRoot).catch(() => [])).sort()
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const session = await Session.create()
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+        })
+        const input = { sessionID: session.id, rootID: root.id, segmentID: crypto.randomUUID() }
+        const started = summary(session.id, (value) => value.diffState?.status === "live")
+        await SessionFileChanges.begin(input)
+        await started
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const rejected = Promise.withResolvers<void>()
+          using failure = spyOn(SessionSummary, "publishLive").mockImplementation(async () => {
+            rejected.resolve()
+            throw new Error("Publication rejected")
+          })
+          await Bun.write(path.join(directory.path, "file.txt"), `change ${attempt}\n`)
+          WorkspaceObservation.invalidate({ paths: ["file.txt"] })
+          await rejected.promise
+        }
+        const accepted = summary(session.id, (value) => value.diffTotals?.additions === 2)
+        await Bun.write(path.join(directory.path, "file.txt"), "recovered\ncontent\n")
+        WorkspaceObservation.invalidate({ paths: ["file.txt"] })
+        await accepted
+        await SessionFileChanges.finish(input)
+        expect((await fs.readdir(liveRoot)).sort()).toEqual(before)
+      },
+    })
+  }))
+
+test("failed checkpoint admission releases observation before the segment is settled", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        for (const failureAt of [1, 2]) {
+          const session = await Session.create()
+          const root = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            isRoot: true,
+            time: { created: Date.now() },
+            agent: "test",
+            model: { providerID: "test", modelID: "test" },
+          })
+          const input = { sessionID: session.id, rootID: root.id, segmentID: crypto.randomUUID() }
+          const subscribe = WorkspaceObservation.subscribe,
+            update = Session.updatePart
+          let closed = 0,
+            writes = 0
+          using observation = spyOn(WorkspaceObservation, "subscribe").mockImplementation(async (listener) => {
+            const watcher = await subscribe(listener)
+            return {
+              ...watcher,
+              close() {
+                closed++
+                watcher.close()
+              },
+            }
+          })
+          {
+            using failure = spyOn(Session, "updatePart").mockImplementation(
+              Object.assign(
+                async (part: Parameters<typeof update>[0]) => {
+                  if (++writes === failureAt) throw new Error("Checkpoint rejected")
+                  return update(part)
+                },
+                { force: update.force, schema: update.schema },
+              ),
+            )
+            await expect(SessionFileChanges.begin(input)).rejects.toThrow("Checkpoint rejected")
+          }
+          try {
+            expect(closed).toBe(1)
+          } finally {
+            await SessionFileChanges.finish(input)
+          }
+        }
+      },
+    })
+  }))
+
+test("large omission inventories keep live publications bounded and preserve checkpoint evidence", () =>
+  runtime.run(async () => {
+    const fs = await import("node:fs/promises")
+    await using directory = await tmpdir()
+    for (let index = 0; index < 512; index++) {
+      const file = await fs.open(path.join(directory.path, `${index}-${"x".repeat(180)}.txt`), "w")
+      await file.truncate(2 * 1024 * 1024 + 1)
+      await file.close()
+    }
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const session = await Session.create()
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+        })
+        const input = { sessionID: session.id, rootID: root.id, segmentID: crypto.randomUUID() }
+        const observed = summary(session.id, (value) => value.diffState?.status === "live")
+        await SessionFileChanges.begin(input)
+        try {
+          const value = await observed
+          expect(value.diffState).toEqual({ status: "live", code: "incomplete" })
+          expect(value.diffIssues?.length).toBeGreaterThan(0)
+          expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThan(10 * 1024)
+          const current = await SessionFileChangeView.current(session.id)
+          expect(Buffer.byteLength(JSON.stringify(current))).toBeLessThan(10 * 1024)
+          const original = await MessageV2.get({ sessionID: session.id, messageID: root.id })
+          const checkpoint = original.parts.find((part) => part.type === "patch")
+          expect(checkpoint?.type === "patch" && checkpoint.checkpoint?.baselineOmissions).toHaveLength(512)
+        } finally {
+          await SessionFileChanges.finish(input)
+        }
+      },
+    })
+  }))

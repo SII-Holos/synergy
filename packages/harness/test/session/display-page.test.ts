@@ -535,3 +535,28 @@ test("latest display pages rebuild only a bounded window when the projection is 
       },
     })
   }))
+
+test("display projection bounds omission diagnostics without changing canonical evidence", () => {
+  const info: MessageV2.User = {
+    id: "msg_test",
+    sessionID: "ses_test",
+    role: "user",
+    isRoot: true,
+    time: { created: 1 },
+    agent: "test",
+    model: { providerID: "test", modelID: "test" },
+    summary: {
+      diffs: [],
+      diffState: { status: "partial", code: "incomplete" },
+      diffTotals: { files: 300, additions: 900, deletions: 1 },
+      diffIssues: Array.from({ length: 1000 }, (_, index) => ({
+        file: `${index}-${"x".repeat(400)}`,
+        code: "size_limit",
+      })),
+    },
+  }
+  const projected = SessionHistoryDisplay.summarizeMessage(info)
+  expect(Buffer.byteLength(JSON.stringify(projected.info))).toBeLessThan(10 * 1024)
+  expect(projected.info.role === "user" && projected.info.summary?.diffTotals?.files).toBe(300)
+  expect(info.summary?.diffIssues).toHaveLength(1000)
+})

@@ -165,7 +165,9 @@ export namespace SnapshotLive {
           JSON.stringify({ pid: process.pid, identity: await processStartIdentity(process.pid) }),
           { mode: 0o600 },
         )
-        await SnapshotStore.initializeBareRepository(operation.repository)
+        // Provenance: https://git-scm.com/docs/git-config#Documentation/git-config.txt-corefsync
+        // Runtime-only objects expire after restart; durable checkpoints retain the store's fsync policy.
+        await SnapshotStore.initializeBareRepository(operation.repository, "transient")
         await fs.writeFile(
           path.join(operation.repository, "objects/info/alternates"),
           path.join(source.repository, "objects") + "\n",

@@ -58,7 +58,9 @@ export namespace SessionFileChangeView {
         Identifier.asMessageID(rootID),
       ),
     )
-    const summary = root.summary ? { ...root.summary, diffs: [] } : undefined
+    const summary = root.summary
+      ? { ...root.summary, diffs: [], diffIssues: SnapshotSchema.summarizeIssues(root.summary.diffIssues) }
+      : undefined
     if (summary?.diffRevision && !state().views.has(summary.diffRevision))
       summary.diffState = { status: "error", code: "incomplete" }
     return { rootID, createdAt: root.time.created, summary }

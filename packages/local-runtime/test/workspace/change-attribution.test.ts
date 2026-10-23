@@ -99,8 +99,16 @@ test("twenty parallel tools and concurrent writers produce two workspace capture
           expect(await a.patches()).toEqual([])
           const diffs = await Session.diff(a.session.id)
           expect(diffs).toHaveLength(1)
-          expect(diffs[0]!.patch).toContain("-dirty baseline")
-          expect(diffs[0]!.patch).toContain("+final")
+          expect(diffs[0]!.patch).toBeUndefined()
+          const full = await SessionHistory.fileDiff({
+            sessionID: a.session.id,
+            messageID: a.user.id,
+            workspaceID: diffs[0]!.workspace!.id,
+            generation: diffs[0]!.workspace!.generation,
+            file: diffs[0]!.file,
+          })
+          expect(full.patch).toContain("-dirty baseline")
+          expect(full.patch).toContain("+final")
           expect((await Session.get(a.session.id)).summary?.diffState).toEqual({ status: "ready" })
         } finally {
           captures.mockRestore()
@@ -187,7 +195,15 @@ test(
             expect(await Session.diff(a.session.id)).toEqual(frozen)
             await SessionFileChanges.begin({ ...a.input, segmentID: "continuation" })
             await SessionFileChanges.finish({ ...a.input, segmentID: "continuation" })
-            expect((await Session.diff(a.session.id))[0]!.patch).toContain("+late output")
+            const diff = (await Session.diff(a.session.id))[0]!
+            const full = await SessionHistory.fileDiff({
+              sessionID: a.session.id,
+              messageID: a.user.id,
+              workspaceID: diff.workspace!.id,
+              generation: diff.workspace!.generation,
+              file: diff.file,
+            })
+            expect(full.patch).toContain("+late output")
           } finally {
             await owned?.stop()
           }

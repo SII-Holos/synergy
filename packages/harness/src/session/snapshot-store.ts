@@ -354,7 +354,7 @@ export namespace SnapshotStore {
       throw new StorageError("Shared snapshots have an external object dependency")
   }
 
-  export async function initializeBareRepository(repo: string) {
+  export async function initializeBareRepository(repo: string, durability: "durable" | "transient" = "durable") {
     await fs.mkdir(path.dirname(repo), { recursive: true })
     if (!(await SnapshotPath.exists(path.join(repo, "HEAD")))) {
       // Provenance: https://git-scm.com/docs/git-init (GIT_DEFAULT_HASH).
@@ -377,7 +377,7 @@ export namespace SnapshotStore {
       ["gc.auto", "0"],
       ["maintenance.auto", "false"],
       ["core.logAllRefUpdates", "false"],
-      ["core.fsync", "objects,reference,pack-metadata"],
+      ["core.fsync", durability === "transient" ? "none" : "objects,reference,pack-metadata"],
       ["core.fsyncMethod", "fsync"],
     ])
       await command(repo, ["config", key, value])

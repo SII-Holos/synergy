@@ -441,6 +441,7 @@ export namespace SessionSummary {
         diffs: fresh.summary?.diffs ?? [],
         ...fresh.summary,
         ...patch,
+        diffIssues: SnapshotSchema.summarizeIssues(patch.diffIssues ?? fresh.summary?.diffIssues),
         ...(patch.diffState?.status === "live"
           ? { diffHasChanges: fresh.summary?.diffHasChanges || !!patch.diffTotals?.files }
           : {}),

@@ -131,3 +131,27 @@ test("large live refreshes release every raw-content batch after hashing", () =>
       },
     })
   }))
+
+test("new Runtime observation reclaims proven abandoned repositories while preserving live and unknown owners", async () => {
+  await using fresh = await testRuntime()
+  await fresh.run(async () => {
+    const { Global } = await import("../../src/global")
+    const root = path.join(Global.Path.cache, "snapshot-live")
+    const child = Bun.spawn([process.execPath, "--eval", "process.exit(0)"], { stdout: "ignore", stderr: "ignore" })
+    await child.exited
+    await Bun.write(path.join(root, "live-abandoned", "owner.json"), JSON.stringify({ pid: child.pid }))
+    await Bun.write(path.join(root, "live-running", "owner.json"), JSON.stringify({ pid: process.pid }))
+    await Bun.write(path.join(root, "live-unknown", "partial"), "preserve")
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const from = (await Snapshot.track("recover-live"))!
+        const live = await SnapshotLive.create("recover-live", from)
+        await live.close()
+        expect((await fs.readdir(root)).sort()).toEqual(["live-running", "live-unknown"])
+        expect(await Snapshot.statistics(from, from, "recover-live")).toEqual([])
+      },
+    })
+  })
+})

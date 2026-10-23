@@ -128,71 +128,78 @@ export namespace SessionFileChanges {
               schedule(segment)
             }).catch(() => ({ available: false, close() {} }))
           : { available: false, close() {} }
-        available = watcher.available
-        let part: MessageV2.PatchPart = {
-          id: Identifier.ascending("part"),
-          sessionID: segment.sessionID,
-          messageID: segment.rootID,
-          type: "patch",
-          hash: "",
-          files: [],
-          workspace:
-            source.backend?.provider === "objects"
-              ? { id: source.id, generation: source.binding.generation, root: "", pathKind: "workspace" }
-              : Snapshot.workspace(),
-          checkpoint: {
-            version: 1,
-            rootID: segment.rootID,
-            segmentID: segment.segmentID,
-            started: Date.now(),
-            status: "pending",
-          },
-        }
-        await Session.updatePart(part)
+        let result: Capture | undefined
         try {
-          const { hash, omissions } = await capture(segment, source, `${part.id}:start`)
-          if (!hash) throw new Error("Snapshot baseline unavailable")
-          part = { ...part, hash, checkpoint: { ...part.checkpoint!, baselineOmissions: omissions } }
-        } catch (error) {
-          log.warn("baseline capture failed", { error })
-          part = { ...part, checkpoint: { ...part.checkpoint!, status: "incomplete", error: "baseline_unavailable" } }
-        }
-        await Session.updatePart(part)
-        const previous = segment.prior.find(
-          (range) => range.workspace?.id === source.id && range.workspace.generation === source.binding.generation,
-        )
-        const baseline = previous ? previous.from : part.hash
-        const baselineOmissions = previous?.baselineOmissions ?? part.checkpoint?.baselineOmissions ?? []
-        const result: Capture = {
-          workspace,
-          source,
-          part,
-          dirty,
-          needsResync: false,
-          get available() {
-            return available
-          },
-          close: watcher.close,
-          diffs: [],
-          issues: [],
-          baselineOmissions,
-          legacy: previous?.issue === "legacy_range",
-        }
-        if (workspace && baseline && part.hash) {
-          try {
-            result.live = await SnapshotLive.create(segment.sessionID, baseline, part.hash)
-            const revision = await result.live.refresh([], part.checkpoint?.baselineOmissions)
-            Object.assign(result, { revision, ...(await readFiles(segment, result, revision)) })
-          } catch (error) {
-            log.warn("live capture unavailable", { error })
-            result.issues.push({ workspace: part.workspace, code: "capture_failed" })
-            result.needsResync = true
+          available = watcher.available
+          let part: MessageV2.PatchPart = {
+            id: Identifier.ascending("part"),
+            sessionID: segment.sessionID,
+            messageID: segment.rootID,
+            type: "patch",
+            hash: "",
+            files: [],
+            workspace:
+              source.backend?.provider === "objects"
+                ? { id: source.id, generation: source.binding.generation, root: "", pathKind: "workspace" }
+                : Snapshot.workspace(),
+            checkpoint: {
+              version: 1,
+              rootID: segment.rootID,
+              segmentID: segment.segmentID,
+              started: Date.now(),
+              status: "pending",
+            },
           }
+          await Session.updatePart(part)
+          try {
+            const { hash, omissions } = await capture(segment, source, `${part.id}:start`)
+            if (!hash) throw new Error("Snapshot baseline unavailable")
+            part = { ...part, hash, checkpoint: { ...part.checkpoint!, baselineOmissions: omissions } }
+          } catch (error) {
+            log.warn("baseline capture failed", { error })
+            part = { ...part, checkpoint: { ...part.checkpoint!, status: "incomplete", error: "baseline_unavailable" } }
+          }
+          await Session.updatePart(part)
+          const previous = segment.prior.find(
+            (range) => range.workspace?.id === source.id && range.workspace.generation === source.binding.generation,
+          )
+          const baseline = previous ? previous.from : part.hash
+          const baselineOmissions = previous?.baselineOmissions ?? part.checkpoint?.baselineOmissions ?? []
+          result = {
+            workspace,
+            source,
+            part,
+            dirty,
+            needsResync: false,
+            get available() {
+              return available
+            },
+            close: watcher.close,
+            diffs: [],
+            issues: [],
+            baselineOmissions,
+            legacy: previous?.issue === "legacy_range",
+          }
+          if (workspace && baseline && part.hash) {
+            try {
+              result.live = await SnapshotLive.create(segment.sessionID, baseline, part.hash)
+              const revision = await result.live.refresh([], part.checkpoint?.baselineOmissions)
+              Object.assign(result, { revision, ...(await readFiles(segment, result, revision)) })
+            } catch (error) {
+              log.warn("live capture unavailable", { error })
+              result.issues.push({ workspace: part.workspace, code: "capture_failed" })
+              result.needsResync = true
+            }
+          }
+          if (!baseline) result.issues.push({ workspace: part.workspace, code: "baseline_unavailable" })
+          if (!result.live && workspace) result.issues.push({ workspace: part.workspace, code: "capture_failed" })
+          schedule(segment)
+          return result
+        } catch (error) {
+          watcher.close()
+          await result?.live?.close()
+          throw error
         }
-        if (!baseline) result.issues.push({ workspace: part.workspace, code: "baseline_unavailable" })
-        if (!result.live && workspace) result.issues.push({ workspace: part.workspace, code: "capture_failed" })
-        schedule(segment)
-        return result
       },
     })
     segment.captures.set(identity, pending)
@@ -450,26 +457,30 @@ export namespace SessionFileChanges {
         ),
       ],
     })
-    const { SessionSummary } = await import("./summary")
-    const accepted = await SessionSummary.publishLive({
-      sessionID: segment.sessionID,
-      messageID: segment.rootID,
-      diffs: [],
-      diffState: recording,
-      diffIssues: issues,
-      diffTotals: SnapshotSchema.totals(files),
-      diffRevision: revision,
-      diffObservedAt: Date.now(),
-      valid: () =>
-        !segment.closed &&
-        state().get(key(segment)) === segment &&
-        segment.historyRevision === SessionManager.historyRevision(segment.sessionID),
-    })
-    if (!accepted) return SessionFileChangeView.releaseCurrent(revision)
-    const previous = segment.revision
-    segment.revision = revision
-    segment.fingerprint = fingerprint
-    await SessionFileChangeView.releaseCurrent(previous)
+    try {
+      const { SessionSummary } = await import("./summary")
+      const accepted = await SessionSummary.publishLive({
+        sessionID: segment.sessionID,
+        messageID: segment.rootID,
+        diffs: [],
+        diffState: recording,
+        diffIssues: issues,
+        diffTotals: SnapshotSchema.totals(files),
+        diffRevision: revision,
+        diffObservedAt: Date.now(),
+        valid: () =>
+          !segment.closed &&
+          state().get(key(segment)) === segment &&
+          segment.historyRevision === SessionManager.historyRevision(segment.sessionID),
+      })
+      if (!accepted) return
+      const previous = segment.revision
+      segment.revision = revision
+      segment.fingerprint = fingerprint
+      await SessionFileChangeView.releaseCurrent(previous)
+    } finally {
+      if (segment.revision !== revision) await SessionFileChangeView.releaseCurrent(revision)
+    }
   }
 
   async function readFiles(segment: Segment, capture: Capture, revision: string) {
