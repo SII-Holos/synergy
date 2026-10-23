@@ -1,3 +1,4 @@
+import { composeWithExperiments } from "../support/selected-components"
 import { expect, test } from "bun:test"
 import { RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
@@ -33,7 +34,7 @@ async function open(home: string, selected: RuntimeComponent[]) {
     server(),
     ...selected,
   ])
-  const composition = RuntimeComponents.compose(components)
+  const composition = composeWithExperiments(components)
   const adapters = await Promise.all(
     components.flatMap((item) => (item.adapters?.http ? [import(item.adapters.http.href)] : [])),
   )

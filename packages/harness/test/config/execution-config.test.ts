@@ -25,7 +25,7 @@ test("legacy optional execution fields remain intact when their owners are absen
     expect(source.experimental.coauthor_reminder).toBe(false)
   }))
 
-test("legacy environment behavior is resolved at the input boundary with explicit false preserved", () =>
+test("retired experimental environment variables are ignored while ordinary legacy configuration still migrates", () =>
   runtime.run(() => {
     expect(
       LegacyExecutionConfig.environment({
@@ -35,9 +35,6 @@ test("legacy environment behavior is resolved at the input boundary with explici
       }),
     ).toEqual({
       execution: { messageCache: { enabled: false } },
-      formatter: { oxfmt: { disabled: false } },
-      toolExposure: { lsp: true },
-      lsp: { ty: { disabled: false }, pyright: { disabled: true } },
     })
     expect(LegacyExecutionConfig.environment({ SYNERGY_DISABLE_PRUNE: "false" })).toEqual({})
   }))

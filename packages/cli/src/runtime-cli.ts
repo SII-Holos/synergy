@@ -9,10 +9,30 @@ import { loadHttpAdapters } from "@ericsanchezok/synergy-agent-runtime/adapters"
 import { loadCliAdapters } from "./cli/components"
 import { runtimeCommands } from "./cli/runtime-commands"
 import type { CliOptions } from "./main"
+import { FeatureSelection, type FeaturePlan } from "@ericsanchezok/synergy-util/features"
 
-export async function createRuntimeCli(components: readonly RuntimeComponent[] = []): Promise<CliOptions> {
-  const selected = RuntimeComponents.resolve([localRuntime({ workers: false }), plugins(), ...components])
-  const composition = RuntimeComponents.compose(selected)
+export interface RuntimeSelection {
+  features?: FeaturePlan
+  maintenance?: readonly URL[]
+}
+
+export async function createRuntimeCli(
+  components: readonly RuntimeComponent[] = [],
+  selection: RuntimeSelection = {},
+): Promise<CliOptions> {
+  const core = [localRuntime({ workers: false }), plugins()]
+  const corePlan = FeatureSelection.resolve(core)
+  const features = selection.features
+    ? {
+        ...selection.features,
+        definitions: [...corePlan.definitions, ...selection.features.definitions],
+        selection: [...corePlan.selection, ...selection.features.selection],
+        components: [...new Set([...corePlan.components, ...selection.features.components])],
+        requirements: { ...corePlan.requirements, ...selection.features.requirements },
+      }
+    : FeatureSelection.resolve([...core, ...components])
+  const selected = RuntimeComponents.resolve([...core, ...components], features)
+  const composition = RuntimeComponents.compose(selected, features)
   const http = selected.some((component) => component.hosts?.includes("http"))
   const routes = http ? await loadHttpAdapters(selected) : []
   const open = async (options: LocalRuntimeOptions, listen: boolean) => {
@@ -22,6 +42,7 @@ export async function createRuntimeCli(components: readonly RuntimeComponent[] =
       host,
       home: host.root,
       components: [localRuntime({ workers: false, environment: options.environment }), plugins(), ...components],
+      features,
       listen,
     })
   }
@@ -41,7 +62,7 @@ export async function createRuntimeCli(components: readonly RuntimeComponent[] =
       composition.register()
       for (const route of routes) route.registerHttp()
       ConfigExtensions.completeRegistration()
-      registerRuntimeWorkers(selected)
+      registerRuntimeWorkers(selected, features)
     },
     commands: [
       ...runtimeCommands({ adapters, openHttp, http, web: selected.some((component) => component.id === "web-app") }),

@@ -46,7 +46,8 @@
       "bun": "./src/component.ts",
       "types": "./src/component.ts",
       "import": "./dist/component.js"
-    }
+    },
+    "./features": "./src/features.ts"
   },
   "files": [
     "dist"
@@ -91,6 +92,10 @@
     "export": "pluginKit",
     "requires": {
       "plugin-host": "1.1.26"
+    },
+    "features": {
+      "kind": "foundation",
+      "definitions": []
     }
   }
 }

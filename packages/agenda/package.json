@@ -49,7 +49,8 @@
     "./http": "./src/http.ts",
     "./session-schema": "./src/session-schema.ts",
     "./tool-group-agenda": "./src/tool-group-agenda.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -86,6 +87,20 @@
     "export": "agenda",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "agenda",
+          "owner": "agenda",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Agenda",
+          "description": "Provide agenda capabilities.",
+          "component": "agenda"
+        }
+      ]
     }
   },
   "peerDependencies": {

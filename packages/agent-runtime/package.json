@@ -19,7 +19,7 @@
   "dependencies": {
     "@ericsanchezok/synergy-harness": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
-    "zod": "catalog:"
+    "@ericsanchezok/synergy-util": "workspace:*"
   },
   "devDependencies": {
     "@ericsanchezok/synergy-formatter": "workspace:*",

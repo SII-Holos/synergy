@@ -17,6 +17,8 @@ import { Auth } from "../provider/api-key"
 import { registerBuiltinProviderProfiles } from "../provider/builtin"
 import { ProviderProfile } from "../provider/profile"
 import { LegacyExecutionConfig } from "./legacy-execution"
+import { retireFeaturePreferences } from "./feature-migration"
+import { Features } from "../lifecycle/features"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -469,6 +471,22 @@ export async function migrateExecutionConfigFile(filepath: string): Promise<bool
 }
 
 export const migrations: Migration[] = [
+  {
+    scope: "global",
+    execution: "startup",
+    configuration: "files",
+    id: "20261023-feature-preferences",
+    description: "Normalize experimental opt-ins without changing dormant feature data",
+    async up(progress) {
+      await retireFeaturePreferences(
+        Global.Path.config,
+        Features.catalog()
+          .filter((feature) => feature.definition?.maturity === "stable")
+          .map((feature) => feature.id),
+      )
+      progress(1, 1)
+    },
+  },
   {
     scope: "global",
     execution: "startup",

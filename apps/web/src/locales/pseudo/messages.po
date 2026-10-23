@@ -13133,6 +13133,238 @@ msgid "execution.wrap"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "features.acp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.acp.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.agenda.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.agenda.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.anima.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.anima.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.boss.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.boss.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.browser.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.browser.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channels.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.channels.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.computer.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.computer.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.email.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.email.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.formatter.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.formatter.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.github.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.holos.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.holos.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.kanban.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.kanban.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lattice.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lattice.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.library.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.library.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lsp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.lsp.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.mcp.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.mcp.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.media.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.media.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.note.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.note.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.workbench.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.workbench.name"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "files.close.description"
 msgstr ""
 
@@ -20679,6 +20911,66 @@ msgstr "⟦On⟧"
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
 msgstr "⟦Paused⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.dependencyUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.live"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.notInstalled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.restart"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.saveFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unsaved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unselected"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.balanced"

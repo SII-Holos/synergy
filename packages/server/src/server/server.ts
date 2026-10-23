@@ -1,3 +1,4 @@
+import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { ProjectionPatch } from "@ericsanchezok/synergy-util/projection-patch"
 import { projectionContent } from "./projection-content"
 import {
@@ -578,7 +579,7 @@ export namespace Server {
     return [
       ...new Set(
         [...runtimeState().contributionOwners].flatMap(([owner, contribution]) =>
-          selected.has(owner) ? (contribution.features ?? []) : [],
+          selected.has(owner) ? (contribution.features ?? []).filter((id) => Features.enabled(id)) : [],
         ),
       ),
     ].sort()
@@ -874,6 +875,29 @@ export namespace Server {
       .use(compress({ encoding: "gzip" }))
       .use(provideRequestScope)
       .use(cspMiddleware())
+      .get(
+        "/global/features",
+        describeRoute({
+          summary: "Get feature catalog",
+          description:
+            "List feature declarations, saved opt-ins, active state and restart requirements for this instance.",
+          operationId: "global.features",
+          responses: {
+            200: {
+              description: "Runtime feature catalog",
+              content: { "application/json": { schema: resolver(z.array(Features.Status)) } },
+            },
+            503: {
+              description: "Runtime services are not ready",
+              content: { "application/json": { schema: resolver(z.object({ error: z.string() })) } },
+            },
+          },
+        }),
+        async (c) => {
+          if (!RuntimeContext.isReady()) return c.json({ error: "Runtime services are not ready" }, 503)
+          return c.json(Features.catalog((await Config.global()).features?.optIn ?? []))
+        },
+      )
       .get(
         "/global/capabilities",
         describeRoute({

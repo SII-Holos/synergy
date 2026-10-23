@@ -43,6 +43,7 @@
     "NOTICE"
   ],
   "dependencies": {
+    "jsonc-parser": "3.3.1",
     "marked": "catalog:",
     "zod": "catalog:"
   },

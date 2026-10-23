@@ -10,6 +10,26 @@ export type RuntimeComponentInfo = {
   apiVersion: 1
 }
 
+export type FeatureDefinition = {
+  id: string
+  owner: string
+  maturity: "experimental" | "stable"
+  activation: "live" | "restart"
+  name: string
+  description: string
+  component?: string
+}
+
+export type FeatureStatus = {
+  id: string
+  definition?: FeatureDefinition
+  selected: boolean
+  available: boolean
+  enabled: boolean
+  pendingRestart: boolean
+  reason?: "not-installed" | "component-unselected" | "dependency-unavailable" | "restart-required"
+}
+
 export type RuntimeCapabilities = {
   apiVersion: 1
   hostVersion: string
@@ -6698,6 +6718,12 @@ export type LayoutConfig = "auto" | "stretch"
 
 export type Config = {
   /**
+   * Global experimental feature opt-ins; empty by default. Component changes apply after restart.
+   */
+  features?: {
+    optIn: Array<string>
+  }
+  /**
    * JSON schema reference for configuration validation
    */
   $schema?: string
@@ -7479,6 +7505,7 @@ export type ConfigInstructionsUpdateInput = {
 
 export type ConfigDomainSummary = {
   id:
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7540,6 +7567,7 @@ export type ConfigExportResult = {
   scopeID: string
   secretsIncluded: boolean
   domains: Array<
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7601,6 +7629,7 @@ export type ConfigDomainImportChange = {
 
 export type ConfigDomainImportDomainPlan = {
   id:
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7659,6 +7688,7 @@ export type ConfigImportSourceTooLargeError = {
 export type ConfigDomainImportPlanInput = {
   config: Config
   only?: Array<
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -7747,6 +7777,7 @@ export type ConfigImportRevisionConflictError = {
   data: {
     message: string
     domains: Array<
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -7783,6 +7814,7 @@ export type ConfigImportLockedError = {
 export type ConfigDomainImportApplyInput = {
   config: Config
   only?: Array<
+    | "features"
     | "general"
     | "models"
     | "providers"
@@ -15602,6 +15634,33 @@ export type HostConnectionPeersResponses = {
 
 export type HostConnectionPeersResponse = HostConnectionPeersResponses[keyof HostConnectionPeersResponses]
 
+export type GlobalFeaturesData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/features"
+}
+
+export type GlobalFeaturesErrors = {
+  /**
+   * Runtime services are not ready
+   */
+  503: {
+    error: string
+  }
+}
+
+export type GlobalFeaturesError = GlobalFeaturesErrors[keyof GlobalFeaturesErrors]
+
+export type GlobalFeaturesResponses = {
+  /**
+   * Runtime feature catalog
+   */
+  200: Array<FeatureStatus>
+}
+
+export type GlobalFeaturesResponse = GlobalFeaturesResponses[keyof GlobalFeaturesResponses]
+
 export type GlobalCapabilitiesData = {
   body?: never
   path?: never
@@ -18714,6 +18773,7 @@ export type ConfigDomainGetData = {
   body?: never
   path: {
     domain:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18769,6 +18829,7 @@ export type ConfigDomainUpdateData = {
   body?: ConfigDomainUpdateInput
   path: {
     domain:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18824,6 +18885,7 @@ export type ConfigDomainOpenData = {
   body?: never
   path: {
     domain:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18887,6 +18949,7 @@ export type ConfigExportData = {
     scopeID?: string
     scope?: ConfigImportScope
     only?:
+      | "features"
       | "general"
       | "models"
       | "providers"
@@ -18909,6 +18972,7 @@ export type ConfigExportData = {
       | "mcp"
       | "voice"
       | Array<
+          | "features"
           | "general"
           | "models"
           | "providers"

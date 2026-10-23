@@ -10,7 +10,8 @@
     "./register": "./src/register.ts",
     "./tools/channel-push": "./src/tools/channel-push.ts",
     "./tools/channel-push.txt": "./src/tools/channel-push.txt",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -54,6 +55,10 @@
     "packages": {
       "@ericsanchezok/synergy-boss": "1.1.26",
       "@ericsanchezok/synergy-channel-feishu": "1.1.26"
+    },
+    "features": {
+      "kind": "bridge",
+      "definitions": []
     }
   }
 }

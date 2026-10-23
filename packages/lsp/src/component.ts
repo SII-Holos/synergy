@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
 import { LSP } from "."
 import { LSPClient } from "./client"
@@ -15,6 +16,7 @@ import { registerConfig } from "./config-schema"
 export function lsp(): RuntimeComponent {
   return {
     id: "lsp",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

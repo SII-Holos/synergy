@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
 import { registerExternalAgentSessionBridge } from "./session-bridge"
@@ -7,6 +8,7 @@ import { registerConfig } from "./config-schema"
 export function externalAgents(): RuntimeComponent {
   return {
     id: "external-agents",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

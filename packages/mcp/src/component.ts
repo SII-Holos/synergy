@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerAgentPermissions } from "./agent-permissions"
 import { registerResourceSource } from "./resource-source"
 import { BusEvent } from "@ericsanchezok/synergy-harness/bus/bus-event"
@@ -16,6 +17,7 @@ import { registerConfig } from "./config-schema"
 export function mcp(): RuntimeComponent {
   return {
     id: "mcp",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version, "plugin-host": version },

@@ -59,7 +59,9 @@
     "./session/register": "./src/session/register.ts",
     "./session/tool-mode-policy": "./src/session/tool-mode-policy.ts",
     "./session/workflow": "./src/session/workflow.ts",
-    "./worker": "./src/worker.ts"
+    "./worker": "./src/worker.ts",
+    "./features": "./src/features.ts",
+    "./maintenance": "./src/maintenance.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -102,6 +104,21 @@
     },
     "packages": {
       "@ericsanchezok/synergy-blueprint": "1.1.26"
+    },
+    "maintenance": "./dist/maintenance.js",
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "lattice",
+          "owner": "lattice",
+          "maturity": "experimental",
+          "activation": "restart",
+          "name": "Lattice",
+          "description": "Organize and run multi-step workflows.",
+          "component": "lattice"
+        }
+      ]
     }
   },
   "peerDependencies": {

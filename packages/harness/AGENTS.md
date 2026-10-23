@@ -1,6 +1,6 @@
 # harness Package
 
-Own composition, lifecycle and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. Pairing: [Host connections](../../docs/architecture/host-connections.md).
+Own lifecycle, features and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. Pairing: [Host connections](../../docs/architecture/host-connections.md).
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - `SessionExecutionOwners` gates queued and retained execution against selected components. Domains check durable references; `MessageV2` derives historical origins and requirements. Preserve blocked records; new human tasks cannot resume an unavailable predecessor. Persist independent root admission and Agent selection, keeping its execution view separate from canonical Session writes.

@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerReload } from "./reload"
 import { disposeLibrary } from "./register"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -7,6 +8,7 @@ import { registerLibrary } from "./register"
 export function library(): RuntimeComponent {
   return {
     id: "library",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

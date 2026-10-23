@@ -1,7 +1,7 @@
+import { ComponentWorkerPlan } from "@ericsanchezok/synergy-util/worker-plan"
 import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { z } from "zod"
 import { InstallationPin } from "@ericsanchezok/synergy-util/installed-launcher"
 import { InstallationGenerations, type InstalledGeneration } from "./generations"
 import { prepareInstallation } from "./manager"
@@ -78,11 +78,7 @@ export async function prepareInstalledLaunch(
 
 export async function verifyInstalledWorkerPlan(generation: InstalledGeneration, serialized: string | undefined) {
   if (!serialized) throw new Error("An installed component worker requires its pinned composition")
-  const entry = z.object({ id: z.string(), version: z.string(), entry: z.url() }).strict()
-  const plan = z
-    .object({ apiVersion: z.literal(1), agent: z.array(entry), policy: z.array(entry) })
-    .strict()
-    .parse(JSON.parse(serialized))
+  const plan = ComponentWorkerPlan.parse(JSON.parse(serialized))
   for (const item of [...plan.agent, ...plan.policy]) {
     const url = new URL(item.entry)
     if (url.protocol !== "file:") throw new Error("Worker entry must be a sealed local module")

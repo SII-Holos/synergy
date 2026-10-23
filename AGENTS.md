@@ -1,6 +1,6 @@
 # Synergy Repository Rules
 
-Bun/TypeScript monorepo rules. Read the nearest package `AGENTS.md` before editing code. Rules link their rationale. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
+Bun/TypeScript monorepo rules. Read the nearest package `AGENTS.md` before editing code. Placement and budgets follow [docs/AGENTS.md](docs/AGENTS.md).
 
 ## Work from Current Evidence
 
@@ -30,6 +30,8 @@ Checkouts and active Synergy runtimes may be shared.
 - Run source changes in an isolated second home with explicit alternate ports. Load `develop-synergy` for the exact workflow.
 
 Load `git-guide` for worktrees, history, commits, rebases, pushes, and PRs.
+
+Feature development follows [develop-feature](.synergy/skill/develop-feature/SKILL.md).
 
 ## Development Entry Points
 

@@ -13,6 +13,10 @@ import { RUNTIME_STARTUP_PREFIX, RuntimeStartupProgress } from "@ericsanchezok/s
 test("managed CLI upgrades retained owners without scanning cold history and waits for complete readiness", async () => {
   await using tmp = await tmpdir()
   await using home = await runtimeHome({ home: `${tmp.path}/home` })
+  await Bun.write(
+    `${home.host.root}/config/synergy.d/140-features.jsonc`,
+    JSON.stringify({ features: { optIn: ["lattice"] } }),
+  )
   const sessions: Array<{ id: string; kind: "plan" | "lightloop" | "lattice" }> = []
   {
     await using runtime = await PresetRuntimeHandle.openTask({ host: home.host, mode: "oneshot", environment: false })

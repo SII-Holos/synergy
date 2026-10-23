@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { AgentPromptContributions } from "@ericsanchezok/synergy-harness/agent/prompt-contributions"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -12,6 +13,7 @@ import { stopStatusPolling } from "./startup-status"
 export function holos(): RuntimeComponent {
   return {
     id: "holos",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

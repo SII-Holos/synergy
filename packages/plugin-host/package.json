@@ -53,7 +53,8 @@
     "./installation/catalog": "./src/installation/catalog.ts",
     "./installation/manager": "./src/installation/manager.ts",
     "./installation/cli": "./src/installation/cli.ts",
-    "./installation/bootstrap": "./src/installation/bootstrap.ts"
+    "./installation/bootstrap": "./src/installation/bootstrap.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

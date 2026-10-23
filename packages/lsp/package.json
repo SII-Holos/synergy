@@ -16,7 +16,8 @@
     "./cli/debug": "./src/cli/debug.ts",
     "./config-schema": "./src/config-schema.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -64,6 +65,20 @@
     "export": "lsp",
     "requires": {
       "local-runtime": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "lsp",
+          "owner": "lsp",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Lsp",
+          "description": "Provide lsp capabilities.",
+          "component": "lsp"
+        }
+      ]
     }
   }
 }

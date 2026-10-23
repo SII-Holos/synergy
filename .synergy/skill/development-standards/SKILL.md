@@ -39,6 +39,8 @@ description: Route a Synergy source change to the current repository development
 
 Inventory registry versions, release channels, native artifacts and local patches before updating. Upgrade stable compatible groups together; document the smallest retained group when generated APIs or tested product behavior break. A passing compiler does not validate renamed runtime assets, compiler APIs or language-server protocols. Exercise lazy tool initialization, generated SDK calls, a real model turn with tools and image input, and actual native binaries. Keep compiler-API dependencies separate when the compiler no longer exposes that API. Reapply patches against installed sources and verify a frozen-lockfile install before acceptance.
 
+For substantial product additions, prompt/context changes and risky optimizations, load [develop-feature](../develop-feature/SKILL.md). Keep feature choices separate from business parameters and execution experiments.
+
 ## Capture New Rules
 
 A durable development convention is part of the implementation deliverable, not review folklore.

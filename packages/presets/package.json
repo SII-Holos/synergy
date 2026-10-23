@@ -20,7 +20,8 @@
     "./cli/data/pack": "./src/cli/data/pack.ts",
     "./cli/data/move": "./src/cli/data/move.ts",
     "./cli/data/merge": "./src/cli/data/merge.ts",
-    "./component": "./src/component.ts"
+    "./component": "./src/component.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "acceptance": "bun script/acceptance.ts",
@@ -115,7 +116,6 @@
       "note": "1.1.26",
       "agenda": "1.1.26",
       "blueprint": "1.1.26",
-      "lattice": "1.1.26",
       "channels": "1.1.26",
       "holos": "1.1.26"
     },
@@ -127,6 +127,10 @@
       "@ericsanchezok/synergy-lattice": "1.1.26",
       "@ericsanchezok/synergy-channels": "1.1.26",
       "@ericsanchezok/synergy-holos": "1.1.26"
+    },
+    "features": {
+      "kind": "foundation",
+      "definitions": []
     }
   },
   "peerDependencies": {

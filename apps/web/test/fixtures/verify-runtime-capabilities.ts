@@ -33,7 +33,6 @@ if (process.argv[2] === "server") {
       ])
       process.env.SYNERGY_CONFIG_CONTENT = JSON.stringify({
         anima: { enabled: false },
-        boss: { enabled: false },
         holos: { enabled: false },
         library: { experience: { retrieve: false, encode: false } },
         pluginMarketplace: { enabled: false },
@@ -60,6 +59,12 @@ if (process.argv[2] === "server") {
       })
     const module = await import(path.join(repository, `packages/${selected}/src/component.ts`))
     return [...(selected === "blueprint" ? [note()] : []), module[factory]()]
+  }
+  if (selected === "lattice") {
+    await Bun.write(
+      path.join(home!, "config/synergy.d/140-features.jsonc"),
+      JSON.stringify({ features: { optIn: ["lattice"] } }),
+    )
   }
   const runtime = await openAgentRuntime({
     home: home!,

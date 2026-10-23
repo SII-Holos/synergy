@@ -30,7 +30,8 @@
     "./script/embedding-onnxruntime-web": "./script/embedding-onnxruntime-web.ts",
     "./cli/data": "./src/cli/data.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -92,6 +93,20 @@
         "entry": "./dist/vector/runtime-check.js",
         "export": "main"
       }
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "library",
+          "owner": "library",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Library",
+          "description": "Provide library capabilities.",
+          "component": "library"
+        }
+      ]
     }
   }
 }

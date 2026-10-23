@@ -105,6 +105,7 @@ const builtinIconNames = [
   "badge-check",
   "badge-x",
   "ban",
+  "beaker",
   "binoculars",
   "book-down",
   "book-marked",

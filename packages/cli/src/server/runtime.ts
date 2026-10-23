@@ -1,6 +1,7 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { RuntimeHandle } from "@ericsanchezok/synergy-harness/lifecycle"
 import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { runtimeReadyLine } from "@ericsanchezok/synergy-sdk/runtime-ready"
 import { createLocalHost, type LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { DEFAULT_SERVER_PORT } from "@ericsanchezok/synergy-harness/util/server-defaults"
@@ -76,12 +77,13 @@ export async function run(options: RuntimeOptions) {
       const host = RuntimeContext.current().host
       process.stdout.write(
         runtimeReadyLine({
-          protocol: 1,
+          protocol: 2,
           pid: process.pid,
           version: Installation.VERSION,
           home: host.root,
           url: displayUrl(server.hostname ?? network.hostname, server.port ?? network.port),
           components: RuntimeComponents.selected(),
+          selection: Features.selection(),
         }),
       )
     }

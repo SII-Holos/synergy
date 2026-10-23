@@ -1,7 +1,8 @@
-import { For, Show, createMemo, createSignal, onCleanup } from "solid-js"
+import { For, createMemo, createSignal, onCleanup } from "solid-js"
 import type { Accessor, JSX } from "solid-js"
 import { buildPaneSnapshot, type BoardPane } from "../model/pane-selection"
 import { FlipPanes } from "../flip"
+import { createPaneAccessor } from "./pane-accessor"
 
 export function KanbanGrid(props: {
   panes: BoardPane[]
@@ -44,11 +45,14 @@ export function KanbanGrid(props: {
   return (
     <FlipPanes entries={props.panes} class="kanban-grid" rootRef={bindRoot} style={gridStyle()}>
       <For each={snapshot().keys}>
-        {(key) => (
-          <div class="kanban-grid-cell" data-pane-key={key}>
-            <Show when={snapshot().map.get(key)}>{(current) => props.renderPane(current)}</Show>
-          </div>
-        )}
+        {(key) => {
+          const pane = createPaneAccessor(snapshot, key)
+          return (
+            <div class="kanban-grid-cell" data-pane-key={key}>
+              {props.renderPane(pane)}
+            </div>
+          )
+        }}
       </For>
     </FlipPanes>
   )

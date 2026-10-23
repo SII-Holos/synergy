@@ -3,19 +3,19 @@ import { RuntimeContext } from "./context"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { z } from "zod"
+import { FeaturePlan, FeatureSelection, type FeatureComponent } from "@ericsanchezok/synergy-util/features"
+import { Features } from "./features"
 
 // Provenance: docs/decisions/implemented/architecture/2026-09-25-explicit-runtime-components.md
 // Local adaptation: explicit package composition uses Runtime-owned state and separate process plugin execution.
-export interface RuntimeComponent {
-  readonly id: string
+export interface RuntimeComponent extends FeatureComponent {
   readonly apiVersion: 1
-  readonly version: string
-  readonly requires?: Readonly<Record<string, string>>
   readonly after?: readonly string[]
   readonly configKeys?: readonly string[]
   readonly adapters?: { readonly cli?: URL; readonly http?: URL }
   readonly hosts?: readonly ("cli" | "http")[]
   readonly workers?: { readonly agent?: URL; readonly policy?: URL }
+  readonly maintenance?: URL
   register(): void
   services?(): RuntimeServices
 }
@@ -42,14 +42,25 @@ export namespace RuntimeComponents {
     for (const entry of entries) selection().set(entry.id, Object.freeze(entry))
   }
 
-  export function resolve(components: readonly RuntimeComponent[]): RuntimeComponent[] {
+  export function resolve(candidates: readonly RuntimeComponent[], features?: FeaturePlan): RuntimeComponent[] {
     const byID = new Map<string, RuntimeComponent>()
-    for (const component of components) {
+    for (const component of candidates) {
       if (!component.id || !component.version) throw new Error("Component identity and version are required")
       if (component.apiVersion !== 1) throw new Error(`Unsupported component API for ${component.id}`)
       if (byID.has(component.id)) throw new Error(`Duplicate component: ${component.id}`)
       byID.set(component.id, component)
     }
+    if (features) {
+      const versions = new Map(features.selection.map(({ id, version }) => [id, version]))
+      for (const id of features.components) {
+        const component = byID.get(id)
+        if (!component) throw new Error(`Feature plan requires missing component: ${id}`)
+        if (component.version !== versions.get(id))
+          throw new Error(`Component ${id} version does not match its feature plan`)
+      }
+      for (const id of byID.keys()) if (!features.components.includes(id)) byID.delete(id)
+    }
+    const components = [...byID.values()]
     for (const component of components) {
       for (const [id, range] of Object.entries(component.requires ?? {})) {
         const dependency = byID.get(id)
@@ -78,8 +89,12 @@ export namespace RuntimeComponents {
     return ordered
   }
 
-  export function compose(components: readonly RuntimeComponent[]): RuntimeComposition {
-    const ordered = resolve(components)
+  export function compose(
+    components: readonly RuntimeComponent[],
+    features = FeatureSelection.resolve(components),
+  ): RuntimeComposition {
+    const plan = FeaturePlan.parse(features)
+    const ordered = resolve(components, plan)
     const state = RuntimeContext.state(() => ({
       registered: false,
       services: undefined as RuntimeServices | undefined,
@@ -88,6 +103,7 @@ export namespace RuntimeComponents {
       register() {
         if (state().registered) return
         RuntimeContext.assertCompositionOpen("runtime components")
+        Features.register(plan)
         for (const component of ordered) component.register()
         registerSelection(ordered.map(({ id, version, apiVersion }) => ({ id, version, apiVersion })))
         state().registered = true

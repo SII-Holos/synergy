@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { AgendaItemOwners } from "@ericsanchezok/synergy-agenda/agenda/item-owners"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -10,6 +11,7 @@ import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/regi
 export function anima(): RuntimeComponent {
   return {
     id: "anima",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version, library: version, note: version, agenda: version },

@@ -71,10 +71,12 @@ export function parseDefCall(call: string): Domain | null {
   return { id: id.value, filename: filename.value, label: label.value, ownedKeys, mergePolicy: merge?.value ?? "merge" }
 }
 
-export function parseDomainObject(body: string): Domain | null {
+export function parseDomainObject(body: string, constants: Readonly<Record<string, string>> = {}): Domain | null {
   const stringField = (key: string) => {
     const match = body.match(new RegExp(`\\b${key}\\s*:\\s*("(?:\\.|[^"])*"|'(?:\\.|[^'])*')`))
-    return match ? stringLiteral(match[1]!) : null
+    if (match) return stringLiteral(match[1]!)
+    const reference = body.match(new RegExp(`\\b${key}\\s*:\\s*([A-Za-z_$][\\w$]*)`))
+    return reference ? (constants[reference[1]!] ?? null) : null
   }
   const id = stringField("id")
   const filename = stringField("filename")
@@ -112,6 +114,35 @@ async function parseDomains(): Promise<Domain[]> {
   const domains = new Map<string, Domain>()
   for (const file of files) {
     const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true)
+    const constants: Record<string, string> = {}
+    const referenced = new Set(
+      [...source.text.matchAll(/\b(?:id|filename|label|mergePolicy)\s*:\s*([A-Za-z_$][\w$]*)/g)].map(
+        (match) => match[1],
+      ),
+    )
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue
+      const bindings = statement.importClause?.namedBindings
+      if (!bindings || !ts.isNamedImports(bindings)) continue
+      const needed = bindings.elements.filter((binding) => referenced.has(binding.name.text))
+      if (!needed.length) continue
+      const filename = Bun.resolveSync(statement.moduleSpecifier.text, file)
+      const imported = ts.createSourceFile(filename, await readFile(filename, "utf8"), ts.ScriptTarget.Latest, true)
+      for (const declaration of imported.statements
+        .filter(ts.isVariableStatement)
+        .flatMap((item) => [...item.declarationList.declarations])) {
+        if (
+          !ts.isIdentifier(declaration.name) ||
+          !declaration.initializer ||
+          !ts.isStringLiteral(declaration.initializer)
+        )
+          continue
+        for (const binding of needed) {
+          if ((binding.propertyName ?? binding.name).text === declaration.name.text)
+            constants[binding.name.text] = declaration.initializer.text
+        }
+      }
+    }
     function collect(expression: ts.Expression) {
       const array = ts.isSatisfiesExpression(expression) ? expression.expression : expression
       const entries = ts.isArrayLiteralExpression(array)
@@ -121,7 +152,7 @@ async function parseDomains(): Promise<Domain[]> {
           : []
       for (const entry of entries) {
         const domain = ts.isObjectLiteralExpression(entry)
-          ? parseDomainObject(entry.getText(source))
+          ? parseDomainObject(entry.getText(source), constants)
           : ts.isCallExpression(entry)
             ? parseDefCall(entry.arguments.map((arg) => arg.getText(source)).join(", "))
             : null

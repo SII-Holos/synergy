@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerResourceSource } from "./resource-source"
 import { disposeBrowser } from "./register"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
@@ -7,6 +8,7 @@ import { registerBrowser } from "./register"
 export function browser(): RuntimeComponent {
   return {
     id: "browser-runtime",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

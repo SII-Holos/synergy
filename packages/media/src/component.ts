@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerAgentPermissions } from "./agent-permissions"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -10,6 +11,7 @@ import { registerRenderContext } from "./render/context"
 export function media(): RuntimeComponent {
   return {
     id: "media",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

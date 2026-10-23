@@ -112,7 +112,16 @@ export namespace LegacyExecutionConfig {
       }
       return env[key]?.toLowerCase() === "true" || env[key] === "1"
     }
-    const preview = enabled("SYNERGY_EXPERIMENTAL")
+    for (const key of Object.keys(env).filter(
+      (key) => key === "SYNERGY_EXPERIMENTAL" || key.startsWith("SYNERGY_EXPERIMENTAL_"),
+    )) {
+      if (env[key] === undefined || instanceState.warned.has(key)) continue
+      instanceState.warned.add(key)
+      log.warn(
+        "Experimental environment variable is ignored; use Settings > Experimental features or the owning domain configuration",
+        { name: key },
+      )
+    }
     if (enabled("SYNERGY_DISABLE_AUTOCOMPACT")) result.compaction = { auto: false }
     if (enabled("SYNERGY_DISABLE_PRUNE")) result.compaction = { ...(result.compaction as object), prune: false }
     const execution: Record<string, unknown> = {}
@@ -122,9 +131,6 @@ export namespace LegacyExecutionConfig {
     if (Object.keys(cache).length) execution.messageCache = cache
     if (enabled("SYNERGY_DISABLE_LSP_REAP")) execution.lspIdleReap = false
     if (Object.keys(execution).length) result.execution = execution
-    if (enabled("SYNERGY_EXPERIMENTAL_OXFMT") || preview) result.formatter = { oxfmt: { disabled: false } }
-    if (enabled("SYNERGY_EXPERIMENTAL_LSP_TY")) result.lsp = { ty: { disabled: false }, pyright: { disabled: true } }
-    if (enabled("SYNERGY_EXPERIMENTAL_LSP_TOOL") || preview) result.toolExposure = { lsp: true }
     return result
   }
 }

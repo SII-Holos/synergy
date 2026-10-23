@@ -1,3 +1,4 @@
+import { readFeaturePreferences } from "@ericsanchezok/synergy-util/feature-config"
 import { ConfigReferenceMigration } from "./reference-migration"
 import { upgradeImportedConfig } from "../migration/import"
 import { PrimaryAgentIdentity } from "../agent/primary-identity"
@@ -216,6 +217,8 @@ export namespace Config {
       for (const [key, item] of Object.entries(value)) mark(item, source, prefix ? `${prefix}.${key}` : key, defaults)
     }
     function merge(source: Info, layer: Experiment.Source) {
+      if (source.features && layer !== "global_config")
+        throw new Error("Experimental features configuration must be global")
       mark(source, layer)
       result = mergeConfigConcatArrays(result, source)
     }
@@ -605,7 +608,12 @@ export namespace Config {
     for (const domain of ConfigDomain.definitions()) {
       const filepath = ConfigDomain.filepath(domain.id, root)
       try {
-        const fragment = await loadFile(filepath, { addSchema: false })
+        const fragment =
+          domain.id === "features"
+            ? (await Bun.file(filepath).exists())
+              ? { features: await readFeaturePreferences(root) }
+              : {}
+            : await loadFile(filepath, { addSchema: false })
         ConfigDomain.validateKeys(fragment as Record<string, unknown>, domain.id, { preserveUnregistered: true })
         if (domain.id === "storage" && fragment.storage && path.resolve(root) !== path.resolve(Global.Path.config))
           throw new Error("Storage configuration is global and cannot be overridden by a project")
@@ -1351,7 +1359,7 @@ export namespace Config {
     assertWritable()
     const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
     for (const [id, fragment] of ConfigDomain.split(config)) {
-      if (ConfigDomain.byId().get(id)?.globalOnly) throw new Error("Resource configuration must be global")
+      if (ConfigDomain.byId().get(id)?.globalOnly) throw new Error("This configuration domain must be global")
       await domainUpdate(id, fragment, { root: synergyDir, mode: "replace-domain" })
     }
     const { ScopeRuntime } = await import("../scope/runtime")
@@ -1482,27 +1490,41 @@ export namespace Config {
     patch: Partial<Info>,
     options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
   ) {
+    const prepared = await prepareDomainUpdate(id, patch, options)
+    Info.parse(mergeConfigConcatArrays(project(await globalRaw()), prepared.next))
+    storedSchema().parse(mergeConfigConcatArrays(await globalConfig()(), prepared.stored))
+    await writeDomainFile(id, prepared.stored, options.root)
+    global.reset()
+    await state.resetAll()
+    return redactForClient(await domainGet(id, options.root))
+  }
+
+  export type PreparedDomainUpdate = { current: Info; next: Info; stored: Info }
+
+  export async function prepareDomainUpdate(
+    id: ConfigDomain.Id,
+    patch: Partial<Info>,
+    options: { mode?: ConfigDomain.MergeMode; root?: string } = {},
+  ): Promise<PreparedDomainUpdate> {
+    assertWritable()
     const parsed = ConfigDomain.Id.parse(id)
     if (
       ConfigDomain.byId().get(parsed)?.globalOnly &&
       path.resolve(options.root ?? Global.Path.config) !== path.resolve(Global.Path.config)
     )
-      throw new Error("Resource configuration must be global")
+      throw new InvalidError({
+        path: ConfigDomain.filepath(parsed, options.root),
+        message: "This configuration domain must be global",
+      })
     ConfigDomain.validateKeys(patch as Record<string, unknown>, parsed)
     const stored = await domainStored(parsed, options.root)
     const mergedPatch = mergeRedactedSecrets(patch as Info, stored)
     const mode = options.mode ?? ConfigDomain.byId().get(parsed)!.mergePolicy
     const visible = project(stored)
     const next = Info.parse(mergeDomainConfig(visible, mergedPatch, mode))
-    Info.parse(mergeConfigConcatArrays(project(await globalRaw()), next))
-    ConfigExtensions.preserveStored(stored, visible, next)
-
-    const aggregate = mergeConfigConcatArrays(await globalConfig()(), next as Info)
-    storedSchema().parse(aggregate)
-    await writeDomainFile(parsed, next, options.root)
-    global.reset()
-    await state.resetAll()
-    return redactForClient(await domainGet(parsed, options.root))
+    const preserved = structuredClone(next)
+    ConfigExtensions.preserveStored(stored, visible, preserved)
+    return { current: visible, next, stored: preserved }
   }
 
   export async function domainMutateWithChange(
@@ -1585,7 +1607,11 @@ export namespace Config {
 
   export function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
     if (mode === "replace-domain") return patch
-    if (mode === "append") return mergeAppendArrays(current, patch) as Info
+    if (mode === "append") {
+      const merged = mergeAppendArrays(current, patch) as Info
+      if (patch.features) merged.features = structuredClone(patch.features)
+      return merged
+    }
     const merged = mergeDeep(current, patch) as Info
     ConfigExtensions.merge(current, patch, merged)
     return merged

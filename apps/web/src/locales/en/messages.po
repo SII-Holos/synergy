@@ -13133,6 +13133,238 @@ msgid "execution.wrap"
 msgstr "Wrap text"
 
 #. js-lingui-explicit-id
+msgid "features.acp.description"
+msgstr "Provide acp capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.acp.name"
+msgstr "Acp"
+
+#. js-lingui-explicit-id
+msgid "features.agenda.description"
+msgstr "Provide agenda capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.agenda.name"
+msgstr "Agenda"
+
+#. js-lingui-explicit-id
+msgid "features.anima.description"
+msgstr "Provide anima capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.anima.name"
+msgstr "Anima"
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.description"
+msgstr "Provide blueprint capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.blueprint.name"
+msgstr "Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.boss.description"
+msgstr "Delegate tasks and follow progress."
+
+#. js-lingui-explicit-id
+msgid "features.boss.name"
+msgstr "Boss mode"
+
+#. js-lingui-explicit-id
+msgid "features.browser.description"
+msgstr "Provide browser capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.browser.name"
+msgstr "Browser"
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.description"
+msgstr "Provide channel clarus capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channel-clarus.name"
+msgstr "Channel Clarus"
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.description"
+msgstr "Provide channel feishu capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channel-feishu.name"
+msgstr "Channel Feishu"
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.description"
+msgstr "Provide channel github capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channel-github.name"
+msgstr "Channel Github"
+
+#. js-lingui-explicit-id
+msgid "features.channels.description"
+msgstr "Provide channels capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.channels.name"
+msgstr "Channels"
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.description"
+msgstr "Provide code tools capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.code-tools.name"
+msgstr "Code Tools"
+
+#. js-lingui-explicit-id
+msgid "features.computer.description"
+msgstr "Provide computer capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.computer.name"
+msgstr "Computer"
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.description"
+msgstr "Provide digital twin capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.digital-twin.name"
+msgstr "Digital Twin"
+
+#. js-lingui-explicit-id
+msgid "features.email.description"
+msgstr "Provide email capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.email.name"
+msgstr "Email"
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.description"
+msgstr "Provide external agents capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.external-agents.name"
+msgstr "External Agents"
+
+#. js-lingui-explicit-id
+msgid "features.formatter.description"
+msgstr "Provide formatter capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.formatter.name"
+msgstr "Formatter"
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.description"
+msgstr "Provide github agenda capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.github-agenda.name"
+msgstr "Github Agenda"
+
+#. js-lingui-explicit-id
+msgid "features.github.description"
+msgstr "Provide github capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.github.name"
+msgstr "Github"
+
+#. js-lingui-explicit-id
+msgid "features.holos.description"
+msgstr "Provide holos capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.holos.name"
+msgstr "Holos"
+
+#. js-lingui-explicit-id
+msgid "features.kanban.description"
+msgstr "View and organize tasks on a board."
+
+#. js-lingui-explicit-id
+msgid "features.kanban.name"
+msgstr "Kanban"
+
+#. js-lingui-explicit-id
+msgid "features.lattice.description"
+msgstr "Organize and run multi-step workflows."
+
+#. js-lingui-explicit-id
+msgid "features.lattice.name"
+msgstr "Lattice"
+
+#. js-lingui-explicit-id
+msgid "features.library.description"
+msgstr "Provide library capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.library.name"
+msgstr "Library"
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.description"
+msgstr "Provide light loop capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.light-loop.name"
+msgstr "Light Loop"
+
+#. js-lingui-explicit-id
+msgid "features.lsp.description"
+msgstr "Provide lsp capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.lsp.name"
+msgstr "Lsp"
+
+#. js-lingui-explicit-id
+msgid "features.mcp.description"
+msgstr "Provide mcp capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.mcp.name"
+msgstr "Mcp"
+
+#. js-lingui-explicit-id
+msgid "features.media.description"
+msgstr "Provide media capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.media.name"
+msgstr "Media"
+
+#. js-lingui-explicit-id
+msgid "features.note.description"
+msgstr "Provide note capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.note.name"
+msgstr "Note"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.description"
+msgstr "Provide plugin blueprint capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.plugin-blueprint.name"
+msgstr "Plugin Blueprint"
+
+#. js-lingui-explicit-id
+msgid "features.workbench.description"
+msgstr "Projects, task presentation, reviews and activity."
+
+#. js-lingui-explicit-id
+msgid "features.workbench.name"
+msgstr "Workbench"
+
+#. js-lingui-explicit-id
 msgid "files.close.description"
 msgstr "Save changes to {name} before leaving this file."
 
@@ -20679,6 +20911,66 @@ msgstr "On"
 #. js-lingui-explicit-id
 msgid "settings.email.state.paused"
 msgstr "Paused"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.dependencyUnavailable"
+msgstr "Required feature unavailable"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.description"
+msgstr "Try features still in development."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.empty"
+msgstr "No experimental features available."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.live"
+msgstr "Applies to the next action after saving"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loadFailed"
+msgstr "Couldn't load experimental features."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.loading"
+msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.notInstalled"
+msgstr "Not installed"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.pending"
+msgstr "Saved. Restart to apply."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.restart"
+msgstr "Requires restart"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.saveFailed"
+msgstr "Couldn't confirm changes. Your draft is kept."
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.searchTerms"
+msgstr "experimental | features | kanban | boss | lattice | preview"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.title"
+msgstr "Experimental features"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unsaved"
+msgstr "Not saved"
+
+#. js-lingui-explicit-id
+msgid "settings.experiments.unselected"
+msgstr "Unavailable here"
 
 #. js-lingui-explicit-id
 msgid "settings.general.activityDisplay.balanced"

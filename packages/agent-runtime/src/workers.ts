@@ -1,48 +1,35 @@
-import { z } from "zod"
+import type { FeaturePlan } from "@ericsanchezok/synergy-util/features"
+import { ComponentWorkerPlan } from "@ericsanchezok/synergy-util/worker-plan"
+import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
 import { ConfigExtensions } from "@ericsanchezok/synergy-harness/config/extensions"
 import { registerHarness, RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { registerAgentWorkerEntrypoint } from "@ericsanchezok/synergy-harness/session/agent-turn/process-host"
 import { registerPolicyWorkerEntrypoint } from "@ericsanchezok/synergy-harness/enforcement/policy-worker/process-host"
 
-export function registerRuntimeWorkers(components: readonly RuntimeComponent[]) {
-  const environment = { SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components)) }
+export function registerRuntimeWorkers(components: readonly RuntimeComponent[], features: FeaturePlan) {
+  const environment = { SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components, features)) }
   registerAgentWorkerEntrypoint(new URL("./agent-worker.ts", import.meta.url), environment)
   registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url), environment)
 }
 
-const Entry = z
-  .object({
-    id: z.string().min(1),
-    version: z.string().min(1),
-    entry: z
-      .string()
-      .url()
-      .refine((value) => new URL(value).protocol === "file:", "Worker entries must be local files"),
-  })
-  .strict()
-const Plan = z.object({ apiVersion: z.literal(1), agent: z.array(Entry), policy: z.array(Entry) }).strict()
-export type WorkerPlan = z.infer<typeof Plan>
+export type WorkerPlan = ComponentWorkerPlan
 
-export function workerPlan(components: readonly RuntimeComponent[]): WorkerPlan {
+export function workerPlan(components: readonly RuntimeComponent[], features: FeaturePlan): WorkerPlan {
   const entries = (role: "agent" | "policy") =>
     components.flatMap((component) => {
       const entry = component.workers?.[role]
       return entry ? [{ id: component.id, version: component.version, entry: entry.href }] : []
     })
-  return Plan.parse({ apiVersion: 1, agent: entries("agent"), policy: entries("policy") })
+  return ComponentWorkerPlan.parse({ apiVersion: 2, agent: entries("agent"), policy: entries("policy"), features })
 }
 
 export async function registerWorkerComponents(role: "agent" | "policy") {
   const raw = RuntimeContext.current().host.env.SYNERGY_WORKER_COMPONENTS
   if (!raw) throw new Error("A component worker requires its host's pinned composition")
-  const plan = Plan.parse(JSON.parse(raw))
-  const seen = new Set<string>()
-  for (const component of plan[role]) {
-    if (seen.has(component.id)) throw new Error(`Duplicate worker component: ${component.id}`)
-    seen.add(component.id)
-  }
+  const plan = ComponentWorkerPlan.parse(JSON.parse(raw))
   registerHarness()
+  Features.register(plan.features)
   for (const component of plan[role]) {
     const module: { registerWorker?: () => void; metadata?: { id: string; version: string; apiVersion: number } } =
       await import(component.entry)

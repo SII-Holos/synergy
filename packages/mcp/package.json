@@ -18,7 +18,8 @@
     "./oauth-callback": "./src/oauth-callback.ts",
     "./config-schema": "./src/config-schema.ts",
     "./component": "./src/component.ts",
-    "./http": "./src/http.ts"
+    "./http": "./src/http.ts",
+    "./features": "./src/features.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -74,6 +75,20 @@
     "requires": {
       "local-runtime": "1.1.26",
       "plugin-host": "1.1.26"
+    },
+    "features": {
+      "kind": "product",
+      "definitions": [
+        {
+          "id": "mcp",
+          "owner": "mcp",
+          "maturity": "stable",
+          "activation": "restart",
+          "name": "Mcp",
+          "description": "Provide mcp capabilities.",
+          "component": "mcp"
+        }
+      ]
     }
   }
 }

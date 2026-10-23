@@ -6,6 +6,8 @@ import { createLocalHost, createLocalStorage } from "@ericsanchezok/synergy-loca
 import type { LocalRuntimeOptions } from "@ericsanchezok/synergy-local-runtime"
 import { workerPlan, registerRuntimeWorkers } from "./workers"
 import { loadHttpAdapters } from "./adapters"
+import { FeatureSelection, type FeaturePlan } from "@ericsanchezok/synergy-util/features"
+import { readFeaturePreferences } from "@ericsanchezok/synergy-util/feature-config"
 
 export type AgentRuntimeOptions = Omit<LocalRuntimeOptions, "mode"> & {
   home: string
@@ -13,22 +15,26 @@ export type AgentRuntimeOptions = Omit<LocalRuntimeOptions, "mode"> & {
   mode?: "oneshot" | "server"
   listen?: boolean
   configSchemaPath?: string
+  features?: FeaturePlan
 }
 
 export type AgentRuntime = Awaited<ReturnType<typeof openAgentRuntime>>
 export type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 
 export async function openAgentRuntime(options: AgentRuntimeOptions) {
-  const components = RuntimeComponents.resolve(options.components)
-  const composition = RuntimeComponents.compose(components)
+  const root = path.resolve(options.home)
+  const original = options.host ?? createLocalHost({ home: root, root })
+  const features =
+    options.features ??
+    FeatureSelection.resolve(options.components, await readFeaturePreferences(path.join(original.root, "config")))
+  const components = RuntimeComponents.resolve(options.components, features)
+  const composition = RuntimeComponents.compose(components, features)
   const adapters = components.some((component) => component.hosts?.includes("http"))
     ? await loadHttpAdapters(components)
     : []
-  const root = path.resolve(options.home)
-  const original = options.host ?? createLocalHost({ home: root, root })
   const host = {
     ...original,
-    env: { ...original.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components)) },
+    env: { ...original.env, SYNERGY_WORKER_COMPONENTS: JSON.stringify(workerPlan(components, features)) },
   }
   const runtime = await RuntimeHandle.open({
     ...options,
@@ -40,7 +46,7 @@ export async function openAgentRuntime(options: AgentRuntimeOptions) {
         composition.register()
         for (const adapter of adapters) adapter.registerHttp()
         ConfigExtensions.completeRegistration()
-        registerRuntimeWorkers(components)
+        registerRuntimeWorkers(components, features)
       },
       services() {
         const services = {

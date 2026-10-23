@@ -1,3 +1,4 @@
+import { componentFeatures } from "./features"
 import { registerReload } from "./reload"
 import type { RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { version } from "../package.json" with { type: "json" }
@@ -7,6 +8,7 @@ import { registerConfig } from "./config-schema"
 export function formatter(): RuntimeComponent {
   return {
     id: "formatter",
+    features: componentFeatures,
     apiVersion: 1,
     version,
     requires: { "local-runtime": version },

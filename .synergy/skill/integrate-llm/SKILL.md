@@ -7,6 +7,8 @@ description: Add, modify, or review an LLM-backed operation in Synergy. Use for 
 
 For prompts, tool descriptions, injected context or model-visible results, first apply [agent-facing design](references/agent-facing-design.md).
 
+Significant prompt or context-strategy changes follow [develop-feature](../develop-feature/SKILL.md). Choose the alternative once at the existing request assembly boundary; preserve the current operation across live reload and remove the old branch on graduation.
+
 ## Choose the Execution Path First
 
 | Required behavior                                                                                              | Path                                                           |

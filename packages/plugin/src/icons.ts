@@ -145,6 +145,7 @@ export const SemanticIconToken = {
   "settings.personalize": "scroll-text",
   "settings.voice": "audio-lines",
   "settings.storage": "layers",
+  "settings.experiments": "beaker",
 
   // Permission modes and prompts
   "permission.required": "octagon-alert",
