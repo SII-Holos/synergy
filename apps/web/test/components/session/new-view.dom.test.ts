@@ -186,13 +186,16 @@ test("plain greeting stays reachable in light and dark narrow and short viewport
       expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width)
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
       const actions = page.locator(".session-starter-actions button")
+      if (viewport.width < 768) {
+        expect(await actions.filter({ visible: true }).count()).toBe(0)
+        expect(await page.locator(".welcome-stage, .welcome-ambient, canvas").count()).toBe(0)
+        expect(errors).toEqual([])
+        continue
+      }
       for (const action of await actions.all()) {
         const actionBounds = await action.boundingBox()
         expect(actionBounds).not.toBeNull()
-        // The greeting row is the only project and file entry point on a new
-        // task, so narrow layouts must clear the touch floor; the desktop row
-        // keeps its original 36-pixel height.
-        expect(actionBounds!.height).toBeGreaterThanOrEqual(viewport.width < 768 ? 44 : 36)
+        expect(actionBounds!.height).toBeGreaterThanOrEqual(36)
         expect(actionBounds!.x).toBeGreaterThanOrEqual(0)
         expect(actionBounds!.x + actionBounds!.width).toBeLessThanOrEqual(viewport.width)
         expect(actionBounds!.y + actionBounds!.height).toBeLessThanOrEqual(viewport.height)
@@ -217,4 +220,16 @@ test("plain greeting stays reachable in light and dark narrow and short viewport
       expect(errors).toEqual([])
     }
   }
+}, 60_000)
+
+test("mobile welcome keeps the game without a second project or attachment action row", async () => {
+  await page.setViewportSize({ width: 375, height: 667 })
+  await page.goto(base)
+  await page.locator(".welcome-game-canvas").waitFor()
+  expect(await page.getByRole("button", { name: "Open a project", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Add files", exact: true }).count()).toBe(0)
+  expect(await page.getByRole("heading", { level: 1 }).count()).toBe(1)
+  expect(await page.locator(".welcome-game-status").isVisible()).toBe(true)
+  expect(await page.locator(".welcome-game-canvas").isVisible()).toBe(true)
+  expect(errors).toEqual([])
 }, 60_000)

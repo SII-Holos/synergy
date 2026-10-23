@@ -364,15 +364,23 @@ a {
   color: var(--text-weak);
   cursor: pointer;
   z-index: 2;
+  transition:
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 .composer-expand-control [data-component="icon"] {
   width: 16px;
   height: 16px;
 }
-.composer-expand-control:hover {
+.composer-expand-control:focus-visible,
+.composer-expand-control:active {
   background: var(--surface-raised-base-hover);
 }
 @media (hover: hover) and (pointer: fine) {
+  .composer-expand-control:hover {
+    background: var(--surface-raised-base-hover);
+  }
   .composer-expand-control {
     opacity: 0;
   }
@@ -390,9 +398,6 @@ a {
   }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .composer-expand-control {
-    transition: opacity 120ms cubic-bezier(0.2, 0, 0, 1);
-  }
   .composer-resize-handle span {
     transform: translateY(calc(-1 * var(--composer-expand-pull, 0px)))
       scaleX(calc(1 + var(--composer-expand-progress, 0) * 0.6));
@@ -613,9 +618,11 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-work-context-button:hover:not(:disabled) {
-  background: var(--surface-hover-base);
-  color: var(--text-strong);
+@media (hover: hover) and (pointer: fine) {
+  .session-work-context-button:hover:not(:disabled) {
+    background: var(--surface-hover-base);
+    color: var(--text-strong);
+  }
 }
 .session-work-context-button:disabled {
   opacity: 0.5;
@@ -1605,14 +1612,17 @@ a {
   height: 32px;
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button:hover:not(:disabled),
-.synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover:not(:disabled) {
-  background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
+@media (hover: hover) and (pointer: fine) {
+  .synergy-workbench-canvas .prompt-input-toolbar-button:hover:not(:disabled),
+  .synergy-workbench-canvas .prompt-input-toolbar-icon-button:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--text-strong) 7%, transparent);
+  }
 }
 
-.synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access:hover,
-.synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access[aria-expanded="true"] {
-  background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+@media (hover: hover) and (pointer: fine) {
+  .synergy-workbench-canvas .prompt-input-toolbar-button.prompt-input-permission-full-access:hover {
+    background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+  }
 }
 
 .synergy-workbench-canvas [data-component="icon-button"].prompt-input-submit {
@@ -1660,12 +1670,6 @@ a {
   }
 }
 
-@media (max-width: 767px) {
-  .synergy-workbench-canvas .prompt-input-shell {
-    border-color: var(--border-strong-base);
-    box-shadow: none;
-  }
-}
 .statusbar-indicator-value {
   display: inline-block;
   font-family: var(--font-family-sans);
@@ -1857,9 +1861,21 @@ a {
   background: transparent;
 }
 .synergy-workbench-canvas .prompt-input-toolbar-button[aria-expanded="true"],
-.prompt-input-add-button:hover,
+.synergy-workbench-canvas .prompt-input-toolbar-button:focus-visible:not(:disabled),
+.synergy-workbench-canvas .prompt-input-toolbar-button:active:not(:disabled),
+.prompt-input-add-button:focus-visible,
+.prompt-input-add-button:active,
 .prompt-input-add-button[aria-expanded="true"] {
   background-color: var(--surface-inset-base-hover);
+}
+.synergy-workbench-canvas
+  .prompt-input-toolbar-button.prompt-input-permission-full-access:is([aria-expanded="true"], :focus-visible, :active) {
+  background-color: color-mix(in srgb, var(--input-base) 97%, var(--text-strong));
+}
+@media (hover: hover) and (pointer: fine) {
+  .prompt-input-add-button:hover {
+    background-color: var(--surface-inset-base-hover);
+  }
 }
 .prompt-add-menu [data-slot="list-group"] + [data-slot="list-group"] {
   border-top: 1px solid var(--border-weaker-base);
@@ -1947,8 +1963,9 @@ a {
   .composer-chips-row {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     min-width: 0;
+    margin-bottom: 4px;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
@@ -1972,19 +1989,39 @@ a {
     display: flex;
     flex: none;
     align-items: center;
-    gap: 2px;
+    gap: 4px;
   }
 
-  .mobile-composer-chips .prompt-input-toolbar-button {
-    min-height: 44px;
+  .composer-chips-row .session-work-context {
+    gap: 4px;
   }
 
-  /* The work-context controls are 32px tall on desktop; on the narrow chip line
-     they are the only project entry point, so they take the touch floor. */
   .composer-chips-row .session-work-context-button,
-  .composer-chips-row .session-work-context .prompt-input-toolbar-button {
+  .composer-chips-row .prompt-input-toolbar-button {
     height: auto;
+    min-width: 44px;
     min-height: 44px;
+    padding-inline: 8px;
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-large);
+    transition:
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+
+  .composer-chips-row [data-component="icon"] {
+    flex: 0 0 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  .composer-chips-row .session-work-context-button[aria-expanded="true"],
+  .composer-chips-row .session-work-context-button:focus-visible:not(:disabled),
+  .composer-chips-row .session-work-context-button:active:not(:disabled) {
+    background-color: var(--surface-inset-base-hover);
+    color: var(--text-strong);
   }
 }
 
@@ -1995,10 +2032,6 @@ a {
   .synergy-workbench-canvas .prompt-input-toolbar,
   .synergy-workbench-canvas .prompt-input-toolbar-main {
     flex-wrap: nowrap;
-  }
-
-  .synergy-workbench-canvas .prompt-input-toolbar {
-    padding: 2px 8px 6px;
   }
 }
 
@@ -2075,49 +2108,32 @@ a {
 }
 
 @media (max-width: 767px) {
-  /* Two rows of chrome above the editor already cost 44px; the remaining
-     padding is what kept the card past its height budget at 375px. */
   .synergy-workbench-canvas .prompt-input-shell {
     padding-top: 2px;
+    border-radius: 16px;
+    border-color: var(--border-weak-base);
+    box-shadow: none;
   }
 
   .synergy-workbench-canvas .prompt-input-toolbar {
-    padding: 0 8px 4px;
+    padding: 0 8px 8px;
   }
 
-  /* The greeting action row is the only project and file entry point on a new
-     task, so its buttons clear the touch floor; the desktop row keeps 36px. */
-  .session-starter-actions button {
-    min-height: 44px;
+  .synergy-workbench-canvas .prompt-input-toolbar [data-component="icon"] {
+    width: 20px;
+    height: 20px;
+  }
+
+  .session-starter-actions {
+    display: none;
   }
 }
 
-/* The game branch used to render the stage alone, so a new task could not reach
-   the project or file entry points without typing first. The frame keeps the
-   stage full-height and gives narrow layouts one lightweight action row. */
-.session-greeting-frame {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-.session-greeting-stage {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-.session-greeting-stage > * {
-  flex: 1;
-  min-width: 0;
-}
-.session-greeting-actions-mobile {
-  display: none;
-}
-@media (max-width: 767px) {
-  .session-greeting-actions-mobile {
-    display: block;
-    flex: none;
-    padding-bottom: 4px;
+@media (prefers-reduced-motion: reduce) {
+  .composer-chips-row .session-work-context-button,
+  .synergy-workbench-canvas .composer-chips-row .prompt-input-toolbar-button,
+  .synergy-workbench-canvas .prompt-input-toolbar button,
+  .composer-expand-control {
+    transition: none;
   }
 }

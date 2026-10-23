@@ -8777,6 +8777,10 @@ msgstr "搜索会话"
 msgid "app.shell.mobile.nav.tools"
 msgstr "工具"
 
+#. js-lingui-explicit-id
+msgid "app.shell.mobile.panels.label"
+msgstr "工作区面板"
+
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.session.empty"
 msgstr "暂无会话"
@@ -13223,18 +13227,6 @@ msgstr "免费"
 #. js-lingui-explicit-id
 msgid "model.manager.tag.latest"
 msgstr "最新"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.close"
-msgstr "关闭工具"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.section"
-msgstr "工具"
-
-#. js-lingui-explicit-id
-msgid "nav.tools.title"
-msgstr "工具"
 
 #. js-lingui-explicit-id
 msgid "note.document.backupFailed"

@@ -208,6 +208,58 @@ test("the chip line keeps the project, agent and permission controls at the touc
   }
 }, 120_000)
 
+test("mobile configuration uses one quiet text scale and keeps menu state distinct from selection", async () => {
+  const { page, close } = await open({ width: 375, height: 812 }, true)
+  try {
+    const project = "[data-project-task-selector]"
+    const agent = '.mobile-composer-chips button[aria-label^="Select agent"]'
+    const permission = '.mobile-composer-chips button[aria-label*="permission mode"]'
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme })
+      await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, colorScheme)
+      const typography = await Promise.all(
+        [project, agent, permission].map((selector) =>
+          page.locator(`${selector} > span`).evaluate((element) => {
+            const style = getComputedStyle(element)
+            return [style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight]
+          }),
+        ),
+      )
+      expect(typography[0]).toEqual(typography[1])
+      expect(typography[1]).toEqual(typography[2])
+      for (const selector of [project, agent, permission]) {
+        expect(await style(page, selector, "background-color")).toBe("rgba(0, 0, 0, 0)")
+      }
+
+      await page.locator(agent).click()
+      const menu = page.getByRole("dialog", { name: "Select agent", exact: true })
+      await menu.waitFor()
+      expect(await page.locator(agent).getAttribute("aria-expanded")).toBe("true")
+      await page.waitForFunction(
+        (selector) => getComputedStyle(document.querySelector(selector)!).backgroundColor !== "rgba(0, 0, 0, 0)",
+        agent,
+      )
+      expect(await style(page, agent, "background-color")).not.toBe("rgba(0, 0, 0, 0)")
+      await page.keyboard.press("Escape")
+      await menu.waitFor({ state: "detached" })
+      expect(await page.locator(agent).getAttribute("aria-expanded")).toBe("false")
+      await page.waitForFunction((selector) => document.querySelector(selector) === document.activeElement, agent)
+      expect(await page.locator(agent).evaluate((element) => element === document.activeElement)).toBe(true)
+      await page.locator('[data-component="prompt-input"]').click()
+      await page.waitForFunction(
+        (selector) => getComputedStyle(document.querySelector(selector)!).backgroundColor === "rgba(0, 0, 0, 0)",
+        agent,
+      )
+    }
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    for (const selector of [project, agent, permission, ".composer-expand-control"])
+      expect(await style(page, selector, "transition-duration")).toBe("0s")
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
 test("the corner control drags to resize, taps to expand, and never covers a typed character", async () => {
   const { page, close } = await open({ width: 375, height: 812 }, true)
   try {
@@ -403,6 +455,13 @@ test("every extracted control still opens from the shipped surfaces", async () =
     await menu("[data-project-task-selector]", "Choose project", "Fixture project")
     await menu('.mobile-composer-chips button[aria-label^="Select agent"]', "Select agent", "Pico")
     await menu('.mobile-composer-chips button[aria-label*="permission mode"]', "Permission mode", "Guarded")
+    await page.locator(".prompt-input-add-button").click()
+    const [chooser] = await Promise.all([
+      page.waitForEvent("filechooser"),
+      page.getByRole("dialog", { name: "Add", exact: true }).getByText("Add files", { exact: true }).click(),
+    ])
+    expect(chooser.isMultiple()).toBe(true)
+    await chooser.setFiles([])
     await page.locator(".composer-expand-control").click()
     expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
     await page.locator(".composer-expand-control").click()
@@ -457,6 +516,37 @@ test("320 pixels scrolls the chip line instead of overflowing the page", async (
     expect(errors).toEqual([])
   } finally {
     await close()
+  }
+}, 120_000)
+
+test("responsive entry points retain one Composer and prediction owner across breakpoints", async () => {
+  const { page, close } = await open({ width: 1280, height: 812 }, false)
+  try {
+    await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()
+    const editor = page.getByRole("textbox", { name: "Send message", exact: true })
+    await editor.fill("Keep this draft while resizing")
+    const originalEditor = await editor.elementHandle()
+    for (const width of [375, 1280, 320, 1280]) {
+      await page.setViewportSize({ width, height: 812 })
+      const prediction = page.getByRole("button", { name: "Predict next input", exact: true })
+      await prediction.waitFor({ state: width >= 768 ? "visible" : "hidden" })
+      expect(errors).toEqual([])
+      expect(await editor.evaluate((element, original) => element === original, originalEditor)).toBe(true)
+      expect(await editor.textContent()).toBe("Keep this draft while resizing")
+      if (width >= 768) {
+        expect(await prediction.count()).toBe(1)
+        continue
+      }
+      await page.getByRole("button", { name: "Add", exact: true }).click()
+      const menu = page.getByRole("dialog", { name: "Add", exact: true })
+      await menu.getByText("Predict next input", { exact: true }).waitFor()
+      expect(await menu.getByText("Predict next input", { exact: true }).count()).toBe(1)
+      await page.keyboard.press("Escape")
+      await menu.waitFor({ state: "detached" })
+    }
+  } finally {
+    await close()
+    expect(errors).toEqual([])
   }
 }, 120_000)
 

@@ -8,10 +8,7 @@ import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 
-/** Agent picker shared by the desktop toolbar and the compact mobile chip row.
- *  Both surfaces need the same list, the same external-agent block and the same
- *  labels; only the trigger styling differs. */
-export function AgentSelector(props: { hasMessages: () => boolean; compact?: boolean }) {
+export function AgentSelector(props: { hasMessages: () => boolean }) {
   const local = useLocal()
   const { i18n } = useLocale()
   const label = () => translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)
@@ -29,7 +26,6 @@ export function AgentSelector(props: { hasMessages: () => boolean; compact?: boo
             type="button"
             aria-label={`${i18n._(PI.selectAgent)}: ${label()}`}
             class="prompt-input-toolbar-button flex items-center gap-1.5"
-            classList={{ "prompt-input-toolbar-chip": props.compact }}
           >
             <span class="text-12-medium text-text-base whitespace-nowrap">{label()}</span>
           </button>

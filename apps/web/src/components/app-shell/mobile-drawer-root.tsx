@@ -1,4 +1,5 @@
-import { createMemo, createUniqueId, For, Show } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
+import { Dynamic } from "solid-js/web"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
@@ -24,12 +25,7 @@ function recentIconClass(visual: SessionVisualState): string | undefined {
 
 function MobileDrawerActionButton(props: { label: string; icon: SemanticIconTokenName; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      aria-label={props.label}
-      class="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-14-medium text-text-base transition-colors hover:bg-surface-raised-base-hover hover:text-text-strong"
-      onClick={props.onClick}
-    >
+    <button type="button" aria-label={props.label} class="mobile-drawer-action w-full" onClick={props.onClick}>
       <Icon name={getSemanticIcon(props.icon)} size="normal" class="shrink-0" />
       <span>{props.label}</span>
     </button>
@@ -45,7 +41,7 @@ export function MobileDrawerSettingsButton(props: { label: string; onClick: () =
     <button
       type="button"
       aria-label={props.label}
-      class="flex size-11 shrink-0 items-center justify-center rounded-xl text-icon-weak-base transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+      class="mobile-drawer-action mobile-drawer-icon-action"
       onClick={props.onClick}
     >
       <Icon name={getSemanticIcon("settings.general")} size="normal" />
@@ -57,22 +53,26 @@ export function MobileDrawerAccountRow(props: {
   name: string
   description: string
   avatarSrc: string
-  onClick: () => void
+  onClick?: () => void
 }) {
   return (
-    <button
-      type="button"
-      data-action="account"
-      class="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-1.5 text-left transition-colors hover:bg-surface-raised-base-hover"
+    <Dynamic
+      component={props.onClick ? "button" : "div"}
+      type={props.onClick ? "button" : undefined}
+      data-action={props.onClick ? "account" : undefined}
+      class="mobile-drawer-label flex min-h-11 min-w-0 flex-1 items-center gap-2.5 p-2"
+      classList={{ "mobile-drawer-action": !!props.onClick }}
       onClick={props.onClick}
     >
       <img src={props.avatarSrc} alt="" class="size-8 shrink-0 rounded-full" />
       <span class="flex min-w-0 flex-1 flex-col justify-center">
-        <span class="truncate text-13-medium text-text-strong">{props.name}</span>
+        <span class="truncate text-text-strong">{props.name}</span>
         <span class="truncate text-11-regular text-text-weak">{props.description}</span>
       </span>
-      <Icon name={getSemanticIcon("navigation.expand")} size="small" class="shrink-0 text-icon-weak-base" />
-    </button>
+      <Show when={props.onClick}>
+        <Icon name={getSemanticIcon("navigation.expand")} size="small" class="shrink-0 text-icon-weak-base" />
+      </Show>
+    </Dynamic>
   )
 }
 
@@ -103,8 +103,6 @@ export function MobileDrawerRecent(props: {
   onLoadMore: () => void
   groups?: MobileDrawerRecentGroups
 }) {
-  const headingID = createUniqueId()
-
   // Grouping is opt-in: the flat list stays the default so callers that do not
   // pass labels never render empty headings.
   //
@@ -140,20 +138,16 @@ export function MobileDrawerRecent(props: {
         type="button"
         data-session-id={entry.id}
         aria-current={active() ? "page" : undefined}
-        classList={{
-          "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left transition-colors": true,
-          "bg-surface-raised-base-hover text-text-strong": active(),
-          "text-text-base hover:bg-surface-raised-base-hover hover:text-text-strong": !active(),
-        }}
+        class="mobile-drawer-action w-full"
         onClick={() => props.onSelect(entry)}
       >
         <span
           classList={{
-            "relative flex size-4 shrink-0 items-center justify-center text-icon-weak-base": true,
+            "relative flex size-5 shrink-0 items-center justify-center text-icon-weak-base": true,
             "sb-session-icon-pulse": !!resolved().visual.pulse,
           }}
         >
-          <Icon name={resolved().visual.icon} size="small" class={recentIconClass(resolved().visual)} />
+          <Icon name={resolved().visual.icon} size="normal" class={recentIconClass(resolved().visual)} />
           <Show when={resolved().visual.completionUnread}>
             <span class="absolute -right-0.5 -top-0.5 size-1.5 rounded-full bg-icon-critical-base" />
           </Show>
@@ -164,30 +158,23 @@ export function MobileDrawerRecent(props: {
           label={props.draftLabel}
           class="shrink-0 translate-y-px text-10-medium text-text-error"
         />
-        <span class="min-w-0 flex-1 truncate text-13-medium">{entry.title || props.untitledLabel}</span>
+        <span class="min-w-0 flex-1 truncate">{entry.title || props.untitledLabel}</span>
         <Show when={resolved().label}>{(label) => <span class="sr-only">{label()}</span>}</Show>
       </button>
     )
   }
 
   return (
-    <section aria-labelledby={headingID}>
-      <div class="px-4 pb-1.5 pt-1">
-        <h2 id={headingID} class="text-11-medium uppercase tracking-wider text-text-weak">
-          {props.label}
-        </h2>
-      </div>
+    <section aria-label={props.label}>
       <Show
         when={props.entries.length > 0}
-        fallback={<div class="px-4 py-3 text-13-regular text-text-weak">{props.emptyLabel}</div>}
+        fallback={<div class="mobile-drawer-label px-4 py-3 text-text-weak">{props.emptyLabel}</div>}
       >
         <For each={grouped()}>
           {(bucket) => (
-            <div class="px-2">
+            <div class="px-4">
               <Show when={bucket.heading}>
-                <h3 class="px-3 pb-1 pt-2 text-10-medium uppercase tracking-wider text-text-weaker">
-                  {bucket.heading}
-                </h3>
+                <h3 class="mobile-drawer-section-label">{bucket.heading}</h3>
               </Show>
               <For each={bucket.entries}>{row}</For>
             </div>
@@ -198,7 +185,7 @@ export function MobileDrawerRecent(props: {
             <button
               type="button"
               data-action="load-more-recent"
-              class="min-h-11 text-12-medium text-text-weak transition-colors hover:text-text-base"
+              class="mobile-drawer-action"
               onClick={props.onLoadMore}
             >
               {props.loadMoreLabel}

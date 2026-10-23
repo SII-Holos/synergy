@@ -70,12 +70,12 @@ beforeAll(async () => {
         <div ref={input} contentEditable="true" aria-label="Composer"/>
         <div data-testid="reading-area" style="height:80px">Read content</div>
         <div class="stb-root" data-testid="mobile-toolbar">
-          <div class="flex w-full items-center justify-between">
-            <div class="flex items-center gap-1"><button class="stb-icon-btn">Nav</button><button class="stb-icon-btn">Tools</button></div>
+          <div class="stb-mobile flex w-full min-w-0 items-center">
+            <button class="stb-icon-btn">Nav</button>
             <div class="stb-center flex min-w-0 flex-1 items-center justify-center">
               <Tooltip value="Choose model"><button class="stb-selector-btn"><span class="stb-selector-label">Very long model display name</span><span class="stb-chevron">⌄</span></button></Tooltip>
             </div>
-            <div class="flex items-center gap-1"><button class="stb-icon-btn">Info</button><button class="stb-icon-btn">New</button><button class="stb-icon-btn">More</button></div>
+            <div class="stb-mobile-actions"><button class="stb-icon-btn">Info</button><button class="stb-icon-btn">New</button><button class="stb-icon-btn">More</button></div>
           </div>
         </div>
         {["pending","error","unknown","settled","idle"].map(status=><button onClick={()=>setSubmission({status,...(["error","unknown"].includes(status)?{error:new Error("Offline")}: {})})}>State {status}</button>)}
@@ -278,7 +278,7 @@ test("long model names cannot overlap adjacent mobile toolbar controls", async (
         return { left: rect.left, right: rect.right, width: rect.width }
       }),
     )
-    expect(buttons).toHaveLength(6)
+    expect(buttons).toHaveLength(5)
     for (let index = 1; index < buttons.length; index++) {
       expect(buttons[index]!.left).toBeGreaterThanOrEqual(buttons[index - 1]!.right)
       expect(buttons[index]!.right).toBeLessThanOrEqual(width)

@@ -203,6 +203,9 @@ const DraftAttachmentPreview = lazy(() =>
 const DigitalTwinComposer = lazy(() =>
   import("../digital-twin/composer").then((module) => ({ default: module.DigitalTwinComposer })),
 )
+const DigitalTwinPredictionButton = lazy(() =>
+  import("../digital-twin/composer").then((module) => ({ default: module.PredictionButton })),
+)
 
 export function createPromptInputController(props: PromptInputProps) {
   const sdk = useSDK()
@@ -2267,7 +2270,7 @@ export function createPromptInputController(props: PromptInputProps) {
       </Show>
     </>
   )
-  const predictionControl = (bind?: (api: PredictionControlApi | undefined) => void) => (
+  const predictionControl = () => (
     <Show when={capabilities.has("digital-twin")}>
       <Suspense>
         <DigitalTwinComposer
@@ -2281,7 +2284,8 @@ export function createPromptInputController(props: PromptInputProps) {
             isReadOnly() || hasAttachments() || attachmentsUploading() || view().inboxFor(params.id ?? "").length > 0
           }
           modelKey={JSON.stringify(info()?.modelSelection?.selected ?? info()?.modelOverride)}
-          bind={bind}
+          bind={setPredictionApi}
+          showProgress={!layout.isDesktop()}
         />
       </Suspense>
     </Show>
@@ -2290,7 +2294,7 @@ export function createPromptInputController(props: PromptInputProps) {
     <Show when={!layout.isDesktop()}>
       <div class="mobile-composer-chips" role="group" aria-label={i18n._(PI.composerControls)}>
         <Show when={!props.hideAgentSelector}>
-          <AgentSelector hasMessages={sessionHasMessages} compact />
+          <AgentSelector hasMessages={sessionHasMessages} />
         </Show>
         {permissionSelector()}
         {workflowChips()}
@@ -2500,7 +2504,13 @@ export function createPromptInputController(props: PromptInputProps) {
               }}
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
-            <Show when={layout.isDesktop()}>{predictionControl()}</Show>
+            <Show when={layout.isDesktop() && predictionApi()}>
+              {(api) => (
+                <Suspense>
+                  <DigitalTwinPredictionButton api={api()} />
+                </Suspense>
+              )}
+            </Show>
             <Show when={capabilities.has("media")}>
               <VoiceDictationButton
                 getContext={() => collectDictationContext(view().messagesFor(params.id ?? ""))}
@@ -2595,9 +2605,7 @@ export function createPromptInputController(props: PromptInputProps) {
     ),
     trailing: () => (
       <>
-        {/* Narrow layouts reach prediction through the add menu, so the control
-            mounts without a button and hands its API to that item. */}
-        <Show when={!layout.isDesktop()}>{predictionControl(setPredictionApi)}</Show>
+        {predictionControl()}
         <ComposerSlotOutlet slot="composer.below" sessionId={params.id} class="flex min-w-0 flex-col gap-2" />
       </>
     ),

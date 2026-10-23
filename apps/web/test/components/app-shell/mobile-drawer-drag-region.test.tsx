@@ -1,13 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import { lingui } from "@lingui/vite-plugin"
+import { chromium, type Browser, type Locator, type Page } from "playwright"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 
 let browser: Browser
-let server: ViteDevServer
+let server: BrowserFixture
 let fixtureDirectory: string
 let fixtureUrl: string
 
@@ -15,8 +14,11 @@ const stubModules: Record<string, string> = {
   "stub-layout.ts": `
     import { createSignal } from "solid-js"
 
-    const [mobileOpened, setMobileOpened] = createSignal(true)
-    const [rightOpened, setRightOpened] = createSignal(false)
+    const [mobileOpened, setMobileOpened] = createSignal(false)
+    const [recentEntries, setRecentEntries] = createSignal([])
+    const [scopes, setScopes] = createSignal([
+      { id: "scp_fixture", worktree: "/tmp/fixture-project", name: "Fixture Project", expanded: false },
+    ])
 
     export const SESSION_PAGE_SIZE = 20
 
@@ -28,21 +30,15 @@ const stubModules: Record<string, string> = {
           show: () => setMobileOpened(true),
           toggle: () => setMobileOpened((value) => !value),
         },
-        rightSidebar: {
-          opened: rightOpened,
-          hide: () => setRightOpened(false),
-          show: () => setRightOpened(true),
-          toggle: () => setRightOpened((value) => !value),
-        },
         scopes: {
-          list: () => [
-            { id: "scp_fixture", worktree: "/tmp/fixture-project", name: "Fixture Project", expanded: false },
-          ],
+          list: scopes,
           open: async () => {},
         },
         nav: {
-          recentEntries: () => [],
-          hasMoreRecent: () => false,
+          recentEntries,
+          rootNavEntries: () => [],
+          projectNavEntries: () => [],
+          hasMoreRecent: () => recentEntries().length > 0,
           loadMoreNav: async () => {},
           archiveSession: async () => null,
           projectSessions: () => [],
@@ -53,9 +49,21 @@ const stubModules: Record<string, string> = {
     }
 
     if (typeof window !== "undefined") {
-      ;(window as any).__drawerControl = {
+      window.__drawerControl = {
         openMobile: () => setMobileOpened(true),
-        openRight: () => setRightOpened(true),
+        closeMobile: () => setMobileOpened(false),
+        populateCollections: () => {
+          setRecentEntries(Array.from({ length: 40 }, (_, index) => ({
+            id: "ses_long_" + index, scopeID: "home", scopeType: "home", category: "home",
+            title: "Session " + index + " — " + "Long remote session title ".repeat(12),
+            lastActivityAt: Date.now(), pinned: 0, archived: false,
+            completionNotice: { unread: false, unreadCount: 0 },
+          })))
+          setScopes(Array.from({ length: 30 }, (_, index) => ({
+            id: "scp_long_" + index, worktree: "/tmp/project-" + index,
+            name: "Project " + index + " — " + "Long project name ".repeat(12), expanded: false,
+          })))
+        },
       }
     }
   `,
@@ -98,40 +106,50 @@ const stubModules: Record<string, string> = {
     }
   `,
   "stub-global-sdk.ts": `
+    import { createSignal } from "solid-js"
+    export const [features, setFeatures] = createSignal(["workbench", "agenda", "library", "plugin-host", "note", "browser", "holos"])
+    window.setFeatures = setFeatures
     export function useGlobalSDK() {
-      return { capabilities: { has: () => true }, drafts: { hasDraftSession: () => false }, url: "", client: {}, connected: () => true }
+      return { capabilities: { has: id => features()?.includes(id) ?? false }, drafts: { hasDraftSession: () => false }, url: "", client: {}, connected: () => true }
     }
   `,
   "stub-workbench.ts": `
+    import { createSignal } from "solid-js"
+    import { features } from "./stub-global-sdk"
+    const [native, setNative] = createSignal(true)
+    window.setNative = setNative
+    window.openedPanels = []
     export function useWorkbenchPanels() {
       return {
-        surface: () => ({ opened: () => false, activeTab: () => undefined }),
-        openPanel: async () => {},
-        getPanel: (id) => ({ id }),
+        surface: () => ({ opened: () => false, activeTab: () => undefined, toggle: () => {} }),
+        openPanel: async (id) => { window.openedPanels.push(id) },
+        getPanel: (id) => (id === "notes" ? features()?.includes("note") : native() && features()?.includes("browser")) ? { id } : undefined,
       }
     }
   `,
   "stub-theme.ts": `
     export function useTheme() {
-      return { mode: () => "light" }
+      return { mode: () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light" }
     }
   `,
   "stub-holos.ts": `
-    export function useHolos() {
-      return {
-        loaded: false,
-        state: {
-          identity: { loggedIn: false, agentId: null, activeAccount: null, accounts: [] },
-          connection: { status: "disabled" },
-          readiness: { ready: false },
-          social: { profile: null, contacts: [], presence: {} },
-        },
-      }
+    import { createStore } from "solid-js/store"
+    const [holos, setHolos] = createStore({
+      loaded: false,
+      state: {
+        identity: { loggedIn: false, agentId: null, activeAccount: null, accounts: [] },
+        connection: { status: "disabled" },
+        readiness: { ready: false },
+        social: { profile: null, contacts: [], presence: {} },
+      },
+    })
+    window.setHolosProfile = profile => {
+      setHolos("state", "identity", { loggedIn: true, agentId: "agent_fixture", activeAccount: { agentId: "agent_fixture" }, accounts: [] })
+      setHolos("state", "social", "profile", profile)
+      setHolos("loaded", true)
     }
-  `,
-  "stub-dialog.ts": `
-    export function useDialog() {
-      return { show: () => {} }
+    export function useHolos() {
+      return holos
     }
   `,
   "stub-confirm.ts": `
@@ -139,10 +157,37 @@ const stubModules: Record<string, string> = {
       return { show: () => {} }
     }
   `,
-  "stub-settings.ts": `
-    export function SettingsDialog() {
-      return null
+  "stub-settings.tsx": `
+    import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+    export function SettingsDialog(props) {
+      return <Dialog title="Settings fixture"><h2>{props.initialTab === "account" ? "Account" : "General"}</h2><button>Settings action</button></Dialog>
     }
+  `,
+  "stub-topbar-services.ts": `
+    import { useLingui } from "@lingui/solid"
+    export const useLocale = () => ({ i18n: useLingui().i18n() })
+    export const useLocal = () => ({ agent: { current: () => ({}) }, model: {
+      current: () => ({ name: "A very long model name with a provider and reasoning version that must truncate" }),
+      variant: { list: () => ["high"], displayed: () => undefined, set() {} },
+      selection: { saving: () => false, state: () => undefined, error: () => undefined, retry() {} }
+    } })
+    export const useCommand = () => ({ options: [], keybind: () => undefined, trigger() {} })
+    export const useSync = () => ({ session: { get: () => undefined } })
+    export const useSessionDataView = () => () => ({ statusFor: () => ({ type: "idle" }), messagesFor: () => [] })
+  `,
+  "stub-topbar-components.tsx": `
+    export const DialogSessionRename = () => null
+    export const DialogSessionExport = () => null
+    export const DialogSessionImport = () => null
+    export const DialogSessionTransfer = () => null
+    export const transferCopy = { title: { id: "fixture.transfer", message: "Transfer" } }
+    export const WorktreeEnterConfirmDialog = () => null
+    export const ModelSelectorPopover = props => props.triggerAs({ "aria-label": "Choose model" })
+    export const ModelVariantPicker = () => null
+    export const SessionTaskDetails = () => <><button class="stb-selector-btn" aria-label="Trajectory">T</button><button class="stb-icon-btn" aria-label="Task details">D</button></>
+    export const SessionTagMenu = () => null
+    export const SlotOutlet = () => null
+    export const useConfirm = () => ({ show() {} })
   `,
   "stub-project-picker.ts": `
     export function useProjectDirectoryPicker() {
@@ -188,15 +233,16 @@ beforeAll(async () => {
   fixtureDirectory = await mkdtemp(path.join(import.meta.dir, ".mobile-drawer-drag-fixture-"))
   const appSrc = path.resolve(import.meta.dir, "../../../src")
   const navDrawerPath = path.join(appSrc, "components/app-shell/mobile-drawer.tsx")
-  const toolsDrawerPath = path.join(appSrc, "components/app-shell/mobile-tools-drawer.tsx")
+  const topbarPath = path.join(appSrc, "components/top-bar/session-top-bar.tsx")
   const chromePath = path.join(appSrc, "components/app-shell/desktop-window-chrome.tsx")
 
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
       `
+        <!doctype html>
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <div id="app"></div>
-        <style>#app button { min-width: 2rem; min-height: 2rem; }</style>
         <script type="module" src="/main.tsx"></script>
       `,
     ),
@@ -209,9 +255,11 @@ beforeAll(async () => {
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { MobileDrawer } from ${JSON.stringify(`/@fs/${navDrawerPath}`)}
-        import { MobileToolsDrawer } from ${JSON.stringify(`/@fs/${toolsDrawerPath}`)}
+        import { SessionTopBar } from ${JSON.stringify(`/@fs/${topbarPath}`)}
+        import { useLayout } from "@/context/layout"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import "@ericsanchezok/synergy-ui/styles"
+        import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
         import { DesktopWindowChrome } from ${JSON.stringify(`/@fs/${chromePath}`)}
         import { messages as en } from ${JSON.stringify(`/@fs/${appSrc}/locales/en/messages.po`)}
         import { messages as zh } from ${JSON.stringify(`/@fs/${appSrc}/locales/zh-CN/messages.po`)}
@@ -225,14 +273,16 @@ beforeAll(async () => {
         render(
           () => (
             <I18nProvider i18n={i18n}>
-              <Router>
-                <Route path="*" component={() => (
+              <Router root={props => (
                   <DialogProvider>
                     <MobileDrawer onSearchOpen={() => {}} />
-                    <MobileToolsDrawer />
                     <DesktopWindowChrome />
+                    {props.children}
+                    <button>Background action</button>
                   </DialogProvider>
-                )} />
+                )}>
+                <Route path="/:dir/session/:id?" component={SessionTopBar} />
+                <Route path="*" component={() => <button onClick={() => useLayout().mobileSidebar.show()}>Open navigation</button>} />
               </Router>
             </I18nProvider>
           ),
@@ -242,72 +292,67 @@ beforeAll(async () => {
     ),
   ])
 
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixtureDirectory,
-    plugins: [solidPlugin(), ...lingui()],
-    resolve: {
-      alias: [
-        { find: "@/context/layout", replacement: path.join(fixtureDirectory, "stub-layout.ts") },
-        { find: "@/context/platform", replacement: path.join(fixtureDirectory, "stub-platform.ts") },
-        { find: "@/context/notification", replacement: path.join(fixtureDirectory, "stub-notification.ts") },
-        { find: "@/context/global-sync", replacement: path.join(fixtureDirectory, "stub-global-sync.ts") },
-        { find: "@/context/global-sdk", replacement: path.join(fixtureDirectory, "stub-global-sdk.ts") },
-        { find: "@/context/holos", replacement: path.join(fixtureDirectory, "stub-holos.ts") },
-        { find: "@/context/workbench", replacement: path.join(fixtureDirectory, "stub-workbench.ts") },
-        { find: "@/components/settings", replacement: path.join(fixtureDirectory, "stub-settings.ts") },
-        {
-          find: "@/components/dialog/project-directory-picker",
-          replacement: path.join(fixtureDirectory, "stub-project-picker.ts"),
-        },
-        { find: "@/components/dialog/confirm-dialog", replacement: path.join(fixtureDirectory, "stub-confirm.ts") },
-        {
-          find: "@/components/scopes/active-zone",
-          replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
-        },
-        {
-          find: "@/components/scopes/session-row",
-          replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
-        },
-        {
-          find: "@/components/scopes/pagination-bar",
-          replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
-        },
-        { find: "@ericsanchezok/synergy-ui/theme", replacement: path.join(fixtureDirectory, "stub-theme.ts") },
+    styled: true,
+    localized: true,
+    aliases: [
+      { find: "@/context/layout", replacement: path.join(fixtureDirectory, "stub-layout.ts") },
+      { find: "@/context/platform", replacement: path.join(fixtureDirectory, "stub-platform.ts") },
+      { find: "@/context/notification", replacement: path.join(fixtureDirectory, "stub-notification.ts") },
+      { find: "@/context/global-sync", replacement: path.join(fixtureDirectory, "stub-global-sync.ts") },
+      { find: "@/context/global-sdk", replacement: path.join(fixtureDirectory, "stub-global-sdk.ts") },
+      { find: "@/context/holos", replacement: path.join(fixtureDirectory, "stub-holos.ts") },
+      { find: "@/context/workbench", replacement: path.join(fixtureDirectory, "stub-workbench.ts") },
+      { find: "@/components/settings", replacement: path.join(fixtureDirectory, "stub-settings.tsx") },
+      {
+        find: /^@\/context\/(local|command|sync|session-data-view|locale)$/,
+        replacement: path.join(fixtureDirectory, "stub-topbar-services.ts"),
+      },
+      { find: /^@\/components\/dialog$/, replacement: path.join(fixtureDirectory, "stub-topbar-components.tsx") },
+      {
+        find: /^@\/components\/dialog\/dialog-session-(export|import|transfer)$/,
+        replacement: path.join(fixtureDirectory, "stub-topbar-components.tsx"),
+      },
+      {
+        find: /^@\/components\/session\/(worktree-transition-dialog|session-tag-menu)$/,
+        replacement: path.join(fixtureDirectory, "stub-topbar-components.tsx"),
+      },
+      {
+        find: "@/components/execution/session-task-details",
+        replacement: path.join(fixtureDirectory, "stub-topbar-components.tsx"),
+      },
+      {
+        find: "@/components/provider/model-thinking-picker",
+        replacement: path.join(fixtureDirectory, "stub-topbar-components.tsx"),
+      },
+      { find: "@/plugin/slot-outlet", replacement: path.join(fixtureDirectory, "stub-topbar-components.tsx") },
+      {
+        find: "@/components/dialog/project-directory-picker",
+        replacement: path.join(fixtureDirectory, "stub-project-picker.ts"),
+      },
+      { find: "@/components/dialog/confirm-dialog", replacement: path.join(fixtureDirectory, "stub-confirm.ts") },
+      {
+        find: "@/components/scopes/active-zone",
+        replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
+      },
+      {
+        find: "@/components/scopes/session-row",
+        replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
+      },
+      {
+        find: "@/components/scopes/pagination-bar",
+        replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
+      },
+      { find: "@ericsanchezok/synergy-ui/theme", replacement: path.join(fixtureDirectory, "stub-theme.ts") },
 
-        { find: "@ericsanchezok/synergy-sdk/client", replacement: path.join(fixtureDirectory, "stub-sdk.ts") },
-        { find: "@/", replacement: `${appSrc}/` },
-      ],
-    },
-    server: {
-      host: "127.0.0.1",
-      port: 5215,
-      strictPort: true,
-      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
-    },
+      { find: "@ericsanchezok/synergy-sdk/client", replacement: path.join(fixtureDirectory, "stub-sdk.ts") },
+      { find: "@/", replacement: `${appSrc}/` },
+    ],
   })
-  await server.listen()
-  fixtureUrl = server.resolvedUrls?.local[0] ?? ""
-  if (!fixtureUrl) throw new Error("Expected Vite test server URL")
+  fixtureUrl = server.url
   browser = await chromium.launch({ headless: true })
-
-  const warmup = await browser.newPage({ viewport: { width: 375, height: 667 } })
-  const warmupErrors: string[] = []
-  warmup.on("pageerror", (error) => warmupErrors.push(String(error)))
-  warmup.on("console", (message) => {
-    if (message.type() === "error") warmupErrors.push(message.text())
-  })
-  try {
-    await warmup.goto(fixtureUrl)
-    await warmup.waitForLoadState("networkidle")
-    expect(warmupErrors, `fixture errors: ${warmupErrors.join(" | ")}`).toEqual([])
-    await warmup.waitForSelector(".mobile-drawer-overlay", { timeout: 60_000 })
-    await warmup.waitForSelector(".desktop-window-chrome", { timeout: 60_000 })
-    expect(warmupErrors, `fixture page errors: ${warmupErrors.join(" | ")}`).toEqual([])
-  } finally {
-    await warmup.close()
-  }
-}, 120_000)
+}, 300_000)
 
 afterAll(async () => {
   await browser?.close()
@@ -315,13 +360,33 @@ afterAll(async () => {
   if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })
 })
 
-async function withFixture(run: (page: Page) => Promise<void>) {
-  const page = await browser.newPage({ viewport: { width: 375, height: 667 } })
+async function withFixture(
+  run: (page: Page) => Promise<void>,
+  options: {
+    route?: string
+    open?: boolean
+    reducedMotion?: "reduce" | "no-preference"
+    viewport?: { width: number; height: number }
+    colorScheme?: "light" | "dark"
+  } = {},
+) {
+  const page = await browser.newPage({
+    viewport: options.viewport ?? { width: 375, height: 667 },
+    colorScheme: options.colorScheme ?? "light",
+  })
+  page.setDefaultTimeout(5000)
   const pageErrors: string[] = []
   page.on("pageerror", (error) => pageErrors.push(String(error)))
   try {
-    await page.goto(fixtureUrl)
-    await page.waitForSelector(".mobile-drawer-overlay", { timeout: 20_000 })
+    await page.emulateMedia({ reducedMotion: options.reducedMotion ?? "no-preference" })
+    await page.goto(new URL(options.route ?? "/", fixtureUrl).href, { waitUntil: "domcontentloaded", timeout: 30000 })
+    if (options.open !== false) {
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click()
+      await page.waitForSelector(".mobile-drawer-overlay", { timeout: 20_000 })
+      await page
+        .locator(".mobile-drawer-overlay")
+        .evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    }
     await page.waitForSelector(".desktop-window-chrome", { timeout: 20_000 })
     expect(pageErrors, `fixture page errors: ${pageErrors.join(" | ")}`).toEqual([])
     await run(page)
@@ -358,18 +423,18 @@ describe("mobile drawer titlebar drag suspension", () => {
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
       await waitForChromeRegion(page, "drag")
 
-      await page.evaluate(() => (window as any).__drawerControl.openRight())
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click()
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 1)
       await waitForChromeRegion(page, "no-drag")
     })
   })
 
-  test("close buttons still dismiss the drawers", async () => {
+  test("close buttons still dismiss the drawer after reopening", async () => {
     await withFixture(async (page) => {
       await page.getByRole("button", { name: "Close navigation" }).click()
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
 
-      await page.evaluate(() => (window as any).__drawerControl.openRight())
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click()
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 1)
       await page.locator('[data-action="close"]').click()
       await page.waitForFunction(() => document.querySelectorAll(".mobile-drawer-overlay").length === 0)
@@ -413,11 +478,449 @@ describe("mobile drawer localization", () => {
       expect(await account.innerText()).toContain("Loading identity...")
       expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
 
-      await page.evaluate(() => (window as unknown as { __drawerI18n: { activate(locale: string): void } }).__drawerI18n.activate("zh-CN"))
+      await page.evaluate(() =>
+        (window as unknown as { __drawerI18n: { activate(locale: string): void } }).__drawerI18n.activate("zh-CN"),
+      )
 
-      await page.waitForFunction(() => document.querySelector('[data-action="account"]')?.textContent?.includes("正在加载身份…"))
+      await page.waitForFunction(() =>
+        document.querySelector('[data-action="account"]')?.textContent?.includes("正在加载身份…"),
+      )
       expect(await page.getByRole("button", { name: "搜索会话", exact: true }).count()).toBe(1)
       expect(await account.innerText()).not.toContain("Loading identity...")
     })
+  })
+})
+
+describe("single mobile navigation", () => {
+  const projectRoute = `/${base64Encode("scp_fixture")}/session/ses_fixture`
+
+  test("opens Account from remote identity and General from the gear without replacing the drawer", async () => {
+    await withFixture(async (page) => {
+      const profile = {
+        name: "Remote agent",
+        description: "Remote profile description",
+        avatarUrl: "/remote-avatar.png",
+      }
+      await page.evaluate(
+        (value) => (window as unknown as { setHolosProfile(profile: typeof value): void }).setHolosProfile(value),
+        profile,
+      )
+      const account = page.locator('[data-action="account"]')
+      expect(await account.innerText()).toContain(profile.name)
+      expect(await account.innerText()).toContain(profile.description)
+      expect(await account.locator("img").getAttribute("src")).toBe(profile.avatarUrl)
+      await account.click()
+      const settings = page.getByRole("dialog", { name: "Settings fixture" })
+      await settings.waitFor()
+      expect(await settings.getByRole("heading", { name: "Account", exact: true }).count()).toBe(1)
+      await page.getByRole("dialog", { name: "Navigation", exact: true }).waitFor({ state: "hidden" })
+      expect(await page.getByRole("dialog", { name: "Navigation", exact: true }).count()).toBe(0)
+      await page.keyboard.press("Escape")
+      await page.waitForFunction(() => document.activeElement?.getAttribute("data-action") === "account")
+      await page.getByRole("button", { name: "Settings", exact: true }).click()
+      await settings.waitFor()
+      expect(await settings.getByRole("heading", { name: "General", exact: true }).count()).toBe(1)
+      await page.keyboard.press("Escape")
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
+      await page.evaluate(
+        (value) => (window as unknown as { setHolosProfile(profile: typeof value): void }).setHolosProfile(value),
+        { ...profile, name: "Updated remote agent" },
+      )
+      expect(await account.innerText()).toContain("Updated remote agent")
+    })
+  })
+
+  test("keeps unconfirmed or absent Holos identity noninteractive while Settings remains reachable", async () => {
+    await withFixture(async (page) => {
+      for (const features of [undefined, [], ["holos"], undefined, ["holos"]]) {
+        await page.evaluate(
+          (value) => (window as unknown as { setFeatures(features: string[] | undefined): void }).setFeatures(value),
+          features,
+        )
+        const account = page.locator(".mobile-drawer-account")
+        const available = features?.includes("holos") ?? false
+        expect(await account.locator('[data-action="account"]').count()).toBe(available ? 1 : 0)
+        expect(await account.getByRole("button").count()).toBe(available ? 2 : 1)
+        expect(await account.locator('[data-component="icon"]').count()).toBe(available ? 2 : 1)
+        if (available) continue
+        expect(await account.getByText("Synergy", { exact: true }).count()).toBe(1)
+        const settings = account.getByRole("button", { name: "Settings", exact: true })
+        await settings.focus()
+        await page.keyboard.press("Enter")
+        const nested = page.getByRole("dialog", { name: "Settings fixture" })
+        await nested.waitFor()
+        expect(await nested.getByRole("heading", { name: "General", exact: true }).count()).toBe(1)
+        await page.keyboard.press("Escape")
+        await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
+        await page.keyboard.press("Shift+Tab")
+        expect(await page.evaluate(() => !!document.activeElement?.closest(".mobile-drawer-account"))).toBe(false)
+      }
+    })
+  })
+
+  for (const viewport of [
+    { width: 320, height: 480 },
+    { width: 375, height: 812 },
+  ]) {
+    test(`keeps identity fixed and every collection and shortcut reachable at ${viewport.width}x${viewport.height}`, async () => {
+      for (const colorScheme of ["light", "dark"] as const) {
+        await withFixture(
+          async (page) => {
+            const protocol = await page.context().newCDPSession(page)
+            await protocol.send("Emulation.setSafeAreaInsetsOverride", { insets: { bottom: 34 } })
+            await page.evaluate(() => {
+              const fixture = window as unknown as {
+                __drawerControl: { populateCollections(): void }
+                setHolosProfile(profile: { name: string; description: string; avatarUrl: string }): void
+              }
+              fixture.__drawerControl.populateCollections()
+              fixture.setHolosProfile({
+                name: "Remote account with a very long authoritative name ".repeat(8),
+                description: "Long remote profile description ".repeat(16),
+                avatarUrl: "/remote-avatar.png",
+              })
+            })
+            const account = page.locator(".mobile-drawer-account")
+            const initial = (await account.boundingBox())!
+            expect(initial.y).toBeGreaterThan(0)
+            expect(initial.y + initial.height).toBeLessThanOrEqual(viewport.height - 34)
+            expect(initial.y + initial.height).toBeGreaterThanOrEqual(viewport.height - 50)
+            const scrollers = await page.locator(".mobile-drawer-root, .mobile-drawer-root *").evaluateAll((elements) =>
+              elements
+                .filter((element) => {
+                  const style = getComputedStyle(element)
+                  return (
+                    element.clientHeight > 0 &&
+                    element.scrollHeight > element.clientHeight + 1 &&
+                    ["auto", "scroll"].includes(style.overflowY)
+                  )
+                })
+                .map((element) => ({
+                  collections: !!element.querySelector('[role="tabpanel"]'),
+                  destinations: !!element.querySelector("nav"),
+                  panels: !!element.querySelector('[role="group"]'),
+                })),
+            )
+            expect(scrollers).toEqual([{ collections: true, destinations: true, panels: true }])
+            expect(
+              await page.getByRole("region", { name: "Recent", exact: true }).locator("[data-session-id]").count(),
+            ).toBe(40)
+            await page.mouse.move(100, 200)
+            await page.mouse.wheel(0, 1200)
+            await page.waitForFunction(() =>
+              Array.from(document.querySelectorAll(".mobile-drawer-root, .mobile-drawer-root *")).some(
+                (element) => element.scrollTop > 0,
+              ),
+            )
+            expect(await account.boundingBox()).toEqual(initial)
+
+            const expectReachable = async (control: Locator) => {
+              await control.scrollIntoViewIfNeeded()
+              await control.click({ trial: true })
+              const visible = await control.evaluate((element) => {
+                const bounds = element.getBoundingClientRect()
+                const footer = document.querySelector(".mobile-drawer-account")!.getBoundingClientRect()
+                const drawer = document.querySelector(".mobile-drawer-root")!.getBoundingClientRect()
+                return {
+                  height: bounds.height,
+                  width: bounds.width,
+                  inside:
+                    bounds.left >= drawer.left &&
+                    bounds.right <= drawer.right &&
+                    bounds.top >= drawer.top &&
+                    bounds.bottom <= (element.closest(".mobile-drawer-account") ? footer.bottom : footer.top),
+                  hit: element.contains(
+                    document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2),
+                  ),
+                }
+              })
+              expect(visible.height).toBeGreaterThanOrEqual(44)
+              expect(visible.width).toBeGreaterThanOrEqual(44)
+              expect(visible.inside && visible.hit).toBe(true)
+              expect(await account.boundingBox()).toEqual(initial)
+            }
+            await expectReachable(page.locator('[data-session-id="ses_long_39"]'))
+            await expectReachable(page.locator('[data-action="load-more-recent"]'))
+            for (const control of await page
+              .getByRole("navigation", { name: "Tools", exact: true })
+              .getByRole("link")
+              .all()) {
+              await expectReachable(control)
+            }
+            for (const control of await page
+              .getByRole("group", { name: "Workspace panels", exact: true })
+              .getByRole("button")
+              .all()) {
+              await expectReachable(control)
+            }
+            await page.getByRole("tab", { name: "Projects", exact: true }).click()
+            expect(await page.getByRole("button", { name: /^Project \d+ —/ }).count()).toBe(30)
+            await expectReachable(page.getByRole("button", { name: /^Project 29 —/ }))
+            await expectReachable(page.getByRole("button", { name: "Add project", exact: true }))
+            await expectReachable(page.getByRole("button", { name: "Home", exact: true }))
+            await expectReachable(page.getByRole("dialog").getByRole("button", { name: "New session", exact: true }))
+            await expectReachable(page.getByRole("button", { name: "Settings", exact: true }))
+            await expectReachable(page.locator('[data-action="account"]'))
+            expect(
+              await page.getByRole("dialog").evaluate((element) => element.scrollWidth <= element.clientWidth),
+            ).toBe(true)
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+            await page.getByRole("button", { name: "Settings", exact: true }).click()
+            await page.getByRole("dialog", { name: "Settings fixture" }).waitFor()
+            await page.keyboard.press("Escape")
+            await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
+            expect(await account.boundingBox()).toEqual(initial)
+          },
+          { viewport, colorScheme, route: projectRoute },
+        )
+      }
+    })
+  }
+
+  test("keeps each global destination once and separates capability-gated workspace actions", async () => {
+    await withFixture(
+      async (page) => {
+        const destinations = page.getByRole("navigation", { name: "Tools", exact: true })
+        const panels = page.getByRole("group", { name: "Workspace panels", exact: true })
+        for (const [label, href] of [
+          ["Agenda", "/agenda"],
+          ["Library", "/library"],
+          ["Performance", "/performance"],
+          ["Plugins", "/plugins/marketplace"],
+          ["Kanban", "/kanban"],
+        ]) {
+          expect(await page.getByRole("link", { name: label, exact: true }).count()).toBe(1)
+          expect(await destinations.getByRole("link", { name: label, exact: true }).getAttribute("href")).toBe(href)
+        }
+        expect(await panels.getByRole("button", { name: "Notes", exact: true }).count()).toBe(1)
+        expect(await panels.getByRole("button", { name: "Browser", exact: true }).count()).toBe(1)
+        await panels.getByRole("button", { name: "Browser", exact: true }).click()
+        await page.getByRole("dialog").waitFor({ state: "detached" })
+        expect(await page.evaluate(() => (window as unknown as { openedPanels: string[] }).openedPanels)).toEqual([
+          "browser",
+        ])
+        await page.getByRole("button", { name: "Open navigation", exact: true }).click()
+        await page.getByRole("button", { name: "Notes", exact: true }).click()
+        await page.getByRole("dialog").waitFor({ state: "detached" })
+        expect(await page.evaluate(() => (window as unknown as { openedPanels: string[] }).openedPanels)).toEqual([
+          "browser",
+          "notes",
+        ])
+        await page.getByRole("button", { name: "Open navigation", exact: true }).click()
+        await page.getByRole("link", { name: "Agenda", exact: true }).click()
+        await page.getByRole("dialog").waitFor({ state: "detached" })
+        expect(new URL(page.url()).pathname).toBe("/agenda")
+        await page.getByRole("button", { name: "Open navigation", exact: true }).click()
+        const setFeatures = (features: string[] | undefined) =>
+          page.evaluate((value) => {
+            ;(window as unknown as { setFeatures(features: string[] | undefined): void }).setFeatures(value)
+          }, features)
+        await setFeatures(undefined)
+        for (const label of ["Agenda", "Library", "Performance", "Plugins", "Kanban"])
+          expect(await page.getByRole("link", { name: label, exact: true }).count()).toBe(0)
+        for (const label of ["Notes", "Browser"])
+          expect(await page.getByRole("button", { name: label, exact: true }).count()).toBe(0)
+        await setFeatures(["agenda"])
+        expect(await page.getByRole("link", { name: "Agenda", exact: true }).count()).toBe(1)
+        await setFeatures([])
+        expect(await page.getByRole("link", { name: "Agenda", exact: true }).count()).toBe(0)
+        await setFeatures(["note", "browser"])
+        await page.evaluate(() => (window as unknown as { setNative(value: boolean): void }).setNative(false))
+        expect(await page.getByRole("button", { name: "Browser", exact: true }).count()).toBe(0)
+        expect(await page.getByRole("button", { name: "Notes", exact: true }).count()).toBe(1)
+        await page.evaluate(() => (window as unknown as { setNative(value: boolean): void }).setNative(true))
+        expect(await page.getByRole("button", { name: "Browser", exact: true }).isDisabled()).toBe(true)
+        expect(await page.getByRole("button", { name: "Settings", exact: true }).count()).toBe(1)
+      },
+      { route: projectRoute },
+    )
+  })
+
+  test("names the modal, traps focus, closes one layer at a time and returns focus", async () => {
+    await withFixture(async (page) => {
+      const dialog = page.getByRole("dialog", { name: "Navigation", exact: true })
+      await dialog.waitFor()
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Close navigation")
+      expect(await page.getByRole("button", { name: "Background action" }).count()).toBe(0)
+      for (let index = 0; index < 24; index++) {
+        await page.keyboard.press(index < 12 ? "Tab" : "Shift+Tab")
+        expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+      }
+      await page.getByRole("button", { name: "Settings", exact: true }).click()
+      await page.getByRole("dialog", { name: "Settings fixture" }).waitFor()
+      await dialog.waitFor({ state: "hidden" })
+      expect(await dialog.count()).toBe(0)
+      await page.keyboard.press("Escape")
+      await dialog.waitFor()
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
+      await page.keyboard.press("Escape")
+      await page.getByRole("dialog").waitFor({ state: "detached" })
+      await page.waitForFunction(() => document.activeElement?.textContent === "Open navigation")
+      await page.getByRole("button", { name: "Open navigation", exact: true }).click()
+      await dialog.waitFor()
+      await page.setViewportSize({ width: 1024, height: 667 })
+      await page.getByRole("dialog").waitFor({ state: "detached" })
+      expect(await page.getByRole("button", { name: "Background action" }).count()).toBe(1)
+    })
+  })
+
+  test("uses calm horizontal rows without duplicate Recent text or overflow at 375px", async () => {
+    await withFixture(async (page) => {
+      expect(await page.getByRole("region", { name: "Recent", exact: true }).count()).toBe(1)
+      expect(await page.getByRole("heading", { name: "Recent", exact: true }).count()).toBe(0)
+      const links = page.getByRole("navigation", { name: "Tools", exact: true }).getByRole("link")
+      const rows = await links.evaluateAll((elements) =>
+        elements.map((element) => {
+          const icon = element.querySelector("svg")!.getBoundingClientRect()
+          const label = element.querySelector("span")!.getBoundingClientRect()
+          const bounds = element.getBoundingClientRect()
+          return {
+            height: bounds.height,
+            width: bounds.width,
+            font: getComputedStyle(element).fontSize,
+            iconWidth: icon.width,
+            horizontal: label.left >= icon.right,
+            centered: Math.abs(label.y + label.height / 2 - icon.y - icon.height / 2) < 1,
+          }
+        }),
+      )
+      expect(rows.length).toBe(5)
+      for (const row of rows) {
+        expect(row.height).toBeGreaterThanOrEqual(44)
+        expect(row.font).toBe("14px")
+        expect(row.iconWidth).toBe(20)
+        expect(row.horizontal && row.centered).toBe(true)
+      }
+      const first = await links.nth(0).boundingBox()
+      const second = await links.nth(1).boundingBox()
+      expect(first?.y).toBe(second?.y)
+      expect(first!.x).toBe(16)
+      const newAction = page.getByRole("dialog").getByRole("button", { name: "New session", exact: true })
+      expect((await newAction.boundingBox())?.height).toBe(44)
+      expect(await newAction.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+      const close = page.getByRole("button", { name: "Close navigation", exact: true })
+      await page.mouse.move(374, 666)
+      expect(await close.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+      expect(await page.getByRole("dialog").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      )
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+      await page.keyboard.press("Tab")
+      expect(
+        await page.evaluate(() => {
+          const focused = document.activeElement!
+          const style = getComputedStyle(focused)
+          return (
+            focused.matches(":focus-visible") &&
+            (style.backgroundImage !== "none" || style.outlineStyle !== "none" || style.boxShadow !== "none")
+          )
+        }),
+      ).toBe(true)
+    })
+  })
+
+  test("New preserves project context and remains reachable from non-session destinations", async () => {
+    await withFixture(
+      async (page) => {
+        await page.getByRole("dialog").getByRole("button", { name: "New session", exact: true }).click()
+        await page.getByRole("dialog").waitFor({ state: "detached" })
+        expect(new URL(page.url()).pathname).toBe(`/${base64Encode("scp_fixture")}/session`)
+      },
+      { route: projectRoute },
+    )
+    await withFixture(
+      async (page) => {
+        await page.getByRole("dialog").getByRole("button", { name: "New session", exact: true }).click()
+        await page.getByRole("dialog").waitFor({ state: "detached" })
+        expect(new URL(page.url()).pathname).toBe(`/${base64Encode("home")}/session`)
+      },
+      { route: "/agenda" },
+    )
+  })
+
+  test("top bar has one navigation entry and keeps long model names clear of 44px controls", async () => {
+    await withFixture(
+      async (page) => {
+        expect(await page.getByRole("button", { name: "Open tools", exact: true }).count()).toBe(0)
+        expect(await page.getByRole("button", { name: "Open navigation", exact: true }).count()).toBe(1)
+        expect((await page.locator("[data-session-top-bar]").boundingBox())?.height).toBe(48)
+        const navigation = await page.getByRole("button", { name: "Open navigation", exact: true }).boundingBox()
+        const newAction = await page.getByRole("button", { name: "New session", exact: true }).boundingBox()
+        for (const bounds of [navigation, newAction]) {
+          expect(bounds?.width).toBe(44)
+          expect(bounds?.height).toBe(44)
+        }
+        const model = page.getByRole("button", { name: "Choose model", exact: true })
+        const bounds = (await model.boundingBox())!
+        expect(bounds.x).toBeGreaterThanOrEqual(navigation!.x + navigation!.width)
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(newAction!.x)
+        expect(
+          await model.locator(".stb-selector-label").evaluate((element) => element.scrollWidth > element.clientWidth),
+        ).toBe(true)
+        const controls = await page.locator("[data-session-top-bar] button").evaluateAll((elements) =>
+          elements
+            .filter((element) => element.getBoundingClientRect().width > 0)
+            .map((element) => {
+              const bounds = element.getBoundingClientRect()
+              return bounds.x >= 0 && bounds.right <= innerWidth
+            }),
+        )
+        expect(controls.every(Boolean)).toBe(true)
+        await page.getByRole("button", { name: "New session", exact: true }).click()
+        expect(new URL(page.url()).pathname).toBe(`/${base64Encode("scp_fixture")}/session`)
+        await page.setViewportSize({ width: 1024, height: 667 })
+        await page.getByRole("button", { name: "Open side workspace", exact: true }).waitFor()
+        expect(await page.getByRole("button", { name: "Open BottomSpace", exact: true }).count()).toBe(1)
+        expect(await page.getByRole("button", { name: "Open navigation", exact: true }).count()).toBe(0)
+      },
+      { route: projectRoute, open: false },
+    )
+  })
+
+  test("coordinates exit and rapid close/reopen without a stale modal or focus trap", async () => {
+    await withFixture(async (page) => {
+      const exit = await page.evaluate(() => {
+        document.querySelector<HTMLButtonElement>('[data-action="close"]')!.click()
+        const content = document.querySelector<HTMLElement>('[role="dialog"]')
+        const overlay = document.querySelector<HTMLElement>('[data-component="dialog-overlay"]')
+        return {
+          retained: !!content,
+          contentDuration: content && getComputedStyle(content).animationDuration,
+          overlayDuration: overlay && getComputedStyle(overlay).animationDuration,
+        }
+      })
+      expect(exit.retained).toBe(true)
+      expect(exit.contentDuration).toBe("0.18s")
+      expect(exit.overlayDuration).toBe(exit.contentDuration)
+      await page.evaluate(() =>
+        (window as unknown as { __drawerControl: { openMobile(): void } }).__drawerControl.openMobile(),
+      )
+      await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== "running"))
+      expect(await page.getByRole("dialog", { name: "Navigation", exact: true }).count()).toBe(1)
+      await page.keyboard.press("Tab")
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+      await page.keyboard.press("Escape")
+      await page.getByRole("dialog").waitFor({ state: "detached" })
+      await page.waitForFunction(() => document.activeElement?.textContent === "Open navigation")
+      await page.keyboard.press("Tab")
+      expect(await page.evaluate(() => !document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+    })
+  })
+
+  test("reduced motion opens and closes statically", async () => {
+    await withFixture(
+      async (page) => {
+        expect(await page.getByRole("dialog").evaluate((element) => getComputedStyle(element).transform)).toBe("none")
+        expect(await page.getByRole("dialog").evaluate((element) => element.getAnimations().length)).toBe(0)
+        const exitAnimations = await page.evaluate(() => {
+          document.querySelector<HTMLButtonElement>('[data-action="close"]')!.click()
+          return document.querySelector('[role="dialog"]')?.getAnimations().length ?? 0
+        })
+        expect(exitAnimations).toBe(0)
+        await page.getByRole("dialog").waitFor({ state: "detached" })
+        await page.waitForFunction(() => document.activeElement?.textContent === "Open navigation")
+      },
+      { reducedMotion: "reduce" },
+    )
   })
 })

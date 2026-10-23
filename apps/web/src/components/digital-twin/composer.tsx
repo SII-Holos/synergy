@@ -25,17 +25,46 @@ type Props = {
   blocked: boolean
   modelKey: string
   /**
-   * Narrow layouts put prediction in the add menu rather than on the toolbar.
-   * Binding hands the same controller to that menu and renders no button, so
-   * one implementation drives both entry points.
+   * External entry points share this owner without re-registering the service.
+   * Binding suppresses the built-in button but retains feedback here.
    */
   bind?: (api: PredictionControlApi | undefined) => void
+  showProgress?: boolean
 }
 
 export type PredictionControlApi = {
   predict(): void
   busy(): boolean
   disabled(): boolean
+}
+
+export function PredictionButton(props: { api: PredictionControlApi }) {
+  const { _ } = useLingui()
+  return (
+    <Tooltip value={props.api.busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
+      <button
+        type="button"
+        class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+        aria-label={_(twinCopy.predict)}
+        aria-busy={props.api.busy()}
+        disabled={props.api.disabled()}
+        onClick={() => props.api.predict()}
+      >
+        <Show
+          when={props.api.busy()}
+          fallback={
+            <Icon
+              name={getSemanticIcon("action.predict")}
+              size="small"
+              color={props.api.disabled() ? "var(--icon-disabled)" : "var(--icon-base)"}
+            />
+          }
+        >
+          <Spinner class="size-4 text-icon-base motion-reduce:[&>rect]:animate-none!" />
+        </Show>
+      </button>
+    </Tooltip>
+  )
 }
 
 const SavedSuggestion = z.object({
@@ -267,54 +296,26 @@ function SessionPrediction(props: Props) {
     document.removeEventListener("visibilitychange", visibility)
   })
   const disabled = createMemo(() => !eligible() || !state().ready || busy())
+  const api: PredictionControlApi = {
+    predict() {
+      props.focusEditor()
+      setSaved("suggestion", undefined)
+      requests.manual()
+    },
+    busy,
+    disabled,
+  }
   if (props.bind) {
-    props.bind({
-      predict() {
-        props.focusEditor()
-        setSaved("suggestion", undefined)
-        requests.manual()
-      },
-      busy,
-      disabled,
-    })
+    props.bind(api)
     onCleanup(() => props.bind!(undefined))
   }
   return (
     <>
       <Show when={!props.bind}>
-        <Tooltip value={busy() ? _(twinCopy.predicting) : _(twinCopy.predict)} placement="top">
-          <button
-            type="button"
-            class="prompt-input-toolbar-icon-button flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
-            aria-label={_(twinCopy.predict)}
-            aria-busy={busy()}
-            disabled={disabled()}
-            onClick={() => {
-              props.focusEditor()
-              setSaved("suggestion", undefined)
-              requests.manual()
-            }}
-          >
-            <Show
-              when={busy()}
-              fallback={
-                <Icon
-                  name={getSemanticIcon("action.predict")}
-                  size="small"
-                  color={disabled() ? "var(--icon-disabled)" : "var(--icon-base)"}
-                />
-              }
-            >
-              <Spinner class="size-4 text-icon-base motion-reduce:[&>rect]:animate-none!" />
-            </Show>
-          </button>
-        </Tooltip>
+        <PredictionButton api={api} />
       </Show>
-      {/* Bind-mode layouts reach prediction through the add menu and render no
-          button, so both pending and failure feedback live here: without this,
-          a menu-triggered prediction had no visible progress and a rejection
-          was silent. */}
-      <Show when={props.bind && busy()}>
+      {/* Menu entry points disappear after activation; their feedback must outlive the menu. */}
+      <Show when={props.bind && props.showProgress !== false && busy()}>
         <span data-slot="twin-prediction-status" role="status" class="text-12-regular text-text-weak">
           {_(twinCopy.predicting)}
         </span>

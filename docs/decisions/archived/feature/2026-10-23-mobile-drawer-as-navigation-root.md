@@ -1,6 +1,7 @@
 # Decision Record: Make the mobile drawer the navigation root instead of a launcher
 
 Status: implemented
+Archived: 2026-10-23
 
 ## Problem
 

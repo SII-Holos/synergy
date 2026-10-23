@@ -37,17 +37,12 @@ export function NewSessionGreeting(props: { disabled: boolean; onProject: () => 
       }
     >
       {(experience) => (
-        <div class="session-greeting-frame">
-          <div class="session-greeting-stage">
-            <WelcomeStage
-              definition={welcomeScenes.find((scene) => scene.id === experience.selection.sceneId)!}
-              seed={experience.selection.seed}
-              memory={experience.memory}
-              blocked={!!dialog.active}
-            />
-          </div>
-          <div class="session-greeting-actions-mobile">{actions()}</div>
-        </div>
+        <WelcomeStage
+          definition={welcomeScenes.find((scene) => scene.id === experience.selection.sceneId)!}
+          seed={experience.selection.seed}
+          memory={experience.memory}
+          blocked={!!dialog.active}
+        />
       )}
     </Show>
   )

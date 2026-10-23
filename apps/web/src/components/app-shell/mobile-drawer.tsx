@@ -57,7 +57,6 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
 
   function close() {
     layout.mobileSidebar.hide()
-    setDrilldown(null)
   }
 
   function navigateAndClose(path: string) {
@@ -74,97 +73,97 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
   }
 
   return (
-    <Show when={layout.mobileSidebar.opened()}>
-      <MobileDrawerDialog side="left" label={_(appShell.navLabel)} onClose={close}>
-        <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
-          <A href="/" class="flex items-center gap-2" onClick={close}>
-            <img
-              src={holosLogoPath(theme.mode())}
-              alt={_({ id: "brand.logo.alt", message: "Holos" })}
-              class="size-6 shrink-0"
-            />
-            <div class="flex flex-col">
-              <span class="text-14-medium text-text-strong">{_(sidebar.logoAlt)}</span>
-              <span class="text-10-regular text-text-weak">
-                {_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}
-              </span>
-            </div>
-          </A>
-          <button
-            type="button"
-            data-action="search"
-            aria-label={_(appShell.search)}
-            class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={() => {
-              close()
-              props.onSearchOpen()
-            }}
-          >
-            <Icon name={getSemanticIcon("action.search")} size="normal" />
-          </button>
-          <button
-            autofocus
-            data-action="close"
-            type="button"
-            aria-label={_(appShell.closeNav)}
-            class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-            onClick={close}
-          >
-            <Icon name={getSemanticIcon("action.close")} size="normal" />
-          </button>
-        </div>
+    <MobileDrawerDialog
+      open={layout.mobileSidebar.opened()}
+      label={_(appShell.navLabel)}
+      onClose={close}
+      onClosed={() => setDrilldown(null)}
+    >
+      <div class="mobile-drawer-header safe-top">
+        <A href="/" class="mobile-drawer-brand" onClick={close}>
+          <img
+            src={holosLogoPath(theme.mode())}
+            alt={_({ id: "brand.logo.alt", message: "Holos" })}
+            class="size-5 shrink-0"
+          />
+          <div class="flex flex-col">
+            <span class="mobile-drawer-label text-text-strong">{_(sidebar.logoAlt)}</span>
+            <span class="text-10-regular text-text-weak">
+              {_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}
+            </span>
+          </div>
+        </A>
+        <button
+          type="button"
+          data-action="search"
+          aria-label={_(appShell.search)}
+          class="mobile-drawer-action mobile-drawer-icon-action"
+          onClick={() => {
+            close()
+            props.onSearchOpen()
+          }}
+        >
+          <Icon name={getSemanticIcon("action.search")} size="normal" />
+        </button>
+        <button
+          autofocus
+          data-action="close"
+          type="button"
+          aria-label={_(appShell.closeNav)}
+          class="mobile-drawer-action mobile-drawer-icon-action"
+          onClick={close}
+        >
+          <Icon name={getSemanticIcon("action.close")} size="normal" />
+        </button>
+      </div>
 
-        <div class="flex flex-col flex-1 min-h-0 safe-bottom">
-          <Show
-            when={drilldown()}
-            fallback={
-              <ScopeListView
-                currentDir={currentDir()}
-                onSelectScope={setDrilldown}
-                onNavigateHome={() => navigateAndClose(`/${base64Encode("home")}/session`)}
-                onNewSession={() => startNewTask("home")}
-                onClose={close}
-              />
-            }
-          >
-            {(scope) => (
-              <SessionListDrawerView
-                scope={scope()}
-                currentSessionID={params.id}
-                notification={notification}
-                onBack={() => setDrilldown(null)}
-                onSelectSession={(session) => {
-                  const scopeKey = session.scope.type === "home" ? "home" : session.scope.id!
-                  navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
-                }}
-                onNewSession={() => startNewTask(scope().id)}
-                onClose={close}
-              />
-            )}
-          </Show>
-        </div>
-      </MobileDrawerDialog>
-    </Show>
+      <div class="flex flex-col flex-1 min-h-0 safe-bottom">
+        <Show
+          when={drilldown()}
+          fallback={
+            <ScopeListView
+              currentDir={currentDir()}
+              onSelectScope={setDrilldown}
+              onNavigateHome={() => navigateAndClose(`/${base64Encode("home")}/session`)}
+              onNewSession={() => startNewTask(currentDir() ?? "home")}
+              onClose={close}
+            />
+          }
+        >
+          {(scope) => (
+            <SessionListDrawerView
+              scope={scope()}
+              currentSessionID={params.id}
+              notification={notification}
+              onBack={() => setDrilldown(null)}
+              onSelectSession={(session) => {
+                const scopeKey = session.scope.type === "home" ? "home" : session.scope.id!
+                navigateAndClose(`/${base64Encode(scopeKey)}/session/${session.id}`)
+              }}
+              onNewSession={() => startNewTask(scope().id)}
+              onClose={close}
+            />
+          )}
+        </Show>
+      </div>
+    </MobileDrawerDialog>
   )
 }
 
-type DrawerToolID = "agenda" | "library" | "performance" | "plugins" | "kanban" | "notes" | "browser"
+type DrawerDestinationID = "agenda" | "library" | "performance" | "plugins" | "kanban"
+type DrawerPanelID = "notes" | "browser"
 
-interface DrawerTool {
-  id: DrawerToolID
-  icon: SemanticIconTokenName
-  href?: string
-  panelId?: string
-}
-
-const DRAWER_TOOLS: DrawerTool[] = [
+const DRAWER_DESTINATIONS: { id: DrawerDestinationID; icon: SemanticIconTokenName; href: string }[] = [
   { id: "agenda", icon: "agenda.main", href: "/agenda" },
   { id: "library", icon: "library.main", href: "/library" },
   { id: "performance", icon: "performance.main", href: "/performance" },
   { id: "plugins", icon: "plugins.main", href: "/plugins/marketplace" },
   { id: "kanban", icon: "kanban.main", href: "/kanban" },
-  { id: "notes", icon: "notes.main", panelId: "notes" },
-  { id: "browser", icon: "browser.main", panelId: "browser" },
+]
+
+const DRAWER_PANELS: { id: DrawerPanelID; icon: SemanticIconTokenName }[] = [
+  { id: "notes", icon: "notes.main" },
+  { id: "browser", icon: "browser.main" },
 ]
 
 function ScopeListView(props: {
@@ -209,7 +208,7 @@ function ScopeListView(props: {
       labels: accountLabels(),
     })
   const accountAvatar = () => account().avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
-  const toolLabel = (id: DrawerToolID) => {
+  const toolLabel = (id: DrawerDestinationID | DrawerPanelID) => {
     if (id === "agenda") return _(appShell.agenda)
     if (id === "library") return _(appShell.library)
     if (id === "performance") return _(appShell.performance)
@@ -259,8 +258,8 @@ function ScopeListView(props: {
     void addProjects()
   }
 
-  const openSettings = () => {
-    dialog.push(() => <SettingsDialog initialTab="general" />)
+  const openSettings = (initialTab: "general" | "account") => {
+    dialog.push(() => <SettingsDialog initialTab={initialTab} />)
   }
 
   const scopes = createMemo(() => {
@@ -279,169 +278,164 @@ function ScopeListView(props: {
   const activeProjectScope = createMemo(() =>
     props.currentDir ? resolveProjectScope(props.currentDir, undefined, scopes()) : undefined,
   )
+  const destinations = createMemo(() =>
+    DRAWER_DESTINATIONS.filter((tool) => runtimeFeatureAvailable("navigation", tool.id, globalSDK.capabilities.has)),
+  )
+  const panels = createMemo(() => DRAWER_PANELS.filter((panel) => !!workbench.getPanel(panel.id)))
 
   return (
-    <div class="flex flex-col flex-1 min-h-0 py-2">
-      <div class="shrink-0 px-3 pb-2">
+    <div class="mobile-drawer-root">
+      <div class="shrink-0 px-4 pb-2">
         <button
           type="button"
           data-action="new-session"
-          class="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-icon-strong-base px-3 text-14-medium text-icon-invert-base transition-colors hover:bg-icon-strong-hover"
+          class="mobile-drawer-action w-full"
           onClick={props.onNewSession}
         >
           <Icon name={getSemanticIcon("session.new")} size="normal" />
           <span>{_(appShell.newSession)}</span>
         </button>
       </div>
-      <Tabs defaultValue="recent" class="navigation-collections" variant="pill">
-        <Tabs.List class="mx-3" aria-label={_(appShell.navLabel)}>
-          <Tabs.Trigger value="recent">{_(sidebar.recent)}</Tabs.Trigger>
-          <Tabs.Trigger value="projects">{_(sidebar.projects)}</Tabs.Trigger>
-        </Tabs.List>
-        <Tabs.Content value="recent">
-          <MobileDrawerRecent
-            label={_(sidebar.recent)}
-            emptyLabel={_(sidebar.noRecentSessions)}
-            loadMoreLabel={_(sidebar.loadMore)}
-            untitledLabel={_(sidebar.untitled)}
-            draftLabel={_(sidebar.draftBadge)}
-            hasDraft={(id) => globalSDK.drafts.hasDraftSession(id)}
-            entries={layout.nav.recentEntries()}
-            currentSessionID={params.id}
-            visualFor={recentVisualFor}
-            hasMore={layout.nav.hasMoreRecent()}
-            onSelect={selectRecentSession}
-            onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}
-            groups={{ pinned: _(appShell.pinned), today: _(appShell.today), earlier: _(appShell.earlier) }}
-          />
-        </Tabs.Content>
-        <Tabs.Content value="projects">
-          <button
-            type="button"
-            classList={{
-              "w-full flex items-center gap-3 px-4 py-2.5 transition-colors": true,
-              "bg-surface-raised-base-hover text-text-strong": isHomeActive(),
-              "text-text-base hover:bg-surface-raised-base-hover": !isHomeActive(),
-            }}
-            onClick={props.onNavigateHome}
-          >
-            <Icon name={getSemanticIcon("navigation.home")} size="normal" class="shrink-0" />
-            <span class="text-14-medium">{_(appShell.home)}</span>
-          </button>
+      <div class="mobile-drawer-scroll">
+        <Tabs defaultValue="recent" class="navigation-collections" variant="pill">
+          <Tabs.List aria-label={_(appShell.navLabel)}>
+            <Tabs.Trigger value="recent">{_(sidebar.recent)}</Tabs.Trigger>
+            <Tabs.Trigger value="projects">{_(sidebar.projects)}</Tabs.Trigger>
+          </Tabs.List>
+          <Tabs.Content value="recent">
+            <MobileDrawerRecent
+              label={_(sidebar.recent)}
+              emptyLabel={_(sidebar.noRecentSessions)}
+              loadMoreLabel={_(sidebar.loadMore)}
+              untitledLabel={_(sidebar.untitled)}
+              draftLabel={_(sidebar.draftBadge)}
+              hasDraft={(id) => globalSDK.drafts.hasDraftSession(id)}
+              entries={layout.nav.recentEntries()}
+              currentSessionID={params.id}
+              visualFor={recentVisualFor}
+              hasMore={layout.nav.hasMoreRecent()}
+              onSelect={selectRecentSession}
+              onLoadMore={() => void layout.nav.loadMoreNav("__recent__")}
+              groups={{ pinned: _(appShell.pinned), today: _(appShell.today), earlier: _(appShell.earlier) }}
+            />
+          </Tabs.Content>
+          <Tabs.Content value="projects">
+            <div class="px-4">
+              <button
+                type="button"
+                class="mobile-drawer-action w-full"
+                aria-current={isHomeActive() ? "page" : undefined}
+                onClick={props.onNavigateHome}
+              >
+                <Icon name={getSemanticIcon("navigation.home")} size="normal" class="shrink-0" />
+                <span>{_(appShell.home)}</span>
+              </button>
 
-          <div class="px-2 py-1">
-            <MobileDrawerAddProjectButton label={_(sidebar.addProject)} onClick={openProjectPicker} />
-          </div>
+              <div class="py-1">
+                <MobileDrawerAddProjectButton label={_(sidebar.addProject)} onClick={openProjectPicker} />
+              </div>
 
-          <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
+              <For each={scopes()}>
+                {(scope) => {
+                  const isActive = createMemo(() => activeProjectScope()?.id === scope.id)
 
-          <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
-
-          <div class="px-4 pb-1.5">
-            <span class="text-11-medium text-text-weak uppercase tracking-wider">{_(appShell.projects)}</span>
-          </div>
-          <For each={scopes()}>
-            {(scope) => {
-              const isActive = createMemo(() => activeProjectScope()?.id === scope.id)
-
-              return (
-                <button
-                  type="button"
-                  classList={{
-                    "w-full flex items-center gap-3 px-4 py-2.5 transition-colors": true,
-                    "bg-surface-raised-base-hover": isActive(),
-                    "hover:bg-surface-raised-base-hover": !isActive(),
-                  }}
-                  onClick={() => props.onSelectScope(scope)}
-                >
-                  <Icon name={getSemanticIcon("workspace.main")} size="normal" class="shrink-0" />
-                  <span
-                    classList={{
-                      "text-14-medium truncate": true,
-                      "text-text-strong": isActive(),
-                      "text-text-base": !isActive(),
-                    }}
-                  >
-                    {getScopeLabel(scope)}
-                  </span>
-                  <Icon
-                    name={getSemanticIcon("navigation.expand")}
-                    size="small"
-                    class="ml-auto shrink-0 text-icon-weak-base"
-                  />
-                </button>
-              )
-            }}
-          </For>
-
-          <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
-        </Tabs.Content>
-      </Tabs>
-      <div class="shrink-0 border-t border-border-weaker-base pt-2">
-        <div class="px-4 pb-1.5">
-          <span class="text-11-medium text-text-weak uppercase tracking-wider">{_(appShell.toolsSection)}</span>
-        </div>
-        <div class="grid grid-cols-3 gap-1 px-3 pb-2">
-          <For
-            each={DRAWER_TOOLS.filter((tool) =>
-              tool.panelId
-                ? !!workbench.getPanel(tool.panelId)
-                : runtimeFeatureAvailable("navigation", tool.id, globalSDK.capabilities.has),
-            )}
-          >
-            {(tool) => {
-              const hasSession = createMemo(() => !!params.id)
-              const isDisabled = createMemo(() => tool.panelId === "browser" && !hasSession())
-              const isActive = createMemo(() => {
-                if (isDisabled()) return false
-                if (tool.panelId) {
-                  const side = workbench.surface("side")
-                  return side.opened() && side.activeTab()?.panelId === tool.panelId
-                }
-                if (tool.id === "plugins") return location.pathname.startsWith(tool.href ?? "")
-                return location.pathname === tool.href
-              })
-
-              return (
-                <button
-                  type="button"
-                  disabled={isDisabled()}
-                  classList={{
-                    "flex flex-col items-center gap-1 py-2.5 rounded-xl transition-colors": true,
-                    "bg-surface-raised-base-hover text-text-strong": isActive(),
-                    "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-                      !isActive() && !isDisabled(),
-                    "opacity-50 cursor-not-allowed": isDisabled(),
-                  }}
-                  onClick={() => {
-                    if (isDisabled()) return
-                    if (tool.panelId) {
-                      void workbench.openPanel(tool.panelId, { reuseExisting: true })
-                      props.onClose()
-                      return
+                  return (
+                    <button
+                      type="button"
+                      class="mobile-drawer-action w-full"
+                      aria-current={isActive() ? "page" : undefined}
+                      onClick={() => props.onSelectScope(scope)}
+                    >
+                      <Icon name={getSemanticIcon("workspace.main")} size="normal" class="shrink-0" />
+                      <span class="truncate">{getScopeLabel(scope)}</span>
+                      <Icon
+                        name={getSemanticIcon("navigation.expand")}
+                        size="small"
+                        class="ml-auto shrink-0 text-icon-weak-base"
+                      />
+                    </button>
+                  )
+                }}
+              </For>
+            </div>
+          </Tabs.Content>
+        </Tabs>
+        <div class="mobile-drawer-footer">
+          <Show when={destinations().length > 0}>
+            <nav class="mobile-drawer-tools" aria-label={_(appShell.toolsSection)}>
+              <For each={destinations()}>
+                {(tool) => (
+                  <A
+                    href={tool.href}
+                    class="mobile-drawer-action"
+                    aria-current={
+                      (
+                        tool.id === "plugins"
+                          ? location.pathname.startsWith("/plugins")
+                          : location.pathname === tool.href
+                      )
+                        ? "page"
+                        : undefined
                     }
-                    navigate(tool.href!)
-                    props.onClose()
-                  }}
-                >
-                  <Icon name={getSemanticIcon(tool.icon)} size="normal" />
-                  <span class="text-[10px] font-medium leading-none">{toolLabel(tool.id)}</span>
-                </button>
-              )
-            }}
-          </For>
-        </div>
+                    onClick={props.onClose}
+                  >
+                    <Icon name={getSemanticIcon(tool.icon)} size="normal" />
+                    <span>{toolLabel(tool.id)}</span>
+                  </A>
+                )}
+              </For>
+            </nav>
+          </Show>
+          <Show when={panels().length > 0}>
+            <div
+              class="mobile-drawer-panels"
+              role="group"
+              aria-label={_({ id: "app.shell.mobile.panels.label", message: "Workspace panels" })}
+            >
+              <div class="mobile-drawer-section-label" aria-hidden="true">
+                {_({ id: "app.shell.mobile.panels.label", message: "Workspace panels" })}
+              </div>
+              <div class="mobile-drawer-tools">
+                <For each={panels()}>
+                  {(tool) => {
+                    const isDisabled = createMemo(() => tool.id === "browser" && !params.id)
+                    const isActive = createMemo(() => {
+                      if (isDisabled()) return false
+                      const side = workbench.surface("side")
+                      return side.opened() && side.activeTab()?.panelId === tool.id
+                    })
 
-        <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
-        <div class="flex items-center gap-1 px-2 pb-1">
-          <MobileDrawerAccountRow
-            name={account().name}
-            description={account().description}
-            avatarSrc={accountAvatar()}
-            onClick={openSettings}
-          />
-          <MobileDrawerSettingsButton label={_(sidebar.settings)} onClick={openSettings} />
+                    return (
+                      <button
+                        type="button"
+                        disabled={isDisabled()}
+                        class="mobile-drawer-action"
+                        aria-pressed={isActive()}
+                        onClick={() => {
+                          if (isDisabled()) return
+                          void workbench.openPanel(tool.id, { reuseExisting: true })
+                          props.onClose()
+                        }}
+                      >
+                        <Icon name={getSemanticIcon(tool.icon)} size="normal" />
+                        <span>{toolLabel(tool.id)}</span>
+                      </button>
+                    )
+                  }}
+                </For>
+              </div>
+            </div>
+          </Show>
         </div>
+      </div>
+      <div class="mobile-drawer-account">
+        <MobileDrawerAccountRow
+          name={account().name}
+          description={account().description}
+          avatarSrc={accountAvatar()}
+          onClick={globalSDK.capabilities.has("holos") ? () => openSettings("account") : undefined}
+        />
+        <MobileDrawerSettingsButton label={_(sidebar.settings)} onClick={() => openSettings("general")} />
       </div>
     </div>
   )
@@ -527,25 +521,17 @@ function SessionListDrawerView(props: {
 
   return (
     <div class="flex flex-col h-full">
-      <div class="flex items-center gap-2 px-3 py-2 border-b border-border-weaker-base/40">
-        <button
-          type="button"
-          class="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors"
-          onClick={props.onBack}
-        >
-          <Icon name={getSemanticIcon("navigation.back")} size="small" />
-          <span class="text-12-medium">{_(appShell.projects)}</span>
+      <div class="flex items-center gap-2 px-4 py-2 border-b border-border-weaker-base/40">
+        <button type="button" class="mobile-drawer-action" onClick={props.onBack}>
+          <Icon name={getSemanticIcon("navigation.back")} size="normal" />
+          <span>{_(appShell.projects)}</span>
         </button>
         <span class="flex-1" />
-        <span class="text-13-medium text-text-strong truncate max-w-40">{scopeName()}</span>
+        <span class="mobile-drawer-label text-text-strong truncate max-w-40">{scopeName()}</span>
       </div>
 
-      <button
-        type="button"
-        class="flex items-center gap-2.5 mx-3 mt-2.5 mb-1 px-3 py-2 rounded-xl border border-dashed border-border-base/50 text-13-medium text-text-weak hover:text-text-strong hover:border-border-base hover:bg-surface-raised-base-hover transition-all"
-        onClick={props.onNewSession}
-      >
-        <Icon name={getSemanticIcon("action.add")} size="small" />
+      <button type="button" class="mobile-drawer-action mx-4 my-2" onClick={props.onNewSession}>
+        <Icon name={getSemanticIcon("session.new")} size="normal" />
         <span>{_(appShell.newSession)}</span>
       </button>
 
@@ -585,7 +571,7 @@ function SessionListDrawerView(props: {
           }}
         </For>
         <Show when={pagedSessions().length === 0}>
-          <div class="px-4 py-8 text-center text-13-regular text-text-weak">{_(appShell.noSessions)}</div>
+          <div class="mobile-drawer-label px-4 py-8 text-center text-text-weak">{_(appShell.noSessions)}</div>
         </Show>
       </div>
 

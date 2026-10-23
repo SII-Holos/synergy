@@ -1,5 +1,6 @@
 import { setupI18n } from "@lingui/core"
-import type { Component, JSX } from "solid-js"
+import { createMediaQuery } from "@solid-primitives/media"
+import { createRoot, type Component, type JSX } from "solid-js"
 
 // This fixture mounts the real `DefaultComposer` around the real
 // `createPromptInputController`, so only two things are replaced: the ambient
@@ -162,8 +163,9 @@ export const useSync = () => ({
   set: () => {},
 })
 
+const isDesktop = createRoot(() => createMediaQuery("(min-width: 768px)"))
 export const useLayout = () => ({
-  isDesktop: () => window.matchMedia("(min-width: 768px)").matches,
+  isDesktop,
   nav: { navEntryForSession: () => undefined },
   scopes: { list: () => [] },
 })

@@ -36,7 +36,6 @@ import {
   DesktopNativeTitlebar,
   DesktopWindowChrome,
   MobileDrawer,
-  MobileToolsDrawer,
   desktopWindowNativeChromeActive,
 } from "@/components/app-shell"
 import { DialogCreateProject } from "@/components/dialog/dialog-create-project"
@@ -492,7 +491,6 @@ function LayoutContent(
       }}
     >
       <MobileDrawer onSearchOpen={props.onSearchOpen} />
-      <MobileToolsDrawer />
       <DesktopWindowChrome />
       <DesktopNativeTitlebar />
       <ConnectionBanner />
