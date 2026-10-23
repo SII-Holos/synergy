@@ -5,6 +5,7 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { RolloutEvents } from "@ericsanchezok/synergy-harness/rollout"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
@@ -21,7 +22,7 @@ test("updates to an inactive execution cache do not reread its message history",
   runtime.run(() =>
     fixture(async ({ session }) => {
       await ExecutionService.summary(session.id)
-      using reads = spyOn(MessageV2, "stream")
+      using reads = spyOn(SessionHistory, "executionMessages")
       await Session.update(session.id, (info) => {
         info.title = "Changed while hidden"
       })
@@ -52,7 +53,7 @@ test("consecutive revisions of one record during loading do not rebuild the task
         }
         return result
       })
-      using reads = spyOn(MessageV2, "stream")
+      using reads = spyOn(SessionHistory, "executionMessages")
       const pending = ExecutionService.summary(session.id)
       try {
         await entered.promise
@@ -86,11 +87,11 @@ test("unrelated output during a message refresh cannot extend its finite revisio
         }
         return items
       })
-      const get = MessageV2.get
+      const get = SessionHistory.executionMessages
       let reads = 0
-      using read = spyOn(MessageV2, "get").mockImplementation(
+      using read = spyOn(SessionHistory, "executionMessages").mockImplementation(
         Object.assign(async (input: Parameters<typeof get>[0]) => {
-          if (input.sessionID === session.id && reads++ < 8)
+          if (input.sessionID === session.id && input.messageID && reads++ < 8)
             await Session.update(other.id, (info) => {
               info.title = `Output ${reads}`
             })
@@ -113,7 +114,7 @@ test("adding a child reads only the new branch", () =>
   runtime.run(() =>
     fixture(async ({ session }) => {
       await ExecutionService.summary(session.id)
-      using read = spyOn(MessageV2, "stream")
+      using read = spyOn(SessionHistory, "executionMessages")
       const child = await Session.create({ parentID: session.id, title: "New child" })
       expect((await ExecutionService.summary(session.id)).tasks.some((task) => task.sessionID === child.id)).toBe(true)
       expect(read.mock.calls.map(([input]) => input.sessionID)).toEqual([child.id])
@@ -163,7 +164,7 @@ test("the last cancelled reader stops subsequent owner reads", () =>
           return children(id)
         }, children),
       )
-      using messages = spyOn(MessageV2, "stream")
+      using messages = spyOn(SessionHistory, "executionMessages")
       const controller = new AbortController()
       const loading = ExecutionService.summary(session.id, undefined, controller.signal)
       await entered.promise
@@ -360,7 +361,7 @@ test(
         expect(initial.status).toBe("running")
         expect(initial.elapsedActive).toBe(true)
 
-        using reads = spyOn(MessageV2, "stream")
+        using reads = spyOn(SessionHistory, "executionMessages")
         const publish = Bus.publish
         let missed = 0
         const delivery = spyOn(Bus, "publish").mockImplementation(async (definition, properties) => {

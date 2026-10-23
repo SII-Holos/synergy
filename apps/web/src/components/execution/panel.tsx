@@ -90,7 +90,7 @@ export function ExecutionPanelBody(
   const sdk = useSDK()
   const execution = useExecution()
   const viewActive = useViewActivity()
-  execution.retain()
+  execution.retain({ demand: "trajectory" })
   const { _, i18n } = useLingui()
   const initial = settings(props.tab.state)
   const runID = createMemo(() => props.runID)

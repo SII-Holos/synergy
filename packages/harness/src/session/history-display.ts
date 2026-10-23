@@ -96,7 +96,7 @@ export namespace SessionHistoryDisplay {
   type StoredPartSummary = PartSummary & {
     execution?: { version: 1; revision: string; fact: ExecutionPart }
   }
-  export type ExecutionProgress = { prepared: number; total?: number }
+  export type ExecutionProgress = { stage: "messages" | "parts"; prepared: number; total?: number }
 
   export async function initializeExecution(scopeID: string, sessionID: string) {
     const current = await state(scopeID, sessionID)
@@ -235,7 +235,7 @@ export namespace SessionHistoryDisplay {
         { commitGuard: () => signal?.throwIfAborted() },
       )
       if (published === false) continue
-      progress?.({ prepared: published })
+      progress?.({ stage: "parts", prepared: published })
       if (source.records.length < 32) return
       await new Promise<void>((resolve) => setTimeout(resolve, 0))
     }

@@ -33,6 +33,7 @@ type Detail = {
   generation: number
   runID?: string
   nodeIDs?: string[]
+  demands?: Array<"root" | "summary" | "trajectory">
 }
 type State = { generation: number; parts: Interest[]; active?: Active; details: Detail[] }
 const keyOf = (scopeID: string, messageID: string, partID: string) => `${scopeID}\0${messageID}\0${partID}`
@@ -71,6 +72,13 @@ export function createContentSubscriptions(send: (state: State) => void, changed
       )
       const merged = {
         ...first,
+        demands: group.every((item) => item.demands)
+          ? (["root", "summary", "trajectory"] as const).filter((demand, index) =>
+              group.some((item) =>
+                item.demands!.some((requested) => ["root", "summary", "trajectory"].indexOf(requested) >= index),
+              ),
+            )
+          : undefined,
         runID: group.every((item) => item.runID === first.runID) ? first.runID : undefined,
         nodeIDs: group.every((item) => item.nodeIDs)
           ? [...new Set(group.flatMap((item) => item.nodeIDs!))].sort()
@@ -78,7 +86,10 @@ export function createContentSubscriptions(send: (state: State) => void, changed
       }
       const next = Math.max(...group.map((item) => item.generation))
       const equal =
-        prior && prior.runID === merged.runID && JSON.stringify(prior.nodeIDs) === JSON.stringify(merged.nodeIDs)
+        prior &&
+        prior.runID === merged.runID &&
+        JSON.stringify(prior.nodeIDs) === JSON.stringify(merged.nodeIDs) &&
+        JSON.stringify(prior.demands) === JSON.stringify(merged.demands)
       return { ...merged, generation: equal && next <= prior.generation ? prior.generation : ++generation }
     })
     publication++

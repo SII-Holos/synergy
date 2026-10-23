@@ -80,7 +80,16 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
               JSON.stringify({
                 payload: {
                   type: mode === "projection-v2" ? "client.view.interests" : "client.content.interests",
-                  properties: contentSubscriptions.current(),
+                  properties: {
+                    ...contentSubscriptions.current(),
+                    details: contentSubscriptions
+                      .current()
+                      .details.map((detail) =>
+                        capabilities.current()?.transports?.viewDemand === 1
+                          ? detail
+                          : { ...detail, demands: undefined },
+                      ),
+                  },
                 },
               }),
             )
@@ -93,6 +102,25 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         contentSubscriptions.acceptsView(scopeID, frame.sessionID, frame.kind, frame.generation),
       read: async (scopeID, frame, signal) => {
         if (frame.kind !== "execution" || !frame.snapshot) throw new Error("Unsupported view checkpoint")
+        if (
+          capabilities.current()?.transports?.viewDemand === 1 &&
+          contentSubscriptions
+            .current()
+            .details.some(
+              (detail) =>
+                detail.kind === frame.kind &&
+                detail.scopeID === scopeID &&
+                detail.sessionID === frame.sessionID &&
+                detail.generation === frame.generation &&
+                detail.demands,
+            )
+        ) {
+          const response = await sdk.session.executionProjection(
+            { scopeID, sessionID: frame.sessionID, token: frame.snapshot },
+            { signal, throwOnError: true },
+          )
+          return response.data!
+        }
         const response = await sdk.session.executionSummary(
           { scopeID, sessionID: frame.sessionID, projection: frame.snapshot },
           { signal, throwOnError: true },
@@ -116,12 +144,37 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
           frame.kind !== "execution" ||
           !value ||
           typeof value !== "object" ||
-          !("summary" in value) ||
           !("sessionID" in value) ||
           value.sessionID !== frame.sessionID
         )
           throw new Error("Invalid execution projection")
-        eventQueue.push(scopeID, { type: "execution.updated", properties: value })
+        if ("state" in value) {
+          if (!["root", "preparing", "ready", "failed"].includes(String(value.state)))
+            throw new Error("Invalid execution projection state")
+          eventQueue.push(scopeID, { type: "execution.projection", properties: value })
+          if (value.state === "ready") {
+            if (
+              !("summary" in value) ||
+              !value.summary ||
+              typeof value.summary !== "object" ||
+              !("revision" in value.summary)
+            )
+              throw new Error("Incomplete execution summary")
+            eventQueue.push(scopeID, {
+              type: "execution.updated",
+              properties: {
+                ...value,
+                revision: value.summary.revision,
+                previousRevision:
+                  "detailPreviousRevision" in value ? value.detailPreviousRevision : value.summary.revision,
+                contextUpserts: [],
+              },
+            })
+          }
+        } else {
+          if (!("summary" in value) || !value.summary) throw new Error("Incomplete execution summary")
+          eventQueue.push(scopeID, { type: "execution.updated", properties: value })
+        }
         if (frame.snapshot) eventQueue.push(scopeID, { type: "server.view.patch", properties: frame })
       },
       recover: (scopeID, frame) => contentSubscriptions.renewView(scopeID, frame.sessionID, frame.kind),

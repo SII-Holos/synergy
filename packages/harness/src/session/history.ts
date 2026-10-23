@@ -60,13 +60,19 @@ export namespace SessionHistory {
         : await MessageV2.readInfoList({ ...owner, signal: input.signal })
       for (const [index, info] of infos.entries()) {
         try {
-          await SessionHistoryDisplay.prepareExecutionParts(owner.scopeID, owner.sessionID, info.id, input.signal)
+          await SessionHistoryDisplay.prepareExecutionParts(
+            owner.scopeID,
+            owner.sessionID,
+            info.id,
+            input.signal,
+            input.progress,
+          )
         } catch (error) {
           if (input.messageID || !(error instanceof Storage.NotFoundError)) throw error
           const current = await MessageV2.readInfoList({ ...owner, signal: input.signal })
           if (current.some((message) => message.id === info.id)) throw error
         }
-        input.progress?.({ prepared: index + 1, total: infos.length })
+        input.progress?.({ stage: "messages", prepared: index + 1, total: infos.length })
       }
       const result = await Storage.snapshot(async () => {
         const current = input.messageID

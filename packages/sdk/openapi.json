@@ -8993,6 +8993,85 @@
         ]
       }
     },
+    "/session/{sessionID}/execution/projection": {
+      "get": {
+        "operationId": "session.executionProjection",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "format": "starts_with",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "required": true
+          }
+        ],
+        "summary": "Read a captured execution projection",
+        "responses": {
+          "200": {
+            "description": "Read a captured execution projection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid execution query"
+          },
+          "404": {
+            "description": "Execution evidence was not found in the selected Scope and session"
+          },
+          "500": {
+            "description": "Execution computation failed"
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.executionProjection({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/execution/summary": {
       "get": {
         "operationId": "session.executionSummary",
@@ -38971,6 +39050,10 @@
               "projection": {
                 "type": "string",
                 "const": "projection-v2"
+              },
+              "viewDemand": {
+                "type": "number",
+                "const": 1
               }
             },
             "required": ["displayManifest"]
@@ -62225,6 +62308,409 @@
         },
         "required": ["revision", "state"]
       },
+      "ContextUsageEstimate": {
+        "type": "object",
+        "properties": {
+          "modelID": {
+            "type": "string"
+          },
+          "providerID": {
+            "type": "string"
+          },
+          "contextLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usableInputLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "categories": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "systemInstructions",
+                "toolDefinitions",
+                "userMessages",
+                "injectedContext",
+                "skills",
+                "assistantMessages",
+                "toolResults",
+                "attachments"
+              ]
+            },
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "estimatedTokens": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "items": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "precision": {
+                  "type": "string",
+                  "enum": ["source", "role"]
+                }
+              },
+              "required": ["estimatedTokens", "items"]
+            },
+            "required": [
+              "systemInstructions",
+              "toolDefinitions",
+              "userMessages",
+              "injectedContext",
+              "skills",
+              "assistantMessages",
+              "toolResults",
+              "attachments"
+            ]
+          },
+          "estimator": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "model-tokenizer"
+                  },
+                  "encoding": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "bounded-utf8"
+                  },
+                  "sampledCharacters": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "truncated": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["kind", "sampledCharacters", "truncated"]
+              }
+            ]
+          },
+          "version": {
+            "type": "number",
+            "const": 1
+          },
+          "capturedAt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["modelID", "providerID", "categories", "estimator", "version", "capturedAt"]
+      },
+      "ExecutionContextSnapshot": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "callID": {
+            "type": "string"
+          },
+          "nodeID": {
+            "type": "string"
+          },
+          "runID": {
+            "type": "string"
+          },
+          "started": {
+            "type": "number"
+          },
+          "requestNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "roundNumber": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+          },
+          "modelID": {
+            "type": "string"
+          },
+          "providerID": {
+            "type": "string"
+          },
+          "inputTokens": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contextLimit": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outputTokens": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cacheHit": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "elapsedMs": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "number",
+                    "const": 2
+                  },
+                  "callID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  },
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "totalInput": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "contextLimit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "usableInputLimit": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "categories": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "systemInstructions",
+                            "toolDefinitions",
+                            "userMessages",
+                            "injectedContext",
+                            "skills",
+                            "assistantMessages",
+                            "toolResults",
+                            "attachments",
+                            "legacyConversation",
+                            "legacyTools",
+                            "legacyInstructions"
+                          ]
+                        },
+                        "precision": {
+                          "type": "string",
+                          "enum": ["source", "role", "legacy"]
+                        },
+                        "estimatedTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "attributedTokens": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "items": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["category", "precision", "estimatedTokens", "attributedTokens"]
+                    }
+                  },
+                  "overhead": {
+                    "type": "object",
+                    "properties": {
+                      "attributedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["attributedTokens"]
+                  },
+                  "estimator": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "model-tokenizer"
+                          },
+                          "encoding": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "bounded-utf8"
+                          },
+                          "sampledCharacters": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "truncated": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["kind", "sampledCharacters", "truncated"]
+                      }
+                    ]
+                  },
+                  "reconciliation": {
+                    "type": "object",
+                    "properties": {
+                      "mode": {
+                        "type": "string",
+                        "enum": ["residual", "scaled-down"]
+                      },
+                      "factor": {
+                        "type": "number",
+                        "minimum": 0
+                      }
+                    },
+                    "required": ["mode", "factor"]
+                  },
+                  "capturedAt": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "version",
+                  "modelID",
+                  "providerID",
+                  "totalInput",
+                  "categories",
+                  "overhead",
+                  "estimator",
+                  "reconciliation",
+                  "capturedAt"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/ContextUsageEstimate"
+          },
+          "compactedBefore": {
+            "type": "boolean"
+          },
+          "requestAvailable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sessionID",
+          "callID",
+          "nodeID",
+          "runID",
+          "started",
+          "requestNumber",
+          "roundNumber",
+          "status",
+          "modelID",
+          "providerID",
+          "inputTokens",
+          "contextLimit",
+          "outputTokens",
+          "cacheHit",
+          "elapsedMs",
+          "retries",
+          "usage",
+          "compactedBefore",
+          "requestAvailable"
+        ]
+      },
       "ExecutionTask": {
         "type": "object",
         "properties": {
@@ -63313,407 +63799,231 @@
           "taskInstructions"
         ]
       },
-      "ContextUsageEstimate": {
-        "type": "object",
-        "properties": {
-          "modelID": {
-            "type": "string"
-          },
-          "providerID": {
-            "type": "string"
-          },
-          "contextLimit": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "usableInputLimit": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "categories": {
+      "ExecutionProjection": {
+        "oneOf": [
+          {
             "type": "object",
-            "propertyNames": {
-              "type": "string",
-              "enum": [
-                "systemInstructions",
-                "toolDefinitions",
-                "userMessages",
-                "injectedContext",
-                "skills",
-                "assistantMessages",
-                "toolResults",
-                "attachments"
-              ]
-            },
-            "additionalProperties": {
-              "type": "object",
-              "properties": {
-                "estimatedTokens": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "previousRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "contexts": {
+                "type": "array",
                 "items": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 9007199254740991
-                },
-                "precision": {
-                  "type": "string",
-                  "enum": ["source", "role"]
+                  "$ref": "#/components/schemas/ExecutionContextSnapshot"
                 }
               },
-              "required": ["estimatedTokens", "items"]
-            },
-            "required": [
-              "systemInstructions",
-              "toolDefinitions",
-              "userMessages",
-              "injectedContext",
-              "skills",
-              "assistantMessages",
-              "toolResults",
-              "attachments"
-            ]
-          },
-          "estimator": {
-            "oneOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "const": "model-tokenizer"
-                  },
-                  "encoding": {
-                    "type": "string"
-                  }
-                },
-                "required": ["kind"]
+              "contextTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               },
-              {
+              "state": {
+                "type": "string",
+                "const": "root"
+              }
+            },
+            "required": ["sessionID", "revision", "previousRevision", "contexts", "contextTotal", "state"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "previousRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "contexts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionContextSnapshot"
+                }
+              },
+              "contextTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "state": {
+                "type": "string",
+                "const": "preparing"
+              },
+              "progress": {
                 "type": "object",
                 "properties": {
-                  "kind": {
+                  "stage": {
                     "type": "string",
-                    "const": "bounded-utf8"
+                    "enum": ["metadata", "messages", "parts"]
                   },
-                  "sampledCharacters": {
+                  "prepared": {
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 9007199254740991
                   },
-                  "truncated": {
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["stage", "prepared"]
+              }
+            },
+            "required": ["sessionID", "revision", "previousRevision", "contexts", "contextTotal", "state", "progress"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "previousRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "contexts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionContextSnapshot"
+                }
+              },
+              "contextTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "state": {
+                "type": "string",
+                "const": "failed"
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "retryable": {
                     "type": "boolean"
                   }
                 },
-                "required": ["kind", "sampledCharacters", "truncated"]
+                "required": ["kind", "message", "retryable"]
               }
-            ]
+            },
+            "required": ["sessionID", "revision", "previousRevision", "contexts", "contextTotal", "state", "error"]
           },
-          "version": {
-            "type": "number",
-            "const": 1
-          },
-          "capturedAt": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["modelID", "providerID", "categories", "estimator", "version", "capturedAt"]
-      },
-      "ExecutionContextSnapshot": {
-        "type": "object",
-        "properties": {
-          "sessionID": {
-            "type": "string"
-          },
-          "callID": {
-            "type": "string"
-          },
-          "nodeID": {
-            "type": "string"
-          },
-          "runID": {
-            "type": "string"
-          },
-          "started": {
-            "type": "number"
-          },
-          "requestNumber": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "roundNumber": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "status": {
-            "type": "string",
-            "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
-          },
-          "modelID": {
-            "type": "string"
-          },
-          "providerID": {
-            "type": "string"
-          },
-          "inputTokens": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0
+          {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
               },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "contextLimit": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "outputTokens": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "cacheHit": {
-            "anyOf": [
-              {
-                "type": "number",
+              "revision": {
+                "type": "integer",
                 "minimum": 0,
-                "maximum": 1
+                "maximum": 9007199254740991
               },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "elapsedMs": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0
+              "previousRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "retries": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 9007199254740991
-          },
-          "usage": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "version": {
-                    "type": "number",
-                    "const": 2
-                  },
-                  "callID": {
-                    "type": "string"
-                  },
-                  "modelID": {
-                    "type": "string"
-                  },
-                  "providerID": {
-                    "type": "string"
-                  },
-                  "totalInput": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "contextLimit": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "usableInputLimit": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  },
-                  "categories": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "category": {
-                          "type": "string",
-                          "enum": [
-                            "systemInstructions",
-                            "toolDefinitions",
-                            "userMessages",
-                            "injectedContext",
-                            "skills",
-                            "assistantMessages",
-                            "toolResults",
-                            "attachments",
-                            "legacyConversation",
-                            "legacyTools",
-                            "legacyInstructions"
-                          ]
-                        },
-                        "precision": {
-                          "type": "string",
-                          "enum": ["source", "role", "legacy"]
-                        },
-                        "estimatedTokens": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "attributedTokens": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        },
-                        "items": {
-                          "type": "integer",
-                          "minimum": 0,
-                          "maximum": 9007199254740991
-                        }
-                      },
-                      "required": ["category", "precision", "estimatedTokens", "attributedTokens"]
-                    }
-                  },
-                  "overhead": {
-                    "type": "object",
-                    "properties": {
-                      "attributedTokens": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "maximum": 9007199254740991
-                      }
-                    },
-                    "required": ["attributedTokens"]
-                  },
-                  "estimator": {
-                    "oneOf": [
-                      {
-                        "type": "object",
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "const": "model-tokenizer"
-                          },
-                          "encoding": {
-                            "type": "string"
-                          }
-                        },
-                        "required": ["kind"]
-                      },
-                      {
-                        "type": "object",
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "const": "bounded-utf8"
-                          },
-                          "sampledCharacters": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 9007199254740991
-                          },
-                          "truncated": {
-                            "type": "boolean"
-                          }
-                        },
-                        "required": ["kind", "sampledCharacters", "truncated"]
-                      }
-                    ]
-                  },
-                  "reconciliation": {
-                    "type": "object",
-                    "properties": {
-                      "mode": {
-                        "type": "string",
-                        "enum": ["residual", "scaled-down"]
-                      },
-                      "factor": {
-                        "type": "number",
-                        "minimum": 0
-                      }
-                    },
-                    "required": ["mode", "factor"]
-                  },
-                  "capturedAt": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "required": [
-                  "version",
-                  "modelID",
-                  "providerID",
-                  "totalInput",
-                  "categories",
-                  "overhead",
-                  "estimator",
-                  "reconciliation",
-                  "capturedAt"
-                ]
+              "contexts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionContextSnapshot"
+                }
               },
-              {
-                "type": "null"
+              "contextTotal": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "state": {
+                "type": "string",
+                "const": "ready"
+              },
+              "summary": {
+                "$ref": "#/components/schemas/ExecutionSummary"
+              },
+              "detailPreviousRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "roundSummaries": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionSummary"
+                }
+              },
+              "upserts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionTrajectoryNode"
+                }
+              },
+              "processUpserts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ExecutionTrajectoryNode"
+                }
+              },
+              "processRemoved": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "removed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
+            },
+            "required": [
+              "sessionID",
+              "revision",
+              "previousRevision",
+              "contexts",
+              "contextTotal",
+              "state",
+              "summary",
+              "detailPreviousRevision",
+              "roundSummaries",
+              "upserts",
+              "processUpserts",
+              "processRemoved",
+              "removed"
             ]
-          },
-          "estimate": {
-            "$ref": "#/components/schemas/ContextUsageEstimate"
-          },
-          "compactedBefore": {
-            "type": "boolean"
-          },
-          "requestAvailable": {
-            "type": "boolean"
           }
-        },
-        "required": [
-          "sessionID",
-          "callID",
-          "nodeID",
-          "runID",
-          "started",
-          "requestNumber",
-          "roundNumber",
-          "status",
-          "modelID",
-          "providerID",
-          "inputTokens",
-          "contextLimit",
-          "outputTokens",
-          "cacheHit",
-          "elapsedMs",
-          "retries",
-          "usage",
-          "compactedBefore",
-          "requestAvailable"
         ]
       },
       "ExecutionContextHistory": {
@@ -85254,6 +85564,19 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.execution.projection": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "execution.projection"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/ExecutionProjection"
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event": {
         "oneOf": [
           {
@@ -85555,6 +85878,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.execution.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.execution.projection"
           }
         ]
       }

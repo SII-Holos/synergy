@@ -1,6 +1,11 @@
 import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-js"
 import { createStore, reconcile } from "solid-js/store"
-import type { ExecutionSummary, EventExecutionUpdated, SynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  ExecutionSummary,
+  ExecutionProjection,
+  EventExecutionUpdated,
+  SynergyClient,
+} from "@ericsanchezok/synergy-sdk/client"
 import { newerExecutionSample } from "../utils/execution-time"
 
 export function createExecutionSummary(input: {
@@ -10,6 +15,11 @@ export function createExecutionSummary(input: {
   connected: Accessor<boolean>
   visible: Accessor<boolean>
   subscribe: (receive: (event: EventExecutionUpdated["properties"]) => void) => () => void
+  projection?: {
+    enabled: Accessor<boolean>
+    renew: () => void
+    subscribe: (receive: (event: ExecutionProjection) => void) => () => void
+  }
 }) {
   const [state, setState] = createStore<{ summary?: ExecutionSummary; loading: boolean; error: boolean }>({
     loading: false,
@@ -26,6 +36,13 @@ export function createExecutionSummary(input: {
     const sessionID = input.sessionID()
     if (!sessionID || !input.available()) return
     requestedSession = sessionID
+    if (input.projection?.enabled() && input.connected()) {
+      request++
+      abort?.abort()
+      setState({ loading: true, error: false })
+      input.projection.renew()
+      return
+    }
     const version = ++request
     const stamp = eventVersion
     abort?.abort()
@@ -76,7 +93,17 @@ export function createExecutionSummary(input: {
       return
     eventVersion++
     setFresh(true)
+    setState({ loading: false, error: false })
     setState("summary", reconcile(next.summary))
+  })
+  const unsubscribeProjection = input.projection?.subscribe((next) => {
+    if (!input.connected() || next.sessionID !== input.sessionID() || !input.visible()) return
+    if (next.state === "preparing") setState({ loading: true, error: false })
+    if (next.state === "failed") {
+      setFresh(false)
+      setState({ loading: false, error: true })
+    }
+    if (next.state === "ready") setState({ loading: false, error: false })
   })
   createEffect(
     on(
@@ -99,6 +126,7 @@ export function createExecutionSummary(input: {
     request++
     abort?.abort()
     unsubscribe()
+    unsubscribeProjection?.()
   })
   return { state, refresh, connected, connectionVersion }
 }

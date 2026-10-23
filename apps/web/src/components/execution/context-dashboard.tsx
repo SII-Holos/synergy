@@ -65,6 +65,7 @@ export function ContextWorkbenchContent(props: WorkbenchPanelContentProps) {
       (surface) => panels.surface(surface).opened() && panels.surface(surface).active() === tabID,
     )
   const active = () => visible() && !records()
+  execution.retain({ active, runID, demand: "summary" })
   const history = execution.createContextHistory({ runID, selected, active: visible })
   createEffect(
     on(active, (visible) => {

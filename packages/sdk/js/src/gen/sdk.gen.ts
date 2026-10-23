@@ -735,6 +735,8 @@ import type {
   SessionExecutionContextSnapshotResponses,
   SessionExecutionNodeErrors,
   SessionExecutionNodeResponses,
+  SessionExecutionProjectionErrors,
+  SessionExecutionProjectionResponses,
   SessionExecutionSummaryErrors,
   SessionExecutionSummaryResponses,
   SessionExecutionTrajectoryErrors,
@@ -2867,6 +2869,42 @@ export class Session extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<SessionAgendaResponses, SessionAgendaErrors, ThrowOnError>({
       url: "/session/{sessionID}/agenda",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Read a captured execution projection
+   */
+  public executionProjection<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      token: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "token" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      SessionExecutionProjectionResponses,
+      SessionExecutionProjectionErrors,
+      ThrowOnError
+    >({
+      url: "/session/{sessionID}/execution/projection",
       ...options,
       ...params,
     })

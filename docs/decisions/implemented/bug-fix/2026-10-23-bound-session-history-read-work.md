@@ -18,6 +18,10 @@ Internal execution phases record preparation separately from actual worker queue
 
 HistoryDisplay stores versioned, Part-local execution facts separately from public Part summaries. Each message has an independent readiness cursor tied to its Part membership generation. Explicit execution reads prepare bounded batches, compute exact normalized previews outside transactions, and revalidate canonical record revisions before publication. Canonical message headers supply completion, errors, root identity and accounting at read time, so message-only changes cannot leave those derived values stale. Ordinary display backfill preserves only facts whose source revision still matches. The session migration registers the version without eagerly reading history.
 
+One runtime ExecutionService entry separates root Context metadata, complete summary metadata and lazy detail indexes. Root reads share a revision cut and ordered Context index; only changed calls repeat attribution calculations. Summary statistics retain their existing complete shapes and accounting owners while consuming compact facts. Context source reads validate owner, run and call directly. Explicit summary and trajectory readers share preparation, but root readers cannot keep abandoned summary work alive.
+
+The existing view transport negotiates demand and typed projection states. Root and preparing states never masquerade as a complete Summary. Lease-owned immutable checkpoints preserve the Context window and complete ready Summary; ordinary HTTP and legacy projection contracts remain unchanged. The Web dashboard retains summary demand for its existing statistics, while standalone Context readers retain only root metadata. Session references always fetch the existing finite preview window instead of treating a partial local cache as complete.
+
 ## Alternatives considered
 
 **More hydration concurrency:** still performs work proportional to unrelated body size.

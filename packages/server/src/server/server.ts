@@ -894,7 +894,11 @@ export namespace Server {
                         components: z.array(RuntimeComponents.Info),
                         features: z.array(z.string()),
                         transports: z
-                          .object({ displayManifest: z.literal(1), projection: z.literal("projection-v2").optional() })
+                          .object({
+                            displayManifest: z.literal(1),
+                            projection: z.literal("projection-v2").optional(),
+                            viewDemand: z.literal(1).optional(),
+                          })
                           .optional(),
                       })
                       .meta({ ref: "RuntimeCapabilities" }),
@@ -924,7 +928,7 @@ export namespace Server {
             hostVersion: Installation.VERSION,
             components: RuntimeComponents.selected(),
             features: features(),
-            transports: { displayManifest: 1 as const, projection: "projection-v2" as const },
+            transports: { displayManifest: 1 as const, projection: "projection-v2" as const, viewDemand: 1 as const },
           })
         },
       )

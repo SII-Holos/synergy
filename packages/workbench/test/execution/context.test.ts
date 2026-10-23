@@ -14,6 +14,7 @@ import { ExecutionSchema } from "../../src/execution/schema"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { reconcileContextUsage } from "@ericsanchezok/synergy-harness/context"
 import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/rollout"
+import { Usage } from "@ericsanchezok/synergy-harness/usage"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
@@ -29,6 +30,33 @@ test("context history reads only its session metadata without building descendan
       expect(page.sessionID).toBe(session.id)
       expect(messages).not.toHaveBeenCalled()
       expect(children).not.toHaveBeenCalled()
+    }),
+  ))
+
+test("context readers share metadata and request sources never prepare a summary tree", () =>
+  runtime.run(() =>
+    fixture(async ({ session, call: seed, rootID }) => {
+      const call = await RolloutLedger.beginCall({
+        owner: seed.owner,
+        runID: rootID,
+        purpose: "general",
+        usageRole: "conversation",
+        model: seed.model,
+        request: {},
+      })
+      using bootstrap = spyOn(RolloutSnapshot, "modelCalls")
+      using children = spyOn(Session, "children")
+      using bodies = spyOn(MessageV2, "parts")
+      const [page, snapshot] = await Promise.all([
+        ExecutionService.contextHistory(session.id, { limit: 30 }),
+        ExecutionService.contextSnapshot(session.id, call.id),
+      ])
+      expect(page.items.find((item) => item.callID === call.id)).toEqual(snapshot)
+      await ExecutionService.contextItems(session.id, call.id, ExecutionSchema.ContextItemsQuery.parse({}))
+      await ExecutionService.contextHistory(session.id, { limit: 30 })
+      expect(bootstrap).toHaveBeenCalledTimes(1)
+      expect(children).not.toHaveBeenCalled()
+      expect(bodies).not.toHaveBeenCalled()
     }),
   ))
 
@@ -63,6 +91,49 @@ test("formal attribution retains its call identity when an assistant contains a 
       expect(
         (await Session.messages({ sessionID: session.id })).find((entry) => entry.info.id === message.id)!.info,
       ).not.toHaveProperty("contextUsage")
+    }),
+  ))
+
+test("late metadata notifications cannot replace newer canonical context attribution or usage", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      const next = await RolloutLedger.beginCall({
+        owner: call.owner,
+        runID: rootID,
+        purpose: "general",
+        usageRole: "conversation",
+        model: call.model,
+        request: {},
+      })
+      const before = (await Usage.collect({ sessionID: session.id })).filter(
+        (record) => record.kind === "call" && record.entityID === next.id,
+      )
+      const info = (await Session.messages({ sessionID: session.id })).find(
+        (message) => message.info.role === "assistant",
+      )!.info
+      if (info.role !== "assistant") throw new Error("Missing assistant fixture")
+      await Session.updateMessage({
+        ...info,
+        accounting: { kind: "rollout", callIDs: [next.id] },
+        contextUsage: { ...reconcileContextUsage(contextDraft(), 80), callID: next.id },
+      })
+      await complete(next, { inputTokens: 80 })
+      const current = await ExecutionService.contextSnapshot(session.id, next.id)
+      expect(current.usage?.totalInput).toBe(80)
+      expect(before.length).toBeGreaterThan(0)
+      for (const record of before)
+        await Bus.publish(Usage.Updated, {
+          owner: next.owner,
+          record,
+          revision: record.revision,
+          runID: record.runID,
+          recordID: record.id,
+          kind: record.kind,
+          status: record.status,
+          phase: "queued",
+        })
+      await Bus.publish(MessageV2.Event.Updated, { info })
+      expect(await ExecutionService.contextSnapshot(session.id, next.id)).toEqual(current)
     }),
   ))
 
