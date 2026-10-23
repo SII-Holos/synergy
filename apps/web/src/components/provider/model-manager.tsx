@@ -38,7 +38,7 @@ export function sortModelGroups(profiles: ProviderRecommendationMap) {
   }
 }
 
-export function ModelManagerRow(props: { model: LocalModel; compact?: boolean }) {
+export function ModelManagerRow(props: { model: LocalModel; compact?: boolean; showProvider?: boolean }) {
   const { _ } = useLingui()
   const showFree =
     (props.model.cost?.input ?? 0) === 0 &&
@@ -46,13 +46,23 @@ export function ModelManagerRow(props: { model: LocalModel; compact?: boolean })
     !props.model.name.toLowerCase().includes("free")
 
   return (
-    <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-left text-13-regular">
-      <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
-      <Show when={showFree}>
-        <Tag>{_(freeTag)}</Tag>
-      </Show>
-      <Show when={!props.compact && props.model.latest}>
-        <Tag>{_(latestTag)}</Tag>
+    <div class="w-full min-w-0 flex flex-col gap-y-0.5 text-left">
+      <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-13-regular">
+        <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
+        <Show when={showFree}>
+          <Tag>{_(freeTag)}</Tag>
+        </Show>
+        <Show when={!props.compact && props.model.latest}>
+          <Tag>{_(latestTag)}</Tag>
+        </Show>
+      </div>
+      <Show when={props.showProvider}>
+        <span
+          class="model-manager-provider-name w-full truncate text-12-regular text-text-weak"
+          title={props.model.provider.name}
+        >
+          {props.model.provider.name}
+        </span>
       </Show>
     </div>
   )
@@ -100,7 +110,7 @@ export const QuickSwitcherList: Component<{
         props.onSelect?.()
       }}
     >
-      {(model) => <ModelManagerRow model={model} compact />}
+      {(model) => <ModelManagerRow model={model} compact showProvider={model.group === "Recent"} />}
     </List>
   )
 }
