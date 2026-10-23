@@ -33,12 +33,13 @@
     }
   }
 
+  /* Same fill-only treatment as the shared secondary button, so icon actions
+     read as quiet controls instead of bordered slabs. */
   &[data-variant="secondary"] {
-    border: transparent;
+    border: 1px solid transparent;
     background-color: var(--workbench-control-bg, var(--button-secondary-base));
     color: var(--text-strong);
     box-shadow: none;
-    border: 1px solid var(--border-base);
 
     &:hover:not(:disabled) {
       background-color: var(--workbench-control-bg-hover, var(--button-secondary-hover));

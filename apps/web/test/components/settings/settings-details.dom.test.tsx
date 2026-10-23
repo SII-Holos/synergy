@@ -416,6 +416,7 @@ test("settings actions, inputs and choices share the borderless menu surface wit
     }
     const outside = page.getByTestId("outside-settings")
     expect(await outside.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("1px")
+    expect(await outside.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe("rgba(0, 0, 0, 0)")
     const input = page.getByRole("textbox", { name: "Display name", exact: true })
     await input.focus()
     await input.fill("Edited gateway")

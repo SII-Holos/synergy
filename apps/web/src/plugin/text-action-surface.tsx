@@ -383,7 +383,7 @@ export function PluginTextActionSurface() {
       <div class="flex gap-2">
         <button
           type="button"
-          class="rounded-md border border-border-base px-3 py-2 text-13-medium text-text-strong hover:bg-surface-base"
+          class="rounded-md bg-surface-inset-base px-3 py-2 text-13-medium text-text-strong hover:bg-surface-inset-base-hover"
           onClick={() => void run(props.value.action, props.value.snapshot, props.value.anchor)}
         >
           {i18n._(PII.retry)}
