@@ -17,6 +17,7 @@ import { ToolRegistry } from "@ericsanchezok/synergy-harness/tool/registry"
 import { Tool } from "@ericsanchezok/synergy-harness/tool/tool"
 import { registerLocalRuntime } from "@ericsanchezok/synergy-local-runtime/register"
 import { MCP } from "../../src"
+import { registerAgentPermissions } from "../../src/agent-permissions"
 import { registerConfig } from "../../src/config-schema"
 import { registerMcpToolSource } from "../../src/tool-source"
 import definitions from "../fixtures/scholight-tools.json"
@@ -26,7 +27,7 @@ type ModelRequest = Pick<Parameters<FixtureModel["doStream"]>[0], "prompt" | "to
 type StreamPart =
   Awaited<ReturnType<FixtureModel["doStream"]>>["stream"] extends ReadableStream<infer Part> ? Part : never
 
-test("deterministic model boundary auto-expands online, executes once and retains exposure through compaction", async () => {
+test("a review child auto-expands MCP, executes once and retains exposure through compaction", async () => {
   const toolID = "mcp__scholight__search_papers"
   const callID = "online-fixture-call"
   const args = { query: "fixture AI literature", strength: "thorough" }
@@ -136,7 +137,8 @@ test("deterministic model boundary auto-expands online, executes once and retain
       async doGenerate() {
         throw new Error("Unexpected non-streaming auxiliary call")
       },
-      async doStream() {
+      async doStream(input) {
+        expect(input.tools ?? []).toEqual([])
         return stream(text("Fixture title."))
       },
     },
@@ -185,13 +187,14 @@ test("deterministic model boundary auto-expands online, executes once and retain
             },
           },
         },
-        agent: { fixture: { mode: "all", permission: { "*": "allow" }, prompt: "Complete the synthetic task." } },
+        agent: { inspector: { permission: { fixture_compact: "allow" }, prompt: "Complete the synthetic task." } },
       }),
     },
     composition: {
       register() {
         registerLocalRuntime({ environment: false })
         registerConfig()
+        registerAgentPermissions()
         registerMcpToolSource()
         ProviderSdkSource.register(undefined)
         ProviderSdkSource.register({ load: async () => () => sdk, loadSync: () => () => sdk })
@@ -226,12 +229,13 @@ test("deterministic model boundary auto-expands online, executes once and retain
         workspace: null,
         async fn() {
           using source = spyOn(MCP, "toolEntries").mockResolvedValue([entry])
-          const session = await Session.create({ workspace: null })
+          const parent = await Session.create({ workspace: null, controlProfile: "full_access" })
+          const session = await Session.create({ parentID: parent.id })
           expect(session.toolState?.expandedGroups ?? []).not.toContain("online")
           const input = {
             sessionID: session.id,
             messageID: Identifier.ascending("message"),
-            agent: "fixture",
+            agent: "inspector",
             model: { providerID: "online-fixture", modelID: "primary" },
             parts: [{ type: "text" as const, text: "Look up the fixture source, compact the context, then finish." }],
           }

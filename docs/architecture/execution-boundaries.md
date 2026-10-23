@@ -62,6 +62,12 @@ Tool exposure is a context-budget decision, not an authorization decision. `sear
 
 Tool exposure metadata can declare required `companions`. Discovery and resolution apply the same transitive rule to their authorized, available candidates: a missing, internal or filtered companion suppresses the dependent tool; a visible dependent exposes its eligible companions without exposing unrelated members of their groups. Cycles form one required family. Explicit expansion persists only the requested groups or tools, and a forced root contributes visibility only while that root remains active. Companion visibility is derived from those seeds and never changes permissions or invokes a tool.
 
+## MCP tool access
+
+The installed MCP component contributes `mcp__*: allow` in the base phase of Agent permission assembly. Every primary agent and subagent receives that default, including read, write and newly discovered MCP tools, without checking Agent identity, owner or role profile. Role templates allocate Synergy's own tools; MCP owns its shared access default. Explicit global and Agent configuration retain their existing precedence over component defaults. Session rules, per-call tool restrictions, host policy, connection availability and Workspace requirements still apply.
+
+MCP access does not make tools resident or authorize their effects. Discovery and expansion consume the resolved permissions; invocation still enters the common capability and approval pipeline under the effective control profile. Host-owned model-only calls retain their explicitly supplied tool sets, and compaction prohibits execution. See [the MCP default-access decision](../decisions/implemented/bug-fix/2026-10-23-share-mcp-default-access-across-agents.md).
+
 ## Secret Masking
 
 The secret vault is a data-flow mechanism orthogonal to the control profiles: the gate answers "may this operation run", the vault answers "what value does this operation receive". The same masking applies under `guarded`, `autonomous`, and `full_access`, because its threat model is the model context, not the permission decision.
