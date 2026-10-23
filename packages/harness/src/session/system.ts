@@ -63,7 +63,9 @@ export namespace SystemPrompt {
       `  Backend URL: ${backend ?? "none (this Runtime has no HTTP listener)"}`,
     ]
     if (listener) {
-      lines.push(`  Listener bind: ${listener.hostname}:${listener.port}`)
+      // The normalized Backend URL already states the loopback address and port a client can use;
+      // only a wildcard bind adds information about how the listener is exposed.
+      if (listener.hostname !== hostname) lines.push(`  Listener bind: ${listener.hostname}:${listener.port}`)
       lines.push(`  Listener generation: ${listener.generation}`)
     }
     if (launch?.sourceCheckout) lines.push(`  Runtime source checkout: ${launch.sourceCheckout}`)
@@ -146,8 +148,10 @@ export namespace SystemPrompt {
         if (workspace.originalCheckout) {
           envLines.push(`  Original checkout: ${workspace.originalCheckout}`)
         }
+        // The tool descriptions carry the mechanics; the environment only names which operation
+        // owns leaving versus reclaiming a finished worktree.
         envLines.push(
-          `  Leaving: worktree_leave returns you to the original checkout and keeps the worktree unless you pass cleanup: "remove_if_clean", which permanently deletes it. Use worktree_archive when isolated work is finished: it returns you to the original checkout, attempts safe reclamation while keeping this conversation running, and leaves the checkout restorable with worktree_enter.`,
+          `  Leaving: worktree_leave only returns you to the original checkout; worktree_archive reclaims a finished worktree.`,
         )
       }
     }
