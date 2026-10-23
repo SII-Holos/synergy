@@ -3711,6 +3711,15 @@ export type Session = {
    */
   agentOverride?: string
   paused?: SessionPaused
+  resume?: {
+    requestID: string
+    rootID?: string
+    itemID: string
+    messageID: string
+    pausedSince?: number
+    created: number
+    state: "queued" | "consumed" | "cancelled"
+  }
   interaction?: SessionInteraction
   lastExchange?: {
     user?: string
@@ -9835,10 +9844,19 @@ export type SessionForkPointMissingError = {
 }
 
 export type SessionContinueResult = {
-  /**
-   * Whether the drive accepted the session; a paused or already-running session reports false
-   */
   handled: boolean
+  outcome: "accepted" | "already_accepted" | "running" | "idle" | "stale" | "blocked"
+  receipt?: {
+    requestID: string
+    rootID?: string
+    itemID: string
+    messageID: string
+    pausedSince?: number
+    created: number
+    state: "queued" | "consumed" | "cancelled"
+  }
+  status: SessionStatus
+  reason?: string
 }
 
 export type SessionExecutionOwnerUnavailableError = {
@@ -21317,7 +21335,10 @@ export type SessionRetryRequestResponses = {
 export type SessionRetryRequestResponse = SessionRetryRequestResponses[keyof SessionRetryRequestResponses]
 
 export type SessionContinueData = {
-  body?: never
+  body?: {
+    requestID?: string
+    pausedSince?: number
+  }
   path: {
     /**
      * Session ID

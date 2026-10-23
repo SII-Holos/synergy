@@ -130,6 +130,7 @@
     "./session/abort": "./src/session/abort.ts",
     "./util/crypto": "./src/util/crypto.ts",
     "./session/retry": "./src/session/retry.ts",
+    "./session/resume": "./src/session/resume.ts",
     "./session/managed-projects": "./src/session/managed-projects.ts",
     "./session/channel-endpoint": "./src/session/channel-endpoint.ts",
     "./provider/api-key": "./src/provider/api-key.ts",

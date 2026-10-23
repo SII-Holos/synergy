@@ -12,6 +12,7 @@ import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/le
 import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionProgress } from "@ericsanchezok/synergy-harness/session/progress"
 import { SessionRetry } from "@ericsanchezok/synergy-harness/session/retry"
+import { SessionResume } from "@ericsanchezok/synergy-harness/session/resume"
 import { SessionInputProgress } from "@ericsanchezok/synergy-harness/session/input-progress"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
@@ -260,37 +261,16 @@ export async function submitCommand(input: Parameters<typeof SessionInvoke.comma
   })
 }
 
-/**
- * Resume a session that stopped mid-work, from its breakpoint.
- *
- * The take-back is the shared `SessionLifecycle.resume` step. Continue is additionally
- * forced when the session really is holding an interrupted breakpoint: the
- * shared continuation gate requires a *terminal* assistant on the latest
- * reply-required root, while an interrupted turn is deliberately non-terminal,
- * so a plain request would find nothing to do.
- *
- * That force is conditional because it is precisely what lets Continue resume
- * work the gate cannot discover — and equally able to drive a session that has
- * nothing pending, which leaves the loop with no result to report and fails the
- * request. A session with no breakpoint takes the ordinary path instead, which
- * still consumes queued work and honestly reports that it handled nothing.
- * Continue is legal on a session that was never paused, so no take-back step
- * is treated as a precondition.
- */
+/** Admit a durable recovery request and wait for execution for in-process callers. */
 export async function continueSession(sessionID: string): Promise<boolean> {
-  let interrupted: boolean
-  {
-    using control = await Lock.write(`session-control:${sessionID}`)
-    await SessionExecutionOwners.assertResume(await Session.get(sessionID))
-    await SessionLifecycle.resume(sessionID)
-    const messages = await SessionHistory.modelMessages({ sessionID })
-    interrupted = SessionProgress.pendingReply(messages)
-  }
-  return SessionDrive.request(sessionID, "user-continue", {
-    ...(interrupted ? { force: true } : {}),
-    waitForProcessing: true,
-  })
+  const result = await SessionResume.request({ sessionID })
+  if (result.outcome === "accepted") await SessionManager.wake(sessionID)
+  return result.handled
 }
+
+export const resumeSession = SessionResume.request
+export const ContinueSessionInput = SessionResume.Input
+export const ContinueSessionResult = SessionResume.Result
 
 export const RetrySessionRequestInput = z.object({
   sessionID: Identifier.schema("session"),

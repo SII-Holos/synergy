@@ -126,6 +126,8 @@ import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 import { ComposerDocumentController } from "./composer-document"
 import { ComposerPresentation, bindComposerPresentation, expandedComposerKeyAction } from "./composer-presentation"
 import { createAbortRequestController } from "./abort-request"
+import { requestSessionContinue } from "./continue-request"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { ComposerExtensionOutlet } from "@/plugin/registries/composer-extension-registry"
 import { VoiceDictationButton } from "./use-voice-dictation"
 import { collectDictationContext } from "./voice-dictation-core"
@@ -357,8 +359,13 @@ export function createPromptInputController(props: PromptInputProps) {
   /** Resume a paused session from the breakpoint the interruption left behind. */
   const continueSession = async (sessionID = params.id) => {
     if (!sessionID) return
-    const result = await sdk.client.session.continue({ sessionID })
-    if (result.error) throw result.error
+    await requestSessionContinue({
+      client: sdk.client,
+      sessionID,
+      requestID: generateUUID(),
+      pausedSince: info()?.paused?.since,
+      unavailableMessage: i18n._(PI.continueUnavailable),
+    })
   }
 
   /** The destructive gesture: terminalize the interrupted turn and cancel any

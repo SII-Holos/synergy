@@ -4198,13 +4198,15 @@ export class Session extends HeyApiClient {
   /**
    * Continue a paused session
    *
-   * Resume a session that stopped mid-work, from the breakpoint the interruption left behind. Clears the pause latch, reopens the interrupted turn's rollout run so the resumed turn can append to it, and forces a drive so a non-terminal assistant is resumed rather than treated as nothing to do. Legal on a session that is not paused.
+   * Persist one recovery request for the current task, preserving prior failures. Returns after admission without waiting for model execution. Request identity and the observed pause protect duplicate and stale actions.
    */
   public continue<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
       directory?: string
       scopeID?: string
+      requestID?: string
+      pausedSince?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -4216,6 +4218,8 @@ export class Session extends HeyApiClient {
             { in: "path", key: "sessionID" },
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "body", key: "requestID" },
+            { in: "body", key: "pausedSince" },
           ],
         },
       ],
@@ -4224,6 +4228,11 @@ export class Session extends HeyApiClient {
       url: "/session/{sessionID}/continue",
       ...options,
       ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 

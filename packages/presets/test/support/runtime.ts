@@ -7,8 +7,10 @@ import { desktopComponents } from "../../src/components"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 
-export async function testRuntime(options: { env?: Record<string, string | undefined>; desktop?: boolean } = {}) {
-  const fixture = await runtimeHome()
+export async function testRuntime(
+  options: { home?: string; env?: Record<string, string | undefined>; desktop?: boolean } = {},
+) {
+  const fixture = await runtimeHome({ home: options.home })
   const host = { ...fixture.host, env: { ...fixture.host.env, ...options.env } }
   try {
     const runtime = options.desktop
