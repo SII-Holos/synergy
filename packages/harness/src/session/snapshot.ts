@@ -381,12 +381,9 @@ export namespace Snapshot {
   }
 
   export function liveStatistics(sessionID: string, revision: string) {
-    return SnapshotLive.read(sessionID, revision, async ({ from, to, omissions }) => {
-      const omitted = new Set(omissions.map((item) => item.file))
-      return (await diffSummaryImpl(from, to, sessionID, undefined, undefined, true)).filter(
-        (row) => !omitted.has(row.file),
-      )
-    })
+    return SnapshotLive.statistics(sessionID, revision, (from, to, paths) =>
+      diffSummaryImpl(from, to, sessionID, undefined, paths, true),
+    )
   }
 
   export function liveDiff(sessionID: string, revision: string, file: string, signal?: AbortSignal) {
@@ -637,9 +634,10 @@ export namespace Snapshot {
     to: string,
     sessionID: string,
     signal?: AbortSignal,
-    file?: string,
+    file?: string | readonly string[],
     statistics = false,
   ): Promise<FileDiff[]> {
+    if (Array.isArray(file) && !file.length) return []
     const git = gitdir()
     const result: FileDiff[] = []
     const diff = await gitSpawn(
@@ -661,7 +659,7 @@ export namespace Snapshot {
         from,
         to,
         "--",
-        file ?? ".",
+        ...(typeof file === "string" ? [file] : (file ?? ["."])),
       ],
       path.dirname(git),
       undefined,
@@ -751,7 +749,8 @@ export namespace Snapshot {
     onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
   ): Promise<boolean> {
     try {
-      return await SnapshotCapture.refresh(SnapshotStore.current(), signal, undefined, onOmissions)
+      await SnapshotCapture.refresh(SnapshotStore.current(), signal, undefined, onOmissions)
+      return true
     } catch (error) {
       log.warn("snapshot capture failed", { sessionID, error })
       return false

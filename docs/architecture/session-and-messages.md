@@ -382,6 +382,8 @@ Session file history describes workspace net changes during execution, including
 
 Continuation retains the root's first baseline and appends a new execution segment. A new root receives a new baseline. `SnapshotRanges.net` compares the earliest baseline with the latest available endpoint for each Workspace binding. The session comparison spans each binding's first baseline and latest endpoint; it does not sum operation statistics. Restoring a file to its baseline removes its net difference. Independent workspaces with equal relative filenames remain separate.
 
+Native Workspace invalidations feed a coalesced Session observer with one capture in flight. Dirty capture and lightweight statistics use the same effective path set, including recorded or omitted file ancestors affected by file/directory replacement. A revision reuses unaffected statistics from its predecessor and compares changed paths against the original baseline; broad invalidations, ignore changes and failed refresh recovery request full calibration. Live trees and their cached statistics remain Runtime-owned, with immutable read leases and no durable intermediate roots. Object Workspaces without native observation retain checkpoint-only behavior.
+
 Background process ownership and save receipts remain with the Runtime. A segment endpoint freezes only the bytes observed during that capture, without waiting for background completion. Later process writes cannot revise that endpoint; another segment may capture them. Concrete tool evidence remains owned by its tool domain and is not inferred from the workspace comparison.
 
 ### Settlement and synchronization

@@ -47,6 +47,7 @@ mock.module("@ericsanchezok/synergy-ui/button", () => ({
 }))
 const [recording, setRecording] = createSignal<{ status: "live" | "ready" }>({ status: "live" })
 const [failure, setFailure] = createSignal<Error>()
+const [comparisonReady, setComparisonReady] = createSignal(true)
 const row: FileDiff = {
   file: "outside-window.ts",
   additions: 2,
@@ -62,8 +63,11 @@ mock.module("../../../src/components/workspace/review-data", () => ({
     createEffect(() => requests.push({ source: input.source(), root: input.messageID() }))
     return {
       rows: () => [row],
-      context: () => ({ recording: recording() }),
+      context: () => (comparisonReady() ? { recording: recording() } : undefined),
       comparison: {
+        get loading() {
+          return !comparisonReady() && !failure()
+        },
         get error() {
           return failure()
         },
@@ -113,6 +117,7 @@ afterEach(() => {
   setConnected(true)
   setCurrent(undefined)
   setFailure(undefined)
+  setComparisonReady(true)
   setRecording({ status: "live" })
   requests.length = 0
   refreshes = 0
@@ -219,6 +224,7 @@ test("the whole activity surface opens its root, preserves confirmed zero offlin
 
 test("mobile Review targets a cold root, loads details on expansion and exposes restore only after settlement", async () => {
   document.body.append(root)
+  setComparisonReady(false)
   const [messageID, setMessageID] = createSignal<string | undefined>("cold-root")
   let restored = 0
   dispose = render(
@@ -235,6 +241,16 @@ test("mobile Review targets a cold root, loads details on expansion and exposes 
   )
   await tick()
   expect(requests).toEqual([{ source: "turn", root: "cold-root" }])
+  expect(root.textContent).toContain("Loading comparison")
+  expect(root.querySelector("section")).toBeNull()
+  setFailure(new Error("Comparison unavailable"))
+  await tick()
+  expect(root.querySelector('[role="alert"]')?.textContent).toContain("Comparison unavailable")
+  expect(root.querySelector("section")).toBeNull()
+  expect(root.textContent).not.toContain("Loading comparison")
+  setFailure(undefined)
+  setComparisonReady(true)
+  await tick()
   expect(root.textContent).toContain("outside-window.ts")
   const button = (text: string) => [...root.querySelectorAll("button")].find((button) => button.textContent === text)!
   expect(button("Restore file").hidden).toBe(true)

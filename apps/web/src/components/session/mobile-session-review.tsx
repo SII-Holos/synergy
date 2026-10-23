@@ -30,18 +30,29 @@ export function MobileSessionReview(
           {_(C.refresh)}
         </Button>
       </div>
-      <SessionReviewTab
-        {...review}
-        diffs={data.rows}
-        actions={canRestore() ? restore.actions : undefined}
-        onRestoreFile={canRestore() ? restore.onRestoreFile : undefined}
-        diffState={() => data.context()?.recording}
-        loadDiff={async (row) => {
-          const content = await data.load(row)
-          if (!content) throw new Error(_(C.contentUnavailable))
-          return content.diff
-        }}
-      />
+      <Show
+        when={data.context()}
+        fallback={
+          <Show when={data.comparison.loading}>
+            <div role="status" class="px-4 py-2 text-text-weak">
+              {_(C.loading)}
+            </div>
+          </Show>
+        }
+      >
+        <SessionReviewTab
+          {...review}
+          diffs={data.rows}
+          actions={canRestore() ? restore.actions : undefined}
+          onRestoreFile={canRestore() ? restore.onRestoreFile : undefined}
+          diffState={() => data.context()?.recording}
+          loadDiff={async (row) => {
+            const content = await data.load(row)
+            if (!content) throw new Error(_(C.contentUnavailable))
+            return content.diff
+          }}
+        />
+      </Show>
     </>
   )
 }

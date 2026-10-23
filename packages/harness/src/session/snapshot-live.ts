@@ -21,6 +21,8 @@ export namespace SnapshotLive {
     omissions: SnapshotSchema.Omission[]
     objects: Set<string>
     readers: number
+    statistics?: Promise<SnapshotSchema.FileDiff[]>
+    inherited?: { statistics: Promise<SnapshotSchema.FileDiff[]>; paths: readonly string[] }
   }
   type Owner = {
     operation: SnapshotStore.Operation
@@ -132,6 +134,33 @@ export namespace SnapshotLive {
     }
   }
 
+  export function statistics(
+    sessionID: string,
+    revision: string,
+    compare: (from: string, to: string, paths?: readonly string[]) => Promise<SnapshotSchema.FileDiff[]>,
+  ) {
+    return read(sessionID, revision, async () => {
+      const value = resolve(sessionID, revision)
+      value.statistics ??= (async () => {
+        const inherited = value.inherited
+        const previous = await inherited?.statistics
+        const updated = await compare(value.from, value.to, inherited?.paths)
+        const selection = SnapshotCapture.selection(inherited?.paths)
+        const omitted = new Set(value.omissions.map((item) => item.file))
+        const rows = [...(previous?.filter((row) => !selection.affected(row.file)) ?? []), ...updated]
+          .filter((row) => !omitted.has(row.file))
+          .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0))
+        value.inherited = undefined
+        return rows
+      })().catch((error) => {
+        value.statistics = undefined
+        value.inherited = undefined
+        throw error
+      })
+      return value.statistics
+    })
+  }
+
   export async function create(sessionID: string, from: string, endpoint = from) {
     return SnapshotStore.withSession(sessionID, async () => {
       if (!(await SnapshotStore.ownsCurrentRoots([from, endpoint])))
@@ -196,7 +225,7 @@ export namespace SnapshotLive {
             const previous = owner.latest ? state().revisions.get(owner.latest) : undefined
             let omissions = previous?.omissions ?? initialOmissions
             try {
-              await SnapshotCapture.refresh(
+              const { paths: selected } = await SnapshotCapture.refresh(
                 operation,
                 undefined,
                 undefined,
@@ -216,7 +245,20 @@ export namespace SnapshotLive {
               )
               for (const object of objects) owner.references.set(object, (owner.references.get(object) ?? 0) + 1)
               const revision = crypto.randomUUID()
-              state().revisions.set(revision, { owner, from, to, omissions, objects, readers: 0 })
+              const incremental =
+                selected && selected.reduce((bytes, file) => bytes + Buffer.byteLength(file) + 1, 0) <= 64 * 1024
+              state().revisions.set(revision, {
+                owner,
+                from,
+                to,
+                omissions,
+                objects,
+                readers: 0,
+                inherited:
+                  previous?.statistics && incremental
+                    ? { statistics: previous.statistics, paths: selected }
+                    : undefined,
+              })
               const old = owner.latest
               owner.latest = revision
               if (old) await discard(old)

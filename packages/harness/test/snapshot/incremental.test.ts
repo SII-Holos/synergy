@@ -155,3 +155,103 @@ test("new Runtime observation reclaims proven abandoned repositories while prese
     })
   })
 })
+
+test("live statistics compare dirty paths while retaining complete immutable net results", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const sessionID = "incremental-statistics"
+        const files = Array.from({ length: 64 }, (_, index) => `group/${index}-${"name".repeat(20)}.txt`)
+        for (const file of files) await Bun.write(path.join(directory.path, file), "original\n")
+        await Bun.write(path.join(directory.path, ".gitignore"), "*.tmp\n")
+        const from = (await Snapshot.track(sessionID))!
+        const live = await SnapshotLive.create(sessionID, from)
+        try {
+          for (const file of files) await Bun.write(path.join(directory.path, file), "changed\n")
+          const first = await live.refresh(["group"])
+          const original = await Snapshot.liveStatistics(sessionID, first)
+          const release = SnapshotLive.retain(sessionID, first)
+          try {
+            expect(original).toHaveLength(64)
+            await Bun.write(path.join(directory.path, files[0]!), "new\nsecond\n")
+            const next = await live.refresh([files[0]!])
+            const run = SnapshotGit.run
+            let comparedBytes = 0
+            using measured = spyOn(SnapshotGit, "run").mockImplementation(async (...args) => {
+              const result = await run(...args)
+              if (args[0].includes("--numstat")) comparedBytes += result.bytes.length
+              return result
+            })
+            const changed = await Snapshot.liveStatistics(sessionID, next)
+            expect(changed).toHaveLength(64)
+            expect(changed.find((row) => row.file === files[0])?.additions).toBe(2)
+            expect(comparedBytes).toBeLessThan(250)
+            expect(await Snapshot.liveStatistics(sessionID, first)).toEqual(original)
+            await Bun.write(path.join(directory.path, files[0]!), "original\n")
+            expect(await Snapshot.liveStatistics(sessionID, await live.refresh([files[0]!]))).toHaveLength(63)
+            await Bun.write(path.join(directory.path, "extra.tmp"), "now visible\n")
+            await Bun.write(path.join(directory.path, ".gitignore"), "")
+            const calibrated = await Snapshot.liveStatistics(sessionID, await live.refresh([".gitignore"]))
+            expect(calibrated.map((row) => row.file)).toContain("extra.tmp")
+            await fs.rm(path.join(directory.path, "group"), { recursive: true })
+            const removed = await Snapshot.liveStatistics(sessionID, await live.refresh(["group"]))
+            expect(
+              removed
+                .filter((row) => row.file.startsWith("group/"))
+                .every((row) => row.additions === 0 && row.deletions === 1),
+            ).toBe(true)
+            expect(removed).toHaveLength(66)
+          } finally {
+            await release()
+          }
+        } finally {
+          await live.close()
+        }
+      },
+    })
+  }))
+
+test("child invalidations include files replaced by a directory in the complete net statistics", () =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await ScopeContext.provide({
+      scope: await directory.scope(),
+      async fn() {
+        const sessionID = "file-directory-statistics"
+        const file = path.join(directory.path, "parent")
+        await Bun.write(file, "original\n")
+        const from = (await Snapshot.track(sessionID))!
+        const live = await SnapshotLive.create(sessionID, from)
+        try {
+          await Bun.write(file, "changed\nextra\n")
+          expect(await Snapshot.liveStatistics(sessionID, await live.refresh(["parent"]))).toMatchObject([
+            { file: "parent", additions: 2, deletions: 1 },
+          ])
+          await fs.rm(file)
+          await Bun.write(path.join(file, "child.txt"), "nested\n")
+          expect(await Snapshot.liveStatistics(sessionID, await live.refresh(["parent/child.txt"]))).toMatchObject([
+            { file: "parent", additions: 0, deletions: 1 },
+            { file: "parent/child.txt", additions: 1, deletions: 0 },
+          ])
+          await fs.rm(file, { recursive: true })
+          await Bun.write(file, "original\n")
+          expect(await Snapshot.liveStatistics(sessionID, await live.refresh(["parent"]))).toEqual([])
+          await Bun.write(file, "x".repeat(2 * 1024 * 1024 + 1))
+          const omitted = await live.refresh(["parent"])
+          expect(await Snapshot.liveStatistics(sessionID, omitted)).toEqual([])
+          await fs.rm(file)
+          await Bun.write(path.join(file, "child.txt"), "nested\n")
+          const recovered = await live.refresh(["parent/child.txt"])
+          expect(await SnapshotLive.read(sessionID, recovered, async (value) => value.omissions)).toEqual([])
+          expect(await Snapshot.liveStatistics(sessionID, recovered)).toMatchObject([
+            { file: "parent", additions: 0, deletions: 1 },
+            { file: "parent/child.txt", additions: 1, deletions: 0 },
+          ])
+        } finally {
+          await live.close()
+        }
+      },
+    })
+  }))

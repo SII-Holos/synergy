@@ -129,22 +129,14 @@ export namespace SnapshotCapture {
     }
   }
 
-  async function refreshImpl(
-    operation: SnapshotStore.Operation,
-    abort: AbortSignal,
-    content?: Content,
-    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
-    dirty?: Dirty,
-  ) {
-    abort.throwIfAborted()
-    const captureStarted = performance.now()
-    const paths = dirty?.paths.map((file) => {
+  export function selection(paths?: readonly string[]) {
+    paths = paths?.map((file) => {
       if (file === "") return file
       if (path.isAbsolute(file) || file.split("/").some((part) => part === ".." || part === ".") || file.includes("\0"))
         throw new Error("Invalid snapshot dirty path")
       return file
     })
-    const incremental = paths && !content && !paths.some((file) => !file || path.posix.basename(file) === ".gitignore")
+    const incremental = paths && !paths.some((file) => !file || path.posix.basename(file) === ".gitignore")
     const selected = new Set(paths)
     const ancestors = new Set<string>()
     for (const file of paths ?? [])
@@ -157,11 +149,18 @@ export namespace SnapshotCapture {
       return false
     }
     const traversed = (name: string) => affected(name) || ancestors.has(name)
-    const omissions: SnapshotSchema.Omission[] = (dirty?.omissions ?? []).filter((item) => !affected(item.file))
-    const omit = (file: string, reason: SnapshotSchema.Omission["reason"]) => {
-      if (!onOmissions) throw new Error(`Snapshot file could not be captured: ${file}`)
-      omissions.push({ file, reason })
-    }
+    return { paths: incremental ? paths : undefined, affected, traversed }
+  }
+
+  async function refreshImpl(
+    operation: SnapshotStore.Operation,
+    abort: AbortSignal,
+    content?: Content,
+    onOmissions?: (omissions: SnapshotSchema.Omission[]) => void,
+    dirty?: Dirty,
+  ) {
+    abort.throwIfAborted()
+    const captureStarted = performance.now()
     const root = content ? "" : await fs.realpath(operation.workspace)
     const run = (args: string[], input?: string) =>
       SnapshotGit.run(
@@ -188,6 +187,18 @@ export namespace SnapshotCapture {
         parents.add(parent)
         parent = path.posix.dirname(parent)
       }
+    }
+    const requested = selection(content ? undefined : dirty?.paths).paths
+    const selected = requested ? new Set(requested) : undefined
+    const omitted = new Set(dirty?.omissions?.map((item) => item.file))
+    for (const file of requested ?? [])
+      for (let parent = path.posix.dirname(file); parent !== "."; parent = path.posix.dirname(parent))
+        if (previous.has(parent) || omitted.has(parent)) selected!.add(parent)
+    const { paths, affected, traversed } = selection(selected ? [...selected] : undefined)
+    const omissions: SnapshotSchema.Omission[] = (dirty?.omissions ?? []).filter((item) => !affected(item.file))
+    const omit = (file: string, reason: SnapshotSchema.Omission["reason"]) => {
+      if (!onOmissions) throw new Error(`Snapshot file could not be captured: ${file}`)
+      omissions.push({ file, reason })
     }
     const caseResult = await run(["config", "--bool", "--get", "core.ignorecase"])
     if (![0, 1].includes(caseResult.exitCode)) throw new Error(`Cannot read snapshot case policy: ${caseResult.stderr}`)
@@ -423,14 +434,14 @@ export namespace SnapshotCapture {
         if (before?.mode !== entry.mode || before?.hash !== entry.hash)
           updates.push(`${entry.mode} ${entry.hash}\t${name}\0`)
       }
-      if (!updates.length) return true
+      if (!updates.length) return { paths }
       // Provenance: https://git-scm.com/docs/git-update-index#_using_index_info
       // NUL records preserve literal names and apply removals before D/F changes.
       const indexStarted = performance.now()
       const result = await run(["update-index", "-z", "--index-info"], updates.join(""))
       timing.index += performance.now() - indexStarted
       if (result.exitCode !== 0) throw new Error(`Snapshot index write failed: ${result.stderr}`)
-      return true
+      return { paths }
     } finally {
       const labels = { files: current.size, visited: count, concurrency: CAPTURE_CONCURRENCY }
       const enumerate = Math.max(0, performance.now() - captureStarted - timing.read - timing.objects - timing.index)
