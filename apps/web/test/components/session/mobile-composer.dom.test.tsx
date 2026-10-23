@@ -228,11 +228,28 @@ test("the corner control drags to resize, taps to expand, and never covers a typ
     // for panning and cancels the gesture after two moves, so the drag below is
     // driven through CDP and the policy is asserted alongside it.
     expect(await style(page, ".composer-expand-control", "touch-action")).toBe("none")
+    // The failure mode is visible in the event sequence itself, not only in its
+    // effect: a target without a touch policy emits pointerdown, a couple of
+    // moves and then pointercancel with no pointerup at all. Recording the
+    // sequence keeps that distinction under test instead of inferring it from a
+    // height that a mouse-driven test could also produce.
+    await page.evaluate(() => {
+      const record: string[] = []
+      ;(window as unknown as { pointerSequence: string[] }).pointerSequence = record
+      const target = document.querySelector(".composer-expand-control")!
+      for (const type of ["pointerdown", "pointermove", "pointerup", "pointercancel"])
+        target.addEventListener(type, () => record.push(type), { capture: true })
+    })
     const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
     const drag = await touchStart(page, origin)
     for (const point of upwardPath(origin, 70)) await drag.move(point)
     await drag.end()
 
+    const sequence = await page.evaluate(() => (window as unknown as { pointerSequence: string[] }).pointerSequence)
+    expect(sequence[0]).toBe("pointerdown")
+    expect(sequence.filter((type) => type === "pointermove").length).toBeGreaterThanOrEqual(2)
+    expect(sequence.filter((type) => type === "pointerup")).toHaveLength(1)
+    expect(sequence).not.toContain("pointercancel")
     expect(await page.locator(".session-composer").getAttribute("data-resized")).not.toBeNull()
     const after = (await page.locator(".session-composer-editor").boundingBox())!.height
     expect(after).toBeGreaterThan(before)
@@ -318,6 +335,48 @@ test("the merged control restores a cancelled drag and arms expansion past the l
     expect(await armed()).not.toBeNull()
     expect(await cue.innerText()).toContain("Release to expand")
     await second.end()
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
+    expect(await page.locator(".composer-expand-cue").count()).toBe(0)
+    expect(errors).toEqual([])
+  } finally {
+    await close()
+  }
+}, 120_000)
+
+test("the merged control keeps the separator's cancel and armed release for pointer input", async () => {
+  const { page, close } = await open({ width: 375, height: 812 }, false)
+  try {
+    const control = page.locator(".composer-expand-control")
+    const box = (await control.boundingBox())!
+    const origin = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+    const height = async () => Math.round((await page.locator(".session-composer-editor").boundingBox())!.height)
+    const resting = await height()
+
+    // A narrowed desktop window reaches this layout with a mouse, so the
+    // separator's escape hatch has to work there too: cancel restores the
+    // previous height rather than leaving the mis-drag in place.
+    await page.mouse.move(origin.x, origin.y)
+    await page.mouse.down()
+    await page.mouse.move(origin.x, origin.y - 60, { steps: 6 })
+    expect(await height()).toBeGreaterThan(resting)
+    await page.keyboard.press("Escape")
+    await page.mouse.up()
+    expect(await height()).toBe(resting)
+    expect(await page.locator(".session-composer").getAttribute("data-resized")).toBeNull()
+    expect(await page.locator(".session-composer").getAttribute("data-expanded")).toBeNull()
+
+    const cue = page.locator(".composer-expand-cue")
+    const armed = async () => ((await cue.count()) === 0 ? null : cue.getAttribute("data-armed"))
+    await page.mouse.move(origin.x, origin.y)
+    await page.mouse.down()
+    let travelled = 0
+    while (travelled < 500 && (await armed()) === null) {
+      travelled += 16
+      await page.mouse.move(origin.x, origin.y - travelled)
+    }
+    expect(await armed()).not.toBeNull()
+    expect(await cue.innerText()).toContain("Release to expand")
+    await page.mouse.up()
     expect(await page.locator(".session-composer").getAttribute("data-expanded")).not.toBeNull()
     expect(await page.locator(".composer-expand-cue").count()).toBe(0)
     expect(errors).toEqual([])
