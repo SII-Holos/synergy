@@ -38,13 +38,13 @@ export function PromptDockFloatLayer(props: {
   return (
     <div ref={setAnchor} class="prompt-dock-float-layer">
       <SubagentDock sessionID={props.sessionID} suppressed={editorExpanded()} />
+      <TurnChangeStatus sessionID={props.sessionID} onReview={props.onReview} />
       <PromptDockControlSlot priorityControl={props.priorityControl} />
       <SessionProgressPanel
         sessionID={props.sessionID}
         anchor={anchor()}
         suppressed={editorExpanded() || props.priorityControl !== undefined}
       />
-      <TurnChangeStatus sessionID={props.sessionID} onReview={props.onReview} />
     </div>
   )
 }

@@ -14,7 +14,7 @@
   flex: 0 1 auto;
   width: auto;
   min-width: min(240px, 100%);
-  max-width: 100%;
+  max-width: min(620px, 100%);
 }
 
 .prompt-dock-float-layer > .session-progress-panel:has([data-expanded="true"]) {

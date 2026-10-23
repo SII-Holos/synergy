@@ -1232,7 +1232,7 @@ test("retained attention never moves the Composer, flashes or requests data duri
   expect(requests).toEqual([])
 })
 
-test("live changes share wide activity space, wrap narrowly, retain zero and open the cold root by keyboard", async () => {
+test("live changes share activity rows, wrap above progress, retain zero and open the cold root by keyboard", async () => {
   await page.setViewportSize({ width: 1400, height: 900 })
   await page.goto(baseURL + "?changes&wide&compressed")
   const button = page.locator("[data-turn-change-status]")
@@ -1252,6 +1252,22 @@ test("live changes share wide activity space, wrap narrowly, retain zero and ope
   await button.focus()
   await page.keyboard.press("Enter")
   expect(await page.evaluate(() => (window as unknown as { reviewRoots: string[] }).reviewRoots)).toEqual(["cold-root"])
+  const column = page.locator(".session-prompt-dock-content")
+  const progress = page.locator(".session-progress-island-header")
+  for (const width of [720, 375]) {
+    if (width === 375) await change("child-ended")
+    await column.evaluate((el, width) => (el.style.maxWidth = `${width}px`), width)
+    const avatars = (await page.locator(".subagent-dock").boundingBox())!
+    const changes = (await button.boundingBox())!
+    const summary = (await progress.boundingBox())!
+    expect(Math.abs(avatars.y - changes.y)).toBeLessThan(2)
+    expect(summary.y).toBeGreaterThan(Math.max(avatars.y + avatars.height, changes.y + changes.height))
+    expect(summary.width).toBeGreaterThan(changes.x + changes.width - avatars.x)
+    expect(summary.x + summary.width).toBeLessThanOrEqual((await column.boundingBox())!.x + width)
+  }
+  await button.focus()
+  await page.keyboard.press("Tab")
+  expect(await progress.evaluate((el) => el === document.activeElement)).toBe(true)
   await page.setViewportSize({ width: 375, height: 900 })
   expect(await button.isVisible()).toBe(true)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
