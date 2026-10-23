@@ -111,11 +111,13 @@ test("native covers keep the newest image and discard failed or inactive capture
     `
     import {createSignal} from 'solid-js'
     export const [active,setActive]=createSignal(true)
+    export const [hostReady,setHostReady]=createSignal(false)
+    export const [overlay,setOverlay]=createSignal(false)
     export const [page,setPage]=createSignal({id:'page',url:'https://example.test',status:'active',isLoading:false})
     export const calls=[],pending=[]
     let listener
     export const emit=event=>listener?.({...event,pageId:page().id,protocolVersion:8})
-    export const useBrowser=()=>({presentation:()=>({kind:'native'}),page,pageId:()=>page().id,hostStatus:()=>'ready',fileChooserRequest:()=>null,dialogRequest:()=>null,controlsOpen:()=>false,addressSuggestionsOpen:()=>false,browserError:()=>null,annotationTarget:()=>null,setBrowserError(){}})
+    export const useBrowser=()=>({presentation:()=>({kind:'native'}),page,pageId:()=>page().id,hostStatus:()=>hostReady()?'ready':'connecting',fileChooserRequest:()=>null,dialogRequest:()=>null,controlsOpen:()=>false,addressSuggestionsOpen:()=>false,browserError:()=>null,annotationTarget:()=>null,setBrowserError(){}})
     export const useDialog=()=>({active:false})
     export const usePlatform=()=>({browserNative:{
       attachView:async input=>calls.push(input),resizeView:async()=>{},detachView:async()=>{},
@@ -134,12 +136,13 @@ test("native covers keep the newest image and discard failed or inactive capture
     import {render} from 'solid-js/web'
     import {NativeBrowserSurface} from ${JSON.stringify(native)}
     import {ViewActivityProvider} from '@/context/view-residency'
-    import {active,setActive,page,setPage,emit,pending,calls} from './stub'
+    import {active,setActive,setHostReady,overlay,setOverlay,page,setPage,emit,pending,calls} from './stub'
+    import {WorkbenchSurfaceOverlay} from '@/components/workspace/workbench-surface-overlay'
     const container=document.getElementById('root');container.style.cssText='width:800px;height:600px;position:relative'
     const image=color=>{const canvas=document.createElement('canvas');canvas.width=2;canvas.height=2;const ctx=canvas.getContext('2d');ctx.fillStyle=color;ctx.fillRect(0,0,2,2);return canvas.toDataURL('image/png')}
-    window.fixture={setActive,setPage,pending,calls,emit,old:image('red'),fresh:image('blue'),
+    window.fixture={setActive,setHostReady,setOverlay,setPage,pending,calls,emit,old:image('red'),fresh:image('blue'),
       resolve:(index,dataUrl)=>pending[index].resolve({type:'cover',url:page().url,dataUrl})}
-    render(()=><ViewActivityProvider active={active}><NativeBrowserSurface container={()=>container} ownerKey="scope"/></ViewActivityProvider>,container)
+    render(()=><ViewActivityProvider active={active}><WorkbenchSurfaceOverlay.Provider value={overlay}><NativeBrowserSurface container={()=>container} ownerKey="scope"/></WorkbenchSurfaceOverlay.Provider></ViewActivityProvider>,container)
   `,
   )
   const server = await createBrowserFixture({
@@ -157,15 +160,22 @@ test("native covers keep the newest image and discard failed or inactive capture
     const errors: string[] = []
     page.on("pageerror", (error) => errors.push(error.message))
     await page.goto(server.url)
+    await page.evaluate(() => {
+      const fixture = Reflect.get(window, "fixture")
+      fixture.setHostReady(true)
+      fixture.setOverlay(true)
+    })
     await page.waitForFunction(() => Reflect.get(window, "fixture")?.pending.length === 1)
+    expect(await page.evaluate(() => Reflect.get(window, "fixture").calls.at(-1)?.visible)).toBe(true)
     const fresh = await page.evaluate(() => {
       const f = Reflect.get(window, "fixture")
-      f.emit({ type: "native.cover", url: "https://example.test", dataUrl: f.fresh })
-      f.resolve(0, f.old)
+      f.resolve(0, f.fresh)
       return f.fresh as string
     })
     await page.waitForTimeout(80)
+    expect(await page.evaluate(() => Reflect.get(window, "fixture").calls.at(-1)?.visible)).toBe(false)
     expect(await page.locator("#root img").getAttribute("src")).toBe(fresh)
+    await page.evaluate(() => Reflect.get(window, "fixture").setOverlay(false))
     await page.evaluate(() =>
       Reflect.get(window, "fixture").setPage({ id: "invalid", url: "https://invalid.test", status: "active" }),
     )
