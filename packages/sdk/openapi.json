@@ -54523,6 +54523,37 @@
         },
         "additionalProperties": false
       },
+      "DigitalTwinSettings": {
+        "description": "Next-input prediction: automatic defaults to false; model defaults to the current Session model",
+        "type": "object",
+        "properties": {
+          "automatic": {
+            "description": "Automatically predict the next input after a completed task (default: false)",
+            "type": "boolean"
+          },
+          "model": {
+            "description": "Prediction model; null or absent follows the current Session",
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "providerID": {
+                    "type": "string"
+                  },
+                  "modelID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["providerID", "modelID"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "ScopeUIPreferences": {
         "type": "object",
         "properties": {
@@ -54595,6 +54626,9 @@
           "fullAccessAcknowledged": {
             "description": "Records that the human accepted the risk of running with Full Access. Set by the confirmation dialog when Full Access is enabled from the UI; it is an awareness record, not a security boundary.",
             "type": "boolean"
+          },
+          "digitalTwin": {
+            "$ref": "#/components/schemas/DigitalTwinSettings"
           },
           "boss": {
             "type": "object",
@@ -57655,37 +57689,6 @@
           },
           "watch": {
             "$ref": "#/components/schemas/GithubWatchConfig"
-          }
-        },
-        "additionalProperties": false
-      },
-      "DigitalTwinSettings": {
-        "description": "Next-input prediction: automatic defaults to false; model defaults to the current Session model",
-        "type": "object",
-        "properties": {
-          "automatic": {
-            "description": "Automatically predict the next input after a completed task (default: false)",
-            "type": "boolean"
-          },
-          "model": {
-            "description": "Prediction model; null or absent follows the current Session",
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "providerID": {
-                    "type": "string"
-                  },
-                  "modelID": {
-                    "type": "string"
-                  }
-                },
-                "required": ["providerID", "modelID"]
-              },
-              {
-                "type": "null"
-              }
-            ]
           }
         },
         "additionalProperties": false

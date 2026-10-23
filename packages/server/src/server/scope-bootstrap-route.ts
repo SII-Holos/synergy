@@ -61,6 +61,7 @@ const preferenceKeys = [
   "welcomeGames",
   "locale",
   "fullAccessAcknowledged",
+  "digitalTwin",
   "boss",
   "voice",
 ] as const
