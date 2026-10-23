@@ -40,19 +40,11 @@ export namespace RolloutLifecycle {
   }
 
   export async function start(session: Session.Info, root: MessageV2.User, parts: MessageV2.Part[]) {
-    const hash = new Bun.CryptoHasher("sha256")
-    let messages = 0
-    for await (const message of MessageV2.stream({ sessionID: session.id })) {
-      if (message.info.id === root.id) continue
-      hash.update(Experiment.fingerprint(message))
-      messages++
-    }
     const segment = await RolloutLedger.beginSegment({
       owner: owner(session),
       runID: root.id,
       input: JSON.parse(JSON.stringify({ message: root, parts })),
       parent: await parent(session),
-      initialHistory: { messages, sha256: hash.digest("hex") },
     })
     const { SessionFileChanges } = await import("../file-changes")
     await SessionFileChanges.begin({ sessionID: session.id, rootID: root.id, segmentID: segment.id })

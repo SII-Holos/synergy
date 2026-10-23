@@ -59,7 +59,7 @@ export namespace RolloutEvidence {
     const value = record.value
     const fields =
       record.kind === "run"
-        ? ["input", "initialHistory"]
+        ? ["input"]
         : record.kind === "tool"
           ? ["input", "rawResult", "observation"]
           : record.kind === "process"
