@@ -601,7 +601,7 @@ function TimelineItemDisplay(props: {
       </Show>
     )
   }
-  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} />
+  return <AttachmentGallery files={props.item.files} serverUrl={props.serverUrl} compact="process" layout="rows" />
 }
 
 function isToolTimelineItem(item: SessionTurnTimelineItem): boolean {
@@ -1035,7 +1035,6 @@ export function SessionTurn(
     onRewind?: () => void
     rollbackActive?: boolean
     onReviewChanges?: (input: { messageID: string; file?: string }) => void
-    onRestoreChanges?: (messageID: string) => void
     onForkMessage?: (messageID: string) => void
     executionSummary?: TurnExecutionSummary
     onExecutionDetails?: () => void
@@ -1934,9 +1933,6 @@ export function SessionTurn(
                                 diffs={msg().summary?.diffs ?? []}
                                 state={state()}
                                 animateReady={animateReadyDiffPanel()}
-                                onUndoRequested={
-                                  props.onRestoreChanges ? () => props.onRestoreChanges?.(msg().id) : undefined
-                                }
                                 onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
                                 onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
                               />

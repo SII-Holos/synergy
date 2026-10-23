@@ -17533,6 +17533,10 @@ msgid "session.dock.parentSession"
 msgstr "⟦Parent session⟧"
 
 #. js-lingui-explicit-id
+msgid "session.execution.attachments"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.execution.background"
 msgstr ""
 
@@ -27234,10 +27238,6 @@ msgstr "⟦Show {count} more {count, plural, one {file} other {files}}⟧"
 #. js-lingui-explicit-id
 msgid "ui.turnChangeSummary.title"
 msgstr "⟦Changed {fileCount, plural, one {# file} other {# files}}⟧"
-
-#. js-lingui-explicit-id
-msgid "ui.turnChangeSummary.undo"
-msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.userMessage.markdown"

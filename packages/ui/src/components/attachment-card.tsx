@@ -66,6 +66,7 @@ export function AttachmentCard(props: {
   autoplay?: boolean
   autoplayKey?: string
   compact?: "draft" | "user" | "process"
+  details?: boolean
   singleImage?: boolean
   onOpen?: (file: AttachmentFile) => void
 }) {
@@ -176,7 +177,15 @@ export function AttachmentCard(props: {
   }
 
   const size = () => presentation().size
-  const crop = () => (presentation().crop ? "true" : "false")
+  const crop = () => (!props.details && presentation().crop ? "true" : "false")
+  const mediaDetails = () => (
+    <Show when={props.details}>
+      <span data-slot="attachment-card-body">
+        <span data-slot="attachment-card-filename">{filename()}</span>
+        <span data-slot="attachment-card-meta">{meta()}</span>
+      </span>
+    </Show>
+  )
 
   return (
     <Switch
@@ -232,6 +241,7 @@ export function AttachmentCard(props: {
           type="button"
           data-component="attachment-card"
           data-type="image"
+          data-details={props.details ? "" : undefined}
           data-size={size()}
           data-crop={crop()}
           aria-label={_({ ...previewImageDescriptor, values: { filename: filename() } })}
@@ -239,11 +249,19 @@ export function AttachmentCard(props: {
           onClick={openAttachment}
         >
           <img src={url()!} alt={filename()} loading="lazy" onError={() => setImageFailed(true)} />
+          {mediaDetails()}
         </button>
       </Match>
       <Match when={!props.compact && presentation().renderer === "video" && url()}>
-        <div data-component="attachment-card" data-type="video" data-size={size()} data-crop={crop()}>
+        <div
+          data-component="attachment-card"
+          data-type="video"
+          data-size={size()}
+          data-crop={crop()}
+          data-details={props.details ? "" : undefined}
+        >
           <video src={url()} controls preload="metadata" title={filename()} />
+          {mediaDetails()}
           <button
             type="button"
             data-slot="attachment-card-open"
@@ -401,6 +419,7 @@ export function AttachmentGallery(props: {
   autoplayKey?: string
   layout?: "columns" | "rows"
   compact?: "draft" | "user" | "process"
+  details?: boolean
   expanded?: boolean
   onExpandedChange?: (value: boolean) => void
   onOpen?: (file: AttachmentFile) => void
@@ -424,18 +443,19 @@ export function AttachmentGallery(props: {
   const previewImages = createMemo(() =>
     entries.map((entry) => entry.imagePreview).filter((image): image is ImagePreviewImage => Boolean(image)),
   )
-  const columns = createMemo(() => attachmentColumns(entries))
+  const columns = createMemo(() => (props.details && entries.length ? [entries] : attachmentColumns(entries)))
   return (
     <Show
       when={props.layout !== "rows"}
       fallback={
-        <div data-component="attachment-gallery" data-align={props.align ?? "start"}>
+        <div data-component="attachment-gallery" data-align={props.align ?? "start"} data-compact={props.compact}>
           <AttachmentRows items={entries} expanded={props.expanded} onExpandedChange={props.onExpandedChange}>
             {(entry) => (
               <AttachmentCard
                 file={entry.file}
                 serverUrl={props.serverUrl}
                 compact={props.compact}
+                details={props.details}
                 singleImage={props.compact === "user" && visibleFiles().length === 1 && isImageAttachment(entry.file)}
                 onOpen={props.onOpen}
                 imagePreview={
@@ -450,7 +470,13 @@ export function AttachmentGallery(props: {
       }
     >
       <Show when={columns().length > 0}>
-        <div data-component="attachment-gallery" data-columns={columns().length} data-align={props.align ?? "start"}>
+        <div
+          data-component="attachment-gallery"
+          data-columns={columns().length}
+          data-align={props.align ?? "start"}
+          data-compact={props.compact}
+          data-details={props.details ? "" : undefined}
+        >
           <div data-slot="attachment-column-layout">
             <For each={columns()}>
               {(column) => (
@@ -464,6 +490,7 @@ export function AttachmentGallery(props: {
                         autoplayKey={props.autoplay ? props.autoplayKey : undefined}
                         onOpen={props.onOpen}
                         compact={props.compact}
+                        details={props.details}
                         imagePreview={
                           entry.imagePreviewIndex !== undefined
                             ? { images: previewImages(), index: entry.imagePreviewIndex }

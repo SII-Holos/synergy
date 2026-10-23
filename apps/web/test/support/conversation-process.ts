@@ -24,6 +24,7 @@ type Fixture = {
 
   fragments(count: number): void
   documents(count: number, purpose?: "evidence" | "deliverable"): void
+  images(purpose: "evidence" | "deliverable" | "final" | "media"): void
   toolCase(
     tool: string,
     input: Record<string, unknown>,

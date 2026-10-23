@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { useParams } from "@/context/session-route"
 import { useLingui } from "@lingui/solid"
+import { MenuRoot, MenuTrigger, MenuPortal, MenuContent, MenuItem } from "@kobalte/core/menu"
 import { useSDK } from "@/context/sdk"
 import { useFile } from "@/context/file"
 import { useSessionDataView } from "@/context/session-data-view"
@@ -25,13 +26,16 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { Popover, restorePopoverFocus } from "@ericsanchezok/synergy-ui/popover"
 import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Checkbox } from "@ericsanchezok/synergy-ui/checkbox"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { DiffChanges } from "@ericsanchezok/synergy-ui/diff-changes"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { useOverlayLayer } from "@ericsanchezok/synergy-ui/context/overlay-layer"
+import { PortalStyleOwner } from "@ericsanchezok/synergy-ui/context/ui-style"
+import { useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { type CodeViewItem, type CodeViewLineSelection, type FileDiffMetadata } from "@pierre/diffs"
 import type { ReviewComment } from "@ericsanchezok/synergy-sdk/client"
@@ -53,6 +57,8 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
     dialog = useDialog(),
     dataView = useSessionDataView()
   const restore = useFileRestore(() => params.id)
+  const overlayLayer = useOverlayLayer()
+  const active = useViewActivity()
   const [source, setSource] = createSignal<ReviewSource>(props.tab.source ? "turn" : "session")
   const [messageID, setMessageID] = createSignal(props.tab.source)
   const [from, setFrom] = createSignal("origin/dev"),
@@ -465,6 +471,33 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
   const fold = () => setExpanded(expanded().length ? [] : data.rows().map(reviewFileKey))
   function fileHeader(id: string) {
     const row = () => rowMap().get(id)
+    const [menuOpen, setMenuOpen] = createSignal(false)
+    let menu: HTMLDivElement | undefined
+    let trigger: HTMLButtonElement | undefined
+    createEffect(() => {
+      if (!active()) setMenuOpen(false)
+    })
+    function openFromKeyboard(event: KeyboardEvent) {
+      if (!["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) return
+      // Kobalte utils 0.9.1 repeats the same scroll ancestor beneath an overflow-hidden root.
+      // https://github.com/kobaltedev/kobalte/blob/main/packages/utils/src/scroll-into-view.ts
+      event.preventDefault()
+      event.stopPropagation()
+      const edge = event.key === "ArrowUp" ? "last" : "first"
+      setMenuOpen(true)
+      setTimeout(() => {
+        if (!menuOpen() || !menu?.isConnected) return
+        const items = menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([data-disabled])')
+        const item = edge === "last" ? items[items.length - 1] : items[0]
+        const target = item ?? menu
+        target.focus({ preventScroll: true })
+      }, 0)
+    }
+    function runDialogAction(action: () => void) {
+      setMenuOpen(false)
+      trigger?.focus({ preventScroll: true })
+      action()
+    }
     return (
       <Show when={row()}>
         {(value) => (
@@ -545,47 +578,67 @@ export function ReviewPanel(props: WorkbenchPanelContentProps) {
                   action={() => void file.openWorkspaceFile(value().file)}
                   disabled={!data.canOpen(value())}
                 />
-                <Popover
-                  variant="menu"
-                  triggerAs={(triggerProps) => (
-                    <IconButton
-                      {...triggerProps}
-                      icon={getSemanticIcon("action.more")}
-                      aria-label={_(C.fileOptions)}
-                      variant="ghost"
-                      size="large"
-                      iconSize="small"
-                    />
-                  )}
-                >
-                  <div class="review-menu">
-                    <Button variant="ghost" onClick={() => void copyTextToClipboard(value().file)}>
-                      {_(C.copyPath)}
-                    </Button>
-                    <Button variant="ghost" onClick={() => void preview(value())}>
-                      {_(C.versions)}
-                    </Button>
-                    <Show when={data.historical() && value().workspace}>
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          void restore({
-                            messageID: source() === "turn" ? messageID() : undefined,
-                            selectedFiles: [
-                              {
-                                workspaceID: value().workspace!.id,
-                                generation: value().workspace!.generation,
-                                file: value().file,
-                              },
-                            ],
-                          })
-                        }
+                <MenuRoot modal={false} open={menuOpen()} onOpenChange={setMenuOpen} gutter={4}>
+                  <MenuTrigger
+                    ref={trigger}
+                    as={IconButton}
+                    icon={getSemanticIcon("action.more")}
+                    aria-label={_(C.fileOptions)}
+                    variant="ghost"
+                    size="large"
+                    iconSize="small"
+                    on:keydown={openFromKeyboard}
+                  />
+                  <MenuPortal mount={overlayLayer()}>
+                    <PortalStyleOwner>
+                      <MenuContent
+                        ref={menu}
+                        class="menu-field-surface"
+                        aria-label={_(C.fileOptions)}
+                        onEscapeKeyDown={(event) => event.stopPropagation()}
+                        onCloseAutoFocus={(event) => {
+                          event.preventDefault()
+                          if (active()) void restorePopoverFocus(trigger, menu)
+                        }}
+                        onOpenAutoFocus={(event) => event.preventDefault()}
                       >
-                        {_(C.undoFile)}
-                      </Button>
-                    </Show>
-                  </div>
-                </Popover>
+                        <div class="menu-field-list">
+                          <MenuItem class="menu-field-item" onSelect={() => void copyTextToClipboard(value().file)}>
+                            {_(C.copyPath)}
+                          </MenuItem>
+                          <MenuItem
+                            class="menu-field-item"
+                            onSelect={() => runDialogAction(() => void preview(value()))}
+                          >
+                            {_(C.versions)}
+                          </MenuItem>
+                          <Show when={data.historical() && value().workspace}>
+                            <MenuItem
+                              class="menu-field-item"
+                              onSelect={() =>
+                                runDialogAction(
+                                  () =>
+                                    void restore({
+                                      messageID: source() === "turn" ? messageID() : undefined,
+                                      selectedFiles: [
+                                        {
+                                          workspaceID: value().workspace!.id,
+                                          generation: value().workspace!.generation,
+                                          file: value().file,
+                                        },
+                                      ],
+                                    }),
+                                )
+                              }
+                            >
+                              {_(C.undoFile)}
+                            </MenuItem>
+                          </Show>
+                        </div>
+                      </MenuContent>
+                    </PortalStyleOwner>
+                  </MenuPortal>
+                </MenuRoot>
               </div>
               <Checkbox
                 hideLabel

@@ -12,6 +12,8 @@ The [change card](../../../../packages/ui/src/components/turn-change-summary-pan
 
 The header keeps the file count and line totals on one line with regular text weight. Its height is comparable to a file row, and its action group can wrap when the available width requires it. File and card identity remain stable during settlement.
 
+The summary Undo entry is superseded by [Review file actions](../bug-fix/2026-10-23-review-file-actions.md), which retains inspection in the card and restoration in Review. The compact presentation and settlement decisions continue to apply.
+
 ## Alternatives considered
 
 **Keep a warning in the header or detail surfaces.** A generic recording warning draws attention away from confirmed files without explaining an actionable consequence. Internal evidence already determines which restoration operations are safe.

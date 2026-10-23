@@ -659,6 +659,49 @@ window.__conversationProcess = {
       parts.map((part) => (part.type === "reasoning" && (!partID || part.id === partID) ? { ...part, text } : part)),
     )
   },
+  images(purpose) {
+    const files = [
+      [1600, 1000],
+      [600, 1200],
+      [1600, 200],
+    ].map(([width, height], index) => ({
+      id: `image-${index}`,
+      sessionID: "session",
+      messageID: "work",
+      type: "attachment" as const,
+      mime: "image/svg+xml",
+      filename: `capture-${index}.svg`,
+      presentation: { purpose: purpose === "evidence" ? ("evidence" as const) : ("deliverable" as const) },
+      url:
+        "data:image/svg+xml," +
+        encodeURIComponent(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#8395a3"/></svg>`,
+        ),
+    }))
+    const tool = part("work", "images", "tool")
+    if (tool.type !== "tool" || tool.state.status !== "completed") return
+    const state = tool.state
+    batch(() => {
+      setData("message", "session", [root, work])
+      setData("part", "work", [
+        part("work", "progress", "text", "Captured images are ready."),
+        ...(purpose === "final"
+          ? files.slice(0, 1)
+          : [
+              {
+                ...tool,
+                state: {
+                  ...state,
+                  attachments: purpose === "media" ? files.slice(0, 1) : files,
+                  metadata:
+                    purpose === "media" ? { display: { kind: "media-generation", media: { type: "image" } } } : {},
+                },
+              },
+            ]),
+      ])
+      setMode("full")
+    })
+  },
   documents(count, purpose = "evidence") {
     const tool = part("work", "documents", "tool")
     if (tool.type !== "tool" || tool.state.status !== "completed") return

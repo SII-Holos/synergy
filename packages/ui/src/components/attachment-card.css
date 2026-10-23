@@ -85,8 +85,14 @@
   object-fit: contain;
 }
 
-[data-component="attachment-card"][data-compact="process"] img {
+[data-component="attachment-card"][data-compact="process"][data-type="image"] img {
   object-fit: contain;
+  object-position: left center;
+}
+
+[data-component="attachment-card"][data-compact="process"][data-type="image"] {
+  width: 160px;
+  height: 120px;
 }
 
 [data-slot="activity-evidence"] {
@@ -94,13 +100,17 @@
   min-width: 0;
 }
 
-[data-slot="activity-evidence"] [data-slot="attachment-row-layout"] {
+[data-component="attachment-gallery"][data-compact="process"] [data-slot="attachment-row-layout"] {
   padding-inline: 0;
 }
 
-[data-slot="activity-evidence"] [data-component="attachment-gallery"],
-[data-slot="session-turn-timeline-item"][data-kind="tool-attachments"] [data-component="attachment-gallery"] {
+[data-component="attachment-gallery"][data-compact="process"],
+[data-component="attachment-gallery"][data-details] {
   padding: 0;
+}
+
+[data-component="attachment-gallery"][data-details] [data-slot="attachment-column"] {
+  gap: 20px;
 }
 
 [data-slot="attachment-column-layout"] {
@@ -245,24 +255,34 @@
 
   display: inline-flex;
   width: auto;
-  max-width: 100%;
+  max-width: var(--attachment-max-width);
   min-height: 0;
   max-height: none;
   padding: 0;
   overflow: hidden;
   align-items: stretch;
-  justify-content: center;
+  justify-content: flex-start;
   border-radius: 8px;
 
   img,
   video {
     display: block;
     width: auto;
-    max-width: var(--attachment-max-width);
+    max-width: 100%;
     height: auto;
     max-height: var(--attachment-max-height);
     object-fit: contain;
     background: var(--workbench-card-bg, var(--surface-base));
+  }
+}
+
+[data-component="attachment-card"][data-details] {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+
+  [data-slot="attachment-card-body"] {
+    max-width: 100%;
   }
 }
 

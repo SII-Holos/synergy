@@ -2,8 +2,8 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { build, preview, type PreviewServer } from "vite"
-import solid from "vite-plugin-solid"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
+import type { AttachmentFile } from "@ericsanchezok/synergy-ui/attachment-card"
 
 type Fixture = {
   features(features: string[] | undefined): void
@@ -18,7 +18,7 @@ type Fixture = {
   resolveEvent(index: number, text: string, state?: "running" | "committed" | "failed", mechanical?: boolean): void
   refreshEvent(): void
   rejectEvent(index: number): void
-  taskOutput(index: number, output: unknown, mode?: string, taskID?: string): void
+  taskOutput(index: number, output: unknown, mode?: string, taskID?: string, attachments?: AttachmentFile[]): void
   switchOwner(server: string, scope: string, sessionID?: string): void
   select(partID: string): void
   activity(revision: number, messageID?: string): void
@@ -32,6 +32,7 @@ type Fixture = {
       path?: string
       tool?: string
       truncated?: boolean
+      attachments?: AttachmentFile[]
       metadata?: Record<string, unknown>
     },
   ): void
@@ -51,9 +52,10 @@ type Fixture = {
     copied: string
     taskRequests: Array<{ taskID: string; parentSessionID?: string; sessionID?: string }>
     sessionReads: number
+    opened: string[]
   }
 }
-let server: PreviewServer
+let server: BrowserFixture
 let browser: Browser
 let page: Page
 let fixture: string
@@ -66,12 +68,13 @@ beforeAll(async () => {
   fixture = await mkdtemp(path.join(import.meta.dir, ".execution-detail-"))
   await Bun.write(
     path.join(fixture, "index.html"),
-    '<!doctype html><style>body{margin:0}#root{height:480px}</style><div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}#root{height:480px}</style><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(fixture, "bridge.tsx"),
     `
     import {batch,createSignal,onCleanup} from "solid-js"
+    import {AttachmentGallery} from "@ericsanchezok/synergy-ui/attachment-card"
     import {createStore} from "solid-js/store"
     import {configureClipboard,createCopyController} from ${JSON.stringify(path.resolve(appSrc, "../../../packages/ui/src/components/clipboard-core.ts"))}
     const [owner,setOwner]=createStore({server:"server-a",scope:"scope-a",sessionID:"session"})
@@ -80,6 +83,7 @@ beforeAll(async () => {
     const [selection,setSelection]=createSignal({features:["note","blueprint","media"]})
     const requests=[]
     const taskRequests=[]
+    const opened=[]
     let sessionReads=0
     let activityListener
     let resultUnmounts=0
@@ -87,7 +91,7 @@ beforeAll(async () => {
     let child={taskID:"ctx_original",parentSessionID:"session",output:{mode:"final_response",value:"Saved child result"}}
     const [eventLive,setEventLive]=createSignal()
     configureClipboard({writer(text){copied=text}})
-    const h=window.fixture={state,open,
+    const h=window.fixture={state,open,opened,
       features:features=>setSelection(features ? {features} : undefined),
       required:requiredFeatures=>setState({...state(),requiredFeatures}),
       event(kind,messageID="event"){setState({...owner,kind,messageID})},
@@ -102,12 +106,12 @@ beforeAll(async () => {
       switchOwner(server,scope,sessionID="session"){batch(()=>{setOwner({server,scope,sessionID});setState({...owner,messageID:"message",partID:"part-a",callID:"call-part-a"})})},
       select(partID){setState({...state(),partID,callID:"call-"+partID})},
       activity(revision,messageID="message"){activityListener?.({properties:{sessionID:owner.sessionID,messageID,callID:state().callID,revision}})},
-      resolve(index,output,activity){const request=requests[index];request.resolve({data:{evidenceMissing:!activity,truncated:activity?.truncated,text:activity?.text,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:activity?.tool??"read",activityEvidence:activity?{kind:activity.kind,mediaType:activity.mediaType??"application/json",resource:{path:activity.path},range:activity.kind==="file-read"?{startLine:0,lineCount:activity.text.split("\\n").length}:undefined}:undefined,state:{status:"completed",input:{filePath:"/fixture.txt"},metadata:activity?.metadata,output,time:{start:1,end:2}}}}})},
-      taskOutput(index,output,mode="full",taskID="ctx_original"){const request=requests[index];request.resolve({data:{evidenceMissing:false,text:"Task receipt",part:{id:request.partID,callID:request.callID,messageID:request.messageID,sessionID:request.sessionID,type:"tool",tool:"task_output",state:{status:"completed",input:{taskId:"ctx_original",mode},metadata:{found:true,taskId:taskID,status:"error",mode,output},output:"Task receipt",time:{start:1,end:2}}}}})},
+      resolve(index,output,activity){const request=requests[index];request.resolve({data:{evidenceMissing:!activity,truncated:activity?.truncated,text:activity?.text,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:activity?.tool??"read",activityEvidence:activity?{kind:activity.kind,mediaType:activity.mediaType??"application/json",resource:{path:activity.path},range:activity.kind==="file-read"?{startLine:0,lineCount:activity.text.split("\\n").length}:undefined}:undefined,state:{status:"completed",input:{filePath:"/fixture.txt"},metadata:activity?.metadata,attachments:activity?.attachments,output,time:{start:1,end:2}}}}})},
+      taskOutput(index,output,mode="full",taskID="ctx_original",attachments){const request=requests[index];request.resolve({data:{evidenceMissing:false,text:"Task receipt",part:{id:request.partID,callID:request.callID,messageID:request.messageID,sessionID:request.sessionID,type:"tool",tool:"task_output",state:{status:"completed",input:{taskId:"ctx_original",mode},metadata:{found:true,taskId:taskID,status:"error",mode,output},output:"Task receipt",attachments,time:{start:1,end:2}}}}})},
       fail(index,error){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"read",state:{status:"error",input:{filePath:"/fixture.txt"},error,time:{start:1,end:2}}}}})},
       patch(index){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"apply_patch",state:{status:"error",input:{patch:"retained patch"},metadata:{outcome:"unresolved",sections:[{source:"source.ts",state:"unknown",operations:[{phase:"write",state:"unknown"}]}]},error:"Patch outcome unconfirmed",time:{start:1,end:2}}}}})},
       resolveCommand(index,process,text,toolError){const request=requests[index];request.resolve({data:{evidenceMissing:false,text,process,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"bash",workBrief:"Check the foreground wait command.",activityEvidence:{kind:"command"},state:{status:toolError?"error":"completed",input:{command:'printf waiting && sleep 90'},error:toolError,output:toolError?undefined:text,time:{start:1,end:33401}}}}})},
-      close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied,taskRequests,sessionReads}}
+      close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied,taskRequests,sessionReads,opened}}
     }
     export {h}
     export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
@@ -116,9 +120,7 @@ beforeAll(async () => {
     export const useSessionDataView=()=>()=>({messagesFor:()=>eventLive()?[eventLive()]:[],partsFor:()=>[]})
     export const useData=()=>({navigateToSession(){}})
     export const useWorkbenchPanels=()=>({updateTab(id,patch){setState(patch.state)}})
-    export const Button=props=><button {...props}>{props.children}</button>
-    export const ToolResultBody=props=>{onCleanup(()=>resultUnmounts++);return <output data-result>{props.part.state.error??props.part.state.output}</output>}
-    export const AttachmentGallery=()=>null
+    export const ToolResultBody=props=>{onCleanup(()=>resultUnmounts++);return <><output data-result>{props.part.state.error??props.part.state.output}</output>{props.showAttachments!==false&&<AttachmentGallery files={props.part.state.attachments??[]} serverUrl={props.serverUrl}/>}</>}
     export const resolveExternalToolRenderer=tool=>tool==="fixture.plugin"?{}:undefined
     export const externalLookup=undefined
     export const externalLoadNotify=()=>0
@@ -135,63 +137,52 @@ beforeAll(async () => {
     `
     import {render} from "solid-js/web"
     import {Show,Suspense} from "solid-js"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import {ResourceOpenProvider} from "@ericsanchezok/synergy-ui/context/resource-open"
+    import "@ericsanchezok/synergy-ui/styles"
+    import ${JSON.stringify(path.join(appSrc, "index.css"))}
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {MarkedProvider} from "@ericsanchezok/synergy-ui/context/marked"
     import ${JSON.stringify(path.resolve(appSrc, "../../../packages/ui/src/components/markdown.css"))}
     import {h} from "./bridge"
     import {ExecutionDetailWorkbenchContent} from ${JSON.stringify(`/@fs/${appSrc}/components/workspace/tool-execution-detail.tsx`)}
-    const i18n=setupI18n({locale:"en",messages:{en:{}}})
-    render(()=><I18nProvider i18n={i18n}><MarkedProvider><Suspense fallback={<p>Loading tool result…</p>}><Show when={h.open()}><ExecutionDetailWorkbenchContent tab={{id:"detail",panelId:"execution-detail",state:h.state()}}/></Show></Suspense></MarkedProvider></I18nProvider>,document.getElementById("root"))
+    import {messages as en} from ${JSON.stringify(path.join(appSrc, "locales/en/messages.po"))}
+    import {messages as zh} from ${JSON.stringify(path.join(appSrc, "locales/zh-CN/messages.po"))}
+    const i18n=setupI18n({locale:new URL(location.href).searchParams.get("locale")??"en",messages:{en,"zh-CN":zh}})
+    render(()=><MetaProvider><Font/><ThemeProvider><ResourceOpenProvider value={{open:async(resource)=>{h.opened.push(resource.file?.filename);return {status:"opened"}}}}><I18nProvider i18n={i18n}><MarkedProvider><Suspense fallback={<p>Loading tool result…</p>}><Show when={h.open()}><ExecutionDetailWorkbenchContent tab={{id:"detail",panelId:"execution-detail",state:h.state()}}/></Show></Suspense></MarkedProvider></I18nProvider></ResourceOpenProvider></ThemeProvider></MetaProvider>,document.getElementById("root"))
   `,
   )
   const bridge = path.join(fixture, "bridge.tsx")
-  const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response() })
-  const port = reservation.port
-  await reservation.stop(true)
-  await build({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixture,
-    cacheDir: path.join(fixture, ".vite"),
-    plugins: [solid()],
-    worker: { format: "es" },
-    resolve: {
-      alias: Object.fromEntries(
-        [
-          ["@", appSrc],
-          ...[
-            "@/context/sdk",
-            "@/context/global-sdk",
-            "@/context/session-data-view",
-            "@/context/workbench",
-            "@ericsanchezok/synergy-ui/context/data",
-            "@solidjs/router",
-            ...[
-              "button",
-              "icon",
-              "tool-result-body",
-              "tool-registry-lazy",
-              "attachment-card",
-              "error-card",
-              "message-part",
-              "semantic-icon",
-              "clipboard",
-              "compaction-card",
-            ].map((name) => `@ericsanchezok/synergy-ui/${name}`),
-          ].map((name) => [name, bridge]),
-        ].reverse(),
-      ),
-    },
-    build: { outDir: path.join(fixture, "dist"), minify: false },
-    logLevel: "error",
+    entries: ["index.html"],
+    styled: true,
+    aliases: [
+      ...[
+        "@/context/sdk",
+        "@/context/global-sdk",
+        "@/context/session-data-view",
+        "@/context/workbench",
+        "@ericsanchezok/synergy-ui/context/data",
+        "@solidjs/router",
+        ...[
+          "icon",
+          "tool-result-body",
+          "tool-registry-lazy",
+          "error-card",
+          "message-part",
+          "semantic-icon",
+          "clipboard",
+          "compaction-card",
+        ].map((name) => `@ericsanchezok/synergy-ui/${name}`),
+      ].map((find) => ({ find, replacement: bridge })),
+      { find: "@", replacement: appSrc },
+    ],
   })
-  server = await preview({
-    configFile: false,
-    root: fixture,
-    build: { outDir: path.join(fixture, "dist") },
-    preview: { host: "127.0.0.1", port, strictPort: true },
-  })
-  base = server.resolvedUrls!.local[0]!
+  base = server.url
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage()
   page.setDefaultTimeout(4000)
@@ -200,10 +191,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await browser?.close()
-  if (server)
-    await new Promise<void>((resolve, reject) =>
-      server.httpServer.close((error) => (error ? reject(error) : resolve())),
-    )
+  await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
@@ -995,3 +983,199 @@ test("partial revisions keep their status and copyable metadata after result sum
   expect(copied.sections).toEqual([{ path: "a.ts", applied: true }])
   expect((await inspect()).copied).not.toContain("raw patch must not repeat")
 })
+
+const attachmentFiles: AttachmentFile[] = [
+  {
+    id: "capture",
+    filename: "capture.svg",
+    mime: "image/svg+xml",
+    size: 1024,
+    presentation: { crop: true },
+    url:
+      "data:image/svg+xml," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1100"><rect width="100%" height="100%" fill="gray"/></svg>',
+      ),
+  },
+  { id: "notes", filename: "notes.txt", mime: "text/plain", size: 32, url: "data:text/plain,notes" },
+  { id: "hidden", filename: "hidden.svg", mime: "image/svg+xml", presentation: { hidden: true } },
+]
+for (const kind of ["ordinary", "rich", "task"] as const) {
+  test(`${kind} results move visible files into one attachments tab`, async () => {
+    await page.setViewportSize({ width: 1000, height: 900 })
+    await page.goto(base)
+    await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+    await page.evaluate(
+      ({ kind, attachments }) => {
+        const fixture = (window as unknown as { fixture: Fixture }).fixture
+        if (kind === "task")
+          fixture.taskOutput(
+            0,
+            { mode: "final_response", value: "## Report\nOriginal report" },
+            "full",
+            "ctx_original",
+            attachments,
+          )
+        else
+          fixture.resolve(0, "Original tool output", {
+            kind: kind === "rich" ? "media" : "object",
+            text: "Original tool output",
+            attachments,
+          })
+      },
+      { kind, attachments: attachmentFiles },
+    )
+    const tab = page.getByRole("tab", { name: "Attachments (2)", exact: true })
+    await tab.waitFor()
+    expect(await page.getByRole("tab", { name: "Result", exact: true }).getAttribute("aria-selected")).toBe("true")
+    expect(await page.locator('[data-component="attachment-gallery"]').count()).toBe(0)
+    expect(await page.getByRole("tabpanel").textContent()).toContain(
+      kind === "task" ? "Original report" : "Original tool output",
+    )
+    await page.getByRole("tab", { name: "Result", exact: true }).focus()
+    await page.keyboard.press("ArrowRight")
+    expect(await tab.getAttribute("aria-selected")).toBe("true")
+    expect(await tab.evaluate((element) => element === document.activeElement)).toBe(true)
+    const gallery = page.locator('[data-component="attachment-gallery"]')
+    expect(await gallery.count()).toBe(1)
+    expect(await gallery.locator('[data-component="attachment-card"]').count()).toBe(2)
+    await gallery.getByRole("button", { name: "Preview capture.svg", exact: true }).press("Enter")
+    expect((await inspect()).opened).toEqual(["capture.svg"])
+    expect(await gallery.textContent()).toContain("capture.svg")
+    expect(await gallery.textContent()).toContain("SVG")
+    expect(await gallery.textContent()).not.toContain("hidden.svg")
+    await page.getByRole("tab", { name: "Result", exact: true }).click()
+    expect(await gallery.count()).toBe(0)
+    expect(await page.getByRole("tabpanel").textContent()).toContain(
+      kind === "task" ? "Original report" : "Original tool output",
+    )
+    expect((await inspect()).requests).toBe(1)
+    expect(errors).toEqual([])
+  })
+}
+
+test("late attachments preserve selection, hidden-only results omit the tab and invocation changes reset it", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(
+    (files) =>
+      (window as unknown as { fixture: Fixture }).fixture.resolve(0, "First output", {
+        kind: "object",
+        text: "First output",
+        attachments: [files[2]!],
+      }),
+    attachmentFiles,
+  )
+  await page.getByText("First output", { exact: true }).waitFor()
+  expect(await page.getByRole("tab", { name: /Attachments/ }).count()).toBe(0)
+  const diagnostics = page.getByRole("tab", { name: "Parameters and diagnostics", exact: true })
+  await diagnostics.click()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.activity(1))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
+  await page.evaluate(
+    (attachments) =>
+      (window as unknown as { fixture: Fixture }).fixture.resolve(1, "Updated output", {
+        kind: "object",
+        text: "Updated output",
+        attachments,
+      }),
+    attachmentFiles,
+  )
+  const attachments = page.getByRole("tab", { name: "Attachments (2)", exact: true })
+  await attachments.waitFor()
+  expect(await diagnostics.getAttribute("aria-selected")).toBe("true")
+  await attachments.click()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.select("part-next"))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 3)
+  await page.evaluate(
+    (attachments) =>
+      (window as unknown as { fixture: Fixture }).fixture.resolve(2, "Next output", {
+        kind: "object",
+        text: "Next output",
+        attachments,
+      }),
+    attachmentFiles,
+  )
+  await page.getByText("Next output", { exact: true }).waitFor()
+  expect(await page.getByRole("tab", { name: "Result", exact: true }).getAttribute("aria-selected")).toBe("true")
+  expect(errors).toEqual([])
+})
+
+test("removing attachments falls back to Result without reopening a later gallery", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(
+    (attachments) =>
+      (window as unknown as { fixture: Fixture }).fixture.resolve(0, "First output", {
+        kind: "object",
+        text: "First output",
+        attachments,
+      }),
+    attachmentFiles,
+  )
+  await page.getByRole("tab", { name: "Attachments (2)", exact: true }).click()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.activity(1))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: Fixture }).fixture.resolve(1, "Without attachments", {
+      kind: "object",
+      text: "Without attachments",
+      attachments: [],
+    }),
+  )
+  await page.getByText("Without attachments", { exact: true }).waitFor()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.activity(2))
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 3)
+  await page.evaluate(
+    (attachments) =>
+      (window as unknown as { fixture: Fixture }).fixture.resolve(2, "Later attachments", {
+        kind: "object",
+        text: "Later attachments",
+        attachments,
+      }),
+    attachmentFiles,
+  )
+  await page.getByRole("tab", { name: "Attachments (2)", exact: true }).waitFor()
+  expect(await page.getByRole("tab", { name: "Result", exact: true }).getAttribute("aria-selected")).toBe("true")
+})
+
+for (const theme of ["light", "dark"] as const) {
+  test(`${theme}: attachment tab and previews fit a narrow localized panel`, async () => {
+    await page.setViewportSize({ width: 375, height: 800 })
+    await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" })
+    await page.goto(`${base}?locale=zh-CN`)
+    await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+    await page.evaluate(
+      (attachments) =>
+        (window as unknown as { fixture: Fixture }).fixture.resolve(0, "Result", {
+          kind: "object",
+          text: "Result",
+          attachments,
+        }),
+      attachmentFiles,
+    )
+    const tab = page.getByRole("tab", { name: "附件（2）", exact: true })
+    await tab.click()
+    await page.evaluate(() => document.fonts.ready)
+    const image = page.locator('[data-component="attachment-gallery"] img')
+    await image.evaluate((image: HTMLImageElement) => image.decode())
+    const geometry = await image.evaluate((image) => {
+      const box = image.getBoundingClientRect()
+      const panel = document.querySelector('[role="tabpanel"]')!.getBoundingClientRect()
+      return {
+        x: box.x,
+        right: box.right,
+        panelX: panel.x,
+        panelRight: panel.right,
+        fit: getComputedStyle(image).objectFit,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      }
+    })
+    expect(geometry.x).toBeCloseTo(geometry.panelX, 0)
+    expect(geometry.right).toBeLessThanOrEqual(geometry.panelRight)
+    expect(geometry.overflow).toBe(false)
+    expect(geometry.fit).toBe("contain")
+    expect(await page.locator("html").getAttribute("data-color-scheme")).toBe(theme)
+    expect(errors).toEqual([])
+  })
+}

@@ -74,7 +74,6 @@ type ProcessControls = {
   ) => { activity?: import("@ericsanchezok/synergy-sdk").SessionActivity; failed: boolean } | undefined
   executionFor?: (rootID: string) => TurnExecutionState | undefined
   connected?: () => boolean
-  onRestoreChanges?: (messageID: string) => void
   onRowReady?: (owner: symbol, ready: boolean | undefined) => void
 }
 
@@ -610,7 +609,6 @@ export function VirtualConversationRows(
                     takeUserArrival={input.takeUserArrival}
                     executionFor={input.executionFor}
                     connected={input.connected}
-                    onRestoreChanges={input.onRestoreChanges}
                     onRowReady={onRowReady}
                     onReading={(key, reading) => {
                       setReadingOwner((previous) => (reading ? key : previous === key ? undefined : previous))
@@ -1050,7 +1048,6 @@ function ConversationDisplayRow(
                     }
                     rollbackActive={props.rollbackActive}
                     onReviewChanges={props.onReviewChanges}
-                    onRestoreChanges={input.onRestoreChanges}
                     onForkMessage={props.onForkMessage}
                     executionSummary={
                       (row().kind === "footer" || row().kind === "process") && execution.available()
@@ -1126,7 +1123,6 @@ function ConversationDisplayRow(
                   submissionFor={input.submissionFor}
                   executionFor={input.executionFor}
                   connected={input.connected}
-                  onRestoreChanges={input.onRestoreChanges}
                   onRowReady={input.onRowReady}
                 />
               </div>
@@ -1399,7 +1395,6 @@ function ConversationActivityBody(
                 submissionFor={input.submissionFor}
                 executionFor={input.executionFor}
                 connected={input.connected}
-                onRestoreChanges={input.onRestoreChanges}
                 onRowReady={input.onRowReady}
               />
             )
