@@ -53,10 +53,14 @@ test("context readers share metadata and request sources never prepare a summary
       ])
       expect(page.items.find((item) => item.callID === call.id)).toEqual(snapshot)
       await ExecutionService.contextItems(session.id, call.id, ExecutionSchema.ContextItemsQuery.parse({}))
+      const detail = await ExecutionService.node(session.id, snapshot.nodeID)
+      expect(detail.node.callID).toBe(call.id)
       await ExecutionService.contextHistory(session.id, { limit: 30 })
       expect(bootstrap).toHaveBeenCalledTimes(1)
       expect(children).not.toHaveBeenCalled()
       expect(bodies).not.toHaveBeenCalled()
+      await ExecutionService.summary(session.id)
+      expect(await ExecutionService.node(session.id, snapshot.nodeID)).toEqual(detail)
     }),
   ))
 

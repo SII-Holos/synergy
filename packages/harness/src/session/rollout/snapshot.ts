@@ -26,6 +26,11 @@ export namespace RolloutSnapshot {
     .meta({ ref: "RolloutSnapshot" })
   export type Info = z.infer<typeof Info>
 
+  async function settleTail(owner: RolloutSchema.Owner, onProgress?: () => void) {
+    const pending = await RolloutJournal.head(owner)
+    if (pending.allocated !== pending.committed) await RolloutJournal.recover(owner, onProgress)
+  }
+
   export async function read(
     owner: RolloutSchema.Owner,
     options: { revision?: number; runID?: string; onProgress?: () => void } = {},
@@ -37,7 +42,7 @@ export namespace RolloutSnapshot {
 
   /** Current records share the journal commit. This view does not audit historical gaps; use read() for that. */
   export async function projected(owner: RolloutSchema.Owner, runID?: string, onProgress?: () => void): Promise<Info> {
-    await RolloutJournal.prepare(owner)
+    await settleTail(owner, onProgress)
     return Storage.snapshot(async () => {
       const head = await RolloutJournal.head(owner)
       if (head.allocated !== head.committed) throw new Error("Rollout owner requires recovery")
@@ -63,8 +68,8 @@ export namespace RolloutSnapshot {
     signal?: AbortSignal,
   ): Promise<Pick<Info, "owner" | "revision" | "runs" | "calls">> {
     signal?.throwIfAborted()
-    await RolloutJournal.prepare(owner)
-    await prepareOwnerMigrations(owner)
+    // This is recorded request metadata, not execution admission or elapsed-time migration.
+    await settleTail(owner, () => signal?.throwIfAborted())
     return Storage.snapshot(async () => {
       const head = await RolloutJournal.head(owner)
       if (head.allocated !== head.committed) throw new Error("Rollout owner requires recovery")
@@ -114,11 +119,15 @@ export namespace RolloutSnapshot {
   }
 
   export function currentAll(owners: RolloutSchema.Owner[], signal?: AbortSignal) {
-    return workMap(8, owners, (owner) => current(owner, signal))
+    return withStorageQueueOptions({ priority: "background", signal }, () =>
+      workMap(2, owners, (owner) => current(owner, signal)),
+    )
   }
 
   export function presentationAll(owners: RolloutSchema.Owner[], signal?: AbortSignal) {
-    return workMap(8, owners, (owner) => presentation(owner, signal))
+    return withStorageQueueOptions({ priority: "background", signal }, () =>
+      workMap(2, owners, (owner) => presentation(owner, signal)),
+    )
   }
 
   export async function presentation(owner: RolloutSchema.Owner, signal?: AbortSignal) {

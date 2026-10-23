@@ -350,6 +350,41 @@ export namespace ExecutionService {
       source: "messages",
     })
   }
+  async function appendMessages(
+    session: Session.Info,
+    snapshot: RolloutSnapshot.Info,
+    raw: Awaited<ReturnType<typeof SessionHistory.executionMessages>>,
+    nodes: ExecutionSchema.Node[],
+    contexts: Data["contexts"],
+    signal?: AbortSignal,
+  ) {
+    const tools = toolIndex(nodes, [snapshot])
+    let processed = 0
+    for (const message of raw) {
+      rememberContext(contexts, message.info)
+      const calls = messageCalls(message.info, message.parts)
+      for (const part of message.parts) {
+        if (++processed % 256 === 0) {
+          await Bun.sleep(0)
+          checkpoint(signal)
+        }
+        if (part.type === "tool") {
+          const tool = tools.get(JSON.stringify([session.id, message.info.id, part.callID]))
+          if (tool) {
+            tool.preview = part.preview
+            const callID = calls.get(part.id)
+            if (callID && snapshot.calls.some((call) => call.id === callID))
+              tool.parentID = nodeID(session.id, "call", callID)
+            tool.agent = message.info.agent
+            continue
+          }
+        }
+        const node = normalizedNode(message.info, part, 0, calls.get(part.id))
+        if (!node) continue
+        nodes.push(node)
+      }
+    }
+  }
   function rememberContext(contexts: Data["contexts"], info: MessageV2.Info, changed?: Set<string>) {
     if (info.role !== "assistant" || !info.contextUsage || info.accounting?.kind !== "rollout") return
     const callID = info.contextUsage.callID ?? info.accounting.callIDs.at(-1)
@@ -429,32 +464,7 @@ export namespace ExecutionService {
             },
           }),
       )
-      const tools = toolIndex(projected.nodes, [snapshot])
-      let processed = 0
-      for (const message of raw) {
-        rememberContext(contexts, message.info)
-        const calls = messageCalls(message.info, message.parts)
-        for (const part of message.parts) {
-          if (++processed % 256 === 0) {
-            await Bun.sleep(0)
-            checkpoint(signal)
-          }
-          if (part.type === "tool") {
-            const tool = tools.get(JSON.stringify([session.id, message.info.id, part.callID]))
-            if (tool) {
-              tool.preview = part.preview
-              const callID = calls.get(part.id)
-              if (callID && snapshot.calls.some((call) => call.id === callID))
-                tool.parentID = nodeID(session.id, "call", callID)
-              tool.agent = message.info.agent
-              continue
-            }
-          }
-          const node = normalizedNode(message.info, part, 0, calls.get(part.id))
-          if (!node) continue
-          nodes.push(node)
-        }
-      }
+      await appendMessages(session, snapshot, raw, nodes, contexts, signal)
     }
     nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
     const usage = new Map<string, UsageSchema.Record>()
@@ -1839,7 +1849,13 @@ export namespace ExecutionService {
     const node = selected(value, runID).find((node) => node.id === id)
     if (!node) throw new Storage.NotFoundError({ message: "Trajectory node was not found in this session" })
     const detail = details(value)
-    return { value, node, evidence: detail.evidence.get(id), message: detail.messages.get(id) }
+    return {
+      value,
+      node,
+      evidence: detail.evidence.get(id),
+      evidenceByID: detail.evidence,
+      message: detail.messages.get(id),
+    }
   }
   function details(value: Data) {
     if (value.detail) return value.detail
@@ -1855,13 +1871,51 @@ export namespace ExecutionService {
     value.detail = { evidence, messages, nodePositions: new Map(value.nodes.map((node, index) => [node.id, index])) }
     return value.detail
   }
+  async function requestNode(sessionID: string, id: string, runID?: string, signal?: AbortSignal) {
+    if (state().entries.get(sessionID)?.tree) return
+    let identity: unknown
+    try {
+      identity = JSON.parse(Buffer.from(id, "base64url").toString())
+    } catch {
+      return
+    }
+    const parsed = z.tuple([z.string(), z.literal("call"), z.string()]).safeParse(identity)
+    if (!parsed.success || parsed.data[0] !== sessionID) return
+    const metadata = await contextData(sessionID, signal)
+    if (metadata.root.parentID) return
+    const call = metadata.snapshots[0].calls.find(
+      (call) => call.id === parsed.data[2] && (!runID || call.runID === runID),
+    )
+    if (!call) throw new Storage.NotFoundError({ message: "Execution call was not found in this session" })
+    const snapshot = await RolloutSnapshot.projected(metadata.snapshots[0].owner, call.runID, () => checkpoint(signal))
+    const projected = nodesFor(snapshot, metadata.root, true)
+    const messages = await SessionHistory.executionMessages({ sessionID, signal })
+    await appendMessages(
+      metadata.root,
+      snapshot,
+      messages.filter((message) => (message.info.rootID ?? message.info.id) === call.runID),
+      projected.nodes,
+      new Map(),
+      signal,
+    )
+    projected.nodes.sort((a, b) => a.started - b.started || a.id.localeCompare(b.id))
+    const node = projected.nodes.find((node) => node.id === id)
+    if (!node) throw new Storage.NotFoundError({ message: "Execution call was removed" })
+    return {
+      value: { root: metadata.root, nodes: projected.nodes },
+      node,
+      evidence: projected.evidence.get(id),
+      evidenceByID: projected.evidence,
+      message: undefined,
+    }
+  }
   export async function node(sessionID: string, id: string, runID?: string, signal?: AbortSignal) {
-    const found = await find(sessionID, id, runID, signal)
+    const found = (await requestNode(sessionID, id, runID, signal)) ?? (await find(sessionID, id, runID, signal))
     const call =
       found.evidence?.record.kind === "call"
         ? found.evidence
         : found.node.parentID
-          ? details(found.value).evidence.get(found.node.parentID)
+          ? found.evidenceByID.get(found.node.parentID)
           : undefined
     const definitions =
       call?.record.kind === "call" && (found.node.kind === "tool" || found.evidence?.record.kind === "call")
