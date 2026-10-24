@@ -86,22 +86,24 @@
   color: var(--text-base);
 }
 
+/* Provenance: https://github.com/anomalyco/opencode/blob/dev/packages/ui/src/components/text-shimmer.css
+   Local adaptation: one bounded pass across the active label, with theme tokens and static accessibility fallbacks. */
 @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
   [data-slot="activity-batch-status-text"][data-animated="true"] {
-    background: linear-gradient(100deg, var(--text-weak) 35%, var(--text-base) 50%, var(--text-weak) 65%);
-    background-size: 240% 100%;
+    background: linear-gradient(100deg, var(--text-weak) 40%, var(--text-strong) 50%, var(--text-weak) 60%);
+    background-size: 250% 100%;
     background-clip: text;
     color: transparent;
-    animation: activity-title-sweep 3.2s linear infinite;
+    animation: activity-title-sweep 2.4s linear infinite;
   }
 }
 
 @keyframes activity-title-sweep {
   from {
-    background-position: 120% 0;
+    background-position: 100% 0;
   }
   to {
-    background-position: -120% 0;
+    background-position: 0% 0;
   }
 }
 
