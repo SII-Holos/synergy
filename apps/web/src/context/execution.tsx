@@ -80,7 +80,7 @@ export const { use: useExecution, provider: ExecutionProvider } = createSimpleCo
       state,
       refresh,
       available,
-      connectionVersion: currentConnection,
+      connectionVersion,
       retain,
       advance,
       connected,

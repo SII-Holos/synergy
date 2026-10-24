@@ -18,6 +18,71 @@ import { ExecutionService } from "../../src/execution/service"
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
 
+test("a slow execution publication drains later changes without overlapping publishers", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      let releaseSubscription = ExecutionService.subscribe(session.id)
+      const evictingSessions: string[] = []
+      await ExecutionService.summary(session.id)
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<void>()
+      const delivered = Promise.withResolvers<void>()
+      const publish = Bus.publish
+      let active = 0
+      let maximum = 0
+      let held = false
+      using delivery = spyOn(Bus, "publish").mockImplementation(async (definition, properties) => {
+        if (definition.type !== ExecutionSchema.Updated.type) return publish(definition, properties)
+        const event = ExecutionSchema.Updated.properties.parse(properties)
+        if (event.sessionID !== session.id) return publish(definition, properties)
+        maximum = Math.max(maximum, ++active)
+        try {
+          if (!held) {
+            held = true
+            entered.resolve()
+            await release.promise
+          }
+          await publish(definition, properties)
+          if (event.upserts.some((node) => node.title === "Second update")) delivered.resolve()
+        } finally {
+          active--
+        }
+      })
+      try {
+        await Session.update(session.id, (info) => {
+          info.title = "First update"
+        })
+        await entered.promise
+        releaseSubscription()
+        for (let index = 0; index < 9; index++) {
+          const other = await Session.create({ title: "LRU pressure" })
+          evictingSessions.push(other.id)
+          await ExecutionService.summary(other.id)
+        }
+        releaseSubscription = ExecutionService.subscribe(session.id)
+        await ExecutionService.summary(session.id)
+        await Session.update(session.id, (info) => {
+          info.title = "Second update"
+        })
+        await ExecutionService.summary(session.id)
+        await Bun.sleep(850)
+        expect(maximum).toBe(1)
+        release.resolve()
+        await Promise.race([
+          delivered.promise,
+          Bun.sleep(5000).then(() => {
+            throw new Error("Later execution change was lost")
+          }),
+        ])
+        expect(maximum).toBe(1)
+      } finally {
+        release.resolve()
+        releaseSubscription()
+        for (const id of evictingSessions) await Session.remove(id)
+      }
+    }),
+  ))
+
 test("updates to an inactive execution cache do not reread its message history", () =>
   runtime.run(() =>
     fixture(async ({ session }) => {

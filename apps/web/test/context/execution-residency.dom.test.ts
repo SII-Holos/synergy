@@ -65,7 +65,9 @@ beforeAll(async () => {
     import { ExecutionProvider, useExecution } from "@/context/execution"
     import { ViewActivityProvider } from "@/context/view-residency"
     import { sessionActive, panelActive, attach } from "./services"
-    function Consumer(){const history=useExecution().createContextHistory({runID:()=>"",selected:()=>"",active:()=>true});attach(history);return <output>{history.state.total}</output>}
+     import { createExecutionTrajectory } from "@/components/execution/trajectory"
+     import { useSDK } from "@/context/sdk"
+     function Consumer(){const execution=useExecution();const history=location.search.includes("trajectory=1")?createExecutionTrajectory({sdk:useSDK(),sessionID:()=>"session",runID:()=>"",actor:()=>"all",kind:()=>"",status:()=>"",query:()=>"",anchor:()=>"",connectionVersion:execution.connectionVersion,enabled:execution.retain({demand:"trajectory"})}):execution.createContextHistory({runID:()=>"",selected:()=>"",active:()=>true});attach(history);return <output>{history.state.total}</output>}
     render(()=><ViewActivityProvider active={sessionActive}><ExecutionProvider><ViewActivityProvider active={panelActive}><Consumer/></ViewActivityProvider></ExecutionProvider></ViewActivityProvider>,document.getElementById("root"))
   `,
   )
@@ -87,6 +89,13 @@ afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
+})
+test("a same-connection execution checkpoint does not restart the trajectory page", async () => {
+  await page.goto(server.url + "?trajectory=1")
+  await page.waitForFunction(() => window.executionResidency?.facts().total === 1)
+  const before = await page.evaluate(() => window.executionResidency.facts().requests)
+  await page.evaluate(() => window.executionResidency.restore())
+  expect(await page.evaluate(() => window.executionResidency.facts().requests)).toBe(before)
 })
 for (const owner of ["session", "panel", "document"] as const) {
   test(`hidden ${owner} releases the execution lease, aborts reads and defers recovery without losing the snapshot`, async () => {
