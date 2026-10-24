@@ -32,6 +32,7 @@ export namespace SessionFileChanges {
     part: MessageV2.PatchPart
     live?: Awaited<ReturnType<typeof SnapshotLive.create>>
     revision?: string
+    releaseRevision?: () => Promise<void>
     dirty: Set<string>
     available: boolean
     needsResync: boolean
@@ -44,9 +45,10 @@ export namespace SessionFileChanges {
   type Segment = Input & {
     scope: Scope
     closed: boolean
+    initializing: boolean
     captures: Map<string, Promise<Capture>>
     prior: SnapshotRanges.Range[]
-    carried: Array<{ range: SnapshotRanges.Range; files: SnapshotSchema.FileDiff[] }>
+    carried: Array<{ range: SnapshotRanges.Range; files: SnapshotSchema.FileDiff[] | undefined }>
     historyRevision: number
     timer?: ReturnType<typeof setTimeout>
     refreshing?: Promise<void>
@@ -184,7 +186,7 @@ export namespace SessionFileChanges {
             try {
               result.live = await SnapshotLive.create(segment.sessionID, baseline, part.hash)
               const revision = await result.live.refresh([], part.checkpoint?.baselineOmissions)
-              Object.assign(result, { revision, ...(await readFiles(segment, result, revision)) })
+              await cacheFiles(segment, result, revision)
             } catch (error) {
               log.warn("live capture unavailable", { error })
               result.issues.push({ workspace: part.workspace, code: "capture_failed" })
@@ -197,6 +199,7 @@ export namespace SessionFileChanges {
           return result
         } catch (error) {
           watcher.close()
+          await result?.releaseRevision?.()
           await result?.live?.close()
           throw error
         }
@@ -213,6 +216,7 @@ export namespace SessionFileChanges {
       ...input,
       scope: ScopeContext.current.scope,
       closed: false,
+      initializing: true,
       captures: new Map(),
       prior: SnapshotRanges.net(SnapshotRanges.fromMessages([root])),
       carried: [],
@@ -234,18 +238,10 @@ export namespace SessionFileChanges {
         source.binding.generation === range.workspace.generation
       )
         await include(segment, source)
-      const files =
-        range.from && range.to
-          ? await Snapshot.statistics(range.from, range.to, segment.sessionID)
-              .then((files) =>
-                files
-                  .filter((file) => !range.omissions?.some((item) => item.file === file.file))
-                  .map((file) => ({ ...file, workspace: range.workspace })),
-              )
-              .catch(() => [])
-          : []
+      const files = await readRange(segment.sessionID, range)
       segment.carried.push({ range, files })
     }
+    segment.initializing = false
     schedule(segment)
   }
 
@@ -349,6 +345,7 @@ export namespace SessionFileChanges {
       for (const capture of await Promise.allSettled(segment.captures.values()))
         if (capture.status === "fulfilled") {
           capture.value.close()
+          await capture.value.releaseRevision?.()
           await capture.value.live?.close()
         }
       state().delete(key(input))
@@ -364,7 +361,7 @@ export namespace SessionFileChanges {
   function schedule(segment: Segment) {
     if (segment.closed) return
     segment.invalidated = true
-    if (segment.timer || segment.refreshing) return
+    if (segment.initializing || segment.timer || segment.refreshing) return
     segment.timer = setTimeout(() => {
       segment.timer = undefined
       segment.invalidated = false
@@ -406,7 +403,7 @@ export namespace SessionFileChanges {
             })
             const revision = await capture.live!.refresh(paths)
             if (revision !== capture.revision || capture.issues.some((issue) => issue.code === "capture_failed")) {
-              Object.assign(capture, { revision, ...(await readFiles(segment, capture, revision)) })
+              await cacheFiles(segment, capture, revision)
             }
             capture.needsResync = false
           },
@@ -418,7 +415,11 @@ export namespace SessionFileChanges {
           capture.issues.push({ workspace: capture.part.workspace, code: "capture_failed" })
       }
     }
-    if (segment.closed || segment.historyRevision !== SessionManager.historyRevision(segment.sessionID)) return
+    const valid = () =>
+      !segment.closed &&
+      state().get(key(segment)) === segment &&
+      segment.historyRevision === SessionManager.historyRevision(segment.sessionID)
+    if (!valid()) return
     const carried = segment.carried.filter(
       ({ range }) =>
         !captures.some(
@@ -428,8 +429,26 @@ export namespace SessionFileChanges {
             capture.part.workspace?.generation === range.workspace?.generation,
         ),
     )
-    const files = [...captures.flatMap((capture) => capture.diffs), ...carried.flatMap((value) => value.files)]
-    const issues = captures.flatMap((capture) => capture.issues)
+    for (const value of carried) value.files ??= await readRange(segment.sessionID, value.range)
+    if (!valid()) return
+    const failed = carried.filter((value) => !value.files)
+    const issues = [
+      ...captures.flatMap((capture) => capture.issues),
+      ...failed.map(({ range }) => ({ workspace: range.workspace, code: "comparison_failed" as const })),
+    ]
+    const { SessionSummary } = await import("./summary")
+    if (failed.length) {
+      await SessionSummary.publishLive({
+        sessionID: segment.sessionID,
+        messageID: segment.rootID,
+        diffState: { status: "live", code: "incomplete" },
+        diffIssues: issues,
+        valid,
+      })
+      segment.fingerprint = undefined
+      return
+    }
+    const files = [...captures.flatMap((capture) => capture.diffs), ...carried.flatMap((value) => value.files!)]
     const recording: import("zod").infer<typeof SnapshotSchema.DiffState> = {
       status: "live",
       ...(issues.length || carried.length || captures.some((capture) => !capture.available)
@@ -458,7 +477,6 @@ export namespace SessionFileChanges {
       ],
     })
     try {
-      const { SessionSummary } = await import("./summary")
       const accepted = await SessionSummary.publishLive({
         sessionID: segment.sessionID,
         messageID: segment.rootID,
@@ -468,10 +486,7 @@ export namespace SessionFileChanges {
         diffTotals: SnapshotSchema.totals(files),
         diffRevision: revision,
         diffObservedAt: Date.now(),
-        valid: () =>
-          !segment.closed &&
-          state().get(key(segment)) === segment &&
-          segment.historyRevision === SessionManager.historyRevision(segment.sessionID),
+        valid,
       })
       if (!accepted) return
       const previous = segment.revision
@@ -480,6 +495,29 @@ export namespace SessionFileChanges {
       await SessionFileChangeView.releaseCurrent(previous)
     } finally {
       if (segment.revision !== revision) await SessionFileChangeView.releaseCurrent(revision)
+    }
+  }
+
+  async function cacheFiles(segment: Segment, capture: Capture, revision: string) {
+    const release = SnapshotLive.retain(segment.sessionID, revision)
+    const files = await readFiles(segment, capture, revision).catch(async (error) => {
+      await release()
+      throw error
+    })
+    const previous = capture.releaseRevision
+    Object.assign(capture, { revision, ...files, releaseRevision: release })
+    await previous?.()
+  }
+
+  async function readRange(sessionID: string, range: SnapshotRanges.Range) {
+    if (!range.from || !range.to) return []
+    try {
+      return (await Snapshot.statistics(range.from, range.to, sessionID))
+        .filter((file) => !range.omissions?.some((item) => item.file === file.file))
+        .map((file) => ({ ...file, workspace: range.workspace }))
+    } catch (error) {
+      log.warn("historical comparison unavailable", { error })
+      return undefined
     }
   }
 
@@ -509,6 +547,7 @@ export namespace SessionFileChanges {
       for (const capture of await Promise.allSettled(segment.captures.values()))
         if (capture.status === "fulfilled") {
           capture.value.close()
+          await capture.value.releaseRevision?.()
           await capture.value.live?.close()
         }
       await SessionFileChangeView.releaseCurrent(segment.revision)
