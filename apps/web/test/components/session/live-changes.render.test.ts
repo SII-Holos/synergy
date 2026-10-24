@@ -211,7 +211,7 @@ test("the whole activity surface opens its root, preserves confirmed zero offlin
     summary: { diffs: [], diffState: { status: "error", code: "incomplete" }, diffRevision: "retained" },
   })
   await tick()
-  expect(root.textContent).toContain("Unavailable")
+  expect(root.querySelector("button")).toBeNull()
   expect(root.textContent).not.toContain("0 files")
   setCurrent({
     rootID: "outside-window",
@@ -220,6 +220,64 @@ test("the whole activity surface opens its root, preserves confirmed zero offlin
   })
   await tick()
   expect(root.querySelector("button")).toBeNull()
+})
+
+test("activity hides unavailable statistics and recovers while preserving readable recorded changes", async () => {
+  document.body.append(root)
+  const reviewed: string[] = []
+  dispose = render(
+    () => createComponent(TurnChangeStatus, { sessionID: "session", onReview: (id) => reviewed.push(id) }),
+    root,
+  )
+  const unavailable: NonNullable<NonNullable<CurrentTurnChanges>["summary"]>[] = [
+    { diffs: [], diffState: { status: "live" }, diffHasChanges: true },
+    { diffs: [], diffState: { status: "pending", deadlineAt: 1000 }, diffHasChanges: true },
+    { diffs: [], diffState: { status: "error", code: "incomplete" }, diffRevision: "retained" },
+    { diffs: [], diffState: { status: "live", code: "incomplete" }, diffRevision: "retained" },
+    {
+      diffs: [],
+      diffState: { status: "error", code: "incomplete" },
+      diffRevision: "retained",
+      diffTotals: { files: 0, additions: 0, deletions: 0 },
+    },
+  ]
+  for (const online of [true, false]) {
+    setConnected(online)
+    for (const summary of unavailable) {
+      setCurrent({ rootID: "outside-window", createdAt: 1, summary })
+      await tick()
+      expect(root.querySelector("button")).toBeNull()
+      expect(root.textContent).toBe("")
+    }
+  }
+  const summary: NonNullable<NonNullable<CurrentTurnChanges>["summary"]> = {
+    diffs: [],
+    diffState: { status: "live" },
+    diffTotals: { files: 300, additions: 900, deletions: 1 },
+    diffHasChanges: true,
+    diffRevision: "recovered",
+  }
+  setCurrent({ rootID: "outside-window", createdAt: 1, summary })
+  await tick()
+  const button = root.querySelector("button")!
+  expect(button.textContent).toContain("Recorded changes")
+  expect(button.textContent).toContain("300 files")
+  expect(button.title).toContain("Some files or updates may be unavailable")
+  button.click()
+  expect(reviewed).toEqual(["outside-window"])
+  setConnected(true)
+  await tick()
+  expect(root.querySelector("button")).toBe(button)
+  expect(button.textContent).toContain("Turn changes")
+  setCurrent({
+    rootID: "outside-window",
+    createdAt: 1,
+    summary: { ...summary, diffState: { status: "error", code: "incomplete" } },
+  })
+  await tick()
+  expect(root.querySelector("button")).toBe(button)
+  expect(button.textContent).toContain("Recorded changes")
+  expect(button.textContent).toContain("300 files")
 })
 
 test("mobile Review targets a cold root, loads details on expansion and exposes restore only after settlement", async () => {

@@ -17470,10 +17470,6 @@ msgid "session.changes.turn"
 msgstr "Turn changes"
 
 #. js-lingui-explicit-id
-msgid "session.changes.unavailable"
-msgstr "Unavailable"
-
-#. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
 msgstr "Agent"
 

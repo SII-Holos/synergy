@@ -17470,10 +17470,6 @@ msgid "session.changes.turn"
 msgstr "本轮更改"
 
 #. js-lingui-explicit-id
-msgid "session.changes.unavailable"
-msgstr "暂不可用"
-
-#. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
 msgstr "智能体"
 
