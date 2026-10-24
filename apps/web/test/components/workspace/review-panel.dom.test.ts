@@ -279,6 +279,8 @@ test("short navigation popovers keep search fixed while the virtual list owns sc
       const popup = page.locator('.review-popover[data-component="popover-content"]')
       const input = popup.locator("input")
       await input.waitFor()
+      await input.hover()
+      await page.getByRole("tooltip").waitFor({ state: "hidden" })
       await popup.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
       const top = (await input.boundingBox())!.y
       const list = popup.getByRole(name === "Show files" ? "tree" : "listbox")
@@ -589,14 +591,23 @@ test("same-name files retain workspace labels and independent directory navigati
 })
 
 test("late comparison responses cannot repopulate another session's empty review", async () => {
+  await page.setViewportSize({ width: 1100, height: 850 })
   await mount()
+  await page.getByRole("complementary", { name: "Files", exact: true }).waitFor()
   hold = true
   await page.getByRole("button", { name: "Refresh comparison", exact: true }).click()
   await page.getByRole("status").getByText("Refreshing…", { exact: true }).waitFor()
   hold = false
   await page.evaluate(() => (window as unknown as { fixture: { switchSession(): void } }).fixture.switchSession())
-  await page.getByRole("status").getByText("No changes", { exact: true }).waitFor()
+  const empty = page.locator(".review-content").getByRole("status").getByText("No changes", { exact: true })
+  await empty.waitFor()
+  await page
+    .getByRole("complementary", { name: "Files", exact: true })
+    .getByRole("status")
+    .getByText("No changes", { exact: true })
+    .waitFor()
   release?.()
+  expect(await empty.isVisible()).toBe(true)
   expect(await page.locator(".review-file-toggle").count()).toBe(0)
   expect(await page.getByRole("button", { name: "Jump to file", exact: true }).isEnabled()).toBe(false)
   expect(errors).toEqual([])
@@ -745,6 +756,7 @@ test("file headers respond to native folding, version and menu actions", async (
   await page.keyboard.press("Escape")
   await page.getByRole("dialog", { name: "src/first.ts", exact: true }).waitFor({ state: "hidden" })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "File options")
+  await page.locator('[role="menu"]').waitFor({ state: "detached" })
   await options.press("ArrowUp")
   await page.waitForFunction(() => document.activeElement?.textContent === "Undo this file")
   await page.keyboard.press("Enter")
@@ -1040,20 +1052,35 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
     await viewer.evaluate((element) => {
       element.scrollTop = 12_000
     })
-    const line = viewer.getByRole("button", { name: /Select line [1-9]\d{2,} in after/ }).first()
-    await line.waitFor()
-    const name = await line.getAttribute("aria-label")
-    await line.click()
+    const target = await page.waitForFunction(() => {
+      const viewer = document.querySelector<HTMLElement>('[data-component="review-viewer"]')!
+      const bounds = viewer.getBoundingClientRect()
+      for (const container of viewer.querySelectorAll("diffs-container")) {
+        for (const row of container.shadowRoot?.querySelectorAll<HTMLElement>("[data-column-number]") ?? []) {
+          const label = row.getAttribute("aria-label")
+          if (!label || !/^Select line [1-9]\d{2,} in after$/.test(label)) continue
+          const rect = row.getBoundingClientRect()
+          if (rect.y >= bounds.y + bounds.height / 3 && rect.bottom <= bounds.y + (bounds.height * 2) / 3) return label
+        }
+      }
+    })
+    const name = await target.jsonValue()
+    await target.dispose()
+    if (!name) throw new Error("Expected a visible line selection target")
+    const number = name.match(/\d+/)![0]
+    await viewer.getByRole("button", { name, exact: true }).click()
     await page.getByRole("textbox", { name: "Comment", exact: true }).fill("retained comment")
     const lineBounds = async () => {
       // Virtual rows can be replaced between locator resolution and element evaluation.
       const handle = await page.waitForFunction((label) => {
-        const containers = document.querySelectorAll('[data-component="review-viewer"] diffs-container')
-        for (const container of containers) {
+        const viewer = document.querySelector<HTMLElement>('[data-component="review-viewer"]')!
+        const bounds = viewer.getBoundingClientRect()
+        for (const container of viewer.querySelectorAll("diffs-container")) {
           for (const row of container.shadowRoot?.querySelectorAll<HTMLElement>("[data-column-number]") ?? []) {
             if (row.getAttribute("aria-label") !== label || !row.isConnected) continue
             const rect = row.getBoundingClientRect()
-            if (rect.width > 0 && rect.height > 0) return { y: rect.y }
+            if (rect.width > 0 && rect.height > 0)
+              return { y: rect.y, visible: rect.top >= bounds.top && rect.bottom <= bounds.bottom }
           }
         }
       }, name)
@@ -1063,6 +1090,7 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
       return bounds
     }
     const before = await lineBounds()
+    expect(before.visible).toBe(true)
     for (const action of ["files", "wrap", "layout"] as const) {
       if (action === "files") await page.getByRole("button", { name: "Hide files", exact: true }).click()
       else if (action === "wrap") await page.getByRole("button", { name: "Wrap lines", exact: true }).click()
@@ -1071,8 +1099,10 @@ test("same-mount reading changes preserve the scroll anchor and line/comment sel
         await page.getByRole("option", { name: "Unified", exact: true }).click()
       }
       const after = await lineBounds()
+      expect(after.visible).toBe(true)
       expect(Math.abs(after.y - before.y)).toBeLessThan(30)
       expect(await page.getByRole("textbox", { name: "Comment", exact: true }).inputValue()).toBe("retained comment")
+      expect(await page.locator(".review-comments").textContent()).toContain(`huge.ts · ${number}–${number}`)
     }
     const lineCount = await viewer.locator("[data-line]").count()
     expect(lineCount).toBeGreaterThan(0)
@@ -1109,6 +1139,7 @@ test("large file collections bound jump options and navigate to a distant file",
   await page.getByRole("button", { name: "Show files", exact: true }).click()
   const popupTree = page.getByRole("tree", { name: "Files", exact: true })
   await popupTree.waitFor()
+  await page.waitForFunction(() => document.activeElement === document.querySelector(".review-files-popover input"))
   const popupBounds = (await page.locator(".review-files-popover").boundingBox())!
   expect(popupBounds.y).toBeGreaterThanOrEqual(0)
   expect(popupBounds.y + popupBounds.height).toBeLessThanOrEqual(850)
@@ -1141,7 +1172,14 @@ test("large file collections bound jump options and navigate to a distant file",
   const filter = sidebar.getByRole("textbox", { name: "Filter files…", exact: true })
   const filterTop = (await filter.boundingBox())!.y
   await tree.getByRole("treeitem").first().press("End")
-  await page.waitForFunction(() => document.activeElement?.getAttribute("title") === "src/long-directory/file-4999.ts")
+  await page.waitForFunction(() => {
+    const tree = document.querySelector('.review-sidebar [role="tree"]')
+    const row = tree?.querySelector<HTMLElement>('[role="treeitem"]:focus')
+    if (row?.title !== "src/long-directory/file-4999.ts") return false
+    const bounds = tree!.getBoundingClientRect()
+    const target = row.getBoundingClientRect()
+    return target.top >= bounds.top && target.bottom <= bounds.bottom
+  })
   const focused = await tree.evaluate((element) => {
     const row = element.querySelector<HTMLElement>('[role="treeitem"]:focus')!
     return { tree: element.getBoundingClientRect().toJSON(), row: row.getBoundingClientRect().toJSON() }

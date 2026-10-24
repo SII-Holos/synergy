@@ -12,6 +12,8 @@ The healthy heartbeat test advances its logical clock through four real ping/pon
 
 The telemetry worker-loss fixture force-flushes and acknowledges the startup prefix before suppressing confirmations. A seeded young gauge and explicit aggregation flush exercise the deferred-publication boundary without sleeps; exact uncertain observation counts and both committed and uncommitted database outcomes remain asserted.
 
+Review DOM fixtures scope empty statuses to their comparison or navigation owner. Reading baselines select visible content rather than virtual overscan and retain both viewport containment and selected-line identity alongside the existing displacement limit. Keyboard actions wait for initial popup focus and the previous menu's actual portal exit; moving the pointer into the input dismisses unrelated hover tooltips without adding Escape presses. Virtual navigation waits for the focused target to enter its scroll viewport, since focus can precede the renderer's scroll update. These conditions follow the existing [browser fixture guidance](../../../../.synergy/skill/develop-frontend/references/browser-fixtures.md) without fixed sleeps or longer timeouts.
+
 ## Alternatives considered
 
 **Increase every timeout or rerun failures.** This hides lifecycle mistakes and leaves positive heartbeat behavior dependent on runner load.
