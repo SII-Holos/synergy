@@ -1,4 +1,4 @@
-# Decision Record: Put execution-record controls on the title row and name message records by kind
+# Decision Record: Keep execution-record controls in one toolbar and name message records by kind
 
 Status: implemented
 
@@ -12,7 +12,7 @@ Selecting a message-sourced record produced a heading made of that record's own 
 
 ## Decision
 
-The record controls live on the records title row. `.execution-filters` is a wrapping flex row inside `.execution-records-header`, holding search, the filter menu and both switches; the export action follows it. Exceptions and retries belong inside the filter menu and count toward its active-filter badge. The redundant all-task scope label is omitted. It stays on one line down to the width where the controls genuinely stop fitting and only then wraps. The orphaned `.execution-global` wrapper and the `.execution-search-row` / `.execution-view-row` rules leave the stylesheet, and the ordering switch drops the `.execution-record-controls` class that only existed to pair with the removed view row. Below `48rem` container width, inspecting a record hides the toolbar along with the trajectory column, because the toolbar only controls that list.
+The record controls occupy one toolbar without a repeated visible Execution records heading. The panel is an accessibly named region. `.execution-filters` is a wrapping flex row inside `.execution-records-header`, holding search, the filter menu and both switches; the export action follows it. Contextual return navigation and scope labels remain, with a separator only when both are present. Exceptions and retries belong inside the filter menu and count toward its active-filter badge. The redundant all-task scope label is omitted. Controls stay on one line down to the width where they genuinely stop fitting and only then wrap. Below `48rem` container width, inspecting a record hides the toolbar along with the trajectory column, because the toolbar only controls that list.
 
 A message-sourced record is identified by its recorded kind and reads its saved text as evidence. `heading()` returns the kind label for nodes whose source is `messages` and the metadata line omits the kind when the heading already is it. The inspector body renders the shared bounded reader for these nodes instead of a serialized pointer. `ExecutionService.contentSource` returns a part's text directly as `text/plain` when the part carries one, and keeps the serialized `{info, part}` JSON for parts without text. Empty text remains a complete zero-byte body rather than a missing record.
 
@@ -22,6 +22,8 @@ A message-sourced record is identified by its recorded kind and reads its saved 
 
 **Keep the controls in the column and accept wrapping below `48rem`.** Measured behavior already wrapped at every width including 1440px, so this preserves the defect rather than bounding it.
 
+**Repeat the panel title inside the toolbar.** The workbench tab already identifies the trajectory. A second visible title adds no scope or action and reduces the width available to search; a named region preserves navigation for assistive technology without occupying that space.
+
 **Give the message record a short title derived from its text.** Any truncation invents a name the record does not have and hides the distinction between the record's identity and its content; the kind is already accurate and the full text is available in the body.
 
 **Render the saved text from the detail record directly.** The pointer record does not contain the text, so this would require widening the detail payload for every consumer instead of reusing the versioned content channel the other evidence already uses.
@@ -29,5 +31,7 @@ A message-sourced record is identified by its recorded kind and reads its saved 
 ## Consequences
 
 The records header uses one 36px row instead of a stacked control block, so the trajectory list gains about 110px of height at desktop widths; narrow containers wrap instead of overflowing. Because the toolbar now sits outside the trajectory column, the narrow inspecting state hides it explicitly, so record reading is not framed by controls for a list that is off screen.
+
+Returning from a narrow inspector restores the reading position and row focus in the same layout frame, without native focus scrolling or a second frame of missing keyboard focus. The long-list regression retains its original focus and reading-position assertions when the toolbar height changes.
 
 Message records lose their text-as-heading, so a reader now sees `Reply`, `User input` or `Reasoning` plus status, and reads the content in the same bounded reader as every other saved body — with its own search, download and copy actions. The content channel reports `text/plain` for parts with text, so a client that previously parsed a message body as JSON must rely on `mediaType`; the workbench route test asserts both the media type and the exact text.
