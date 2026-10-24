@@ -97,6 +97,14 @@ runs:
       run: |
         git config --global user.email "ci@synergy.dev"
         git config --global user.name "CI Runner"
+    - name: Chinese browser fonts
+      if: inputs.browser == 'true' && runner.os == 'Linux'
+      shell: bash
+      # Provenance: https://github.com/microsoft/playwright/blob/v1.64.1/packages/playwright-core/src/server/registry/nativeDeps.ts
+      # Local adaptation: install the Han font required by localized fixtures without reinstalling hosted browser libraries.
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends fonts-wqy-zenhei
     - if: inputs.browser == 'true'
       shell: bash
       # Provenance: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2404-Readme.md

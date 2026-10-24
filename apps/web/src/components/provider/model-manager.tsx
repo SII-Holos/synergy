@@ -1,11 +1,14 @@
 import { useLingui } from "@lingui/solid"
-import { createMemo, onMount, Show, type Component } from "solid-js"
+import { createMemo, createSignal, onMount, Show, type Component } from "solid-js"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
 import {
   listModelSelectionEntries,
   listSelectableConnectedModels,
+  modelRefKey,
+  modelSelectionKey,
   recommendQuickSwitcherModels,
   resolveQuickSwitcherModels,
   type QuickSwitcherPreference,
@@ -18,22 +21,15 @@ import "./model-manager.css"
 
 const freeTag = { id: "model.manager.tag.free", message: "Free" }
 const latestTag = { id: "model.manager.tag.latest", message: "Latest" }
-const quickLabel = { id: "model.manager.quick", message: "Quick switch" }
-const recentLabel = { id: "model.manager.recent", message: "Recent" }
+const commonLabel = { id: "model.manager.common", message: "Common models" }
+const browseLabel = { id: "model.manager.browseAll", message: "Browse all models" }
+const backLabel = { id: "model.manager.backToCommon", message: "Back to common models" }
 const searchModelsPlaceholder = { id: "model.manager.search.placeholder", message: "Search models" }
 const noConnectedLabel = { id: "model.manager.empty.connected", message: "No connected model results" }
-type ModelSelectionEntry = ReturnType<typeof listModelSelectionEntries<LocalModel>>[number]
 
 export function sortModelGroups(profiles: ProviderRecommendationMap) {
-  type Group = { category: string; items: (LocalModel & { section?: ModelSelectionEntry["section"] })[] }
+  type Group = { category: string; items: LocalModel[] }
   return (left: Group, right: Group) => {
-    const priority = (group: Group) => {
-      const section = group.items[0]?.section
-      return section === "recent" ? 0 : section === "quick" ? 1 : 2
-    }
-    const sectionOrder = priority(left) - priority(right)
-    if (sectionOrder) return sectionOrder
-
     const leftProvider = left.items[0]?.provider
     const rightProvider = right.items[0]?.provider
     if (!leftProvider || !rightProvider) return left.category.localeCompare(right.category)
@@ -87,58 +83,65 @@ export const ModelSelectionList: Component<{
     void providers.ensureCatalog().catch(() => {})
   })
 
-  const models = createMemo<ModelSelectionEntry[]>(() =>
+  const [query, setQuery] = createSignal("")
+  const [browsing, setBrowsing] = createSignal(false)
+  const searching = () => query().length > 0
+  const entries = createMemo(() =>
     listModelSelectionEntries(local.model.all(), local.model.quickSwitcher(), local.model.recent(), props.provider),
   )
-
-  const current = createMemo<ModelSelectionEntry | undefined>(() => {
-    const selected = local.model.current()
-    if (!selected) return undefined
-    return models().find((model) => model.provider.id === selected.provider.id && model.id === selected.id)
-  })
+  const catalogView = () => browsing() || searching() || entries().common.length === 0
 
   const { _ } = useLingui()
   const providerLabel = (provider: LocalModel["provider"]) => {
     const ambiguous =
-      provider.name === _(recentLabel) ||
-      provider.name === _(quickLabel) ||
+      provider.name === _(commonLabel) ||
       providers.all().some((other) => other.id !== provider.id && other.name === provider.name)
     return ambiguous ? `${provider.name} (${provider.id})` : provider.name
   }
   return (
-    <List<ModelSelectionEntry>
-      class={`model-quick-switcher flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
-      emptyMessage={_(noConnectedLabel)}
-      key={(x) => x.listKey}
-      selectionKey={(model) => JSON.stringify([model.provider.id, model.id])}
-      items={models()}
-      current={current()}
-      filterKeys={["provider.name", "name", "id"]}
-      groupBy={(model) =>
-        model.section === "provider" ? JSON.stringify(["provider", model.provider.id]) : model.section
-      }
-      groupLabel={(group) => {
-        if (group.category === "recent") return _(recentLabel)
-        if (group.category === "quick") return _(quickLabel)
-        const provider = group.items[0]?.provider
-        return provider ? providerLabel(provider) : group.category
-      }}
-      sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
-      onSelect={(x) => {
-        if (!x) return
-        local.model.set({ modelID: x.id, providerID: x.provider.id }, { recent: true })
-        props.onSelect?.()
-      }}
-    >
-      {(model) => (
-        <ModelManagerRow
-          model={model}
-          compact
-          providerLabel={model.section !== "provider" ? providerLabel(model.provider) : undefined}
-        />
-      )}
-    </List>
+    <div class={`model-selection flex min-h-0 flex-1 flex-col ${props.class ?? ""}`}>
+      <List<LocalModel>
+        class="model-quick-switcher flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0"
+        search={{ placeholder: _(searchModelsPlaceholder), autofocus: true, onChange: setQuery }}
+        emptyMessage={_(noConnectedLabel)}
+        key={modelSelectionKey}
+        selectOnTab={false}
+        items={catalogView() ? entries().catalog : entries().common}
+        current={local.model.current()}
+        filterKeys={["provider.name", "provider.id", "name", "id"]}
+        groupBy={(model) =>
+          searching() ? "" : catalogView() ? JSON.stringify(["provider", model.provider.id]) : "common"
+        }
+        groupLabel={(group) => {
+          if (group.category === "common") return _(commonLabel)
+          const provider = group.items[0]?.provider
+          return provider ? providerLabel(provider) : group.category
+        }}
+        sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
+        onSelect={(model) => {
+          if (!model) return
+          local.model.set({ modelID: model.id, providerID: model.provider.id }, { recent: true })
+          props.onSelect()
+        }}
+      >
+        {(model) => (
+          <ModelManagerRow
+            model={model}
+            compact
+            providerLabel={!catalogView() || searching() ? providerLabel(model.provider) : undefined}
+          />
+        )}
+      </List>
+      <Show when={!searching() && entries().common.length > 0}>
+        <Button
+          variant="ghost"
+          class="model-selection-navigation mx-3 h-8 shrink-0 justify-start px-3 text-12-medium text-text-weak"
+          onClick={() => setBrowsing((value) => !value)}
+        >
+          {browsing() ? _(backLabel) : _(browseLabel)}
+        </Button>
+      </Show>
+    </div>
   )
 }
 
@@ -150,10 +153,6 @@ function optionalLocal() {
   }
 }
 
-function modelKey(model: ModelKey) {
-  return `${model.providerID}:${model.modelID}`
-}
-
 export type QuickSwitcherModelPreference = QuickSwitcherPreference
 
 function nextQuickSwitcherPreferences(
@@ -162,7 +161,7 @@ function nextQuickSwitcherPreferences(
   model: ModelKey,
   included: boolean,
 ): QuickSwitcherModelPreference[] {
-  const recommendedByDefault = recommended.has(modelKey(model))
+  const recommendedByDefault = recommended.has(modelRefKey(model))
   const nextState: "add" | "remove" | undefined =
     included === recommendedByDefault ? undefined : included ? "add" : "remove"
   const index = preferences.findIndex((item) => item.providerID === model.providerID && item.modelID === model.modelID)
@@ -208,17 +207,17 @@ export const ConnectedModelManager: Component<{
   const selectable = () => props.selectable !== false
   const currentModel = () => (props.selectable === false ? undefined : local?.model.current())
   const recommended = createMemo(() => recommendQuickSwitcherModels(models(), providers.default()))
-  const recommendedSet = createMemo(() => new Set(recommended().map(modelKey)))
+  const recommendedSet = createMemo(() => new Set(recommended().map(modelRefKey)))
   const quickSwitcherSet = createMemo(
     () =>
       new Set(
         resolveQuickSwitcherModels(
           recommended(),
           props.quickSwitcher ?? local?.model.quickSwitcherPreferences() ?? [],
-        ).map(modelKey),
+        ).map(modelRefKey),
       ),
   )
-  const inQuickSwitcher = (model: ModelKey) => quickSwitcherSet().has(modelKey(model))
+  const inQuickSwitcher = (model: ModelKey) => quickSwitcherSet().has(modelRefKey(model))
   const setQuickSwitcher = (model: ModelKey, included: boolean) => {
     const current: QuickSwitcherModelPreference[] = props.quickSwitcher ?? local?.model.quickSwitcherPreferences() ?? []
     const next = nextQuickSwitcherPreferences(current, recommendedSet(), model, included)
@@ -238,7 +237,7 @@ export const ConnectedModelManager: Component<{
       class={props.class}
       search={{ placeholder: _(searchModelsPlaceholder), autofocus: props.searchAutofocus }}
       emptyMessage={_(noConnectedLabel)}
-      key={(x) => `${x.provider.id}:${x.id}`}
+      key={modelSelectionKey}
       items={models()}
       current={currentModel()}
       interactive={selectable()}
@@ -261,8 +260,8 @@ export const ConnectedModelManager: Component<{
           <div class="model-manager-actions flex items-center gap-x-3 shrink-0" onClick={(e) => e.stopPropagation()}>
             <Switch
               aria-label={_({
-                id: "settings.models.quickSwitcher.toggle",
-                message: "Include {model} in quick switcher",
+                id: "settings.models.common.toggle",
+                message: "Include {model} in common models",
                 values: { model: model.name },
               })}
               checked={inQuickSwitcher({ modelID: model.id, providerID: model.provider.id })}
@@ -270,7 +269,7 @@ export const ConnectedModelManager: Component<{
                 setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)
               }}
             >
-              <span class="model-manager-quick-label text-12-regular text-text-weak">{_(quickLabel)}</span>
+              <span class="model-manager-quick-label text-12-regular text-text-weak">{_(commonLabel)}</span>
             </Switch>
           </div>
         </div>

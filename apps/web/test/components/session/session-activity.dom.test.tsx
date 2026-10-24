@@ -1297,3 +1297,52 @@ test("live changes share activity rows, wrap above progress, retain zero and ope
   expect(await button.getByText("0 files").isVisible()).toBe(true)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("unavailable changes leave no activity placeholder and recover in both themes at narrow widths", async () => {
+  await page.setViewportSize({ width: 375, height: 900 })
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme })
+    await page.goto(baseURL + "?changes&chinese&compressed")
+    const button = page.locator("[data-turn-change-status]")
+    await button.getByText("300 个文件").waitFor()
+    await page.getByRole("textbox", { name: "Composer" }).fill("Keep my draft")
+    await page.evaluate(() => (window as unknown as { updateChanges(value: unknown): void }).updateChanges(undefined))
+    const layer = page.locator(".prompt-dock-float-layer")
+    const baseline = await layer.boundingBox()
+    await page.evaluate(() =>
+      (window as unknown as { updateChanges(value: unknown): void }).updateChanges({
+        rootID: "cold-root",
+        createdAt: 1,
+        summary: { diffs: [], diffState: { status: "error", code: "incomplete" }, diffRevision: "retained" },
+      }),
+    )
+    expect(await button.count()).toBe(0)
+    expect(await layer.boundingBox()).toEqual(baseline)
+    expect(await page.getByRole("textbox", { name: "Composer" }).inputValue()).toBe("Keep my draft")
+    await change("expand-editor")
+    expect((await layer.boundingBox())!.height).toBe(0)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+    await page.evaluate(() =>
+      (window as unknown as { updateChanges(value: unknown): void }).updateChanges({
+        rootID: "cold-root",
+        createdAt: 1,
+        summary: {
+          diffs: [],
+          diffState: { status: "live" },
+          diffTotals: { files: 300, additions: 900, deletions: 2 },
+          diffHasChanges: true,
+          diffRevision: "recovered",
+        },
+      }),
+    )
+    await button.getByText("300 个文件").waitFor()
+    await change("disconnect")
+    await button.getByText("已记录更改").waitFor()
+    await button.focus()
+    await page.keyboard.press("Enter")
+    expect(await page.evaluate(() => (window as unknown as { reviewRoots: string[] }).reviewRoots)).toEqual([
+      "cold-root",
+    ])
+    expect(await page.getByRole("textbox", { name: "Composer" }).inputValue()).toBe("Keep my draft")
+  }
+}, 30_000)

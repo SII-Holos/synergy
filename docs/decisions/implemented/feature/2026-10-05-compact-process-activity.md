@@ -14,11 +14,15 @@ The latest active block appends the localized current action to its existing det
 
 Only the current action text receives a slow theme-token highlight sweep when structured runtime evidence belongs to the current root. Approval, questions, reconnecting, stopping, retry and unknown or foreign-root activity remain static. Named recorded operations retain their captions independently of motion eligibility. Reduced motion and forced colors use ordinary readable text. Motion presents the reported runtime state; it does not establish backend progress or completion. No new runtime timer, polling endpoint or persisted state is introduced.
 
+The sweep makes one continuous pass across the label over 2.4 seconds, with a focused emphasis band between the existing `text-weaker` and `text-stronger` roles. These endpoints increase grayscale separation without changing the global palette, cycle or travel. Its bounded travel avoids a near-static interval outside the text and follows the same CSS technique as the [compaction status sweep](2026-10-05-compaction-status-text.md). Browser regressions sample actual painted label pixels through a complete cycle in English and Chinese under both appearances, checking both continuous movement and the visible intensity range rather than treating an animation name as proof of perceptible motion. Label geometry, accessibility fallbacks and runtime eligibility remain unchanged.
+
 The outer process arrow remains visible. Secondary activity and reasoning arrows reserve their space and fade in on hover or keyboard focus with fine pointers, including when their content is open. Touch keeps arrows visible and uses 44px disclosure targets. Expansion, reading positions and invocation selection retain their existing owners.
 
 ## Alternatives considered
 
 **Animate the operation statistics.** Completed facts do not describe the current action and moving every summary would imply multiple active blocks.
+
+**Swap the base and strong text roles alone.** The default theme resolves these roles to the same color, so exchanging them cannot improve the visible sweep. Existing weaker and stronger foreground roles provide distinct endpoints without adding colors or another indicator.
 
 **Add a separate live status row below every summary.** It repeats the hierarchy and increases the vertical spacing the compact title is intended to reduce.
 

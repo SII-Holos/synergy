@@ -70,6 +70,66 @@ test("compact activity titles retain successful facts while showing current runt
   expect(await page.locator('[data-slot="activity-batch-status"]').count()).toBe(0)
 })
 
+test("current action sweep stays perceptible through its cycle without moving English or Chinese labels", async () => {
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme, reducedMotion: "no-preference", forcedColors: "none" })
+    for (const locale of ["en", "zh-CN"]) {
+      await page.goto(`${url}?locale=${locale}`)
+      const label = page.locator('[data-slot="activity-batch-status-text"]').last()
+      await label.waitFor()
+      expect(await label.textContent()).toBe(locale === "en" ? "Waiting for model response" : "等待模型回复")
+      await page.evaluate(() => document.fonts.ready)
+      const bounds = await label.boundingBox()
+      const samples: number[][] = []
+      for (let index = 0; index < 12; index++) {
+        await label.evaluate((element, index) => {
+          const animation = element.getAnimations()[0]
+          animation.pause()
+          animation.currentTime = (Number(animation.effect!.getTiming().duration) * index) / 12
+        }, index)
+        await frames()
+        const image = await label.screenshot({ animations: "allow" })
+        samples.push(
+          await page.evaluate(async (encoded) => {
+            const bytes = Uint8Array.from(atob(encoded), (value) => value.charCodeAt(0))
+            const image = await createImageBitmap(new Blob([bytes], { type: "image/png" }))
+            const canvas = new OffscreenCanvas(image.width, image.height)
+            const context = canvas.getContext("2d")!
+            context.drawImage(image, 0, 0)
+            const pixels = context.getImageData(0, 0, image.width, image.height).data
+            return Array.from({ length: image.width * image.height }, (_, pixel) => pixels[pixel * 4])
+          }, image.toString("base64")),
+        )
+        expect(await label.boundingBox()).toEqual(bounds)
+      }
+      const movingIntervals = samples.filter((sample, index) => {
+        const next = samples[(index + 1) % samples.length]
+        return sample.filter((pixel, index) => Math.abs(pixel - next[index]) >= 2).length > 5
+      }).length
+      expect(movingIntervals).toBeGreaterThanOrEqual(11)
+      const pixelRanges = samples[0].map(
+        (_, pixel) =>
+          Math.max(...samples.map((sample) => sample[pixel])) - Math.min(...samples.map((sample) => sample[pixel])),
+      )
+      expect(Math.max(...pixelRanges)).toBeGreaterThanOrEqual(80)
+      for (const media of [
+        { reducedMotion: "reduce", forcedColors: "none" },
+        { reducedMotion: "no-preference", forcedColors: "active" },
+      ] as const) {
+        await page.emulateMedia(media)
+        const fallback = await label.evaluate((element) => {
+          const style = getComputedStyle(element)
+          return { animation: style.animationName, background: style.backgroundImage, color: style.color }
+        })
+        expect(fallback.animation).toBe("none")
+        expect(fallback.background).toBe("none")
+        expect(fallback.color).not.toBe("rgba(0, 0, 0, 0)")
+      }
+      await page.emulateMedia({ reducedMotion: "no-preference", forcedColors: "none" })
+    }
+  }
+})
+
 test("compact activity titles reveal secondary arrows without moving their labels", async () => {
   await page.goto(url)
   await page.getByText("I will check the project first.", { exact: true }).waitFor()

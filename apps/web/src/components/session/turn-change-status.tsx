@@ -19,11 +19,11 @@ export function TurnChangeStatus(props: { sessionID: string; onReview(rootID: st
   const visible = () => {
     const value = summary()
     return (
-      value &&
+      value?.diffTotals &&
       (value.diffState?.status === "live" ||
         value.diffState?.status === "pending" ||
         (value.diffState?.status === "error" && !!value.diffRevision)) &&
-      (value.diffHasChanges || (value.diffTotals?.files ?? 0) > 0 || incomplete())
+      (value.diffHasChanges || (value.diffTotals.files > 0 && !incomplete()))
     )
   }
   return (
@@ -51,21 +51,14 @@ export function TurnChangeStatus(props: { sessionID: string; onReview(rootID: st
             ? _({ id: "session.changes.recorded", message: "Recorded changes" })
             : _({ id: "session.changes.turn", message: "Turn changes" })}
         </span>
-        <Show
-          when={summary()?.diffTotals && (summary()?.diffHasChanges || !incomplete())}
-          fallback={
-            <span class="text-text-weak">{_({ id: "session.changes.unavailable", message: "Unavailable" })}</span>
-          }
-        >
-          <span class="turn-change-status-count">
-            {_({
-              id: "session.changes.fileCount",
-              message: "{count, plural, one {# file} other {# files}}",
-              values: { count: summary()?.diffTotals?.files ?? 0 },
-            })}
-          </span>
-          <DiffChanges changes={summary()!.diffTotals!} />
-        </Show>
+        <span class="turn-change-status-count">
+          {_({
+            id: "session.changes.fileCount",
+            message: "{count, plural, one {# file} other {# files}}",
+            values: { count: summary()!.diffTotals!.files },
+          })}
+        </span>
+        <DiffChanges changes={summary()!.diffTotals!} />
       </button>
     </Show>
   )

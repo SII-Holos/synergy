@@ -27,10 +27,11 @@ const noProviderHint = {
   id: "settings.models.noProviderHint",
   message: "Connect a provider to choose concrete models. Roles can still use fallback.",
 }
-const quickSwitcherTitle = { id: "settings.models.quickSwitcher.title", message: "Quick switcher models" }
-const quickSwitcherDescription = {
-  id: "settings.models.quickSwitcher.description",
-  message: "Pin models to the Quick switch group. All available models remain selectable.",
+const commonModelsTitle = { id: "settings.models.common.title", message: "Common models" }
+const commonModelsDescription = {
+  id: "settings.models.common.description",
+  message:
+    "Choose additional models for quick access. Recent models appear automatically. All available models remain searchable.",
 }
 const connectProviderLabel = { id: "settings.models.connectProvider", message: "Connect provider" }
 
@@ -158,7 +159,7 @@ export function ModelsPanel(props: {
         </Show>
       </SettingsSection>
 
-      <SettingsSection title={_(quickSwitcherTitle)} description={_(quickSwitcherDescription)}>
+      <SettingsSection title={_(commonModelsTitle)} description={_(commonModelsDescription)}>
         <ConnectedModelManager
           class="settings-connected-model-list"
           searchAutofocus={false}

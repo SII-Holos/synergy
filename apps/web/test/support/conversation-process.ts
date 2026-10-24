@@ -100,6 +100,7 @@ export const fixtureServer = (entry: "index.mjs" | "index.jsx") =>
   createBrowserFixture({
     root: directory,
     entries: ["index.html", "resize.html", "keyed.html"],
+    localized: true,
     aliases: [
       { find: /^virtua\/solid$/, replacement: path.join(directory, `virtualizer-${entry}.ts`) },
       { find: "@/context/execution", replacement: path.join(directory, "execution.ts") },

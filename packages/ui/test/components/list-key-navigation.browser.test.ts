@@ -17,6 +17,7 @@ type FixtureWindow = typeof window & {
     finishLoading(): void
     setEmptyMessage(value: string): void
     showGroupedCopies(): void
+    setSelectOnTab(value: boolean): void
   }
 }
 
@@ -55,8 +56,10 @@ beforeAll(async () => {
     const [key,setKey]=createSignal("target")
     const [current,setCurrent]=createSignal()
     const [selected,setSelected]=createSignal()
+    const [searchChanges,setSearchChanges]=createSignal([])
     const [mounted,setMounted]=createSignal(true)
     const [interactive,setInteractive]=createSignal(true)
+    const [selectOnTab,setSelectOnTab]=createSignal(true)
     const [emptyMessage,setEmptyMessage]=createSignal()
     const [state,setState]=createSignal("rows")
     let finishLoading=()=>{}
@@ -66,8 +69,8 @@ beforeAll(async () => {
     const copies=[{id:"first-copy",entity:"shared",group:"first",label:"First copy"},{id:"second-copy",entity:"shared",group:"second",label:"Second copy"}]
     const items=()=>state()==="loading"?()=>loading:state()==="empty"?[]:state()==="grouped"?copies:[first,...Array.from({length:7},(_,i)=>({id:"row-"+(i+1),label:"Row "+(i+1)})),target(),{id:"last",label:"Last"}]
     const i18n=setupI18n({locale:"en",messages:{en:{"ui.list.loading":"Loading","ui.list.noResults":"No results","list.for-label":"for"},"zh-CN":{"ui.list.loading":"加载中","ui.list.noResults":"无结果","list.for-label":"匹配"}}})
-    window.listKeyFixture={setKey,setInteractive,setEmptyMessage,setLocale:locale=>i18n.activate(locale),selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false),showLoading:()=>{setMounted(false);setState("loading");setMounted(true)},finishLoading:()=>{finishLoading();setState("empty")},showGroupedCopies:()=>{setCurrent(copies[0]);setState("grouped")}}
-    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} emptyMessage={emptyMessage()} key={item=>item.id} selectionKey={state()==="grouped"?item=>item.entity:undefined} groupBy={state()==="grouped"?item=>item.group:undefined} groupLabel={state()==="grouped"?()=>"Same heading":undefined} current={current()} filterKeys={["label"]} search={{placeholder:"Find item"}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output></I18nProvider>,document.getElementById("root"))
+    window.listKeyFixture={setKey,setInteractive,setSelectOnTab,setEmptyMessage,setLocale:locale=>i18n.activate(locale),selectTarget:()=>setCurrent(target()),selectFirst:()=>setCurrent(first),unmount:()=>setMounted(false),showLoading:()=>{setMounted(false);setState("loading");setMounted(true)},finishLoading:()=>{finishLoading();setState("empty")},showGroupedCopies:()=>{setCurrent(copies[0]);setState("grouped")}}
+    render(()=><I18nProvider i18n={i18n}><Show when={mounted()}><List items={items()} interactive={interactive()} selectOnTab={selectOnTab()} emptyMessage={emptyMessage()} key={item=>item.id} selectionKey={state()==="grouped"?item=>item.entity:undefined} groupBy={state()==="grouped"?item=>item.group:undefined} groupLabel={state()==="grouped"?()=>"Same heading":undefined} current={current()} filterKeys={["label"]} search={{placeholder:"Find item",onChange:value=>setSearchChanges(changes=>[...changes,value])}} onSelect={setSelected}>{item=>item.label}</List></Show><output data-testid="selection">{selected()?.label}</output><output data-testid="search-changes">{JSON.stringify(searchChanges())}</output></I18nProvider>,document.getElementById("root"))
     `,
   )
   await build({
@@ -216,6 +219,33 @@ test("non-interactive rows cannot select through pointer or keyboard input", asy
   await page.getByRole("button", { name: "Target", exact: true }).click()
   expect(await page.getByTestId("selection").textContent()).toBe("Target")
   expect(errors).toEqual([])
+})
+
+test("search notifies its owner for typed and cleared queries without changing selection", async () => {
+  const input = page.getByPlaceholder("Find item")
+  await input.fill("Target")
+  await settleFrames()
+  expect(await page.locator('[data-slot="list-item"]').allTextContents()).toEqual(["Target"])
+  expect(await page.getByTestId("search-changes").textContent()).toBe('["Target"]')
+  await page.getByRole("button", { name: "Clear search", exact: true }).click()
+  await settleFrames()
+  expect(await input.inputValue()).toBe("")
+  expect(await page.locator('[data-slot="list-item"]').count()).toBe(10)
+  expect(await page.getByTestId("search-changes").textContent()).toBe('["Target",""]')
+  expect(await page.getByTestId("selection").textContent()).toBe("")
+})
+
+test("Tab can retain native focus traversal without changing the default selection shortcut", async () => {
+  const input = page.getByPlaceholder("Find item")
+  await input.fill("Target")
+  await settleFrames()
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setSelectOnTab(false))
+  await input.press("Tab")
+  expect(await page.getByTestId("selection").textContent()).toBe("")
+  expect(await input.evaluate((node) => node === document.activeElement)).toBe(false)
+  await page.evaluate(() => (window as FixtureWindow).listKeyFixture.setSelectOnTab(true))
+  await input.press("Tab")
+  expect(await page.getByTestId("selection").textContent()).toBe("Target")
 })
 
 test("group labels and selected entities stay independent from group and row identities", async () => {

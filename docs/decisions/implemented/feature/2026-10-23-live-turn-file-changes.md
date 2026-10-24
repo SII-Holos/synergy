@@ -16,11 +16,15 @@ The Session owner combines Workspace-qualified revisions, publishes exact totals
 
 The composer activity area wraps according to available conversation width. Subagent avatars and turn changes precede the longer progress summary in DOM order, so ordinary wrapping keeps compact controls together above progress. The width cap belongs to the progress flex item, avoiding unused outer width that would force early wrapping. This keeps wide layouts on one row and gives wrapped layouts a wider base next to the Composer without resize observers or visual reordering that diverges from keyboard navigation. Keyboard focus uses the shared background and text emphasis contract. The complete changes surface opens Review through the existing desktop or mobile route; there is no separate action button. Expanded progress uses the stable activity-row positioning container so changing summary widths cannot displace the panel. Current-root recovery respects rollback visibility and event watermarks without depending on loaded messages. Mobile Review waits for an accepted comparison before showing empty-state or restoration controls. Its lazy content stays inside the mobile dialog’s Suspense boundary so loading cannot detach the conversation or its focus-return target.
 
+The activity entry requires readable recorded statistics. Missing totals or an unavailable-only result render nothing rather than a status placeholder. Confirmed counts, including a verified zero after cancellation, remain readable during disconnection or recording failure; Review retains the errors, refresh action and restoration limits. Entry visibility uses the current-root totals rather than the bounded message file rows.
+
 ## Alternatives considered
 
 **Accumulating tool patches** measures edit activity rather than the net file state and misses other writers.
 
 **Repeating complete capture and comparison** reads unchanged bytes, increases durable storage with edit frequency and repeatedly compares every accumulated change after a small edit.
+
+**Keeping an unavailable-only activity entry** consumes Composer space without providing file statistics. Review already owns error details and refresh, so the activity area does not retain a second diagnostic entry.
 
 ## Consequences
 

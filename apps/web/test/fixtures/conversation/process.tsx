@@ -13,6 +13,7 @@ import { createStore, reconcile } from "solid-js/store"
 import { render } from "solid-js/web"
 import { setupI18n } from "@lingui/core"
 import { I18nProvider } from "@lingui/solid"
+import { messages as chineseMessages } from "../../../src/locales/zh-CN/messages.po"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context/data"
 import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
 import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
@@ -1107,7 +1108,12 @@ function Transcript() {
 }
 render(
   () => (
-    <I18nProvider i18n={setupI18n({ locale: "en", messages: { en: {} } })}>
+    <I18nProvider
+      i18n={setupI18n({
+        locale: new URL(location.href).searchParams.get("locale") ?? "en",
+        messages: { en: {}, "zh-CN": chineseMessages },
+      })}
+    >
       <ThemeProvider>
         <DialogProvider>
           <ResourceOpenProvider value={resource}>

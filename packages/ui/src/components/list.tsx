@@ -1,7 +1,7 @@
 import { LIST_DESC } from "./tool-title-descriptors"
 
 import { type FilteredListProps, useFilteredList } from "../hooks"
-import { createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
+import { batch, createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLingui } from "@lingui/solid"
 import { Icon, type IconProps, type IconName } from "./icon"
@@ -14,6 +14,7 @@ const listNoResultsDescriptor = { id: "ui.list.noResults", message: "No results"
 export interface ListSearchProps {
   placeholder?: string
   autofocus?: boolean
+  onChange?: (value: string) => void
 }
 
 export interface ListProps<T> extends FilteredListProps<T> {
@@ -21,6 +22,7 @@ export interface ListProps<T> extends FilteredListProps<T> {
   children: (item: T) => JSX.Element
   emptyMessage?: string
   interactive?: boolean
+  selectOnTab?: boolean
   selectionKey?: (item: T) => string
   groupLabel?: (group: { category: string; items: T[] }) => string
   onKeyEvent?: (event: KeyboardEvent, item: T | undefined) => void
@@ -46,6 +48,12 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const { filter, grouped, flat, active, setActive, onKeyDown, onInput } = useFilteredList<T>(props)
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
+  const changeFilter = (value: string) => {
+    batch(() => {
+      setInternalFilter(value)
+      searchProps().onChange?.(value)
+    })
+  }
   const interactive = () => props.interactive ?? true
   const isSelected = (item: T) => {
     const key = props.selectionKey ?? props.key
@@ -131,6 +139,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const handleKey = (e: KeyboardEvent) => {
     setStore("mouseActive", false)
     if (e.key === "Escape") return
+    if (e.key === "Tab" && props.selectOnTab === false) return
 
     const all = flat()
     const selected = all.find((x) => props.key(x) === active())
@@ -209,7 +218,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
               data-slot="list-search-input"
               type="text"
               value={internalFilter()}
-              onChange={setInternalFilter}
+              onChange={changeFilter}
               onKeyDown={handleKey}
               placeholder={searchProps().placeholder}
               aria-label={searchProps().placeholder}
@@ -224,7 +233,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
               icon="circle-x"
               variant="ghost"
               aria-label={_({ id: "ui.list.clearSearch", message: "Clear search" })}
-              onClick={() => setInternalFilter("")}
+              onClick={() => changeFilter("")}
             />
           </Show>
         </div>

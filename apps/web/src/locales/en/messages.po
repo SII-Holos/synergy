@@ -13513,16 +13513,20 @@ msgid "message-part.untitled"
 msgstr "Untitled"
 
 #. js-lingui-explicit-id
+msgid "model.manager.backToCommon"
+msgstr "Back to common models"
+
+#. js-lingui-explicit-id
+msgid "model.manager.browseAll"
+msgstr "Browse all models"
+
+#. js-lingui-explicit-id
+msgid "model.manager.common"
+msgstr "Common models"
+
+#. js-lingui-explicit-id
 msgid "model.manager.empty.connected"
 msgstr "No connected model results"
-
-#. js-lingui-explicit-id
-msgid "model.manager.quick"
-msgstr "Quick switch"
-
-#. js-lingui-explicit-id
-msgid "model.manager.recent"
-msgstr "Recent"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -17464,10 +17468,6 @@ msgstr "Open this turn’s recorded changes"
 #. js-lingui-explicit-id
 msgid "session.changes.turn"
 msgstr "Turn changes"
-
-#. js-lingui-explicit-id
-msgid "session.changes.unavailable"
-msgstr "Unavailable"
 
 #. js-lingui-explicit-id
 msgid "session.cmd.category.agent"
@@ -23061,6 +23061,18 @@ msgid "settings.models.advanced.title"
 msgstr "Advanced model assignments"
 
 #. js-lingui-explicit-id
+msgid "settings.models.common.description"
+msgstr "Choose additional models for quick access. Recent models appear automatically. All available models remain searchable."
+
+#. js-lingui-explicit-id
+msgid "settings.models.common.title"
+msgstr "Common models"
+
+#. js-lingui-explicit-id
+msgid "settings.models.common.toggle"
+msgstr "Include {model} in common models"
+
+#. js-lingui-explicit-id
 msgid "settings.models.connectProvider"
 msgstr "Connect provider"
 
@@ -23075,18 +23087,6 @@ msgstr "Choose defaults for new sessions and specialist roles. Project settings 
 #. js-lingui-explicit-id
 msgid "settings.models.page.title"
 msgstr "Models"
-
-#. js-lingui-explicit-id
-msgid "settings.models.quickSwitcher.description"
-msgstr "Pin models to the Quick switch group. All available models remain selectable."
-
-#. js-lingui-explicit-id
-msgid "settings.models.quickSwitcher.title"
-msgstr "Quick switcher models"
-
-#. js-lingui-explicit-id
-msgid "settings.models.quickSwitcher.toggle"
-msgstr "Include {model} in quick switcher"
 
 #. js-lingui-explicit-id
 msgid "settings.models.repair"

@@ -98,7 +98,7 @@ beforeAll(async () => {
     import "@ericsanchezok/synergy-ui/styles"
     Object.defineProperty(navigator,"clipboard",{value:{writeText:async(text)=>{window.copiedEvidence=text}}})
     const i18n=setupI18n({locale:"en",messages:{en:{"execution.copyBlock":["Copy ",["label"]],"execution.round":["Round ",["number"]],"context.dashboard.request":["Request ",["number"]]}}})
-    render(()=><I18nProvider i18n={i18n}><DialogProvider><ViewActivityProvider active={ownerActive}><main hidden={!ownerActive()} style="height:100dvh;width:100%;max-width:100%;padding:8px;box-sizing:border-box"><Show when={location.search.includes("dashboard=1")} fallback={<ExecutionPanelBody tab={{id:"context",state:location.search.includes("model=1")?{nodeID:"model"}:{}}} runID={location.search.includes("scoped=1")?"root-round":""} scopeLabel="Entire task" onStateChange={(state)=>{window.recordsState=state}} onBack={()=>{window.returnedToOverview=true}}/>}><ContextWorkbenchContent tab={fixtureTab()}/></Show></main></ViewActivityProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><I18nProvider i18n={i18n}><DialogProvider><ViewActivityProvider active={ownerActive}><main hidden={!ownerActive()} style="height:100dvh;width:100%;max-width:100%;padding:8px;box-sizing:border-box"><Show when={location.search.includes("dashboard=1")} fallback={<ExecutionPanelBody tab={{id:"context",state:location.search.includes("model=1")?{nodeID:"model"}:{}}} runID={location.search.includes("scoped=1")?"root-round":""} scopeLabel={location.search.includes("standalone=1")||location.search.includes("noscope=1")?undefined:"Entire task"} onStateChange={(state)=>{window.recordsState=state}} onBack={location.search.includes("standalone=1")?undefined:()=>{window.returnedToOverview=true}}/>}><ContextWorkbenchContent tab={fixtureTab()}/></Show></main></ViewActivityProvider></DialogProvider></I18nProvider>,document.getElementById("root"))
   `,
   )
   const services = path.join(directory, "services.ts")
@@ -833,37 +833,84 @@ test("an inspector opened offline loads its first node after reconnect", async (
 })
 
 for (const width of [1440, 1024]) {
-  test("execution records keep title, search and filter controls on one row at " + width + "px", async () => {
-    await page.setViewportSize({ width, height: 820 })
-    await page.goto(server.resolvedUrls!.local[0]!)
-    await page.locator(".execution-node").first().waitFor()
-    await page.getByRole("button", { name: "All records", exact: true }).click()
-    await page.locator(".execution-view-switch").nth(1).waitFor()
-    const layout = await page.evaluate(() => {
-      const header = document.querySelector(".execution-records-header") as HTMLElement
-      const controls = [
-        ...header.querySelectorAll(":scope > *"),
-        ...header.querySelectorAll(':scope > [data-slot="execution-filters"] > *, :scope > .execution-filters > *'),
-      ].filter((element) => {
-        const box = element.getBoundingClientRect()
-        return box.width > 0 && box.height > 0
+  test(
+    "execution records keep search and filter controls on one row without a repeated heading at " + width + "px",
+    async () => {
+      await page.setViewportSize({ width, height: 820 })
+      await page.goto(server.resolvedUrls!.local[0]!)
+      await page.locator(".execution-node").first().waitFor()
+      await page.getByRole("button", { name: "All records", exact: true }).click()
+      await page.locator(".execution-view-switch").nth(1).waitFor()
+      expect(await page.getByRole("heading", { name: "Execution records", exact: true }).count()).toBe(0)
+      expect(await page.getByRole("region", { name: "Execution records", exact: true }).count()).toBe(1)
+      const layout = await page.evaluate(() => {
+        const header = document.querySelector(".execution-records-header") as HTMLElement
+        const controls = [
+          ...header.querySelectorAll(":scope > *"),
+          ...header.querySelectorAll(':scope > [data-slot="execution-filters"] > *, :scope > .execution-filters > *'),
+        ].filter((element) => {
+          const box = element.getBoundingClientRect()
+          return box.width > 0 && box.height > 0
+        })
+        const bands: { top: number; bottom: number }[] = []
+        for (const element of controls) {
+          const box = element.getBoundingClientRect()
+          const band = bands.find((value) => box.top < value.bottom - 4 && box.bottom > value.top + 4)
+          if (band) {
+            band.top = Math.min(band.top, box.top)
+            band.bottom = Math.max(band.bottom, box.bottom)
+          } else bands.push({ top: box.top, bottom: box.bottom })
+        }
+        return { rows: bands.length, height: Math.round(header.getBoundingClientRect().height) }
       })
-      const bands: { top: number; bottom: number }[] = []
-      for (const element of controls) {
-        const box = element.getBoundingClientRect()
-        const band = bands.find((value) => box.top < value.bottom - 4 && box.bottom > value.top + 4)
-        if (band) {
-          band.top = Math.min(band.top, box.top)
-          band.bottom = Math.max(band.bottom, box.bottom)
-        } else bands.push({ top: box.top, bottom: box.bottom })
-      }
-      return { rows: bands.length, height: Math.round(header.getBoundingClientRect().height) }
-    })
-    expect(layout.rows).toBe(1)
-    expect(layout.height).toBe(36)
-    expect(errors).toEqual([])
-  })
+      expect(layout.rows).toBe(1)
+      expect(layout.height).toBe(36)
+      expect(errors).toEqual([])
+    },
+  )
 }
+
+test("standalone trajectories start with search while records remain accessibly named", async () => {
+  for (const width of [1024, 375]) {
+    await page.setViewportSize({ width, height: 820 })
+    await page.goto(server.resolvedUrls!.local[0]! + "?standalone=1")
+    await page.locator(".execution-node").first().waitFor()
+    const panel = page.getByRole("region", { name: "Execution records", exact: true })
+    expect(await panel.count()).toBe(1)
+    expect(await panel.getByRole("heading", { name: "Execution records", exact: true }).count()).toBe(0)
+    const header = panel.locator(".execution-records-header")
+    expect(await header.innerText()).not.toContain("Execution records")
+    expect(await header.locator(".execution-records-separator").count()).toBe(0)
+    const alignment = await header.evaluate((element) => {
+      const search = element.querySelector(".execution-search")!.getBoundingClientRect()
+      return Math.abs(search.left - element.getBoundingClientRect().left)
+    })
+    expect(alignment).toBeLessThanOrEqual(1)
+    expect(await panel.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+    await header.getByRole("textbox").focus()
+    await page.keyboard.press("Tab")
+    expect(
+      await header
+        .getByRole("button", { name: "Filters", exact: true })
+        .evaluate((element) => element === document.activeElement),
+    ).toBe(true)
+  }
+  expect(errors).toEqual([])
+})
+
+test("record breadcrumbs retain return navigation without a dangling separator", async () => {
+  for (const suffix of ["", "?noscope=1"]) {
+    await page.goto(server.resolvedUrls!.local[0]! + suffix)
+    const header = page.locator(".execution-records-header")
+    await header.getByRole("textbox").waitFor()
+    expect(await header.locator(".execution-records-separator").count()).toBe(suffix ? 0 : 1)
+    await header.getByRole("button", { name: "Back to overview", exact: true }).click()
+    expect(await page.evaluate(() => (window as unknown as { returnedToOverview: boolean }).returnedToOverview)).toBe(
+      true,
+    )
+  }
+  expect(errors).toEqual([])
+})
 
 test("a message record is named by its kind and reads its saved text as evidence", async () => {
   await page.setViewportSize({ width: 1000, height: 900 })

@@ -154,6 +154,8 @@ beforeAll(async () => {
         import { setupI18n } from "@lingui/core"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme"
+        import { MetaProvider } from "@solidjs/meta"
+        import { Font } from "@ericsanchezok/synergy-ui/font"
         import { ModelSelectorPopover, DialogSelectModel } from ${JSON.stringify(`/@fs/${selectorPath}`)}
         import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
         import { messages as en } from "@/locales/en/messages.po"
@@ -172,7 +174,7 @@ beforeAll(async () => {
               get children() {
                 return createComponent(ThemeProvider, { get children() { return createComponent(DialogProvider, {
                   get children() {
-                    return <div style="height:100dvh;display:flex;flex-direction:column">
+                    return <MetaProvider><Font /><div style="height:100dvh;display:flex;flex-direction:column">
                       <header class="stb-root" style="position:relative;pointer-events:auto;height:48px;flex-shrink:0;display:flex;align-items:center">
                         <ModelSelectorPopover placement="bottom-start" triggerAs={props => <button {...props} data-model-trigger class="stb-selector-btn">
                           <Show when={props.children} fallback={<span class="stb-selector-label">Fixture model</span>}>{props.children}</Show>
@@ -183,7 +185,7 @@ beforeAll(async () => {
                         <div style="height:1500px">Saved conversation</div>
                       </main>
                       <textarea aria-label="Message" style="height:120px;flex-shrink:0" />
-                    </div>
+                    </div></MetaProvider>
                   },
                 }) } })
               },
@@ -275,15 +277,21 @@ describe("model availability recovery", () => {
     await mount(FULL_CATALOG)
     expect(await trigger().innerText()).toBe("Fixture model")
     await trigger().click()
-    await page.getByRole("button", { name: "Fixture model", exact: true }).last().click()
+    await page
+      .locator(".model-selector-popover .model-manager-model-name")
+      .getByText("Fixture model", { exact: true })
+      .click()
     expect(await trigger().getAttribute("aria-expanded")).toBe("false")
     expect(await notice().count()).toBe(0)
   })
 
-  test("provider groups expose and search models outside quick switch and recent history", async () => {
+  test("full browsing and search expose models outside common models without duplicate rows", async () => {
     await mount(FULL_CATALOG)
     await trigger().click()
     const popup = page.locator(".model-selector-popover")
+    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
+    expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(0)
+    await popup.getByRole("button", { name: "Browse all models", exact: true }).click()
     const provider = popup.locator('[data-slot="list-group"]').filter({
       has: page.locator('[data-slot="list-header"]').filter({ hasText: /^Fixture provider$/ }),
     })
@@ -292,7 +300,7 @@ describe("model availability recovery", () => {
       "Recent model",
       "Standard model",
     ])
-    expect(await provider.locator('[data-key="env-only:quick"]').getAttribute("data-selected")).toBe("true")
+    expect(await provider.locator('[data-selected="true"]').innerText()).toBe("Fixture model")
     await popup.getByRole("textbox").fill("standard")
     const row = popup.locator('[data-slot="list-item"]')
     await row.filter({ hasText: "Standard model" }).waitFor()
@@ -303,11 +311,11 @@ describe("model availability recovery", () => {
     ).toEqual({ providerID: "env-only", modelID: "standard" })
     expect(await trigger().getAttribute("aria-expanded")).toBe("false")
     await trigger().click()
-    expect(await popup.locator('[data-key="recent:env-only:standard"]').getAttribute("data-selected")).toBe("true")
-    expect(await popup.locator('[data-key="env-only:standard"]').getAttribute("data-selected")).toBe("true")
+    expect(await popup.locator('[data-selected="true"]').innerText()).toBe("Standard model\nFixture provider")
+    expect(await popup.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
   })
 
-  test("same-name service accounts keep distinct provider groups and shortcut identities", async () => {
+  test("same-name service accounts retain separate groups and account-specific selection", async () => {
     await mount({
       ...FULL_CATALOG,
       connected: ["env-only", "second"],
@@ -315,25 +323,33 @@ describe("model availability recovery", () => {
     })
     await trigger().click()
     const popup = page.locator(".model-selector-popover")
+    await popup.getByRole("button", { name: "Browse all models", exact: true }).click()
     expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
-      "Recent",
-      "Quick switch",
       "Fixture provider (env-only)",
       "Fixture provider (second)",
     ])
-    expect(await popup.locator('[data-key^="quick:"]').count()).toBe(1)
-    expect(await popup.locator('[data-key="second:quick"]').getAttribute("data-selected")).toBe("false")
+    const second = popup.locator('[data-slot="list-group"]').filter({
+      has: page.getByText("Fixture provider (second)", { exact: true }),
+    })
+    await second.getByRole("button", { name: "Fixture model", exact: true }).click()
+    expect(
+      await page.evaluate(() => (globalThis as unknown as { __selectedModel(): unknown }).__selectedModel()),
+    ).toEqual({
+      providerID: "second",
+      modelID: "quick",
+    })
+    await trigger().click()
+    await popup.getByRole("button", { name: "Back to common models", exact: true }).click()
+    expect(await popup.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
     await setProvider({
       ...FULL_CATALOG,
       connected: ["env-only", "second"],
-      all: [CATALOG_PROVIDER, { ...CATALOG_PROVIDER, id: "second", name: "Quick switch" }],
+      all: [CATALOG_PROVIDER, { ...CATALOG_PROVIDER, id: "second", name: "Common models" }],
     })
-    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
-      "Recent",
-      "Quick switch",
-      "Fixture provider",
-      "Quick switch (second)",
-    ])
+    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
+    expect(await popup.locator('[data-selected="true"] .model-manager-provider-name').textContent()).toBe(
+      "Common models (second)",
+    )
   })
 
   test("late catalogs and empty quick-switch preferences preserve full selection in Home and project Scopes", async () => {
@@ -353,6 +369,8 @@ describe("model availability recovery", () => {
         [scope === "home" ? "home" : "project-scope"],
       )
       expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(0)
+      await search.fill("standard")
+      await popup.locator('[data-slot="list-empty-state"]').waitFor()
       if (scope === "project") {
         await page.evaluate(
           (snapshot) => (globalThis as unknown as { __setScope(value: unknown): void }).__setScope(snapshot),
@@ -360,22 +378,22 @@ describe("model availability recovery", () => {
         )
       } else await setProvider(FULL_CATALOG)
       await popup.getByText("Standard model", { exact: true }).waitFor()
-      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
-        "Recent",
-        "Quick switch",
-        "Fixture provider",
-      ])
+      expect(await popup.locator('[data-slot="list-item"]').count()).toBe(1)
+      expect(await input!.evaluate((node) => node === document.activeElement)).toBe(true)
+      expect(await search.inputValue()).toBe("standard")
+      await search.fill("")
+      await popup.getByText("Common models", { exact: true }).waitFor()
       await page.evaluate(() =>
         (globalThis as unknown as { __setQuickSwitcher(ids: string[]): void }).__setQuickSwitcher([]),
       )
-      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Recent", "Fixture provider"])
+      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
       expect(await input!.evaluate((node) => node === document.activeElement)).toBe(true)
       expect(await search.inputValue()).toBe("")
-      expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(1)
+      expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(0)
       expect(
         await page.evaluate(() => (globalThis as unknown as { __selectedModel(): unknown }).__selectedModel()),
       ).toEqual({ providerID: "env-only", modelID: "quick" })
-      await search.fill("standard")
+      await popup.getByRole("button", { name: "Browse all models", exact: true }).click()
       await popup.getByText("Standard model", { exact: true }).waitFor()
       await page.keyboard.press("Escape")
       await page.waitForFunction(() => document.activeElement?.hasAttribute("data-model-trigger"))
@@ -491,7 +509,10 @@ describe("model availability recovery", () => {
       expect(await trigger().getAttribute("aria-expanded")).toBe("false")
       await setProvider(FULL_CATALOG)
       await page.keyboard.press("Enter")
-      const model = page.locator('.model-selector-popover [data-key="env-only:standard"]')
+      await page.locator(".model-selector-popover").getByRole("textbox").fill("standard")
+      const model = page
+        .locator('.model-selector-popover [data-slot="list-item"]')
+        .filter({ hasText: "Standard model" })
       await model.waitFor()
       const modelBox = (await model.boundingBox())!
       expect(modelBox.x).toBeGreaterThanOrEqual(0)

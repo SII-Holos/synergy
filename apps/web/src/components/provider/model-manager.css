@@ -8,6 +8,12 @@
   justify-self: center;
 }
 
+@media (pointer: coarse), (max-width: 767px) {
+  .model-selection-navigation {
+    min-height: 44px;
+  }
+}
+
 .provider-connection-test {
   display: flex;
   align-items: center;

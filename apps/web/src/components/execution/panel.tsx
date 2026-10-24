@@ -392,13 +392,11 @@ export function ExecutionPanelBody(
     setSelected("")
     frame = requestAnimationFrame(() => {
       restoreReading()
-      requestAnimationFrame(() => {
-        const button = root?.querySelector<HTMLButtonElement>(
-          '[data-node-id="' + CSS.escape(focusID) + '"] .execution-node-button',
-        )
-        if (button) button.focus()
-        else root?.querySelector<HTMLElement>(".execution-list")?.focus()
-      })
+      const button = root?.querySelector<HTMLButtonElement>(
+        '[data-node-id="' + CSS.escape(focusID) + '"] .execution-node-button',
+      )
+      if (button) button.focus({ preventScroll: true })
+      else root?.querySelector<HTMLElement>(".execution-list")?.focus({ preventScroll: true })
     })
   }
   const pending = () =>
@@ -536,6 +534,8 @@ export function ExecutionPanelBody(
     <div
       ref={root}
       class="execution-panel"
+      role="region"
+      aria-label={_(E.recordsTitle)}
       classList={{ "execution-panel--inspecting": !!selected() }}
       onKeyDown={(event) => {
         if (event.key === "Escape" && selected() && !event.defaultPrevented && !filtersOpen()) {
@@ -551,11 +551,12 @@ export function ExecutionPanelBody(
             <Icon name={getSemanticIcon("navigation.back")} size="small" />
             {_(D.back)}
           </button>
-          <span class="execution-records-separator" aria-hidden="true">
-            /
-          </span>
+          <Show when={props.scopeLabel}>
+            <span class="execution-records-separator" aria-hidden="true">
+              /
+            </span>
+          </Show>
         </Show>
-        <h2>{_(E.recordsTitle)}</h2>
         <Show when={props.scopeLabel}>
           <span class="execution-records-scope" title={props.scopeLabel}>
             {props.scopeLabel}
