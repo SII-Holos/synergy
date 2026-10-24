@@ -107,6 +107,11 @@ test("current action sweep stays perceptible through its cycle without moving En
         return sample.filter((pixel, index) => Math.abs(pixel - next[index]) >= 2).length > 5
       }).length
       expect(movingIntervals).toBeGreaterThanOrEqual(11)
+      const pixelRanges = samples[0].map(
+        (_, pixel) =>
+          Math.max(...samples.map((sample) => sample[pixel])) - Math.min(...samples.map((sample) => sample[pixel])),
+      )
+      expect(Math.max(...pixelRanges)).toBeGreaterThanOrEqual(80)
       for (const media of [
         { reducedMotion: "reduce", forcedColors: "none" },
         { reducedMotion: "no-preference", forcedColors: "active" },

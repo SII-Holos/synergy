@@ -90,7 +90,7 @@
    Local adaptation: one bounded pass across the active label, with theme tokens and static accessibility fallbacks. */
 @media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
   [data-slot="activity-batch-status-text"][data-animated="true"] {
-    background: linear-gradient(100deg, var(--text-weak) 40%, var(--text-strong) 50%, var(--text-weak) 60%);
+    background: linear-gradient(100deg, var(--text-weaker) 40%, var(--text-stronger) 50%, var(--text-weaker) 60%);
     background-size: 250% 100%;
     background-clip: text;
     color: transparent;
