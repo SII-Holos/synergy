@@ -1,7 +1,9 @@
 import { afterAll, expect, spyOn, test } from "bun:test"
 import path from "node:path"
+import fs from "node:fs/promises"
 import { ScopeContext } from "../../src/scope/context"
 import { WorkspaceObservation } from "../../src/workspace/observation"
+import { WorkspaceAccess } from "../../src/workspace/access"
 import { Session } from "../../src/session"
 import { Identifier } from "../../src/id/id"
 import { MessageV2 } from "../../src/session/message-v2"
@@ -9,13 +11,23 @@ import { SessionFileChanges } from "../../src/session/file-changes"
 import { SessionFileChangeView } from "../../src/session/file-change-view"
 import { SessionHistory } from "../../src/session/history"
 import { Snapshot } from "../../src/session/snapshot"
+import { SnapshotLive } from "../../src/session/snapshot-live"
 import { SessionSummary } from "../../src/session/summary"
 import { SessionExport } from "../../src/session/session-export"
 import { Bus } from "../../src/bus"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
-const runtime = await testRuntime({ register: () => WorkspaceObservation.register(async () => true) })
+const runtime = await testRuntime({
+  register() {
+    WorkspaceObservation.register(async () => true)
+    WorkspaceAccess.register({
+      async acquire(input) {
+        return { id: input.id, async release() {}, async bindProcess() {} }
+      },
+    })
+  },
+})
 afterAll(() => runtime.close())
 
 function summary(sessionID: string, accepts: (value: NonNullable<MessageV2.User["summary"]>) => boolean) {
@@ -193,6 +205,204 @@ test("continuation keeps the original baseline and final totals are independent 
       },
     })
   }))
+
+test("continuation publishes only after every prior Workspace has initialized", () =>
+  runtime.run(async () => {
+    await using first = await tmpdir()
+    await using second = await tmpdir()
+    const scope = await first.scope()
+    const workspaces = await Promise.all(
+      [first.path, second.path].map((directory) =>
+        ScopeContext.provide({
+          scope,
+          workspace: { type: "directory", scopeID: scope.id, path: directory },
+          fn: () => ScopeContext.current.workspace!,
+        }),
+      ),
+    )
+    await ScopeContext.provide({
+      scope,
+      workspace: workspaces[0],
+      async fn() {
+        const session = await Session.create()
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+        })
+        const input = { sessionID: session.id, rootID: root.id, segmentID: crypto.randomUUID() }
+        await SessionFileChanges.begin(input)
+        await SessionFileChanges.provide(
+          {
+            owner: { kind: "session", scopeID: scope.id, sessionID: session.id },
+            runID: root.id,
+            messageID: root.id,
+            toolCallID: "workspace-use",
+            tool: "fixture",
+            args: {},
+          },
+          () => WorkspaceAccess.task({ sessionID: session.id }, () => WorkspaceAccess.use(workspaces.slice(1))),
+        )
+        await Bun.write(path.join(second.path, "changed.txt"), "recorded\n")
+        await SessionFileChanges.finish(input)
+        expect((await SessionFileChangeView.current(session.id))?.summary?.diffTotals?.files).toBe(1)
+
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        const statistics = Snapshot.statistics
+        using comparison = spyOn(Snapshot, "statistics").mockImplementation(async (...args) => {
+          entered.resolve()
+          await release.promise
+          return statistics(...args)
+        })
+        const counts: number[] = []
+        const unsubscribe = Bus.subscribe(MessageV2.Event.Updated, ({ properties: { info } }) => {
+          if (info.id === root.id && info.role === "user" && info.summary?.diffState?.status === "live")
+            counts.push(info.summary.diffTotals!.files)
+        })
+        const continued = { ...input, segmentID: crypto.randomUUID() }
+        const beginning = SessionFileChanges.begin(continued)
+        try {
+          await entered.promise
+          await Bun.sleep(350)
+          expect(counts).toEqual([])
+          expect((await SessionFileChangeView.current(session.id))?.summary?.diffTotals?.files).toBe(1)
+          await Bun.write(path.join(first.path, "during-initialization.txt"), "another change\n")
+          WorkspaceObservation.invalidate({ paths: ["during-initialization.txt"] })
+          const initialized = summary(
+            session.id,
+            (value) => value.diffState?.status === "live" && value.diffTotals?.files === 2,
+          )
+          release.resolve()
+          await beginning
+          await initialized
+          expect(counts).toEqual([2])
+        } finally {
+          release.resolve()
+          await beginning
+          unsubscribe()
+          await SessionFileChanges.finish(continued)
+        }
+      },
+    })
+  }))
+
+test.each(["retained", "unknown", "live"])("historical comparison failure preserves %s evidence and recovers", (mode) =>
+  runtime.run(async () => {
+    await using directory = await tmpdir()
+    await using historical = await tmpdir()
+    const scope = await directory.scope()
+    const workspace = await ScopeContext.provide({
+      scope,
+      workspace: { type: "directory", scopeID: scope.id, path: historical.path },
+      fn: () => ScopeContext.current.workspace!,
+    })
+    await ScopeContext.provide({
+      scope,
+      async fn() {
+        const session = await Session.create()
+        const root = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          isRoot: true,
+          time: { created: Date.now() },
+          agent: "test",
+          model: { providerID: "test", modelID: "test" },
+        })
+        if (root.role !== "user") throw new Error("Expected a user root")
+        const input = { sessionID: session.id, rootID: root.id, segmentID: crypto.randomUUID() }
+        await SessionFileChanges.begin(input)
+        await SessionFileChanges.provide(
+          {
+            owner: { kind: "session", scopeID: scope.id, sessionID: session.id },
+            runID: root.id,
+            messageID: root.id,
+            toolCallID: "historical-workspace-use",
+            tool: "fixture",
+            args: {},
+          },
+          () => WorkspaceAccess.task({ sessionID: session.id }, () => WorkspaceAccess.use([workspace])),
+        )
+        const filename = path.join(historical.path, "changed.txt")
+        await Bun.write(filename, "recorded\n")
+        await SessionFileChanges.finish(input)
+        if (mode === "unknown") await Session.updateMessage({ ...root, summary: { diffs: [] } })
+        if (mode === "live") await fs.unlink(filename)
+        const previous = (await SessionFileChangeView.current(session.id))?.summary
+        const create = SnapshotLive.create
+        using live = spyOn(SnapshotLive, "create").mockImplementation(async (...args) => {
+          if (mode !== "live" && ScopeContext.current.workspace?.id === workspace.id)
+            throw new Error("Live comparison unavailable")
+          return create(...args)
+        })
+        using comparison = spyOn(Snapshot, "statistics").mockRejectedValue(
+          new Error("Historical comparison unavailable"),
+        )
+        const continued = { ...input, segmentID: crypto.randomUUID() }
+        const observed = summary(session.id, (value) => value.diffState?.status === "live")
+        await SessionFileChanges.begin(continued)
+        try {
+          const value = await observed
+          if (mode === "live") {
+            expect(value.diffTotals).toEqual({ files: 0, additions: 0, deletions: 0 })
+            expect(value.diffState).toEqual({ status: "live" })
+          } else {
+            expect(value.diffTotals).toEqual(previous?.diffTotals)
+            expect(value.diffRevision).toBe(previous?.diffRevision)
+            expect(value.diffObservedAt).toBe(previous?.diffObservedAt)
+            expect(value.diffHasChanges).toBe(mode === "retained")
+            expect(value.diffIssues).toContainEqual(expect.objectContaining({ code: "comparison_failed" }))
+            const attempts = comparison.mock.calls.length
+            await Bun.sleep(350)
+            expect(comparison.mock.calls).toHaveLength(attempts)
+            if (mode === "retained") {
+              const failed = summary(
+                session.id,
+                (value) =>
+                  value.diffIssues?.some(
+                    (issue) => issue.code === "capture_failed" && issue.workspace?.id !== workspace.id,
+                  ) ?? false,
+              )
+              {
+                using statistics = spyOn(Snapshot, "liveStatistics").mockRejectedValueOnce(
+                  new Error("Statistics unavailable"),
+                )
+                await Bun.write(path.join(directory.path, "unpublished.txt"), "pending\n")
+                WorkspaceObservation.invalidate({ paths: ["unpublished.txt"] })
+                await failed
+              }
+            }
+            comparison.mockRestore()
+            const recovered = summary(
+              session.id,
+              (value) =>
+                value.diffTotals?.files === 1 &&
+                !!value.diffRevision &&
+                !value.diffIssues?.some((issue) => issue.code === "comparison_failed"),
+            )
+            await ScopeContext.provide({
+              scope,
+              workspace,
+              fn: () => WorkspaceObservation.invalidate({ paths: [""] }),
+            })
+            const accepted = await recovered
+            const view = await SessionFileChangeView.acquire(session.id, root.id, accepted.diffRevision)
+            expect(view.files.map((file) => file.file)).toEqual(["changed.txt"])
+            await SessionFileChangeView.release(session.id, view.revision)
+          }
+        } finally {
+          comparison.mockRestore()
+          await SessionFileChanges.finish(continued)
+        }
+      },
+    })
+  }),
+)
 
 test("a failed statistics refresh preserves the last revision and resynchronizes all lost dirty paths", () =>
   runtime.run(async () => {
