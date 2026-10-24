@@ -10,7 +10,7 @@ An on-demand Runtime with no historical records still performs a transaction for
 
 Owners can declare `emptyInput` record prefixes only when no body effects exist without those records. The runner checks all declared prefixes and completes consecutive eligible migrations in one ownership-fenced transaction. It reuses an empty-input observation only inside that transaction, ends the group before an ordinary migration, and preserves dependency order. On-access registrations can share the group: Session and operation preparation retains per-owner receipts, while pure record transforms remain bound to requested reads. Registration does not evaluate historical bodies or record transforms.
 
-A startup migration can also supply a read-only `isApplied` proof. The runner evaluates that proof in the completion transaction and never replays a proven body. A false proof retains normal execution; a failed proof rolls back the whole completion group. Absent immediate roots prove nested input prefixes empty without a separate indexed query per prefix; existing roots still require the exact prefix check. Both observations expire at an ordinary migration.
+A startup migration can also supply a read-only `isApplied` proof. The runner evaluates that proof in the completion transaction and never replays a proven body. A false proof retains normal execution; a failed proof rolls back the whole completion group. Empty-input proofs query the exact declared prefix with a one-record limit and cache repeated prefixes only inside the completion transaction. They never enumerate unrelated storage roots. Both observations expire at an ordinary migration.
 
 Historical import activity and existing cohorts prevent an empty-input completion. External effects stay outside retryable database callbacks. Commit failure publishes none of the group's completion markers. Configuration, schema, filesystem and snapshot ownership migrations retain their existing execution paths. Artifact migration treats an absent source directory as empty only before any checkpoint exists. An interrupted backup with a missing source remains an error and retains its recovery state.
 
@@ -31,6 +31,8 @@ Observability migrations prove that both canonical and legacy telemetry files, i
 **Defer every completion write until startup finishes.** A crash could replay previously completed external effects. Grouping only proven no-ops avoids extending that replay boundary.
 
 **Keep one transaction per no-op.** This preserves behavior but spends database round trips on absent inputs. The declarations and transactional proof preserve the same outcome with less startup work.
+
+**Enumerate immediate roots once to avoid individual absence probes.** A live-root scan recursively verifies stored descendants. Unrelated historical branches can exhaust an ordinary statement deadline before the migration inspects its own input. Direct prefix probes spend an indexed query per distinct input while keeping discovery within the declared subtree.
 
 ## Consequences
 
