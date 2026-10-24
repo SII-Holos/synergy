@@ -285,22 +285,21 @@ describe("model availability recovery", () => {
     expect(await notice().count()).toBe(0)
   })
 
-  test("full browsing and search expose models outside common models without duplicate rows", async () => {
+  test("continuous browsing and search expose models outside common models without duplicate rows", async () => {
     await mount(FULL_CATALOG)
     await trigger().click()
     const popup = page.locator(".model-selector-popover")
-    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
-    expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(0)
-    await popup.getByRole("button", { name: "Browse all models", exact: true }).click()
+    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+      "Common models",
+      "Fixture provider",
+    ])
+    expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(1)
     const provider = popup.locator('[data-slot="list-group"]').filter({
       has: page.locator('[data-slot="list-header"]').filter({ hasText: /^Fixture provider$/ }),
     })
-    expect(await provider.locator('[data-slot="list-item"]').allTextContents()).toEqual([
-      "Fixture model",
-      "Recent model",
-      "Standard model",
-    ])
-    expect(await provider.locator('[data-selected="true"]').innerText()).toBe("Fixture model")
+    expect(await provider.locator('[data-slot="list-item"]').allTextContents()).toEqual(["Standard model"])
+    expect(await popup.locator('[data-selected="true"]').innerText()).toBe("Fixture model\nFixture provider")
+    expect(await popup.locator('[data-slot="list-item"]').count()).toBe(3)
     await popup.getByRole("textbox").fill("standard")
     const row = popup.locator('[data-slot="list-item"]')
     await row.filter({ hasText: "Standard model" }).waitFor()
@@ -323,11 +322,9 @@ describe("model availability recovery", () => {
     })
     await trigger().click()
     const popup = page.locator(".model-selector-popover")
-    await popup.getByRole("button", { name: "Browse all models", exact: true }).click()
-    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
-      "Fixture provider (env-only)",
-      "Fixture provider (second)",
-    ])
+    const groups = await popup.locator('[data-slot="list-header"]').allTextContents()
+    expect(groups[0]).toBe("Common models")
+    expect(groups.slice(1).sort()).toEqual(["Fixture provider (env-only)", "Fixture provider (second)"])
     const second = popup.locator('[data-slot="list-group"]').filter({
       has: page.getByText("Fixture provider (second)", { exact: true }),
     })
@@ -339,14 +336,15 @@ describe("model availability recovery", () => {
       modelID: "quick",
     })
     await trigger().click()
-    await popup.getByRole("button", { name: "Back to common models", exact: true }).click()
     expect(await popup.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
     await setProvider({
       ...FULL_CATALOG,
       connected: ["env-only", "second"],
       all: [CATALOG_PROVIDER, { ...CATALOG_PROVIDER, id: "second", name: "Common models" }],
     })
-    expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
+    const headers = await popup.locator('[data-slot="list-header"]').allTextContents()
+    expect(headers[0]).toBe("Common models")
+    expect(headers).toContain("Common models (second)")
     expect(await popup.locator('[data-selected="true"] .model-manager-provider-name').textContent()).toBe(
       "Common models (second)",
     )
@@ -386,14 +384,16 @@ describe("model availability recovery", () => {
       await page.evaluate(() =>
         (globalThis as unknown as { __setQuickSwitcher(ids: string[]): void }).__setQuickSwitcher([]),
       )
-      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
+      expect(await popup.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+        "Common models",
+        "Fixture provider",
+      ])
       expect(await input!.evaluate((node) => node === document.activeElement)).toBe(true)
       expect(await search.inputValue()).toBe("")
-      expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(0)
+      expect(await popup.getByText("Standard model", { exact: true }).count()).toBe(1)
       expect(
         await page.evaluate(() => (globalThis as unknown as { __selectedModel(): unknown }).__selectedModel()),
       ).toEqual({ providerID: "env-only", modelID: "quick" })
-      await popup.getByRole("button", { name: "Browse all models", exact: true }).click()
       await popup.getByText("Standard model", { exact: true }).waitFor()
       await page.keyboard.press("Escape")
       await page.waitForFunction(() => document.activeElement?.hasAttribute("data-model-trigger"))
