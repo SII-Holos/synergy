@@ -915,9 +915,9 @@ test("automatic and fixed model intent is explicit and Escape restores picker fo
   )
   expect(errors).toEqual([])
 })
-test("quick model switches include model names and leave the session and role untouched", async () => {
+test("common model switches include model names and leave the session and role untouched", async () => {
   await page.getByRole("button", { name: "Models page", exact: true }).click()
-  await page.getByRole("switch", { name: "Include Test Chat in quick switcher", exact: true }).press("Space")
+  await page.getByRole("switch", { name: "Include Test Chat in common models", exact: true }).press("Space")
   const model = JSON.parse((await page.getByTestId("models").textContent())!)
   expect(model.model).toBe("deepseek/chat")
   expect(model.quick_switcher).toEqual([{ providerID: "deepseek", modelID: "chat", state: "remove" }])
@@ -925,15 +925,15 @@ test("quick model switches include model names and leave the session and role un
     await page.evaluate(() => (window as unknown as { __sessionChanged?: boolean }).__sessionChanged),
   ).toBeUndefined()
 })
-test("quick model management updates when the full catalog arrives without search input", async () => {
+test("common model management updates when the full catalog arrives without search input", async () => {
   await page.getByRole("button", { name: "Models page", exact: true }).click()
-  await page.getByRole("switch", { name: "Include Test Chat in quick switcher", exact: true }).waitFor()
+  await page.getByRole("switch", { name: "Include Test Chat in common models", exact: true }).waitFor()
   const search = page.getByRole("textbox", { name: "Search models", exact: true })
   expect(await search.inputValue()).toBe("")
 
   await page.evaluate(() => (window as unknown as { __publishModelCatalog(): void }).__publishModelCatalog())
 
-  const added = page.getByRole("switch", { name: "Include Test New Model in quick switcher", exact: true })
+  const added = page.getByRole("switch", { name: "Include Test New Model in common models", exact: true })
   await added.waitFor()
   expect(await search.inputValue()).toBe("")
   await added.press("Space")
