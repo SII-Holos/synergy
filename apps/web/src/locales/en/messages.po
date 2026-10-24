@@ -13513,14 +13513,6 @@ msgid "message-part.untitled"
 msgstr "Untitled"
 
 #. js-lingui-explicit-id
-msgid "model.manager.backToCommon"
-msgstr "Back to common models"
-
-#. js-lingui-explicit-id
-msgid "model.manager.browseAll"
-msgstr "Browse all models"
-
-#. js-lingui-explicit-id
 msgid "model.manager.common"
 msgstr "Common models"
 

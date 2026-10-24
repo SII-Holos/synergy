@@ -15,7 +15,7 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(directory, "index.html"),
-      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+      '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
     ),
     Bun.write(
       state,
@@ -25,15 +25,19 @@ beforeAll(async () => {
           { id: "shared-model", name: "Shared model", cost: { input: 1, output: 1 }, provider: { id: "work", name: "OpenAI · Work" } },
           { id: "shared-model", name: "Shared model", cost: { input: 1, output: 1 }, provider: { id: "personal", name: "OpenAI · Personal account with a long identifying remark" } },
         ]
+        const many = new URLSearchParams(location.search).has("many")
+        const common = many ? Array.from({ length: 10 }, (_, index) => ({ ...models[0], id: "frequent-" + index, name: "Frequent model " + index })) : []
         const catalogOnly = { id: "catalog-only", name: "Catalog only model", cost: { input: 1, output: 1 }, provider: models[0].provider }
-        const shortcuts = new URLSearchParams(location.search).has("no-common") ? [] : models
+        const catalog = many ? Array.from({ length: 40 }, (_, index) => ({ ...models[0], id: "catalog-" + index, name: "Catalog model " + String(index).padStart(2, "0") })) : []
+        const all = [...models, ...common, catalogOnly, ...catalog]
+        const shortcuts = new URLSearchParams(location.search).has("no-common") ? [] : [...models, ...common]
         export const [selected, setSelected] = createSignal(models[0])
         export const useLocal = () => ({ model: {
-          all: () => [...models, catalogOnly],
+          all: () => all,
           quickSwitcher: () => shortcuts,
           recent: () => shortcuts,
           current: selected,
-          set: ref => setSelected([...models, catalogOnly].find(model => model.provider.id === ref.providerID && model.id === ref.modelID)),
+          set: ref => setSelected(all.find(model => model.provider.id === ref.providerID && model.id === ref.modelID)),
         } })
         export const useGlobalSync = () => ({ data: { provider: { profiles: {} } } })
         export const useProviders = () => ({ ensureCatalog: async () => {}, all: () => models.map(model => model.provider) })
@@ -101,12 +105,15 @@ test("common rows merge shortcut copies, show account names and keep one selecte
         has: page.locator('[data-slot="list-header"]', { hasText: "Common models" }),
       })
       await page.locator('[data-slot="list-item"]').first().waitFor()
-      expect(await page.locator('[data-slot="list-header"]').allTextContents()).toEqual(["Common models"])
+      expect(await page.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+        "Common models",
+        "OpenAI · Work",
+      ])
       expect(await common.getByRole("button").allTextContents()).toEqual([
         "Shared modelOpenAI · Work",
         "Shared modelOpenAI · Personal account with a long identifying remark",
       ])
-      expect(await page.locator('[data-slot="list-item"]').count()).toBe(2)
+      expect(await page.locator('[data-slot="list-item"]').count()).toBe(3)
       expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
       const rows = await common.getByRole("button").evaluateAll((buttons) =>
         buttons.map((button) => {
@@ -155,31 +162,60 @@ test("account search and keyboard selection keep identical model IDs bound to th
   }
 })
 
-test("browsing the full catalog keeps one copy per account and returns without remounting search", async () => {
-  const page = await browser.newPage()
+test("common models precede the catalog in one continuous scroll without view navigation", async () => {
+  const page = await browser.newPage({ viewport: { width: 375, height: 720 } })
   try {
-    await page.goto(server.url)
+    await page.goto(`${server.url}?many`)
     const search = page.getByRole("textbox", { name: "Search models" })
     const input = await search.elementHandle()
-    await page.getByRole("button", { name: "Browse all models", exact: true }).click()
-    expect((await page.locator('[data-slot="list-item"]').allTextContents()).sort()).toEqual([
-      "Catalog only model",
-      "Shared model",
-      "Shared model",
-    ])
-    expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
-    expect(await page.locator(".model-manager-provider-name").count()).toBe(0)
-    expect(await input!.evaluate((node) => node.isConnected)).toBe(true)
-    await page.getByRole("button", { name: "Back to common models", exact: true }).click()
     await page.getByText("Common models", { exact: true }).waitFor()
-    expect(await page.locator('[data-slot="list-item"]').count()).toBe(2)
+    expect(await page.getByRole("button", { name: "Browse all models", exact: true }).count()).toBe(0)
+    expect(await page.getByRole("button", { name: "Back to common models", exact: true }).count()).toBe(0)
+    expect(await page.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+      "Common models",
+      "OpenAI · Work",
+    ])
+    const scroll = page.locator('[data-slot="list-scroll"]')
+    expect(await scroll.count()).toBe(1)
+    const groups = await page.locator('[data-slot="list-group"]').evaluateAll((groups) =>
+      groups.map((group) => ({
+        count: group.querySelectorAll('[data-slot="list-item"]').length,
+        scroll: group.parentElement?.getAttribute("data-slot"),
+      })),
+    )
+    expect(groups).toEqual([
+      { count: 12, scroll: "list-scroll" },
+      { count: 41, scroll: "list-scroll" },
+    ])
+    const target = page.getByRole("button", { name: "Catalog model 00", exact: true })
+    const distance = await target.evaluate((row) => {
+      const scroll = row.closest('[data-slot="list-scroll"]')!
+      return row.getBoundingClientRect().top - scroll.getBoundingClientRect().top - 40
+    })
+    expect(distance).toBeGreaterThan(0)
+    await scroll.hover()
+    await page.mouse.wheel(0, distance)
+    await page.waitForFunction(() => {
+      const scroll = document.querySelector('[data-slot="list-scroll"]')!
+      const target = [...scroll.querySelectorAll<HTMLElement>('[data-slot="list-item"]')].find(
+        (row) => row.textContent === "Catalog model 00",
+      )!
+      const bounds = scroll.getBoundingClientRect()
+      const row = target.getBoundingClientRect()
+      return scroll.scrollTop > 0 && row.top >= bounds.top && row.bottom <= bounds.bottom
+    })
+    expect(await search.inputValue()).toBe("")
+    expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
     expect(await input!.evaluate((node) => node.isConnected)).toBe(true)
+    await target.click()
+    expect(await page.getByLabel("Selected model").textContent()).toBe("catalog-0")
+    expect(await page.getByLabel("Selected account").textContent()).toBe("OpenAI · Work")
   } finally {
     await page.close()
   }
 })
 
-test("search always includes catalog-only models and clearing restores the previous view", async () => {
+test("search includes every model once and clearing restores the continuous grouped list", async () => {
   const page = await browser.newPage()
   try {
     await page.goto(server.url)
@@ -194,8 +230,11 @@ test("search always includes catalog-only models and clearing restores the previ
     expect(await page.getByLabel("Selected model").textContent()).toBe("catalog-only")
     await page.getByRole("button", { name: "Clear search", exact: true }).click()
     await page.getByText("Common models", { exact: true }).waitFor()
-    expect(await row.count()).toBe(2)
-    await page.getByRole("button", { name: "Browse all models", exact: true }).click()
+    expect(await row.count()).toBe(3)
+    expect(await page.locator('[data-slot="list-header"]').allTextContents()).toEqual([
+      "Common models",
+      "OpenAI · Work",
+    ])
     await search.fill("Shared model")
     await row.filter({ hasText: "OpenAI · Personal" }).waitFor()
     expect(await row.count()).toBe(2)
@@ -203,7 +242,7 @@ test("search always includes catalog-only models and clearing restores the previ
     await search.fill("no matching model zzz")
     await page.locator('[data-slot="list-empty-state"]').waitFor()
     await page.getByRole("button", { name: "Clear search", exact: true }).click()
-    await page.getByRole("button", { name: "Back to common models", exact: true }).waitFor()
+    await page.getByText("Common models", { exact: true }).waitFor()
     expect(await row.count()).toBe(3)
     expect(await page.locator('[data-slot="list-item-selected-icon"]').count()).toBe(1)
   } finally {
@@ -211,7 +250,7 @@ test("search always includes catalog-only models and clearing restores the previ
   }
 })
 
-test("an empty common list falls back to the full catalog with localized navigation", async () => {
+test("empty common lists and Chinese touch layouts keep the catalog in the same scroll", async () => {
   const page = await browser.newPage({ viewport: { width: 375, height: 720 }, isMobile: true, hasTouch: true })
   try {
     await page.goto(`${server.url}?no-common`)
@@ -220,30 +259,34 @@ test("an empty common list falls back to the full catalog with localized navigat
     expect(await page.getByRole("button", { name: "Browse all models", exact: true }).count()).toBe(0)
     await page.goto(`${server.url}?locale=zh-CN`)
     await page.getByText("常用模型", { exact: true }).waitFor()
-    const browse = page.getByRole("button", { name: "浏览全部模型", exact: true })
-    expect(Math.round((await browse.boundingBox())!.height)).toBeGreaterThanOrEqual(44)
-    await browse.click()
-    await page.getByRole("button", { name: "返回常用模型", exact: true }).click()
-    await page.getByText("常用模型", { exact: true }).waitFor()
+    expect(await page.evaluate(() => innerWidth)).toBe(375)
+    expect((await page.locator(".model-selection").boundingBox())!.width).toBeLessThanOrEqual(375)
+    expect(await page.getByRole("button", { name: "浏览全部模型", exact: true }).count()).toBe(0)
+    expect(await page.getByRole("button", { name: "返回常用模型", exact: true }).count()).toBe(0)
+    expect(await page.locator('[data-slot="list-header"]').allTextContents()).toEqual(["常用模型", "OpenAI · Work"])
+    expect(await page.locator('[data-slot="list-scroll"]').count()).toBe(1)
+    expect(await page.locator('[data-slot="list-item"]').count()).toBe(3)
+    const target = page.getByRole("button", { name: "Catalog only model", exact: true })
+    expect(Math.round((await target.boundingBox())!.height)).toBeGreaterThanOrEqual(44)
+    await target.click()
+    expect(await page.getByLabel("Selected model").textContent()).toBe("catalog-only")
   } finally {
     await page.close()
   }
 })
 
-test("Tab reaches catalog navigation without selecting a model", async () => {
+test("Tab crosses from common rows to catalog rows without selecting a model", async () => {
   const page = await browser.newPage()
   try {
     await page.goto(server.url)
     const search = page.getByRole("textbox", { name: "Search models" })
     await search.focus()
     for (let index = 0; index < 3; index++) await page.keyboard.press("Tab")
-    const browse = page.getByRole("button", { name: "Browse all models", exact: true })
-    expect(await browse.evaluate((node) => node === document.activeElement)).toBe(true)
-    await page.keyboard.press("Enter")
-    await page.getByText("Catalog only model", { exact: true }).waitFor()
+    const catalog = page.getByRole("button", { name: "Catalog only model", exact: true })
+    expect(await catalog.evaluate((node) => node === document.activeElement)).toBe(true)
     expect(await page.getByLabel("Selected model").textContent()).toBe("shared-model")
     await page.keyboard.press("Enter")
-    await page.getByText("Common models", { exact: true }).waitFor()
+    expect(await page.getByLabel("Selected model").textContent()).toBe("catalog-only")
   } finally {
     await page.close()
   }

@@ -8,6 +8,8 @@ Recent selections, quick-switch recommendations and the complete provider catalo
 
 ## Decision
 
+The Browse/Back interaction and catalog-action Tab destination below are superseded by the [continuous model selector](2026-10-25-continuous-model-selector.md). Common-list composition, tuple identity and preference ownership remain active.
+
 The existing session popover and keyboard dialog share one selector. Its default Common models list merges recent selections in recency order with additional quick-access models in name order. The pure catalog projection resolves these entries against the selectable catalog and deduplicates only exact provider/model ID pairs. Tuple serialization gives recent-history writes, row selection, recommendations and preference resolution the same unambiguous identity, including IDs containing delimiters. Recent records are independent identity values, so changing a new-session draft cannot mutate a historical entry through a shared object.
 
 Browse all models replaces the common list with the complete provider-grouped catalog, with a return action. Search uses that complete catalog from either view and displays one row per provider/model pair with its account label. Clearing search restores the preceding browsing view without replacing the search input. An empty common list opens the complete catalog directly.
