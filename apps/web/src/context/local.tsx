@@ -20,6 +20,7 @@ import * as ComposerIntent from "./prompt/composer-intent"
 import { createModelSelectionWriter, thinkingSelection, thinkingValue } from "./prompt/model-selection"
 import {
   isSelectableModel,
+  modelRefKey,
   recommendQuickSwitcherModels,
   resolveQuickSwitcherModels,
   resolveSessionModel,
@@ -314,9 +315,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           })
       }
 
-      const keyOf = (model: ModelKey) => `${model.providerID}:${model.modelID}`
-      const keyOfLocalModel = (model: LocalModel) => keyOf({ providerID: model.provider.id, modelID: model.id })
-
       const catalog = createMemo(() =>
         providers.available().flatMap((p) =>
           Object.values(p.models).map((m) => ({
@@ -343,12 +341,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const recommended = createMemo(() => recommendQuickSwitcherModels(all(), providers.default()))
 
-      const recommendedSet = createMemo(() => new Set(recommended().map(keyOf)))
+      const recommendedSet = createMemo(() => new Set(recommended().map(modelRefKey)))
 
       const quickSwitcherPreferences = createMemo(() => sync.data.config.quick_switcher?.models ?? [])
 
       const quickSwitcherSet = createMemo(
-        () => new Set(resolveQuickSwitcherModels(recommended(), quickSwitcherPreferences()).map(keyOf)),
+        () => new Set(resolveQuickSwitcherModels(recommended(), quickSwitcherPreferences()).map(modelRefKey)),
       )
 
       const fallbackModel = createMemo((): ModelKey | undefined => {
@@ -471,7 +469,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       })
 
       function inQuickSwitcher(model: ModelKey) {
-        return quickSwitcherSet().has(keyOf(model))
+        return quickSwitcherSet().has(modelRefKey(model))
       }
 
       const quickSwitcher = createMemo(() =>
@@ -524,7 +522,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             const resolved = model ?? fallbackModel()
             if (resolved && !params.id) setDraft("model", intentKey(), resolved)
             if (options?.recent && model) {
-              const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
+              // Recent records must not share mutable objects with the draft.
+              const uniq = uniqueBy([model, ...store.recent], modelRefKey).map(({ providerID, modelID }) => ({
+                providerID,
+                modelID,
+              }))
               if (uniq.length > 5) uniq.pop()
               setStore("recent", uniq)
             }
@@ -539,7 +541,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         },
         inQuickSwitcher,
         isRecommended(model: ModelKey) {
-          return recommendedSet().has(keyOf(model))
+          return recommendedSet().has(modelRefKey(model))
         },
         variant: {
           ready: () => variantResolution().ready && (!params.id || !pending[selectionKey(params.id)]),

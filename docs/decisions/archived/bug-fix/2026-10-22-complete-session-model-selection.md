@@ -1,6 +1,7 @@
 # Decision Record: Complete session model selection
 
 Status: implemented
+Archived: 2026-10-24
 
 ## Problem
 

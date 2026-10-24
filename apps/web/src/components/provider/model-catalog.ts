@@ -55,7 +55,7 @@ export function recommendQuickSwitcherModels(
   const push = (model: SelectableConnectedModel | undefined) => {
     if (!model) return
     const ref = { providerID: model.provider.id, modelID: model.id }
-    const key = `${ref.providerID}:${ref.modelID}`
+    const key = modelRefKey(ref)
     if (seen.has(key)) return
     seen.add(key)
     result.push(ref)
@@ -81,8 +81,8 @@ export function recommendQuickSwitcherModels(
   return result
 }
 
-function modelRefKey(model: ModelRef) {
-  return `${model.providerID}:${model.modelID}`
+export function modelRefKey(model: ModelRef) {
+  return JSON.stringify([model.providerID, model.modelID])
 }
 
 export function resolveQuickSwitcherModels(
@@ -109,36 +109,32 @@ type ModelSelectionDisplayModel = {
   provider: { id: string; name: string }
 }
 
+export function modelSelectionKey(model: ModelSelectionDisplayModel) {
+  return modelRefKey({ providerID: model.provider.id, modelID: model.id })
+}
+
 export function listModelSelectionEntries<T extends ModelSelectionDisplayModel>(
   models: readonly T[],
   quickSwitcher: readonly T[],
   recent: readonly T[],
   providerID?: string,
-): Array<T & { section: "recent" | "quick" | "provider"; listKey: string }> {
-  const matchesProvider = (model: T) => !providerID || model.provider.id === providerID
-  const catalogEntries = models
-    .filter(matchesProvider)
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((model) => ({
-      ...model,
-      section: "provider" as const,
-      listKey: `${model.provider.id}:${model.id}`,
-    }))
-  const quickEntries = quickSwitcher
-    .filter(matchesProvider)
-    .sort((left, right) => left.name.localeCompare(right.name))
-    .map((model) => ({
-      ...model,
-      section: "quick" as const,
-      listKey: `quick:${model.provider.id}:${model.id}`,
-    }))
-  const recentEntries = recent.filter(matchesProvider).map((model) => ({
-    ...model,
-    section: "recent" as const,
-    listKey: `recent:${model.provider.id}:${model.id}`,
-  }))
-
-  return [...recentEntries, ...quickEntries, ...catalogEntries]
+): { common: T[]; catalog: T[] } {
+  const available = new Map(
+    models
+      .filter((model) => !providerID || model.provider.id === providerID)
+      .map((model) => [modelSelectionKey(model), model]),
+  )
+  const byName = (left: T, right: T) => left.name.localeCompare(right.name)
+  const common: T[] = []
+  const seen = new Set<string>()
+  for (const model of [...recent, ...[...quickSwitcher].sort(byName)]) {
+    const key = modelSelectionKey(model)
+    const current = available.get(key)
+    if (!current || seen.has(key)) continue
+    seen.add(key)
+    common.push(current)
+  }
+  return { common, catalog: [...available.values()].sort(byName) }
 }
 
 export function resolveSessionModel(providers: Provider[], ref: ModelRef | undefined) {

@@ -28,6 +28,7 @@
   overflow: hidden;
 }
 .model-selector-content,
+.model-selector-popover .model-selection,
 .model-selector-popover [data-component="list"],
 .model-selector-popover [data-slot="list-scroll"] {
   flex: 0 1 auto;

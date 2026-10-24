@@ -13513,16 +13513,20 @@ msgid "message-part.untitled"
 msgstr "⟦Untitled⟧"
 
 #. js-lingui-explicit-id
+msgid "model.manager.backToCommon"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "model.manager.browseAll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "model.manager.common"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "model.manager.empty.connected"
 msgstr "⟦No connected model results⟧"
-
-#. js-lingui-explicit-id
-msgid "model.manager.quick"
-msgstr "⟦Quick switch⟧"
-
-#. js-lingui-explicit-id
-msgid "model.manager.recent"
-msgstr ""
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -23061,6 +23065,18 @@ msgid "settings.models.advanced.title"
 msgstr "⟦Advanced model assignments⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.models.common.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.models.common.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.models.common.toggle"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.models.connectProvider"
 msgstr "⟦Connect provider⟧"
 
@@ -23075,18 +23091,6 @@ msgstr "⟦Choose defaults for new sessions and specialist roles. Project settin
 #. js-lingui-explicit-id
 msgid "settings.models.page.title"
 msgstr "⟦Models⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.models.quickSwitcher.description"
-msgstr "⟦Pick the connected models that appear in model switchers and command shortcuts.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.models.quickSwitcher.title"
-msgstr "⟦Quick switcher models⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.models.quickSwitcher.toggle"
-msgstr "⟦Include {model} in quick switcher⟧"
 
 #. js-lingui-explicit-id
 msgid "settings.models.repair"
