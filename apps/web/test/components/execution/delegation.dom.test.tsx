@@ -40,6 +40,7 @@ beforeAll(async () => {
     const records={root:[node("root","root","turn","Root task"),child,...messageNodes],child:[child,node("read","child","tool","Read architecture"),nested],nested:[nested,node("answer","nested","output","Nested result")]}
     const exportRows=[...new Map(Object.values(records).flat().map(n=>[n.id,n])).values(),...Array.from({length:600},(_,i)=>node("export-"+i,"root","context","Export row "+i))]
     const event=createGlobalEmitter()
+    window.legacyCheckpoint=()=>{summary.revision=3;records.child[1]={...records.child[1],title:"Updated child record",preview:"Updated child record",revision:3};event.emit("execution.updated",{type:"execution.updated",properties:{sessionID:"root",revision:3,previousRevision:3,summary:{...summary,revision:3},roundSummaries:[],upserts:[],removed:[]}})}
     export const [ownerActive,setOwnerActive]=createSignal(true)
     export const [connectionVersion,setConnectionVersion]=createSignal(0)
     const [connected,connect]=createSignal(!location.search.includes("offline=1"))
@@ -70,12 +71,12 @@ beforeAll(async () => {
         return {data:{sessionID:q.sessionID,revision:1,total:all.length,items:all.slice(start,start+limit),nextCursor:start+limit<all.length?String(start+limit):null,previousCursor:start>0?String(Math.max(0,start-limit)):null}}
       }
       if(q.limit===500){const start=q.cursor==="page-2"?500:0;return {data:{sessionID:q.sessionID,revision:1,total:exportRows.length,items:exportRows.slice(start,start+500),nextCursor:start===0?"page-2":null,previousCursor:null}}}
-      return {data:{sessionID:q.sessionID,revision:1,total:records[q.sessionID].length,items:records[q.sessionID],nextCursor:null,previousCursor:null}}
+      return {data:{sessionID:q.sessionID,revision:summary.revision,total:records[q.sessionID].length,items:records[q.sessionID],nextCursor:null,previousCursor:null}}
     },executionSummary:async()=>{window.summaryReads=(window.summaryReads??0)+1;if(window.holdSummary)await new Promise(resolve=>{window.releaseSummary=resolve});return {data:summary}},executionNode:async(q)=>{window.nodeReads=(window.nodeReads??0)+1;return ({data:{node:q.nodeID==="read"?{...fixtureNode(q.nodeID),status:"failed"}:fixtureNode(q.nodeID),record:q.nodeID==="read"?{error:"File not found: architecture.md"}:null,sources:q.nodeID==="model" && !location.search.includes("missing=1")?[{field:"request",artifact:{bytes:100}},{field:"response",artifact:{bytes:100}}]:[],definitions:null,related:q.nodeID==="child" && location.search.includes("related=1")?relatedRows:[]}})},executionContent:async(q,options)=>{(window.contentRequests ??= []).push(q);if(location.search.includes("pending=1"))await new Promise(resolve=>(window.pendingEvidence ??= []).push({signal:options.signal,resolve}));const text=q.nodeID==="message-row"?"Recorded assistant reply body":'{"test": true}';const bytes=new TextEncoder().encode(text).byteLength;return {data:{available:true,status:"complete",contentVersion:"v1",mediaType:q.nodeID==="message-row"?"text/plain":"application/json",text,offset:0,bytes,totalBytes:bytes,nextOffset:null}}}}}}
     export const useParams=()=>({id:"root"})
     export const useSDK=()=>sdk
     const snapshots=[1,2].map(n=>({sessionID:"root",callID:"call-"+n,nodeID:"model",runID:"root-round",requestNumber:n,roundNumber:1,started:n,modelID:"test-model",providerID:"test-provider",status:"completed",inputTokens:n*100,outputTokens:10,cacheHit:0.5,elapsedMs:1000,retries:0,usage:null,compactedBefore:false,requestAvailable:true,contextLimit:10000}))
-    export const useExecution=()=>({retain() {}, available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
+    export const useExecution=()=>({retain:()=>ownerActive, available:()=>true,advance:()=>0,connected:()=>true,state:{summary},connectionVersion,createContextHistory:(options)=>{window.contextActive=options.active;return {state:{items:snapshots,total:2,latest:snapshots[1],loading:false,error:false},snapshot:()=>snapshots.find(n=>n.callID===options.selected())??snapshots[1],load:async()=>{}}}})
     export const [fixtureTab,setFixtureTab]=createSignal({id:"context",state:{}})
     export const useWorkbenchPanels=()=>({surface:()=>({opened:()=>true,active:()=>"context"}),updateTab:(id,patch)=>{window.recordedTab=patch.state;(window.stateWrites??=[]).push(patch.state);if(window.stateWrites.length>30)throw new Error("Execution state did not settle");setFixtureTab({id,...patch})}})
     export const useNavigateToSession=()=>()=>{}
@@ -486,6 +487,8 @@ test("completed child trajectories expand descendants without recursively offeri
   await nested.press("Enter")
   await page.locator('[data-depth="2"]').getByText("Nested result", { exact: true }).waitFor()
   expect(await page.locator('[data-depth="2"] .execution-expand-task').count()).toBe(0)
+  await page.evaluate("window.legacyCheckpoint()")
+  await page.locator('[data-depth="1"]').getByText("Updated child record", { exact: true }).waitFor({ timeout: 3000 })
   expect(errors).toEqual([])
 })
 

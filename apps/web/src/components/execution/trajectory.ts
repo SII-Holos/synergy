@@ -37,11 +37,14 @@ export function createExecutionTrajectory(input: {
     summary: undefined as ExecutionSummary | undefined,
   })
   const [generation, setGeneration] = createSignal(0)
+  const [recoveryVersion, setRecoveryVersion] = createSignal(0)
   let abort: AbortController | undefined
+  let pending: { key: string; controller: AbortController; promise: Promise<void> } | undefined
   let disposed = false
   let selectionKey = ""
   let wasEnabled = false
   let connection = -1
+  let requiredRevision = -1
   let buffered = new Map<string, ExecutionTrajectoryNode>()
   let removed = new Set<string>()
   const unseen = new Set<string>()
@@ -50,9 +53,30 @@ export function createExecutionTrajectory(input: {
       input.order?.() ?? "time",
       new Map((input.rounds?.() ?? state.summary?.rounds ?? []).map((round, index) => [round.id, index])),
     )
-  const load = async (cursor?: string, anchor?: string, direction?: "next" | "previous", restore = false) => {
+  const load = (cursor?: string, anchor?: string, direction?: "next" | "previous", restore = false): Promise<void> => {
     const sessionID = input.sessionID()
-    if (!sessionID) return
+    if (!sessionID || input.enabled?.() === false) return Promise.resolve()
+    const request = {
+      sessionID,
+      runID: input.runID() || undefined,
+      session: input.actor() && input.actor() !== "all" ? input.actor() : undefined,
+      actor: input.actor() === "all" || (input.query() && !input.actor()) ? "all" : "main",
+      kind: input.kind() || undefined,
+      mode: input.mode?.() ?? "records",
+      kinds: input.kinds?.() || undefined,
+      statuses: input.statuses?.() || undefined,
+      anomalies: input.anomalies?.() ?? false,
+      order: input.order?.() ?? "time",
+      status: input.status() || undefined,
+      query: input.query() || undefined,
+      cursor: direction && state.rows.length ? undefined : cursor,
+      anchor:
+        direction && state.rows.length ? (direction === "previous" ? state.rows[0].id : state.rows.at(-1)!.id) : anchor,
+      position: direction ? (direction === "previous" ? "before" : "after") : undefined,
+      limit: restore ? Math.min(input.capacity?.() ?? 500, Math.max(100, state.rows.length)) : 100,
+    } as const
+    const key = JSON.stringify([input.connectionVersion(), request, direction, restore])
+    if (pending?.key === key && !pending.controller.signal.aborted) return pending.promise
     abort?.abort()
     const controller = new AbortController()
     abort = controller
@@ -63,74 +87,71 @@ export function createExecutionTrajectory(input: {
     removed = new Set()
     if (!direction) unseen.clear()
     setState({ loading: true, error: false })
-    try {
-      const response = await input.sdk.client.session.executionTrajectory(
-        {
-          sessionID,
-          runID: input.runID() || undefined,
-          session: input.actor() && input.actor() !== "all" ? input.actor() : undefined,
-          actor: input.actor() === "all" || (input.query() && !input.actor()) ? "all" : "main",
-          kind: input.kind() || undefined,
-          mode: input.mode?.() ?? "records",
-          kinds: input.kinds?.() || undefined,
-          statuses: input.statuses?.() || undefined,
-          anomalies: input.anomalies?.() ?? false,
-          order: input.order?.() ?? "time",
-          status: input.status() || undefined,
-          query: input.query() || undefined,
-          cursor: direction && state.rows.length ? undefined : cursor,
-          anchor:
-            direction && state.rows.length
-              ? direction === "previous"
-                ? state.rows[0].id
-                : state.rows.at(-1)!.id
-              : anchor,
-          position: direction ? (direction === "previous" ? "before" : "after") : undefined,
-          limit: restore ? Math.min(input.capacity?.() ?? 500, Math.max(100, state.rows.length)) : 100,
-        },
-        { signal: controller.signal, throwOnError: true },
-      )
-      if (disposed || generation() !== version) return
-      const page = response.data
-      const rows = direction
-        ? mergeExecutionWindow(state.rows, page.items, [], {
-            history: direction === "previous",
-            cap: input.capacity?.() ?? 500,
-            compare: compare(),
-          }).rows
-        : page.items
-      // Paging explicitly admits new history rows, unlike live updates.
-      const paged =
-        direction === "previous"
-          ? [...new Map([...page.items, ...state.rows].map((row) => [row.id, row])).values()]
-              .sort(compare())
-              .slice(0, input.capacity?.() ?? 500)
-          : rows
-      const merged = mergeExecutionWindow(paged, [...buffered.values()], [...removed], {
-        history: (restore && reading) || !!page.nextCursor,
-        cap: input.capacity?.() ?? 500,
-        compare: compare(),
-      })
-      setState("rows", reconcile(merged.rows))
-      setState({
-        total: page.total,
-        revision: Math.max(state.revision, page.revision),
-        loading: false,
-        next: direction === "previous" && paged.length < 500 ? state.next : page.nextCursor,
-        previous: direction === "next" && paged.length < 500 ? state.previous : page.previousCursor,
-        history: (restore && reading) || !!page.nextCursor || direction === "previous",
-        pending: direction || restore ? state.pending : 0,
-      })
-    } catch {
-      if (!disposed && generation() === version && !controller.signal.aborted) setState({ loading: false, error: true })
-    } finally {
-      if (!disposed && generation() === version) setState("loading", false)
-    }
+    const promise = Promise.resolve().then(async () => {
+      try {
+        const response = await input.sdk.client.session.executionTrajectory(request, {
+          signal: controller.signal,
+          throwOnError: true,
+        })
+        if (disposed || generation() !== version || controller.signal.aborted || input.enabled?.() === false) return
+        const page = response.data
+        const rows = direction
+          ? mergeExecutionWindow(state.rows, page.items, [], {
+              history: direction === "previous",
+              cap: input.capacity?.() ?? 500,
+              compare: compare(),
+            }).rows
+          : page.items
+        // Paging explicitly admits new history rows, unlike live updates.
+        const paged =
+          direction === "previous"
+            ? [...new Map([...page.items, ...state.rows].map((row) => [row.id, row])).values()]
+                .sort(compare())
+                .slice(0, input.capacity?.() ?? 500)
+            : rows
+        const merged = mergeExecutionWindow(paged, [...buffered.values()], [...removed], {
+          history: (restore && reading) || !!page.nextCursor,
+          cap: input.capacity?.() ?? 500,
+          compare: compare(),
+        })
+        setState("rows", reconcile(merged.rows))
+        setState({
+          total: page.total,
+          revision: Math.max(state.revision, page.revision),
+          loading: false,
+          next: direction === "previous" && paged.length < 500 ? state.next : page.nextCursor,
+          previous: direction === "next" && paged.length < 500 ? state.previous : page.previousCursor,
+          history: (restore && reading) || !!page.nextCursor || direction === "previous",
+          pending: direction || restore ? state.pending : 0,
+        })
+        if (page.revision >= requiredRevision) requiredRevision = -1
+        else
+          queueMicrotask(() => {
+            if (disposed || generation() !== version || input.enabled?.() === false) return
+            void load(
+              undefined,
+              state.history ? state.rows[Math.floor(state.rows.length / 2)]?.id : "latest",
+              undefined,
+              true,
+            )
+          })
+      } catch {
+        if (!disposed && generation() === version && !controller.signal.aborted)
+          setState({ loading: false, error: true })
+      } finally {
+        if (pending?.controller === controller) pending = undefined
+        if (!disposed && generation() === version) setState("loading", false)
+      }
+    })
+    pending = { key, controller, promise }
+    return promise
   }
   const refreshSummary = async () => {
     const sessionID = input.sessionID()
     const runID = input.runID()
-    if (!sessionID) return
+    const controller = abort
+    const version = generation()
+    if (!sessionID || input.enabled?.() === false) return
     if (!runID) {
       setState("summary", undefined)
       return
@@ -138,17 +159,20 @@ export function createExecutionTrajectory(input: {
     try {
       const response = await input.sdk.client.session.executionSummary(
         { sessionID, runID },
-        { signal: abort?.signal, throwOnError: true },
+        { signal: controller?.signal, throwOnError: true },
       )
       if (
         !disposed &&
+        !controller?.signal.aborted &&
+        generation() === version &&
+        input.enabled?.() !== false &&
         input.sessionID() === sessionID &&
         input.runID() === runID &&
         newerExecutionSample(state.summary, response.data, true)
       )
         setState("summary", reconcile(response.data))
     } catch {
-      if (!disposed && !abort?.signal.aborted) setState("error", true)
+      if (!disposed && generation() === version && !controller?.signal.aborted) setState("error", true)
     }
   }
   createEffect(
@@ -172,6 +196,7 @@ export function createExecutionTrajectory(input: {
       () => {
         if (input.enabled?.() === false) {
           wasEnabled = false
+          setGeneration((value) => value + 1)
           abort?.abort()
           setState("loading", false)
           return
@@ -192,6 +217,7 @@ export function createExecutionTrajectory(input: {
         ])
         const restoring = selectionKey === key && state.rows.length > 0
         const connectionChanged = connection !== input.connectionVersion()
+        if (connectionChanged) requiredRevision = -1
         const recover = !wasEnabled || connectionChanged
         wasEnabled = true
         connection = input.connectionVersion()
@@ -209,6 +235,7 @@ export function createExecutionTrajectory(input: {
           return
         }
         selectionKey = key
+        requiredRevision = -1
         setState({ rows: [], revision: -1, next: null, previous: null, summary: undefined, pending: 0, history: false })
         void load(undefined, input.anchor() || (input.query() ? undefined : "latest"))
         void refreshSummary()
@@ -219,14 +246,18 @@ export function createExecutionTrajectory(input: {
     const update = event.properties
     if (input.enabled?.() === false) return
     if (update.sessionID !== input.sessionID() || update.revision <= state.revision) return
-    if (update.previousRevision !== undefined && update.previousRevision > state.revision && !state.loading) {
-      void load(
-        undefined,
-        state.history ? state.rows[Math.floor(state.rows.length / 2)]?.id : "latest",
-        undefined,
-        true,
-      )
-      return
+    if (update.previousRevision !== undefined && update.previousRevision > state.revision) {
+      requiredRevision = Math.max(requiredRevision, update.revision)
+      setRecoveryVersion((value) => value + 1)
+      if (!state.loading) {
+        void load(
+          undefined,
+          state.history ? state.rows[Math.floor(state.rows.length / 2)]?.id : "latest",
+          undefined,
+          true,
+        )
+        return
+      }
     }
     const summary = input.runID() ? update.roundSummaries.find((value) => value.runID === input.runID()) : undefined
     if (summary && newerExecutionSample(state.summary, summary)) setState("summary", reconcile(summary))
@@ -287,5 +318,5 @@ export function createExecutionTrajectory(input: {
     abort?.abort()
     unsubscribe()
   })
-  return { state, load, setHistory: (value: boolean) => setState("history", value), refreshSummary }
+  return { state, load, recoveryVersion, setHistory: (value: boolean) => setState("history", value), refreshSummary }
 }
