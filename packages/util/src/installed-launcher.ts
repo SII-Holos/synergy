@@ -2,6 +2,16 @@ import { z } from "zod"
 
 export const InstallationPin = z.object({ id: z.uuid(), sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 
+export const INSTALLED_WORKER_CONTROL_VERSION = 1
+export const InstalledWorkerReady = z
+  .object({
+    synergyLauncher: z.literal("worker-ready"),
+    version: z.literal(INSTALLED_WORKER_CONTROL_VERSION),
+    runner: z.literal("__plugin-runtime-runner"),
+    pin: InstallationPin,
+  })
+  .strict()
+
 export const CORE_RUNNERS = [
   "storage-worker-runner",
   "owned-process-runner",
@@ -20,6 +30,7 @@ export function installedWorkerEnvironment(env: Record<string, string | undefine
       "SYNERGY_INSTALLATION_ROOT",
       "SYNERGY_INSTALLATION_PIN",
       "SYNERGY_LAUNCHER_COMMAND",
+      "SYNERGY_LAUNCHER_CONTROL_VERSION",
     ].flatMap((key) => (env[key] === undefined ? [] : [[key, env[key]]])),
   )
 }

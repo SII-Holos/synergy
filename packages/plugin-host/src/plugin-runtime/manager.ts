@@ -53,6 +53,8 @@ export interface PluginHostServiceInvocationInput {
 export type PluginHostServiceDispatcher = (input: PluginHostServiceInvocationInput) => Promise<unknown>
 export interface PluginRuntimeManagerDependencies {
   startMemoryMonitor(input: MemoryMonitorInput): MemoryMonitor
+  bootstrapTimeoutMs?: number
+  monotonicNow?(): number
   withInvocation?(
     context: RuntimeInvocationContextData,
     signal: AbortSignal,
@@ -77,7 +79,16 @@ export class PluginRuntimeManager {
   readonly logs = new PluginLogBuffer()
   #invocations = new Map<string, RuntimeInvocationRecord>()
   #startInputs = new Map<string, StartPluginRuntimeInput>()
-  #starting = new Map<string, Promise<PluginRuntimeEntry>>()
+  #starting = new Map<
+    string,
+    {
+      pluginId: string
+      mode: PluginRuntimeEntry["mode"]
+      controller: AbortController
+      promise: Promise<PluginRuntimeEntry>
+    }
+  >()
+  #stopping = new WeakMap<PluginRuntimeEntry, Promise<void>>()
   #lastRecovery:
     | {
         action: "recycle"
@@ -125,21 +136,26 @@ export class PluginRuntimeManager {
   async start(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
     const manifest = input.manifest
     const key = pluginRuntimeKey(manifest.id, manifest.version, manifest.artifacts.generation)
-    const existing = this.registry.get(key)
-    if (existing?.state === "ready") return existing
     const pending = this.#starting.get(key)
-    if (pending) return pending
+    const existing = this.registry.get(key)
+    if (pending?.controller.signal.aborted || (existing?.mode === "process" && this.#stopping.has(existing))) {
+      throw new PluginRuntimeError("PLUGIN_UNAVAILABLE", `Plugin runtime is unavailable: ${manifest.id}`)
+    }
+    if (existing?.state === "ready" && (existing.mode === "inProcess" || !pending)) return existing
+    if (pending) return pending.promise
 
-    const starting = this.#start(input)
+    const controller = new AbortController()
+    const mode = input.mode ?? "process"
+    const starting = { pluginId: manifest.id, mode, controller, promise: this.#start(input, controller.signal) }
     this.#starting.set(key, starting)
     try {
-      return await starting
+      return await starting.promise
     } finally {
       if (this.#starting.get(key) === starting) this.#starting.delete(key)
     }
   }
 
-  async #start(input: StartPluginRuntimeInput): Promise<PluginRuntimeEntry> {
+  async #start(input: StartPluginRuntimeInput, signal: AbortSignal): Promise<PluginRuntimeEntry> {
     const manifest = input.manifest
     const generation = manifest.artifacts.generation
     const key = pluginRuntimeKey(manifest.id, manifest.version, generation)
@@ -162,6 +178,7 @@ export class PluginRuntimeManager {
       .sort()
     const limits = input.limits ?? (await resolvePluginRuntimeLimits())
     const mode = input.mode ?? "process"
+    if (mode === "process") signal.throwIfAborted()
     if (mode === "inProcess" && !input.trustedBuiltin) {
       throw new Error("inProcess runtime is reserved for trusted built-in plugins")
     }
@@ -230,130 +247,197 @@ export class PluginRuntimeManager {
       readyResolve = resolve
       readyReject = reject
     })
-    entry.process = spawnPluginProcess({
-      entryPath: input.entryPath,
-      pluginDir: input.pluginDir,
-      activation: {
-        pluginId: manifest.id,
-        version: manifest.version,
-        generation,
-        hostVersion: Installation.VERSION,
-        protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
-        capabilities: manifest.capabilities.map((item) => item.id),
-        runtimeLimits: limits,
-      },
-      onReady(message) {
-        if (message.protocolVersion !== PLUGIN_RUNTIME_PROTOCOL_VERSION) {
-          readyReject?.(new Error(`Plugin runtime protocol mismatch: ${message.protocolVersion}`))
-          return
-        }
-        if (message.generation !== generation) {
-          readyReject?.(new Error(`Plugin runtime generation mismatch: ${message.generation}`))
-          return
-        }
-        const actual = [...message.handlerIds].sort()
-        if (JSON.stringify(actual) !== JSON.stringify(expectedHandlers)) {
-          readyReject?.(
-            new Error(
-              `Plugin runtime handlers do not match manifest: expected [${expectedHandlers}], received [${actual}]`,
-            ),
-          )
-          return
-        }
-        entry.handlerIds = actual
-        entry.state = "ready"
-        entry.lastHeartbeatAt = Date.now()
-        readyResolve?.()
-      },
-      onHostRequest: async (request) => {
-        const invocation = this.#invocations.get(request.invocationId)
-        if (!invocation || invocation.entry !== entry)
-          throw new Error(`Unknown plugin invocation: ${request.invocationId}`)
-        return this.#hostRequest(invocation, {
-          pluginId: entry.pluginId,
-          pluginDir: invocation.pluginDir,
-          manifest: invocation.manifest,
-          invocation: invocation.context,
-          handlerId: invocation.handlerId,
-          method: request.method,
-          params: request.params,
-          signal: invocation.controller.signal,
-        })
-      },
-      onHeartbeat(message) {
-        entry.lastHeartbeatAt = Date.now()
-        entry.memory = {
-          ...entry.memory,
-          heapUsedBytes: message.memory.heapUsedBytes,
-          heapTotalBytes: message.memory.heapTotalBytes,
-          externalBytes: message.memory.externalBytes,
-          arrayBuffersBytes: message.memory.arrayBuffersBytes,
-        }
-      },
-      onLog: (log) => this.logs.append(entry.pluginId, log),
-      onExit: (exitCode, signal) => {
-        entry.memoryMonitor?.stop()
-        entry.memoryMonitor = undefined
-        if (entry.state === "stopped") return
-        entry.state = "crashed"
-        entry.lastError = `Plugin runtime exited (${exitCode ?? signal ?? "unknown"})`
-        readyReject?.(new Error(entry.lastError))
-      },
-    })
-    const pid = entry.process.process.pid
-    entry.memoryMonitor = this.dependencies.startMemoryMonitor({
-      pluginId: entry.pluginId,
-      pid,
-      maxMb: limits.maxMemoryMb,
-      intervalMs: limits.memorySampleIntervalMs,
-      onSample: (currentMb) => {
-        if (this.registry.get(entry.key) !== entry || entry.process?.process.pid !== pid) return
-        const currentRssBytes = currentMb * 1024 * 1024
-        entry.memory = {
-          ...entry.memory,
-          currentRssBytes,
-          baselineRssBytes:
-            entry.memory?.baselineRssBytes === undefined
-              ? currentRssBytes
-              : Math.min(entry.memory.baselineRssBytes, currentRssBytes),
-          peakRssBytes: Math.max(entry.memory?.peakRssBytes ?? 0, currentRssBytes),
-          sampledAt: Date.now(),
-        }
-      },
-      onExceed: (currentMb) => {
-        if (
-          this.registry.get(entry.key) !== entry ||
-          this.registry.active(entry.pluginId) !== entry ||
-          entry.process?.process.pid !== pid ||
-          entry.state !== "ready" ||
-          entry.memoryRecyclePending
-        )
-          return
-        entry.memoryRecyclePending = true
-        void this.#recycleForMemory(entry, currentMb * 1024 * 1024, limits.shutdownGraceMs)
-      },
-    })
-
-    try {
-      await Promise.race([
-        ready,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`Plugin runtime startup timed out after ${limits.startupTimeoutMs}ms`)),
-            limits.startupTimeoutMs,
-          ),
-        ),
-      ])
-    } catch (error) {
-      entry.state = "crashed"
-      entry.lastError = error instanceof Error ? error.message : String(error)
-      await entry.process.stop(limits.shutdownGraceMs).catch(() => undefined)
-      entry.memoryMonitor?.stop()
-      throw error
+    void ready.catch(() => undefined)
+    const now = this.dependencies.monotonicNow ?? (() => performance.now())
+    const bootstrapTimeoutMs = this.dependencies.bootstrapTimeoutMs ?? 300_000
+    let phase: "bootstrap" | "activation" | undefined
+    let deadline = Infinity
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    let settled = false
+    const timeoutError = () =>
+      new Error(
+        `Plugin runtime ${phase === "bootstrap" ? "bootstrap" : "startup"} timed out after ${phase === "bootstrap" ? bootstrapTimeoutMs : limits.startupTimeoutMs}ms`,
+      )
+    const fail = (error: Error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      if (entry.state !== "stopped") entry.state = "crashed"
+      entry.lastError = error.message
+      readyReject?.(error)
     }
+    const cancelled = () =>
+      fail(signal.reason instanceof Error ? signal.reason : new Error("Plugin runtime stopped during startup"))
+    const checkDeadline = () => {
+      if (settled) return false
+      if (signal.aborted) {
+        cancelled()
+        return false
+      }
+      if (this.registry.get(key) !== entry || entry.state !== "starting") {
+        fail(new Error("Plugin runtime ownership changed during startup"))
+        return false
+      }
+      if (now() >= deadline) {
+        fail(timeoutError())
+        return false
+      }
+      return true
+    }
+    signal.addEventListener("abort", cancelled, { once: true })
+    try {
+      entry.process = spawnPluginProcess({
+        entryPath: input.entryPath,
+        pluginDir: input.pluginDir,
+        activation: {
+          pluginId: manifest.id,
+          version: manifest.version,
+          generation,
+          hostVersion: Installation.VERSION,
+          protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
+          capabilities: manifest.capabilities.map((item) => item.id),
+          runtimeLimits: limits,
+        },
+        onStart(nextPhase) {
+          if (!checkDeadline()) return false
+          phase = nextPhase
+          const duration = phase === "bootstrap" ? bootstrapTimeoutMs : limits.startupTimeoutMs
+          deadline = now() + duration
+          clearTimeout(timeout)
+          timeout = setTimeout(() => fail(timeoutError()), duration)
+          return true
+        },
+        onError: (error) => {
+          if (!settled) fail(error)
+          else if (entry.state === "ready")
+            void this.#stopEntry(entry, limits.shutdownGraceMs, error).catch(() => undefined)
+        },
+        onReady(message) {
+          if (!checkDeadline()) return
+          if (phase !== "activation") {
+            fail(new Error("Plugin runtime ready before activation"))
+            return
+          }
+          if (message.protocolVersion !== PLUGIN_RUNTIME_PROTOCOL_VERSION) {
+            fail(new Error(`Plugin runtime protocol mismatch: ${message.protocolVersion}`))
+            return
+          }
+          if (message.generation !== generation) {
+            fail(new Error(`Plugin runtime generation mismatch: ${message.generation}`))
+            return
+          }
+          if (!Array.isArray(message.handlerIds) || message.handlerIds.some((id) => typeof id !== "string")) {
+            fail(new Error("Plugin runtime handlers do not match manifest"))
+            return
+          }
+          const actual = [...message.handlerIds].sort()
+          if (JSON.stringify(actual) !== JSON.stringify(expectedHandlers)) {
+            fail(
+              new Error(
+                `Plugin runtime handlers do not match manifest: expected [${expectedHandlers}], received [${actual}]`,
+              ),
+            )
+            return
+          }
+          settled = true
+          clearTimeout(timeout)
+          entry.handlerIds = actual
+          entry.state = "ready"
+          entry.lastHeartbeatAt = Date.now()
+          readyResolve?.()
+        },
+        onHostRequest: async (request) => {
+          const invocation = this.#invocations.get(request.invocationId)
+          if (!invocation || invocation.entry !== entry)
+            throw new Error(`Unknown plugin invocation: ${request.invocationId}`)
+          return this.#hostRequest(invocation, {
+            pluginId: entry.pluginId,
+            pluginDir: invocation.pluginDir,
+            manifest: invocation.manifest,
+            invocation: invocation.context,
+            handlerId: invocation.handlerId,
+            method: request.method,
+            params: request.params,
+            signal: invocation.controller.signal,
+          })
+        },
+        onHeartbeat(message) {
+          if (entry.state !== "ready") return
+          entry.lastHeartbeatAt = Date.now()
+          entry.memory = {
+            ...entry.memory,
+            heapUsedBytes: message.memory.heapUsedBytes,
+            heapTotalBytes: message.memory.heapTotalBytes,
+            externalBytes: message.memory.externalBytes,
+            arrayBuffersBytes: message.memory.arrayBuffersBytes,
+          }
+        },
+        onLog: (log) => this.logs.append(entry.pluginId, log),
+        onExit: (exitCode, signal) => {
+          entry.memoryMonitor?.stop()
+          entry.memoryMonitor = undefined
+          if (entry.state === "stopped" || entry.state === "crashed") return
+          const error = new Error(`Plugin runtime exited (${exitCode ?? signal ?? "unknown"})`)
+          if (!settled) fail(error)
+          else {
+            entry.state = "crashed"
+            entry.lastError = error.message
+          }
+        },
+      })
+      const pid = entry.process.process.pid
+      entry.memoryMonitor = this.dependencies.startMemoryMonitor({
+        pluginId: entry.pluginId,
+        pid,
+        maxMb: limits.maxMemoryMb,
+        intervalMs: limits.memorySampleIntervalMs,
+        onSample: (currentMb) => {
+          if (this.registry.get(entry.key) !== entry || entry.process?.process.pid !== pid) return
+          const currentRssBytes = currentMb * 1024 * 1024
+          entry.memory = {
+            ...entry.memory,
+            currentRssBytes,
+            baselineRssBytes:
+              entry.memory?.baselineRssBytes === undefined
+                ? currentRssBytes
+                : Math.min(entry.memory.baselineRssBytes, currentRssBytes),
+            peakRssBytes: Math.max(entry.memory?.peakRssBytes ?? 0, currentRssBytes),
+            sampledAt: Date.now(),
+          }
+        },
+        onExceed: (currentMb) => {
+          if (
+            this.registry.get(entry.key) !== entry ||
+            this.registry.active(entry.pluginId) !== entry ||
+            entry.process?.process.pid !== pid ||
+            entry.state !== "ready" ||
+            entry.memoryRecyclePending
+          )
+            return
+          entry.memoryRecyclePending = true
+          void this.#recycleForMemory(entry, currentMb * 1024 * 1024, limits.shutdownGraceMs)
+        },
+      })
 
-    if (input.activate !== false) await this.activate(key, limits.shutdownGraceMs)
-    return entry
+      await ready
+      signal.throwIfAborted()
+      if (this.registry.get(key) !== entry || entry.state !== "ready")
+        throw new Error("Plugin runtime stopped during startup")
+      if (input.activate !== false) await this.activate(key, limits.shutdownGraceMs)
+      signal.throwIfAborted()
+      return entry
+    } catch (error) {
+      await this.#stopEntry(
+        entry,
+        limits.shutdownGraceMs,
+        error instanceof Error ? error : new Error(String(error)),
+      ).catch(() => undefined)
+      throw error
+    } finally {
+      settled = true
+      clearTimeout(timeout)
+      signal.removeEventListener("abort", cancelled)
+    }
   }
 
   async activate(key: string, graceMs?: number) {
@@ -523,25 +607,58 @@ export class PluginRuntimeManager {
   }
 
   async stop(pluginId: string, graceMs?: number) {
-    const entry = this.registry.active(pluginId)
-    if (entry) await this.#stopEntry(entry, graceMs ?? entry.limits.shutdownGraceMs)
+    const starting = [...this.#starting.values()].filter(
+      (item) => item.pluginId === pluginId && item.mode === "process",
+    )
+    const entries = this.registry
+      .list()
+      .filter(
+        (entry) =>
+          entry.pluginId === pluginId &&
+          (this.registry.active(pluginId) === entry || (entry.mode === "process" && this.#starting.has(entry.key))),
+      )
+    for (const item of starting) item.controller.abort(new Error("Plugin runtime stopped during startup"))
+    await Promise.all(entries.map((entry) => this.#stopEntry(entry, graceMs ?? entry.limits.shutdownGraceMs)))
+    await Promise.allSettled(starting.map((item) => item.promise))
   }
 
   async stopGeneration(key: string, graceMs?: number) {
+    const starting = this.#starting.get(key)
+    if (starting?.mode === "process") starting.controller.abort(new Error("Plugin runtime stopped during startup"))
     const entry = this.registry.get(key)
     if (entry) await this.#stopEntry(entry, graceMs ?? entry.limits.shutdownGraceMs)
+    if (starting?.mode === "process") await starting.promise.catch(() => undefined)
   }
 
-  async #stopEntry(entry: PluginRuntimeEntry, graceMs: number) {
-    if (entry.state === "stopped") return
-    entry.state = "stopped"
-    await pluginAgentCallRuntime().cancelGeneration(entry.pluginId, entry.generation)
-    entry.memoryMonitor?.stop()
-    entry.memoryMonitor = undefined
-    await entry.process?.stop(graceMs)
-    await entry.definition?.deactivate?.()
-    this.registry.delete(entry.key)
-    this.#startInputs.delete(entry.key)
+  async #stopEntry(entry: PluginRuntimeEntry, graceMs: number, failure?: Error) {
+    const existing = this.#stopping.get(entry)
+    if (existing) return existing
+    if (entry.state !== "stopped") entry.state = failure ? "crashed" : "stopped"
+    if (failure) entry.lastError = failure.message
+    if (entry.mode === "process" && this.registry.get(entry.key) === entry)
+      this.#starting.get(entry.key)?.controller.abort(new Error("Plugin runtime stopped during startup"))
+    const stopping = Promise.resolve().then(async () => {
+      try {
+        try {
+          entry.memoryMonitor?.stop()
+        } finally {
+          entry.memoryMonitor = undefined
+        }
+        await pluginAgentCallRuntime().cancelGeneration(entry.pluginId, entry.generation)
+      } finally {
+        try {
+          await entry.process?.stop(graceMs)
+          await entry.definition?.deactivate?.()
+        } finally {
+          if (this.registry.get(entry.key) === entry) {
+            this.registry.delete(entry.key)
+            this.#startInputs.delete(entry.key)
+          }
+        }
+      }
+    })
+    this.#stopping.set(entry, stopping)
+    return stopping
   }
 
   async #recycleForMemory(entry: PluginRuntimeEntry, beforeBytes: number, graceMs: number) {

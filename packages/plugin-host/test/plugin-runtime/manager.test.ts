@@ -453,7 +453,7 @@ describe("PluginRuntimeManager", () => {
     }))
 
   test(
-    "terminates an external runtime on timeout and contains a process crash",
+    "terminates an external runtime on timeout and restarts after a contained process crash",
     () =>
       runtime.run(async () => {
         const manager = new PluginRuntimeManager()
@@ -476,7 +476,7 @@ describe("PluginRuntimeManager", () => {
         ).rejects.toMatchObject({ code: "TIMEOUT" })
         expect(manager.registry.active(manifest.id)).toBeUndefined()
 
-        await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
+        const crashed = await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
         await expect(
           manager.invoke({
             pluginId: manifest.id,
@@ -488,7 +488,27 @@ describe("PluginRuntimeManager", () => {
           }),
         ).rejects.toBeInstanceOf(PluginRuntimeError)
         expect(manager.registry.active(manifest.id)?.state).toBe("crashed")
-        await manager.stop(manifest.id)
+        try {
+          expect(await crashed.process!.process.exited).toBe(9)
+          const restarted = await manager.start({ manifest, pluginDir: path.dirname(entryPath), entryPath })
+          expect(restarted).not.toBe(crashed)
+          expect(restarted.process!.process.pid).not.toBe(crashed.process!.process.pid)
+          expect(restarted.state).toBe("ready")
+          expect(manager.registry.active(manifest.id)).toBe(restarted)
+          expect(manager.registry.list()).toEqual([restarted])
+          expect(
+            await manager.invoke({
+              pluginId: manifest.id,
+              handlerId: "operation:scope.get",
+              value: {},
+              context: { scopeId: "scope-restarted", directory: import.meta.dir, actor: { type: "sdk" } },
+              pluginDir: path.dirname(entryPath),
+              manifest,
+            }),
+          ).toMatchObject({ scopeId: "scope-restarted", activations: 1 })
+        } finally {
+          await manager.stop(manifest.id)
+        }
       }),
     15_000,
   )
