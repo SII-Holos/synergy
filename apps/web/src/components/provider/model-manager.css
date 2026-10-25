@@ -9,7 +9,7 @@
 }
 
 @media (pointer: coarse), (max-width: 767px) {
-  .model-selection-navigation {
+  .model-quick-switcher [data-slot="list-item"] {
     min-height: 44px;
   }
 }

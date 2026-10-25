@@ -123,6 +123,7 @@ const frames = () =>
 
 test("reading the inner process at the outer bottom does not show the conversation latest button", async () => {
   await open()
+  expect(await outer().evaluate((el) => getComputedStyle(el).overscrollBehaviorY)).toBe("none")
   const process = page.getByRole("region", { name: "Process history" })
   const outerTop = await outer().evaluate((el) => el.scrollTop)
   await process.hover()
