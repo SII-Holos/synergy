@@ -3,3 +3,7 @@
   visibility: hidden;
   pointer-events: none;
 }
+
+[data-conversation-viewport] {
+  overscroll-behavior-y: none;
+}
