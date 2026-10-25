@@ -1,5 +1,12 @@
 import z from "zod"
 
+export interface NamedErrorInstance<Name extends string, Data extends z.core.$ZodType> extends NamedError {
+  readonly name: Name
+  readonly data: z.input<Data>
+  schema(): z.ZodObject<{ name: z.ZodLiteral<Name>; data: Data }>
+  toObject(): { name: Name; data: z.input<Data> }
+}
+
 export abstract class NamedError extends Error {
   abstract schema(): z.core.$ZodType
   abstract toObject(): { name: string; data: any }
@@ -30,7 +37,7 @@ export abstract class NamedError extends Error {
         this.name = name
       }
 
-      static isInstance(input: any): input is InstanceType<typeof result> {
+      static isInstance(input: any): input is NamedErrorInstance<Name, Data> {
         return typeof input === "object" && "name" in input && input.name === name
       }
 
