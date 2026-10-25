@@ -1,0 +1,30 @@
+{
+  "version": "3.0.22",
+  "test": "test/script/release/released-upgrade.test.ts",
+  "scenario": "released 3.0.22 preserves history, plugins and assets through upgrade, restart and backup recovery",
+  "release": {
+    "id": 381236619,
+    "url": "https://github.com/SII-Holos/synergy/releases/tag/v3.0.22"
+  },
+  "checksums": {
+    "id": 541147843,
+    "url": "https://github.com/SII-Holos/synergy/releases/download/v3.0.22/Synergy-3.0.22-cli-checksums.txt",
+    "sha256": "dd72c7b7cacbad1d56acc10ea90c95808e0ca856916cd3a5318148d882f525c2"
+  },
+  "assets": {
+    "linux-x64": {
+      "id": 541145993,
+      "name": "synergy-linux-x64.tar.gz",
+      "url": "https://github.com/SII-Holos/synergy/releases/download/v3.0.22/synergy-linux-x64.tar.gz",
+      "size": 218256731,
+      "sha256": "9444a6d0c5484be9c370f0ab9506bcfdd6e1faba700461bbb1df4f0aa178e422"
+    },
+    "darwin-arm64": {
+      "id": 541145791,
+      "name": "synergy-darwin-arm64.zip",
+      "url": "https://github.com/SII-Holos/synergy/releases/download/v3.0.22/synergy-darwin-arm64.zip",
+      "size": 194264505,
+      "sha256": "ef9a9594dfaed998413fc40ef49df52aa0977c2ac205ec4230b66771a2259334"
+    }
+  }
+}

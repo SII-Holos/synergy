@@ -93,6 +93,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
   const processHandle = Bun.spawn({
     cmd: resolvePluginProcessRunnerCommand(options.entryPath),
     cwd: options.pluginDir,
+    env: { ...process.env },
     ipc(message) {
       const parsed = (typeof message === "string" ? JSON.parse(message) : message) as PluginToHost
       if (parsed.type === "ready") options.onReady(parsed)

@@ -155,6 +155,8 @@ Download the latest installer from [GitHub Releases](https://github.com/SII-Holo
 
 Portable artifacts are also published, but they do not configure a system CLI. Windows Desktop and CLI releases currently support x64.
 
+For an existing 3.0.22 installation, follow the [3.1.0 upgrade and recovery guide](docs/migrations/upgrading-to-3.1.0.md) before replacing the distribution.
+
 ### CLI and Web
 
 Install the current release:

@@ -40,10 +40,33 @@ function isReport(value: unknown): value is ParsedReport {
   )
 }
 
+export async function parseJUnit(reports: Uint8Array[]): Promise<ParsedReport[]> {
+  const child = Bun.spawn(["python3", path.join(import.meta.dir, "junit.py")], {
+    stdin: new TextEncoder().encode(
+      JSON.stringify(reports.map((xml, index) => ({ index, xml: Buffer.from(xml).toString("base64") }))),
+    ),
+    stdout: "pipe",
+    stderr: "pipe",
+  })
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  if (code !== 0) throw new Error(`JUnit parser exited ${code}: ${stderr.trim()}`)
+  const parsed: unknown = JSON.parse(stdout)
+  if (!Array.isArray(parsed) || !parsed.every(isReport)) throw new Error("Invalid JUnit parser response")
+  if (parsed.length !== reports.length || new Set(parsed.map((report) => report.index)).size !== reports.length)
+    throw new Error("JUnit parser returned an incomplete report inventory")
+  if (parsed.some((report) => report.index >= reports.length))
+    throw new Error("JUnit parser returned an unknown report")
+  return parsed
+}
+
 export async function verifyScenarios(evidenceRoot: string, plan: Plan, results: TaskResult[]): Promise<string[]> {
   const errors: string[] = []
   const tasks = plan.tasks.filter((task) => plan.selected.includes(task.id) && task.scenarios !== undefined)
-  const reports: Array<{ task: string; path: string; index: number; xml: string }> = []
+  const reports: Array<{ task: string; path: string; xml: Uint8Array }> = []
   for (const task of tasks) {
     if (
       !task.scenarios!.length ||
@@ -65,8 +88,7 @@ export async function verifyScenarios(evidenceRoot: string, plan: Plan, results:
         reports.push({
           task: task.id,
           path: report.path,
-          index: reports.length,
-          xml: Buffer.from(bytes).toString("base64"),
+          xml: bytes,
         })
       } catch (error) {
         errors.push(`Invalid JUnit report for ${task.id}: ${error instanceof Error ? error.message : String(error)}`)
@@ -77,24 +99,9 @@ export async function verifyScenarios(evidenceRoot: string, plan: Plan, results:
   const observed = new Map<string, Array<{ name: string; outcome: string }>>()
   if (reports.length) {
     try {
-      const child = Bun.spawn(["python3", path.join(import.meta.dir, "junit.py")], {
-        stdin: new TextEncoder().encode(JSON.stringify(reports.map(({ index, xml }) => ({ index, xml })))),
-        stdout: "pipe",
-        stderr: "pipe",
-      })
-      const [code, stdout, stderr] = await Promise.all([
-        child.exited,
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-      ])
-      if (code !== 0) throw new Error(`JUnit parser exited ${code}: ${stderr.trim()}`)
-      const parsed: unknown = JSON.parse(stdout)
-      if (!Array.isArray(parsed) || !parsed.every(isReport)) throw new Error("Invalid JUnit parser response")
-      if (parsed.length !== reports.length || new Set(parsed.map((report) => report.index)).size !== reports.length)
-        throw new Error("JUnit parser returned an incomplete report inventory")
+      const parsed = await parseJUnit(reports.map((report) => report.xml))
       for (const entry of parsed) {
-        const report = reports[entry.index]
-        if (!report) throw new Error("JUnit parser returned an unknown report")
+        const report = reports[entry.index]!
         if (entry.error) {
           errors.push(`Malformed JUnit report ${report.path}: ${entry.error}`)
           continue

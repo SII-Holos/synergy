@@ -81,6 +81,8 @@ When changing package resolution, keep package-manager install scripts disabled 
 
 For module upgrades, test old worker pins, minimal selections under a full launcher, existing-home adoption, equal-version local replacements and interrupted API4 activation. Preserve reviewed grants without invoking a second approval path, keep new host-code trust distinct, and verify that component-only installation does not acquire database maintenance. Reused application bytes must come from a verified generation and retain publisher continuity.
 
+Pass the current installation environment explicitly to plugin subprocesses. Test values assigned after process startup through a real child, then invoke an approved plugin after a released-binary upgrade and restart. Source runner tests or a loaded plugin listing do not prove installed-worker activation; preserve the launcher's missing-pin rejection.
+
 Verify sealed installation inventories independently of locale and object-key order, including bundled seeds. Keep manifest digests, file membership, content hashes and symlink targets strict; test an equivalently sealed reordered inventory and an added unlisted file.
 
 Derive first-party upgrade ownership from the preset catalog, including separately selected Desktop-only components. Exercise a newer bundled launcher against an existing selection and require the matching offline seed to upgrade it without registry resolution, while retaining third-party pins and old worker generations. A fresh-install package smoke does not cover that transition.
