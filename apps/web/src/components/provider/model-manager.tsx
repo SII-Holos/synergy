@@ -1,6 +1,5 @@
 import { useLingui } from "@lingui/solid"
 import { createMemo, createSignal, onMount, Show, type Component } from "solid-js"
-import { Button } from "@ericsanchezok/synergy-ui/button"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Tag } from "@ericsanchezok/synergy-ui/tag"
@@ -22,8 +21,6 @@ import "./model-manager.css"
 const freeTag = { id: "model.manager.tag.free", message: "Free" }
 const latestTag = { id: "model.manager.tag.latest", message: "Latest" }
 const commonLabel = { id: "model.manager.common", message: "Common models" }
-const browseLabel = { id: "model.manager.browseAll", message: "Browse all models" }
-const backLabel = { id: "model.manager.backToCommon", message: "Back to common models" }
 const searchModelsPlaceholder = { id: "model.manager.search.placeholder", message: "Search models" }
 const noConnectedLabel = { id: "model.manager.empty.connected", message: "No connected model results" }
 
@@ -84,12 +81,15 @@ export const ModelSelectionList: Component<{
   })
 
   const [query, setQuery] = createSignal("")
-  const [browsing, setBrowsing] = createSignal(false)
   const searching = () => query().length > 0
   const entries = createMemo(() =>
     listModelSelectionEntries(local.model.all(), local.model.quickSwitcher(), local.model.recent(), props.provider),
   )
-  const catalogView = () => browsing() || searching() || entries().common.length === 0
+  const commonKeys = createMemo(() => new Set(entries().common.map(modelSelectionKey)))
+  const models = createMemo(() => [
+    ...entries().common,
+    ...entries().catalog.filter((model) => !commonKeys().has(modelSelectionKey(model))),
+  ])
 
   const { _ } = useLingui()
   const providerLabel = (provider: LocalModel["provider"]) => {
@@ -106,18 +106,25 @@ export const ModelSelectionList: Component<{
         emptyMessage={_(noConnectedLabel)}
         key={modelSelectionKey}
         selectOnTab={false}
-        items={catalogView() ? entries().catalog : entries().common}
+        items={models()}
         current={local.model.current()}
         filterKeys={["provider.name", "provider.id", "name", "id"]}
         groupBy={(model) =>
-          searching() ? "" : catalogView() ? JSON.stringify(["provider", model.provider.id]) : "common"
+          searching()
+            ? ""
+            : commonKeys().has(modelSelectionKey(model))
+              ? "common"
+              : JSON.stringify(["provider", model.provider.id])
         }
         groupLabel={(group) => {
           if (group.category === "common") return _(commonLabel)
           const provider = group.items[0]?.provider
           return provider ? providerLabel(provider) : group.category
         }}
-        sortGroupsBy={sortModelGroups(globalSync.data.provider.profiles)}
+        sortGroupsBy={(left, right) =>
+          Number(right.category === "common") - Number(left.category === "common") ||
+          sortModelGroups(globalSync.data.provider.profiles)(left, right)
+        }
         onSelect={(model) => {
           if (!model) return
           local.model.set({ modelID: model.id, providerID: model.provider.id }, { recent: true })
@@ -128,19 +135,12 @@ export const ModelSelectionList: Component<{
           <ModelManagerRow
             model={model}
             compact
-            providerLabel={!catalogView() || searching() ? providerLabel(model.provider) : undefined}
+            providerLabel={
+              searching() || commonKeys().has(modelSelectionKey(model)) ? providerLabel(model.provider) : undefined
+            }
           />
         )}
       </List>
-      <Show when={!searching() && entries().common.length > 0}>
-        <Button
-          variant="ghost"
-          class="model-selection-navigation mx-3 h-8 shrink-0 justify-start px-3 text-12-medium text-text-weak"
-          onClick={() => setBrowsing((value) => !value)}
-        >
-          {browsing() ? _(backLabel) : _(browseLabel)}
-        </Button>
-      </Show>
     </div>
   )
 }

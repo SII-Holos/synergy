@@ -13513,14 +13513,6 @@ msgid "message-part.untitled"
 msgstr "未命名"
 
 #. js-lingui-explicit-id
-msgid "model.manager.backToCommon"
-msgstr "返回常用模型"
-
-#. js-lingui-explicit-id
-msgid "model.manager.browseAll"
-msgstr "浏览全部模型"
-
-#. js-lingui-explicit-id
 msgid "model.manager.common"
 msgstr "常用模型"
 
