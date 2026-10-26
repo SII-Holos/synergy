@@ -8660,7 +8660,7 @@ msgstr "⟦Session forked⟧"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.forked.desc"
-msgstr "⟦Forked the conversation up to this message.⟧"
+msgstr "⟦Copied the conversation into a new session.⟧"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

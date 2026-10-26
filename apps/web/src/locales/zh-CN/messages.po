@@ -8660,7 +8660,7 @@ msgstr "会话已分叉"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.forked.desc"
-msgstr "已将该消息之前的对话复制到新会话。"
+msgstr "已将对话复制到新会话。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

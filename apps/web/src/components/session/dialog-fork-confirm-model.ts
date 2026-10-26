@@ -24,6 +24,10 @@ export function computeForkCounts(allMessages: { id: string; role: string }[], t
   }
 }
 
+export function forkHistoryIsComplete(input: { hasEarlier: boolean; atLatest: boolean; messageID?: string }) {
+  return !input.hasEarlier && (input.messageID !== undefined || input.atLatest)
+}
+
 export type ForkWorkspaceChoice = {
   id: "main" | "create" | "current"
   kind: "main" | "create" | "worktree" | "workspace" | "none"

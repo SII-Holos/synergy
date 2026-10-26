@@ -26,6 +26,7 @@ import { SubagentSessionFooter } from "@/components/session/subagent-session-foo
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
 import { promptDockBackPath, promptDockBackToParentID } from "@/components/session/prompt-dock-model"
 import { S } from "@/components/session/session-i18n"
+import { forkHistoryIsComplete } from "@/components/session/dialog-fork-confirm-model"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { SessionSubmissionStatus } from "@/components/session/session-submission-status"
 import { optimisticPartSummaries } from "@/components/prompt-input/submission-parts"
@@ -655,7 +656,11 @@ function SessionPageContent() {
           source={source}
           message={target ? { id: target.id, time: target.time } : undefined}
           allMessages={timeline}
-          hasCompleteHistory={!historyMore()}
+          hasCompleteHistory={forkHistoryIsComplete({
+            hasEarlier: historyMore(),
+            atLatest: historyMode() === "latest" && !historyTailMissingLatest(),
+            messageID,
+          })}
           preview={messageID ? forkReplyPreview(dataView().partsFor(messageID)) : undefined}
           loadDirectories={
             localLocations

@@ -3,6 +3,7 @@ import type { ProjectDirectories, SessionWorkspace } from "@ericsanchezok/synerg
 import {
   computeForkCounts,
   copiedSummaryKind,
+  forkHistoryIsComplete,
   forkReplyPreview,
   forkWorkspaceChoices,
 } from "../../../src/components/session/dialog-fork-confirm-model"
@@ -38,6 +39,17 @@ describe("fork confirm counts", () => {
 
   test("counts the entire conversation when no message boundary is selected", () => {
     expect(computeForkCounts([...timeline])).toEqual({ userMessages: 2, assistantReplies: 3 })
+  })
+
+  test("whole-conversation counts require both the beginning and latest end of history", () => {
+    expect(forkHistoryIsComplete({ hasEarlier: false, atLatest: true })).toBe(true)
+    expect(forkHistoryIsComplete({ hasEarlier: true, atLatest: true })).toBe(false)
+    expect(forkHistoryIsComplete({ hasEarlier: false, atLatest: false })).toBe(false)
+  })
+
+  test("a reply boundary can be counted without the later tail but never without the beginning", () => {
+    expect(forkHistoryIsComplete({ hasEarlier: false, atLatest: false, messageID: "a1" })).toBe(true)
+    expect(forkHistoryIsComplete({ hasEarlier: true, atLatest: false, messageID: "a1" })).toBe(false)
   })
 })
 
