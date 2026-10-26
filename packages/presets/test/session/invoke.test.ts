@@ -173,6 +173,7 @@ function installBasicLoopMocks(options?: {
         systemCacheBreakpoint: input.systemCacheBreakpoint,
         lateSystem: input.lateSystem,
         messages: input.messages,
+        messageSources: input.messageSources,
         toolDefinitions: input.toolDefinitions,
       }
     )
@@ -732,6 +733,7 @@ describe("SessionInvoke system prompt assembly", () => {
             systemCacheBreakpoint: input.systemCacheBreakpoint,
             lateSystem: input.lateSystem,
             messages: [{ role: "user", content: "stub message" }],
+            messageSources: input.messageSources?.slice(0, 1),
             toolDefinitions: [],
           }
         })
@@ -1038,6 +1040,7 @@ describe("SessionInvoke context usage provenance", () => {
           systemCacheBreakpoint: input.systemCacheBreakpoint,
           lateSystem: input.lateSystem,
           messages: [{ role: "user", content: "final planned history" }],
+          messageSources: input.messageSources?.slice(0, 1),
           toolDefinitions: input.toolDefinitions,
         }),
         onProcess: async (input) => {

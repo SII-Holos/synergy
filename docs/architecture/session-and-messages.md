@@ -474,7 +474,7 @@ The index is not part of session export or canonical recovery state. Bounded pag
 `MessageV2.projectModelMessages()` projects canonical session history into provider messages and derives category hints from the same emitted branches. `PromptBudgeter.buildPlan()` may transform those messages for the selected provider; before streaming, `SessionInvoke` remaps the hints over the plan's final message array so removed content is not attributed and inserted or rewritten content follows its final role. `MessageV2.toModelMessage()` is the compatibility wrapper for callers that need only the messages.
 
 - messages with `includeInContext = false` are skipped;
-- compacted history is filtered at the compaction boundary;
+- compaction filters only the prefix covered by the committed summary's `compaction.coveredThrough` cursor; cold reads, caches and stream filtering share the same selector, while provider projection places the summary before its unprocessed tail;
 - attachment model policy decides whether an attachment contributes content, summary, provider file data, or nothing;
 - only a bounded number of historical images are retained;
 - tool calls and results are emitted in provider-compatible order;

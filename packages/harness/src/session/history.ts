@@ -13,7 +13,7 @@ import { MessageV2 } from "./message-v2"
 import { PartContent as SessionPartContent } from "./part-content"
 import { SessionProgress } from "./progress"
 import { SessionMessageCache } from "./message-cache"
-import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
+import { selectModelWorkingSet, modelWorkingSetProjection } from "./model-working-set"
 import { SessionManager } from "./manager"
 import { SessionHistoryDisplay } from "./history-display"
 import { SessionHistorySearch } from "./history-search"
@@ -920,7 +920,7 @@ export namespace SessionHistory {
         }))
       )
         return infos
-      return applyModelWorkingSetProjection(
+      return selectModelWorkingSet(
         infos,
         projection,
         (info) => info,
@@ -1041,7 +1041,7 @@ export namespace SessionHistory {
     if (projection) {
       const boundaryParts = await loadParts(projection.boundaryUserID)
       if (boundaryParts.some((part) => part.type === "compaction")) {
-        selected = applyModelWorkingSetProjection(
+        selected = selectModelWorkingSet(
           effective,
           projection,
           (info) => info,

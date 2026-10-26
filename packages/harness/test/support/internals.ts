@@ -1,4 +1,5 @@
 export { SessionProcessor } from "../../src/session/processor"
+export { modelWorkingSetForPrompt } from "../../src/session/model-working-set"
 export { ToolResolver } from "../../src/session/tool-resolver"
 export { LLM } from "../../src/session/llm"
 export { ToolScheduler } from "../../src/session/tool-scheduler"

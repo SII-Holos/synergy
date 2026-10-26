@@ -463,6 +463,7 @@ test("codexFetch retries once with the local body when the backend rejects a rep
       expires: nowSeconds() + 60 * 60,
     })
     const plan = {
+      coveredThrough: { created: 1, messageID: "msg_covered" },
       replacementHistory: [
         { role: "user", content: [{ type: "input_text", text: "retained" }] } as CodexResponseItem,
         { type: "compaction", encrypted_content: "encrypted-blob" } as CodexResponseItem,
@@ -518,6 +519,7 @@ test("codexFetch does not retry a rejected splice on rate-limit or auth response
       expires: nowSeconds() + 60 * 60,
     })
     setReplayPlan("session-replay-429", "cache-replay-429", {
+      coveredThrough: { created: 1, messageID: "msg_covered" },
       replacementHistory: [
         { role: "user", content: [{ type: "input_text", text: "retained" }] } as CodexResponseItem,
         { type: "compaction", encrypted_content: "encrypted-blob" } as CodexResponseItem,

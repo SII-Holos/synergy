@@ -4,11 +4,11 @@ import { Session } from "."
 import { Identifier } from "../id/id"
 import { Provider } from "../provider/provider"
 import { MessageV2 } from "./message-v2"
-import z from "zod"
+import { z } from "zod"
+import { isDeepStrictEqual } from "node:util"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { SessionProcessor } from "./processor"
-import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { SessionManager } from "./manager"
 import { Scope } from "../scope"
 import { Agent } from "../agent/agent"
@@ -40,6 +40,8 @@ import { AgentTurn } from "./agent-turn"
 import { LLM } from "./llm"
 import COMPACTION_PROMPT from "../agent/prompt/compaction/base.txt"
 import { TimeoutConfig } from "../util/timeout-config"
+import { CompactionRegion } from "./compaction-region"
+import { afterCompaction, modelWorkingSetForPrompt } from "./model-working-set"
 
 type CompactionRequest = Pick<
   AgentTurn.Input,
@@ -54,7 +56,7 @@ type CompactionRequest = Pick<
   | "toolDefinitions"
   | "activeToolIDs"
   | "codexReplay"
-> & { prepared?: LLM.PreparedTurn }
+> & { prepared?: LLM.PreparedTurn; messageSources: string[] }
 
 export namespace SessionCompaction {
   const log = Log.create({ service: "session.compaction" })
@@ -73,8 +75,19 @@ export namespace SessionCompaction {
   const OUTPUT_BUDGET = 32_000
   export type Request = CompactionRequest
 
+  function copyModelMessages(messages: ModelMessage[]): ModelMessage[] {
+    return messages.map(
+      (message) =>
+        ({
+          ...message,
+          content: Array.isArray(message.content) ? message.content.map((part) => ({ ...part })) : message.content,
+        }) as ModelMessage,
+    )
+  }
+
   export function captureRequest(
     input: AgentTurn.Input & { prepared: LLM.PreparedTurn },
+    messageSources: string[],
   ): Request & { prepared: LLM.PreparedTurn } {
     return {
       user: input.user,
@@ -84,7 +97,8 @@ export namespace SessionCompaction {
       system: [...input.system],
       systemCacheBreakpoint: input.systemCacheBreakpoint,
       lateSystem: input.lateSystem ? [...input.lateSystem] : undefined,
-      messages: [...input.messages],
+      messages: copyModelMessages(input.messages),
+      messageSources: [...messageSources],
       toolDefinitions: [...input.toolDefinitions],
       activeToolIDs: input.activeToolIDs ? [...input.activeToolIDs] : undefined,
       codexReplay: input.codexReplay,
@@ -132,10 +146,13 @@ export namespace SessionCompaction {
     return texts.some(
       (msg) =>
         msg.includes("context_length_exceeded") ||
+        msg.includes("contextbudgetexceedederror") ||
         msg.includes("context length") ||
         msg.includes("maximum context") ||
-        msg.includes("max_tokens") ||
-        (msg.includes("token") && msg.includes("exceed")) ||
+        (msg.includes("token") &&
+          msg.includes("exceed") &&
+          /context|input|request|prompt/.test(msg) &&
+          !/max_(tokens|completion_tokens|output_tokens)|output token/.test(msg)) ||
         (msg.includes("too long") && msg.includes("context")) ||
         (msg.includes("request too large") && msg.includes("token")) ||
         // Alibaba Model Studio returns this for an over-long prompt; the
@@ -166,180 +183,6 @@ export namespace SessionCompaction {
       return a.summary === true && !!a.finish && a.parentID === rootID ? n + 1 : n
     }, 0)
     return requests > fulfilled
-  }
-
-  const IMAGE_TOKEN_ESTIMATE = 500
-
-  function sanitizeMessagesForEstimation(msgs: ModelMessage[]) {
-    let imageParts = 0
-    const sanitized = msgs.map((msg) => ({
-      ...msg,
-      content: Array.isArray(msg.content)
-        ? msg.content.map((part: any) => {
-            if (part.type === "image") {
-              imageParts++
-              return { ...part, image: "[image]" }
-            }
-            if (part.type === "file") {
-              imageParts++
-              return { ...part, data: "[file data]", mediaType: part.mediaType }
-            }
-            return part
-          })
-        : msg.content,
-    }))
-    return { sanitized, imageParts }
-  }
-
-  /**
-   * Trim a ModelMessage array so the compaction LLM's input stays within its
-   * context window. Keeps the most recent messages (highest signal for
-   * summarization) and inserts a marker for omitted history.
-   */
-  export async function trimMessagesForContext(
-    messages: ModelMessage[],
-    budget: number,
-    modelID?: string,
-  ): Promise<ModelMessage[]> {
-    const estimateJSON = modelID
-      ? (value: unknown) => Token.estimateModelJSONSync(modelID, value)
-      : (value: unknown) => Token.estimateJSON(value)
-    const { sanitized, imageParts } = sanitizeMessagesForEstimation(messages)
-    const estimated = estimateJSON(sanitized) + imageParts * IMAGE_TOKEN_ESTIMATE
-    if (estimated <= budget) return messages
-    const effectiveBudget = Math.max(budget, 0)
-    let used = 0
-    let startIndex = messages.length
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const { sanitized: s, imageParts: ip } = sanitizeMessagesForEstimation([messages[i]])
-      const cost = estimateJSON(s[0]) + ip * IMAGE_TOKEN_ESTIMATE
-      if (used + cost > effectiveBudget) break
-      used += cost
-      startIndex = i
-    }
-    startIndex = Math.min(startIndex, Math.max(0, messages.length - 2))
-    while (messages[startIndex]?.role === "tool") startIndex++
-    if (startIndex === 0) return messages
-    log.info("trimming compaction input", {
-      originalMessages: messages.length,
-      keptMessages: messages.length - startIndex,
-      omittedMessages: startIndex,
-      estimatedTokens: estimated,
-      budget,
-    })
-    const marker: ModelMessage = {
-      role: "system",
-      content:
-        `[Earlier conversation (${startIndex} messages) was omitted to fit the summarization model's context window. ` +
-        `Focus on summarizing the recent messages below.]`,
-    }
-    return [marker, ...messages.slice(startIndex)]
-  }
-
-  /**
-   * Build a deterministic summary from raw messages when LLM compaction fails.
-   * Not as good as an LLM summary, but establishes a compaction boundary and
-   * preserves enough context for the agent to continue working.
-   */
-  function buildMechanicalSummary(messages: MessageV2.WithParts[], sessionID: string): string {
-    const sections: string[] = []
-
-    const recentUsers = messages
-      .filter((m) => m.info.role === "user" && !m.parts.some((p) => MessageV2.isSystemPart(p) && p.type === "text"))
-      .slice(-3)
-      .map((m) => {
-        const text = m.parts
-          .filter((p): p is MessageV2.TextPart => p.type === "text")
-          .map((p) => p.text)
-          .join(" ")
-          .trim()
-        return text.slice(0, 300)
-      })
-      .filter(Boolean)
-    if (recentUsers.length) {
-      sections.push("### Recent user requests\n" + recentUsers.map((t) => `- ${t}`).join("\n"))
-    }
-
-    const files = new Set<string>()
-    for (const msg of messages) {
-      for (const part of msg.parts) {
-        if (part.type === "patch") {
-          for (const file of part.files) {
-            // Filter out temporary/internal files — they add noise to recovery UI
-            const base = file.split("/").pop() ?? file
-            if (base.startsWith(".tmp-") || base.startsWith("._")) continue
-            files.add(file)
-          }
-        }
-      }
-    }
-    if (files.size) {
-      sections.push(
-        "### Files involved\n" +
-          [...files]
-            .slice(0, 30)
-            .map((f) => `- ${f}`)
-            .join("\n"),
-      )
-    }
-
-    const tools = new Set<string>()
-    for (const msg of messages) {
-      for (const part of msg.parts) {
-        if (part.type === "tool") tools.add(part.tool)
-      }
-    }
-    if (tools.size) {
-      sections.push("### Tools used\n" + [...tools].join(", "))
-    }
-
-    sections.push(
-      "### Note\n" +
-        "This is an automatically generated summary because LLM-based compaction could not complete. " +
-        `Use \`session_read\` with session ID \`${sessionID}\` to browse the full conversation history.`,
-    )
-
-    return "## Conversation Summary (Automatic Fallback)\n\n" + sections.join("\n\n")
-  }
-
-  /** Commit the hidden attempt as a complete mechanical summary boundary. */
-  async function writeMechanicalSummary(
-    msg: MessageV2.Assistant,
-    input: { messages: MessageV2.WithParts[]; sessionID: string },
-    abort?: AbortSignal,
-  ): Promise<string> {
-    const summary = buildMechanicalSummary(input.messages, input.sessionID)
-    abort?.throwIfAborted()
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: msg.id,
-      sessionID: input.sessionID,
-      type: "text",
-      text: summary,
-      origin: "system",
-      time: { start: Date.now(), end: Date.now() },
-    })
-    abort?.throwIfAborted()
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: msg.id,
-      sessionID: input.sessionID,
-      type: "compaction_recovery",
-      summary,
-      mechanical: true,
-      validated: false,
-    })
-    abort?.throwIfAborted()
-    setAttemptState(msg, "committed")
-    msg.error = undefined
-    msg.finish = "stop"
-    msg.summary = true
-    msg.visible = true
-    msg.includeInContext = true
-    if (!msg.time.completed) msg.time.completed = Date.now()
-    await Session.updateMessage(msg)
-    log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
-    return summary
   }
 
   /** Pure scan that returns the completed tool parts eligible for pruning. */
@@ -508,6 +351,7 @@ export namespace SessionCompaction {
     msg.error = sanitizeVisibleError(msg.error)
     setAttemptState(msg, "failed")
     msg.summary = undefined
+    msg.compaction = undefined
     msg.visible = true
     msg.includeInContext = false
     msg.finish = "error"
@@ -532,7 +376,7 @@ export namespace SessionCompaction {
     providerID: string,
     profileID: string,
     apiModelID: string,
-  ): { index: number; metadata: CodexRemoteCompactionMetadata } | undefined {
+  ): { metadata: CodexRemoteCompactionMetadata } | undefined {
     for (let index = messages.length - 1; index >= 0; index--) {
       const message = messages[index]
       if (message.info.role !== "assistant") continue
@@ -540,9 +384,14 @@ export namespace SessionCompaction {
       if (!(assistant.summary === true && !!assistant.finish)) continue
       const metadata = extractRemoteCompactionMetadata(assistant.metadata)
       if (!metadata) return undefined
+      if (
+        !assistant.compaction ||
+        CompactionRegion.compareCursor(assistant.compaction.coveredThrough, metadata.coveredThrough) !== 0
+      )
+        return undefined
       if (metadata.providerID !== providerID || metadata.profileID !== profileID || metadata.apiModelID !== apiModelID)
         return undefined
-      return { index, metadata }
+      return { metadata }
     }
     return undefined
   }
@@ -571,7 +420,13 @@ export namespace SessionCompaction {
     const session = await SessionManager.requireSession(input.sessionID)
     input.signal.throwIfAborted()
     const prior = newestSameModelRemoteArtifact(input.messages, input.providerID, input.profileID, input.apiModelID)
-    const base = prior ? input.messages.slice(prior.index + 1) : input.messages
+    const base = prior
+      ? input.messages.filter(
+          (message) =>
+            !(message.info.role === "assistant" && message.info.summary) &&
+            afterCompaction(message.info, prior.metadata.coveredThrough),
+        )
+      : input.messages
     const sessionMessages = MessageV2.copyForTransform(base)
     try {
       await Plugin.trigger(
@@ -621,6 +476,7 @@ export namespace SessionCompaction {
   async function runRemoteCompaction(input: {
     sessionID: string
     rootID: string
+    coveredThrough: CompactionRegion.Cursor
     messages: MessageV2.WithParts[]
     providerID: string
     modelID: string
@@ -726,7 +582,8 @@ export namespace SessionCompaction {
         },
       )
       return {
-        version: 2,
+        version: 3,
+        coveredThrough: input.coveredThrough,
         provider: "openai-responses-compaction",
         implementation: "responses_compaction_v2",
         modelKey: codexModelKey(input.providerID, input.modelID),
@@ -808,6 +665,7 @@ export namespace SessionCompaction {
     return {
       replacementHistory: artifact.metadata.replacementHistory,
       summaryText: artifact.metadata.summaryText,
+      coveredThrough: artifact.metadata.coveredThrough,
     }
   }
 
@@ -859,7 +717,7 @@ export namespace SessionCompaction {
         created: Date.now(),
       },
     }
-    const remoteCancellation = new AbortController()
+    let remoteCancellation = new AbortController()
     let remoteCompactionPromise:
       | Promise<{
           value: Omit<CodexRemoteCompactionMetadata, "summaryText"> | undefined
@@ -894,7 +752,6 @@ export namespace SessionCompaction {
         return input.request ? Promise.race([operation, cancellation.promise]) : operation
       }
       async function finalizeLocal<T>(commit: () => Promise<T>): Promise<T> {
-        if (!input.request) return commit()
         return Storage.transaction(async () => {
           abort.throwIfAborted()
           const committed = await commit()
@@ -908,46 +765,37 @@ export namespace SessionCompaction {
       msg.path = { cwd: directory, root: directory }
       msg = (await Session.updateMessage(msg)) as MessageV2.Assistant
       abort.throwIfAborted()
-      const modelMessages = input.request?.messages ?? (await MessageV2.toModelMessage(input.messages))
       const producingProvider = await awaitLocal(Provider.getProvider(model.providerID))
       if (producingProvider?.profileID) msg.profileID = producingProvider.profileID
       if (model.api.id) msg.apiModelID = model.api.id
-      // Remote work remains optional, but the native operation deadline also
-      // bounds its wait and continuation. A committed summary stays authoritative.
-      remoteCompactionPromise = runRemoteCompaction({
-        sessionID: input.sessionID,
-        rootID: userMessage.rootID ?? input.parentID,
-        messages: input.messages,
-        providerID: userMessage.model.providerID,
-        modelID: userMessage.model.modelID,
-        agentName: userMessage.agent,
-        cancel: remoteCancellation.signal,
-        abort: input.abort,
-      }).then(
-        (value) => ({ value, error: undefined }),
-        (error: unknown) => ({ value: undefined, error }),
-      )
-      const request = input.request
-        ? input.request.prepared
-          ? { ...input.request, prepared: input.request.prepared }
-          : captureRequest(
-              await awaitLocal(
-                AgentTurn.prepare({
-                  ...input.request,
-                  sessionID: input.sessionID,
-                  abort,
-                  toolChoice: "none",
-                }),
-              ),
-            )
-        : undefined
-      abort.throwIfAborted()
-      const processor = SessionProcessor.create({
-        assistantMessage: msg,
-        sessionID: input.sessionID,
+      const external = input.request
+        ? undefined
+        : await MessageV2.projectModelMessages(modelWorkingSetForPrompt(input.messages), {
+            model: {
+              providerID: model.providerID,
+              modelID: model.id,
+              profileID: producingProvider?.profileID,
+              apiModelID: model.api.id,
+            },
+          })
+      const sourceRequest: Request = input.request ?? {
+        user: { ...userMessage, variant: undefined, thinking: undefined },
         model,
-        abort,
-      })
+        agent,
+        system: [],
+        toolDefinitions: [],
+        messages: external!.messages,
+        messageSources: external!.messageSources,
+      }
+      const request = sourceRequest.prepared
+        ? { ...sourceRequest, prepared: sourceRequest.prepared }
+        : captureRequest(
+            await awaitLocal(
+              AgentTurn.prepare({ ...sourceRequest, sessionID: input.sessionID, abort, toolChoice: "none" }),
+            ),
+            sourceRequest.messageSources,
+          )
+      abort.throwIfAborted()
       const compacting = await awaitLocal(
         Plugin.trigger(
           "experimental.session.compacting",
@@ -971,144 +819,247 @@ export namespace SessionCompaction {
       ].join("\n")
       const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
 
-      // Trim the conversation history so it fits within the compaction model's
-      // context window while reserving a bounded summary output and tokenizer
-      // estimation margin. Compaction does not need the model's full long-output
-      // allowance, and requesting it can make the recovery call reject itself.
-      const contextLimit = model.limit?.context ?? 0
-      const fixedEnvelope = request
-        ? await awaitLocal(
-            PromptBudgeter.measure(
-              {
-                system: request.prepared.system,
-                lateSystem: request.lateSystem,
-                messages: [{ role: "user", content: promptText }],
-                toolDefinitions: request.toolDefinitions.filter(
-                  (definition) => !request.activeToolIDs || request.activeToolIDs.includes(definition.id),
-                ),
-              },
-              model.id,
-            ),
-          )
-        : undefined
-      const promptCost = (fixedEnvelope?.total ?? (await awaitLocal(Token.estimateModel(model.id, promptText)))) + 200
+      const encryptedReasoningTokens = PromptBudgeter.reasoningReplayTokens(input.messages)
+      const measure = (messages: ModelMessage[]) =>
+        awaitLocal(
+          PromptBudgeter.measure(
+            {
+              system: request.prepared.system,
+              lateSystem: request.lateSystem,
+              messages,
+              toolDefinitions: request.toolDefinitions.filter(
+                (definition) => !request.activeToolIDs || request.activeToolIDs.includes(definition.id),
+              ),
+            },
+            model.id,
+            { encryptedReasoningTokens },
+          ),
+        )
+      const projection = CompactionRegion.project({
+        messages: request.messages,
+        messageSources: request.messageSources,
+        infos: input.messages.map((message) => message.info),
+        rootID: input.parentID,
+      })
       const configuredOutput = model.limit?.output && model.limit.output > 0 ? model.limit.output : OUTPUT_BUDGET
       const outputBudget = Math.min(configuredOutput, OUTPUT_BUDGET)
-      const margin = PromptBudgeter.outputMargin(contextLimit)
-      const messageBudget = contextLimit > 0 ? contextLimit - promptCost - outputBudget - margin : Infinity
-      const safeMessages = isFinite(messageBudget)
-        ? await awaitLocal(trimMessagesForContext(request?.messages ?? modelMessages, messageBudget, model.id))
-        : (request?.messages ?? modelMessages)
-      const historyCost =
-        request && isFinite(messageBudget)
-          ? await awaitLocal(
-              PromptBudgeter.measure({ system: [], messages: safeMessages, toolDefinitions: [] }, model.id),
-            )
-          : undefined
-      let contextBudgetExceeded = false
-
-      try {
-        abort.throwIfAborted()
-        if (request && (messageBudget <= 0 || (historyCost && historyCost.total > messageBudget)))
-          throw new PromptBudgeter.ContextBudgetExceededError()
-        processing = processor.process({
-          usageRole: "compaction",
-          user: request?.user ?? { ...userMessage, variant: undefined, thinking: undefined },
-          modelSelection: request?.modelSelection,
-          agent,
-          abort,
-          sessionID: input.sessionID,
-          toolDefinitions: request?.toolDefinitions ?? [],
-          activeToolIDs: request?.activeToolIDs,
-          toolChoice: "none",
-          executionTools: {},
-          executorKinds: {},
-          system: request?.system ?? [],
-          systemCacheBreakpoint: request?.systemCacheBreakpoint,
-          lateSystem: request?.lateSystem,
-          prepared: request?.prepared,
-          codexReplay: request?.codexReplay,
-          promptSuffix: request ? promptText : undefined,
-          messages: request
-            ? safeMessages
-            : [
-                ...safeMessages,
-                {
-                  role: "user" as const,
-                  content: [
-                    {
-                      type: "text" as const,
-                      text: promptText,
-                    },
-                  ],
-                },
-              ],
-          maxOutputTokens: outputBudget,
-          model,
-        })
-        void processing.then(
-          () => {
-            processorSettled = true
-          },
-          () => {
-            processorSettled = true
-          },
-        )
-        await awaitLocal(processing)
-      } catch (error) {
-        if (error instanceof PromptBudgeter.ContextBudgetExceededError) {
-          contextBudgetExceeded = true
-          msg.error = MessageV2.fromError(error, { providerID: model.providerID, modelID: model.id })
-        } else {
-          throw error
-        }
-      }
-
-      if (abort.aborted) {
-        await settleFailedAttempt(msg, abort.reason)
-        attemptFailed = true
-        remoteCancellation.abort()
-        return "stop"
-      }
-      abort.throwIfAborted()
-      let usedMechanicalFallback = false
+      const budget = PromptBudgeter.budget(model.limit, { maxOutputTokens: outputBudget })
+      const fixedMessages = projection.fixedIndexes.map((index) => request.messages[index])
+      const fixedCost = await measure([...fixedMessages, { role: "user", content: promptText }])
+      const inputBudget = model.limit?.context
+        ? Math.min(budget.inputEnvelope, model.limit.context - outputBudget - budget.margin)
+        : Infinity
+      const messageBudget = inputBudget - fixedCost.total
+      const messageCosts = await awaitLocal(
+        PromptBudgeter.measureMessageCosts(request.messages, model.id, encryptedReasoningTokens),
+      )
+      const costs = projection.groups.map((group) => group.indexes.reduce((sum, index) => sum + messageCosts[index], 0))
+      let count = CompactionRegion.select(costs, messageBudget)
+      if (!count) throw new PromptBudgeter.ContextBudgetExceededError()
+      const beforeCost = await measure(request.messages)
       let committedSummaryText: string | undefined
-      if (processor.message.error) {
-        if (contextBudgetExceeded || isContextExceeded(processor.message.error)) {
-          log.warn("compaction LLM context exceeded, using mechanical fallback", {
+      for (;;) {
+        abort.throwIfAborted()
+        const selected = projection.groups.slice(0, count)
+        const coveredThrough = selected.at(-1)!.coveredThrough
+        const selectedIDs = new Set(selected.flatMap((group) => group.messageIDs))
+        const indexes = CompactionRegion.indexes(projection, count)
+        const selectedIndexes = new Set(indexes)
+        const safeMessages = copyModelMessages(indexes.map((index) => request.messages[index]))
+        const retained = request.messages.filter((_, index) => !selectedIndexes.has(index))
+        const previousSummary = input.messages.find(
+          (message) =>
+            message.info.role === "assistant" && message.info.summary && message.info.includeInContext !== false,
+        )
+        if (
+          previousSummary?.info.role === "assistant" &&
+          previousSummary.info.compaction &&
+          CompactionRegion.compareCursor(coveredThrough, previousSummary.info.compaction.coveredThrough) <= 0
+        )
+          throw new Error("Compaction cannot advance the covered history")
+        const rangeMessages = input.messages.filter((message) => selectedIDs.has(message.info.id))
+        remoteCompactionPromise = runRemoteCompaction({
+          sessionID: input.sessionID,
+          rootID: userMessage.rootID ?? input.parentID,
+          coveredThrough,
+          messages: rangeMessages,
+          providerID: userMessage.model.providerID,
+          modelID: userMessage.model.modelID,
+          agentName: userMessage.agent,
+          cancel: remoteCancellation.signal,
+          abort,
+        }).then(
+          (value) => ({ value, error: undefined }),
+          (error: unknown) => ({ value: undefined, error }),
+        )
+        const processor = SessionProcessor.create({ assistantMessage: msg, sessionID: input.sessionID, model, abort })
+        processorSettled = false
+        let overflow = false
+        try {
+          const cost = await measure([...safeMessages, { role: "user", content: promptText }])
+          if (cost.total > inputBudget) throw new PromptBudgeter.ContextBudgetExceededError()
+          processing = processor.process({
+            usageRole: "compaction",
+            user: request.user,
+            modelSelection: request.modelSelection,
+            agent,
+            abort,
             sessionID: input.sessionID,
+            toolDefinitions: request.toolDefinitions,
+            activeToolIDs: request.activeToolIDs,
+            toolChoice: "none",
+            executionTools: {},
+            executorKinds: {},
+            system: request.system,
+            systemCacheBreakpoint: request.systemCacheBreakpoint,
+            lateSystem: request.lateSystem,
+            prepared: request.prepared,
+            codexReplay: request.codexReplay,
+            promptSuffix: promptText,
+            messages: safeMessages,
+            maxOutputTokens: outputBudget,
+            model,
           })
-          committedSummaryText = await finalizeLocal(() => writeMechanicalSummary(msg, input, abort))
-          summaryCommitted = true
-          usedMechanicalFallback = true
-        } else {
+          void processing.then(
+            () => {
+              processorSettled = true
+            },
+            () => {
+              processorSettled = true
+            },
+          )
+          await awaitLocal(processing)
+        } catch (error) {
+          if (!(error instanceof PromptBudgeter.ContextBudgetExceededError) && !isContextExceeded(error)) throw error
+          overflow = true
+          msg.error = MessageV2.fromError(error, { providerID: model.providerID, modelID: model.id })
+        }
+        abort.throwIfAborted()
+        if (msg.error) {
+          const smaller = overflow || isContextExceeded(msg.error) ? CompactionRegion.shrink(count) : 0
           await settleFailedAttempt(msg)
           attemptFailed = true
           remoteCancellation.abort()
-          return "stop"
+          const remote = await remoteCompactionPromise
+          if (remote.error) throw remote.error
+          if (!smaller) return "stop"
+          count = smaller
+          remoteCancellation = new AbortController()
+          remoteCompactionPromise = undefined
+          msg = {
+            ...msg,
+            id: Identifier.ascending("message"),
+            error: undefined,
+            finish: undefined,
+            summary: undefined,
+            compaction: undefined,
+            accounting: undefined,
+            contextUsage: undefined,
+            visible: false,
+            includeInContext: false,
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            time: { created: Date.now() },
+            metadata: { compactionAttempt: { state: "running" } },
+          }
+          msg = (await Session.updateMessage(msg)) as MessageV2.Assistant
+          attemptFailed = false
+          continue
         }
-      }
-
-      if (!usedMechanicalFallback) {
         const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
         abort.throwIfAborted()
-        const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
-        const allText = textParts.map((p) => p.text).join("\n")
+        const allText = msgParts
+          .filter((part): part is MessageV2.TextPart => part.type === "text")
+          .map((part) => part.text)
+          .join("\n")
         if (!allText.trim()) {
           setAttemptState(msg, "empty")
           await Session.updateMessage(msg)
-          remoteCancellation.abort()
           return "stop"
         }
-        committedSummaryText = allText
-
-        if (abort.aborted || msgParts.some((part) => part.type === "tool")) {
-          await settleFailedAttempt(msg, abort.reason ?? new Error("Compaction emitted a prohibited tool call"))
+        if (msg.finish !== "stop" || msgParts.some((part) => part.type === "tool")) {
+          await settleFailedAttempt(msg, new Error("Compaction did not complete a text-only summary"))
           attemptFailed = true
-          remoteCancellation.abort()
           return "stop"
         }
+        const summaryInfo: MessageV2.Assistant = {
+          ...msg,
+          summary: true,
+          includeInContext: true,
+          compaction: { coveredThrough },
+        }
+        const summaryProjection = await MessageV2.projectModelMessages([{ info: summaryInfo, parts: msgParts }], {
+          model: {
+            providerID: model.providerID,
+            modelID: model.id,
+            profileID: producingProvider?.profileID,
+            apiModelID: model.api.id,
+          },
+        })
+        const anchor = buildAnchor(input.messages, input.parentID)
+        const continuation: ModelMessage[] = input.auto
+          ? [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Continue if you have next steps" },
+                  { type: "text", text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }) },
+                  ...(anchor ? [{ type: "text" as const, text: anchor }] : []),
+                ],
+              },
+            ]
+          : []
+        const afterCost = await PromptBudgeter.measure(
+          {
+            system: request.prepared.system,
+            lateSystem: request.lateSystem,
+            messages: [...fixedMessages, ...summaryProjection.messages, ...retained, ...continuation],
+            toolDefinitions: request.toolDefinitions.filter(
+              (definition) => !request.activeToolIDs || request.activeToolIDs.includes(definition.id),
+            ),
+          },
+          model.id,
+          {
+            encryptedReasoningTokens: PromptBudgeter.reasoningReplayTokens([
+              ...input.messages,
+              { info: summaryInfo, parts: msgParts },
+            ]),
+          },
+        )
+        if (afterCost.total >= beforeCost.total)
+          throw new Error("Compaction summary did not reduce the prepared context")
         await finalizeLocal(async () => {
+          const inRange = (message: MessageV2.WithParts) =>
+            message.info.id !== input.parentID &&
+            message.info.includeInContext !== false &&
+            (selectedIDs.has(message.info.id) || !afterCompaction(message.info, coveredThrough))
+          const expected = input.messages.filter(inRange)
+          const current = (
+            await SessionHistory.detachedModelMessages({ sessionID: input.sessionID, signal: abort })
+          ).filter(inRange)
+          if (current.length !== expected.length) {
+            throw new Error("Compaction source history changed before commit")
+          }
+          const currentByID = new Map(current.map((message) => [message.info.id, message]))
+          for (const source of expected) {
+            const stored = currentByID.get(source.info.id)
+            if (
+              !stored ||
+              stored.info.time.created !== source.info.time.created ||
+              stored.info.role !== source.info.role ||
+              stored.info.rootID !== source.info.rootID ||
+              (stored.info.role === "assistant" &&
+                source.info.role === "assistant" &&
+                (stored.info.parentID !== source.info.parentID ||
+                  !isDeepStrictEqual(stored.info.compaction, source.info.compaction))) ||
+              !isDeepStrictEqual(
+                JSON.parse(JSON.stringify(stored.parts.map(MessageV2.withoutPrunedOutput))),
+                JSON.parse(JSON.stringify(source.parts.map(MessageV2.withoutPrunedOutput))),
+              )
+            ) {
+              throw new Error("Compaction source history changed before commit")
+            }
+          }
           await Session.updatePart({
             id: Identifier.ascending("part"),
             messageID: msg.id,
@@ -1119,16 +1070,18 @@ export namespace SessionCompaction {
             validated: true,
           })
           abort.throwIfAborted()
-          if (!msg.finish) msg.finish = "stop"
-          if (!msg.time.completed) msg.time.completed = Date.now()
           setAttemptState(msg, "committed")
           msg.summary = true
+          msg.compaction = { coveredThrough }
           msg.visible = true
           msg.includeInContext = true
+          if (!msg.time.completed) msg.time.completed = Date.now()
           await Session.updateMessage(msg)
         })
+        committedSummaryText = allText
+        summaryCommitted = true
+        break
       }
-      summaryCommitted = true
       const remote = await awaitLocal(remoteCompactionPromise)
       abort.throwIfAborted()
       if (remote.error) throw remote.error
@@ -1219,6 +1172,7 @@ export namespace SessionCompaction {
         const restoreFailure = () => {
           msg.error = terminalFailure.error
           msg.summary = undefined
+          msg.compaction = undefined
           msg.visible = true
           msg.includeInContext = false
           msg.finish = "error"

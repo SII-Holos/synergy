@@ -1,6 +1,7 @@
 import { PrimaryAgentIdentity } from "@ericsanchezok/synergy-harness/agent/primary-identity"
 import { afterAll, beforeAll, describe, expect, test, mock, spyOn } from "bun:test"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionProcessor } from "@ericsanchezok/synergy-harness/test/support/internals"
@@ -17,6 +18,7 @@ import { Log } from "@ericsanchezok/synergy-harness/util/log"
 import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { SessionCompaction } from "@ericsanchezok/synergy-harness/test/internal/session/compaction"
+import { modelWorkingSetForPrompt } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { AgentTurn } from "@ericsanchezok/synergy-harness/session/agent-turn"
 import { TimeoutConfig } from "@ericsanchezok/synergy-harness/util/timeout-config"
 import { Embedding } from "@ericsanchezok/synergy-library/vector/embedding"
@@ -171,7 +173,9 @@ function testAssistant(input: {
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
     time: { created: input.created, ...(input.completed !== undefined ? { completed: input.completed } : {}) },
-    ...(input.summary ? { summary: true } : {}),
+    ...(input.summary
+      ? { summary: true, compaction: { coveredThrough: { created: input.created, messageID: input.id } } }
+      : {}),
     ...(input.finish ? { finish: input.finish } : {}),
   }
   return { info, parts: input.parts ?? [] }
@@ -215,7 +219,7 @@ function compactionDeadline() {
 async function runCompactionProcessCase(input: {
   providerID?: string
   replayModelID?: string
-  beforeLocal?: () => Promise<void>
+  beforeLocal?: (request: SessionProcessor.ProcessInput) => Promise<void>
   auto?: boolean
   error?: MessageV2.Assistant["error"]
   text?: string
@@ -226,6 +230,10 @@ async function runCompactionProcessCase(input: {
   abort?: AbortController
   toolOutput?: boolean
   historyText?: string
+  historyChunks?: string[]
+  rounds?: number
+  overflowAttempts?: number
+  finish?: string
   cold?: boolean
   invokeMs?: number
   beforePrepare?: (request: AgentTurn.Input) => Promise<void>
@@ -275,6 +283,7 @@ async function runCompactionProcessCase(input: {
   let processUserVariant: string | undefined
   let processMaxOutputTokens: number | undefined
   let processInput: SessionProcessor.ProcessInput | undefined
+  const processInputs: SessionProcessor.ProcessInput[] = []
 
   try {
     ;(Provider.getModel as any) = mock(async (providerID: string, modelID: string) => ({
@@ -327,9 +336,18 @@ async function runCompactionProcessCase(input: {
         trackExecution: () => {},
         process: mock(async (request: SessionProcessor.ProcessInput) => {
           processInput = request
+          processInputs.push(request)
           processUserVariant = request.user.variant
           processMaxOutputTokens = request.maxOutputTokens
-          await input.beforeLocal?.()
+          await input.beforeLocal?.(request)
+          if (processInputs.length <= (input.overflowAttempts ?? 0)) {
+            processorInput.assistantMessage.error = new MessageV2.APIError({
+              message: "context_length_exceeded",
+              isRetryable: false,
+            }).toObject()
+            await Session.updateMessage(processorInput.assistantMessage)
+            return "stop" as const
+          }
           if (input.thrownError) throw input.thrownError
           if (input.text) {
             const now = Date.now()
@@ -361,7 +379,7 @@ async function runCompactionProcessCase(input: {
             })
           }
           if (input.error) processorInput.assistantMessage.error = input.error
-          else processorInput.assistantMessage.finish = "stop"
+          else processorInput.assistantMessage.finish = input.finish ?? "stop"
           processorInput.assistantMessage.time.completed = Date.now()
           await Session.updateMessage(processorInput.assistantMessage)
           input.onProcessorSettled?.()
@@ -409,39 +427,68 @@ async function runCompactionProcessCase(input: {
             }).info,
           )
         }
+        for (const text of input.historyChunks ?? [
+          "Observed history with implementation details and user constraints. ".repeat(600),
+        ]) {
+          const history = testAssistant({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            parentID: user.id,
+            created: Date.now(),
+          })
+          await originalUpdateMessage(history.info)
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: session.id,
+            messageID: history.info.id,
+            type: "text",
+            text,
+          })
+        }
         const before = await Session.messages({ sessionID: session.id })
         let result: Awaited<ReturnType<typeof SessionCompaction.process>> | undefined
         let thrown: unknown
         input.beforeProcess?.()
         try {
-          result = await SessionCompaction.process({
-            parentID: user.id,
-            messages: before,
-            sessionID: session.id,
-            abort: input.abort?.signal ?? new AbortController().signal,
-            auto: input.auto ?? false,
-            assistantMessageID: input.assistantMessageID,
-            request: input.native
-              ? {
-                  user,
-                  model: await Provider.getModel(user.model.providerID, user.model.modelID),
-                  agent: await Agent.get(user.agent),
-                  system: ["stable system"],
-                  systemCacheBreakpoint: 1,
-                  lateSystem: ["runtime context"],
-                  messages: await MessageV2.toModelMessage(before),
-                  toolDefinitions: [{ id: "fixture_tool", description: "Fixture", inputSchema: { type: "object" } }],
-                  activeToolIDs: ["fixture_tool"],
-                  ...(input.cold ? {} : { prepared }),
-                }
-              : undefined,
-          })
+          for (let round = 0; round < (input.rounds ?? 1); round++) {
+            if (round > 0)
+              await Session.updatePart({
+                id: Identifier.ascending("part"),
+                sessionID: session.id,
+                messageID: user.id,
+                type: "compaction",
+                auto: input.auto ?? false,
+              })
+            const current = round === 0 ? before : await SessionHistory.modelMessages({ sessionID: session.id })
+            result = await SessionCompaction.process({
+              parentID: user.id,
+              messages: current,
+              sessionID: session.id,
+              abort: input.abort?.signal ?? new AbortController().signal,
+              auto: input.auto ?? false,
+              assistantMessageID: input.assistantMessageID,
+              request: input.native
+                ? {
+                    user,
+                    model: await Provider.getModel(user.model.providerID, user.model.modelID),
+                    agent: await Agent.get(user.agent),
+                    system: ["stable system"],
+                    systemCacheBreakpoint: 1,
+                    lateSystem: ["runtime context"],
+                    ...(await MessageV2.projectModelMessages(modelWorkingSetForPrompt(current))),
+                    toolDefinitions: [{ id: "fixture_tool", description: "Fixture", inputSchema: { type: "object" } }],
+                    activeToolIDs: ["fixture_tool"],
+                    ...(input.cold ? {} : { prepared }),
+                  }
+                : undefined,
+            })
+          }
         } catch (error) {
           thrown = error
         }
         await input.afterProcess?.()
         const after = await Session.messages({ sessionID: session.id })
-        const attempt = after.find(
+        const attempt = after.findLast(
           (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
             message.info.role === "assistant" && message.info.mode === "compaction",
         )
@@ -463,6 +510,9 @@ async function runCompactionProcessCase(input: {
             })
           : undefined
         return {
+          workingSet: await SessionHistory.modelMessages({ sessionID: session.id }),
+          processInputs,
+          before,
           replayPlan,
           calls,
           messages: after,
@@ -528,9 +578,10 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
       executorKinds: {},
       activeToolIDs: [],
     }))
-    ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+    ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
       system: ["stub system"],
-      messages: [{ role: "user", content: "stub message" }],
+      messages: input.messages,
+      messageSources: input.messageSources,
       toolDefinitions: [],
     }))
     ;(PromptBudgeter.decide as any) = mock(async () => ({
@@ -650,6 +701,186 @@ async function expectPreflightCompaction(input: { shouldCompact: boolean; contex
 }
 
 describe.serial("SessionInvoke preflight compaction", () => {
+  test("opaque reasoning size cannot remove an early user constraint from compaction input", () =>
+    runtime.run(async () => {
+      const constraint = "Do not edit files until the user approves. "
+      const chunks = [constraint, "Later observations. ", "Recent observations. "].map(
+        (text) => text + "recorded facts ".repeat(800),
+      )
+      for (const size of [32, 300_000]) {
+        const observed = await runCompactionProcessCase({
+          native: true,
+          cold: true,
+          historyChunks: chunks,
+          text: "The user has not approved editing files.",
+          preparedMessages: [
+            { role: "user", content: "Continue this task after compaction." },
+            ...chunks.map((text, index) => ({
+              role: "assistant" as const,
+              content: [
+                ...(index === 0
+                  ? [
+                      {
+                        type: "reasoning" as const,
+                        text: "",
+                        providerOptions: {
+                          openai: { itemId: "rs_opaque", reasoningEncryptedContent: "x".repeat(size) },
+                        },
+                      },
+                    ]
+                  : []),
+                { type: "text" as const, text },
+              ],
+            })),
+          ],
+        })
+        expect(observed.thrown).toBeUndefined()
+        expect(observed.attempt.info.summary).toBe(true)
+        expect(observed.processInputs).toHaveLength(1)
+        expect(JSON.stringify(observed.processInput?.messages)).toContain(constraint)
+        expect(
+          observed.workingSet.some((message) =>
+            message.parts.some((part) => part.type === "text" && part.text === chunks[2]),
+          ),
+        ).toBe(true)
+      }
+    }))
+
+  test("rejects a summary when its source changes before the commit", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({
+        native: true,
+        text: "stale summary",
+        beforeLocal: async (request) => {
+          const history = await Session.messages({ sessionID: request.sessionID })
+          const source = history.find(
+            (message) => message.info.role === "assistant" && message.info.mode !== "compaction",
+          )!
+          const part = source.parts.find((part): part is MessageV2.TextPart => part.type === "text")!
+          await Session.updatePart({ ...part, text: "newly corrected fact" })
+        },
+      })
+      expect(observed.thrown).toMatchObject({ message: "Compaction source history changed before commit" })
+      expect(observed.attempt.info.summary).toBeUndefined()
+      expect(observed.attempt.info.compaction).toBeUndefined()
+      expect(
+        observed.workingSet.some((message) =>
+          message.parts.some((part) => part.type === "text" && part.text === "newly corrected fact"),
+        ),
+      ).toBe(true)
+    }))
+
+  for (const change of ["cursor", "insert"] as const) {
+    test(`rejects a summary when the source interval changes by ${change}`, () =>
+      runtime.run(async () => {
+        const observed = await runCompactionProcessCase({
+          native: true,
+          text: "stale summary",
+          beforeLocal: async (request) => {
+            const history = await Session.messages({ sessionID: request.sessionID })
+            const source = history.find(
+              (message) => message.info.role === "assistant" && message.info.mode !== "compaction",
+            )!
+            const updated = await Session.updateMessage({
+              ...source.info,
+              id: change === "insert" ? Identifier.ascending("message") : source.info.id,
+              time: { created: source.info.time.created - 1 },
+            })
+            if (change === "insert") {
+              await Session.updatePart({
+                id: Identifier.ascending("part"),
+                messageID: updated.id,
+                sessionID: request.sessionID,
+                type: "text",
+                text: "new fact inserted into the candidate interval",
+              })
+            }
+          },
+        })
+        expect(observed.thrown).toMatchObject({ message: "Compaction source history changed before commit" })
+        expect(observed.attempt.info.compaction).toBeUndefined()
+        expect(observed.workingSet.filter((message) => message.info.role === "assistant").length).toBeGreaterThan(0)
+      }))
+  }
+
+  test("provider normalization during a failed candidate cannot mutate the retry snapshot", () =>
+    runtime.run(async () => {
+      let calls = 0
+      const chunks = Array.from({ length: 4 }, (_, i) => `source-${i} ${"evidence ".repeat(4000)}`)
+      const observed = await runCompactionProcessCase({
+        native: true,
+        text: "valid summary",
+        modelLimit: { context: 40_000, output: 2_000 },
+        historyChunks: chunks,
+        overflowAttempts: 1,
+        beforeLocal: async (request) => {
+          const first = request.messages.find((message) => message.role === "assistant")!
+          if (!Array.isArray(first.content)) throw new Error("Expected projected assistant content")
+          const text = first.content.find((part) => part.type === "text")!
+          if (calls++ === 0) text.text = "provider-normalized attempt"
+          else expect(text.text).toBe(chunks[0])
+        },
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(observed.attempt.info.summary).toBe(true)
+      expect(calls).toBe(2)
+    }))
+
+  test("shrinks a provider-overflowing prefix and preserves every unprocessed message", () =>
+    runtime.run(async () => {
+      const chunks = Array.from(
+        { length: 4 },
+        (_, index) => `history-${index}: Do not edit until approved. ${"observed details ".repeat(2400)}`,
+      )
+      const observed = await runCompactionProcessCase({
+        native: true,
+        cold: true,
+        modelLimit: { context: 40_000, output: 2_000 },
+        historyChunks: chunks,
+        overflowAttempts: 1,
+        text: "The user asked for analysis and has not authorized edits.",
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(observed.prepareCalls).toHaveLength(1)
+      expect(observed.processInputs).toHaveLength(2)
+      const [failed, succeeded] = observed.processInputs
+      expect(succeeded.messages.length).toBeLessThan(failed.messages.length)
+      expect(JSON.stringify(succeeded.messages)).toContain("history-0:")
+      expect(observed.attempt.info.summary).toBe(true)
+      const covered = observed.attempt.info.compaction!.coveredThrough
+      for (const message of observed.before.filter((message) => message.info.id !== observed.root.info.id)) {
+        const text = message.parts
+          .filter((part): part is MessageV2.TextPart => part.type === "text")
+          .map((part) => part.text)
+          .join("\n")
+        const wasSummarized = JSON.stringify(succeeded.messages).includes(text)
+        const remaining = observed.workingSet.find((item) => item.info.id === message.info.id)
+        if (wasSummarized) expect(remaining).toBeUndefined()
+        else expect(remaining?.parts).toEqual(message.parts)
+      }
+      expect(observed.before.some((message) => message.info.id === covered.messageID)).toBe(true)
+      expect(
+        observed.messages.filter(
+          (message) => message.info.role === "assistant" && message.info.mode === "compaction" && !message.info.summary,
+        ),
+      ).toHaveLength(1)
+    }))
+
+  test("does not commit a truncated summary or a replacement without compression benefit", () =>
+    runtime.run(async () => {
+      for (const result of [
+        { text: "Truncated summary", finish: "length" },
+        { text: "replacement larger than its source ".repeat(10_000) },
+      ]) {
+        const observed = await runCompactionProcessCase({ native: true, ...result })
+        expect(observed.attempt.info.summary).toBeUndefined()
+        expect(observed.attempt.info.compaction).toBeUndefined()
+        expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+        for (const source of observed.before)
+          expect(observed.workingSet.find((message) => message.info.id === source.info.id)?.parts).toEqual(source.parts)
+      }
+    }))
+
   test("injects a compaction part before main inference when the soft prompt budget is exceeded", () =>
     runtime.run(async () => {
       await expectPreflightCompaction({ shouldCompact: true, contextExceeded: false })
@@ -660,7 +891,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       await expectPreflightCompaction({ shouldCompact: false, contextExceeded: true })
     }))
 
-  test("stops after one hard-overflow compaction when the recovered prompt still cannot fit", () =>
+  test("continues progressive compaction until the recovered prompt fits", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
 
@@ -699,9 +930,10 @@ describe.serial("SessionInvoke preflight compaction", () => {
           executorKinds: {},
           activeToolIDs: [],
         }))
-        ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+        ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
           system: ["stub system"],
-          messages: [{ role: "user", content: "stub message" }],
+          messages: input.messages,
+          messageSources: input.messageSources,
           toolDefinitions: [],
         }))
         ;(PromptBudgeter.decide as any) = mock(async () => {
@@ -718,7 +950,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
             },
             measure: { system: 10, messages: 10, tools: 0, total: 95_000 },
             shouldCompact: false,
-            contextExceeded: true,
+            contextExceeded: decideCount <= 2,
           }
         })
         ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
@@ -729,6 +961,9 @@ describe.serial("SessionInvoke preflight compaction", () => {
           process: mock(async () => {
             if (createInput.assistantMessage.mode !== "compaction") {
               mainProcessCount++
+              createInput.assistantMessage.finish = "stop"
+              createInput.assistantMessage.time.completed = Date.now()
+              await Session.updateMessage(createInput.assistantMessage)
               return "stop" as const
             }
             const now = Date.now()
@@ -754,6 +989,37 @@ describe.serial("SessionInvoke preflight compaction", () => {
           scope: await tmp.scope(),
           fn: async () => {
             const session = await Session.create({})
+            const past = await Session.updateMessage({
+              id: Identifier.ascending("message"),
+              role: "user",
+              sessionID: session.id,
+              agent: PrimaryAgentIdentity.names.general,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              time: { created: Date.now() },
+            })
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              sessionID: session.id,
+              messageID: past.id,
+              type: "text",
+              text: "Earlier task constraints",
+            })
+            for (let index = 0; index < 3; index++) {
+              const history = testAssistant({
+                id: Identifier.ascending("message"),
+                sessionID: session.id,
+                parentID: past.id,
+                created: Date.now(),
+              })
+              await Session.updateMessage(history.info)
+              await Session.updatePart({
+                id: Identifier.ascending("part"),
+                sessionID: session.id,
+                messageID: history.info.id,
+                type: "text",
+                text: `history-${index} ` + "observed implementation details ".repeat(2400),
+              })
+            }
             const user = await Session.updateMessage({
               id: Identifier.ascending("message"),
               role: "user",
@@ -767,7 +1033,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
               messageID: user.id,
               sessionID: session.id,
               type: "text",
-              text: "Recover once, then stop if the prompt still cannot fit.",
+              text: "Compress progressively, then continue the task.",
             })
 
             let thrown: unknown
@@ -783,15 +1049,14 @@ describe.serial("SessionInvoke preflight compaction", () => {
               (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
                 message.info.role === "assistant" && message.info.parentID === user.id && !!message.info.error,
             )
-            expect(root.parts.filter((part) => part.type === "compaction")).toHaveLength(1)
+            expect(root.parts.filter((part) => part.type === "compaction")).toHaveLength(2)
             expect(
               messages.filter((message) => message.info.role === "assistant" && message.info.summary),
-            ).toHaveLength(1)
-            expect(decideCount).toBe(2)
-            expect(mainProcessCount).toBe(0)
-            expect(terminal?.info.error?.name).toBe("UnknownError")
-            expect(JSON.stringify(terminal?.info.error)).toContain("leaves no room for a model response")
-            expect(thrown).toBeInstanceOf(MessageV2.SessionTerminalError)
+            ).toHaveLength(2)
+            expect(decideCount).toBe(4)
+            expect(mainProcessCount).toBe(1)
+            expect(terminal).toBeUndefined()
+            expect(thrown).toBeUndefined()
           },
         })
       } finally {
@@ -845,9 +1110,10 @@ describe.serial("SessionInvoke preflight compaction", () => {
           executorKinds: {},
           activeToolIDs: [],
         }))
-        ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+        ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
           system: ["stub system"],
-          messages: [{ role: "user", content: "stub message" }],
+          messages: input.messages,
+          messageSources: input.messageSources,
           toolDefinitions: [],
         }))
         ;(PromptBudgeter.decide as any) = mock(async () => ({
@@ -959,9 +1225,10 @@ describe.serial("SessionInvoke preflight compaction", () => {
           executorKinds: {},
           activeToolIDs: [],
         }))
-        ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+        ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
           system: ["stub system"],
-          messages: [{ role: "user", content: "stub message" }],
+          messages: input.messages,
+          messageSources: input.messageSources,
           toolDefinitions: [],
         }))
         ;(PromptBudgeter.decide as any) = mock(async () => ({
@@ -1078,9 +1345,10 @@ describe.serial("SessionInvoke preflight compaction", () => {
           executorKinds: {},
           activeToolIDs: [],
         }))
-        ;(PromptBudgeter.buildPlan as any) = mock(async () => ({
+        ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
           system: ["stub system"],
-          messages: [{ role: "user", content: "stub message" }],
+          messages: input.messages,
+          messageSources: input.messageSources,
           toolDefinitions: [],
         }))
         ;(PromptBudgeter.decide as any) = mock(
@@ -1248,8 +1516,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
 
             await SessionInvoke.loop.force(sessionID)
 
-            expect(decideOptions).toHaveLength(1)
-            expect(decideOptions[0]?.calibration).toBeUndefined()
+            expect(decideOptions).toHaveLength(2)
+            expect(decideOptions.every((options) => options?.calibration === undefined)).toBe(true)
             expect(interceptedCompactionParts).toEqual([])
             expect(processCount).toBe(1)
           },
@@ -1569,7 +1837,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       expect(observed.attempt.info.time.completed).toBeNumber()
       expect(observed.attempt.info.summary).toBeUndefined()
       expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "failed" }])
-      expect(observed.messages).toHaveLength(2)
+      expect(observed.messages).toHaveLength(3)
     }))
 
   for (const stage of ["budget", "processor creation"] as const) {
@@ -1592,7 +1860,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         expect(observed.processInput).toBeUndefined()
         expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
         expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "failed" }])
-        expect(observed.messages).toHaveLength(2)
+        expect(observed.messages).toHaveLength(3)
       }))
   }
 
@@ -1633,7 +1901,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
           includeInContext: false,
           metadata: { compactionAttempt: { state: "failed" } },
         })
-        expect(observed.messages).toHaveLength(2)
+        expect(observed.messages).toHaveLength(3)
       }))
   }
 
@@ -1643,7 +1911,10 @@ describe.serial("SessionInvoke preflight compaction", () => {
         native: true,
         cold: true,
         text: "Cold summary",
-        preparedMessages: [{ role: "user", content: "materialized history" }],
+        preparedMessages: [
+          { role: "user", content: "materialized root" },
+          { role: "assistant", content: "materialized history ".repeat(600) },
+        ],
       })
       expect(observed.prepareCalls).toHaveLength(1)
       expect(observed.prepareCalls[0][0]).toMatchObject({
@@ -1651,7 +1922,10 @@ describe.serial("SessionInvoke preflight compaction", () => {
         sessionID: observed.root.info.sessionID,
       })
       expect(observed.processInput?.prepared?.system).toEqual(["stable final system"])
-      expect(observed.processInput?.messages).toEqual([{ role: "user", content: "materialized history" }])
+      expect(observed.processInput?.messages).toEqual([
+        { role: "user", content: "materialized root" },
+        { role: "assistant", content: "materialized history ".repeat(600) },
+      ])
       expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
     }))
 
@@ -1694,7 +1968,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
           expect(observed.attempt.info.summary).toBeUndefined()
           expect(observed.attempt.info.includeInContext).toBe(false)
           expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
-          expect(observed.messages).toHaveLength(2)
+          expect(observed.messages).toHaveLength(3)
           if (stage === "preparation") expect(observed.prepareCalls[0][0].abort.aborted).toBe(true)
         } finally {
           release.resolve()
@@ -1733,7 +2007,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
         })
         expect(observed.attempt.info.summary).toBeUndefined()
         expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
-        expect(observed.messages).toHaveLength(2)
+        expect(observed.messages).toHaveLength(3)
       } finally {
         release.resolve()
       }
@@ -1760,7 +2034,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       expect(observed.result).toBe("stop")
       expect(observed.processInput).toBeUndefined()
       expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
-      expect(observed.messages).toHaveLength(2)
+      expect(observed.messages).toHaveLength(3)
     }))
 
   test("disables the native invoke deadline at zero", () =>
@@ -1792,7 +2066,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
       expect(observed.attempt.info.summary).toBeUndefined()
       expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
-      expect(observed.messages).toHaveLength(2)
+      expect(observed.messages).toHaveLength(3)
     }))
 
   for (const scenario of ["cancelled", "tool output"] as const) {
@@ -1816,7 +2090,7 @@ describe.serial("SessionInvoke preflight compaction", () => {
       }))
   }
 
-  test("uses mechanical recovery without a provider call when retained history cannot fit", () =>
+  test("preserves history when the fixed envelope cannot fit", () =>
     runtime.run(async () => {
       const observed = await runCompactionProcessCase({
         native: true,
@@ -1824,10 +2098,9 @@ describe.serial("SessionInvoke preflight compaction", () => {
         historyText: "oversized recent message ".repeat(10_000),
       })
       expect(observed.processInput).toBeUndefined()
-      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
-      expect(observed.attempt.parts).toEqual(
-        expect.arrayContaining([expect.objectContaining({ type: "compaction_recovery", mechanical: true })]),
-      )
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+      expect(observed.attempt.info.summary).toBeUndefined()
+      expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
     }))
 
   test("bounds compaction output instead of requesting the model long-output maximum", () =>
@@ -1951,33 +2224,90 @@ describe.serial("SessionInvoke preflight compaction", () => {
       ).toBe(false)
     }))
 
-  test("promotes a mechanical fallback to a summary boundary", () =>
+  test("retains history when even the smallest prefix exceeds provider context", () =>
     runtime.run(async () => {
-      const error = new MessageV2.APIError({
-        message: "context_length_exceeded",
-        isRetryable: false,
-      }).toObject()
-
+      const error = new MessageV2.APIError({ message: "context_length_exceeded", isRetryable: false }).toObject()
       const observed = await runCompactionProcessCase({ error })
       expect(observed.result).toBe("stop")
-
-      expect(observed.initialSummary).toBeUndefined()
-      expect(observed.attempt.info.summary).toBe(true)
-      expect(observed.attempt.info.finish).toBe("stop")
-      expect(observed.attempt.info.visible).toBe(true)
-      expect(observed.attempt.info.includeInContext).toBe(true)
-      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
-      expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "running" }, { state: "committed" }])
-      expect(observed.attempt.info.error).toBeUndefined()
-      expect(observed.attempt.parts).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ type: "compaction_recovery", mechanical: true, validated: false }),
-        ]),
-      )
+      expect(observed.attempt.info.summary).toBeUndefined()
+      expect(observed.attempt.info.includeInContext).toBe(false)
+      expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+      expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
     }))
 })
 
 describe("remote compaction rollout", () => {
+  test("cancels an obsolete remote range before attaching a smaller successful candidate", () =>
+    runtime.run(async () => {
+      using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+      const started = Promise.withResolvers<void>()
+      let calls = 0
+      let cancelled = false
+      using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockImplementation(async (request) => {
+        if (++calls === 1) {
+          started.resolve()
+          try {
+            await new Promise<never>((_resolve, reject) => {
+              if (request.signal?.aborted) return reject(request.signal.reason)
+              request.signal?.addEventListener("abort", () => reject(request.signal?.reason), { once: true })
+            })
+          } finally {
+            cancelled = true
+          }
+        }
+        expect(cancelled).toBe(true)
+        return { compactionItem: { type: "compaction", encrypted_content: "smaller-prefix" } }
+      })
+      const observed = await runCompactionProcessCase({
+        providerID: CodexProvider.PROVIDER_ID,
+        native: true,
+        modelLimit: { context: 40_000, output: 2_000 },
+        historyChunks: Array.from({ length: 4 }, (_, index) => `history-${index}: ${"observed details ".repeat(2400)}`),
+        overflowAttempts: 1,
+        beforeLocal: () => started.promise,
+        text: "Valid smaller summary",
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(remote).toHaveBeenCalledTimes(2)
+      expect(remote.mock.calls[1][0].items.length).toBeLessThan(remote.mock.calls[0][0].items.length)
+      expect(observed.calls.map((call) => call.status)).toEqual(["cancelled", "completed"])
+      expect(observed.attempt.info.metadata?.remoteCompaction).toMatchObject({
+        coveredThrough: observed.attempt.info.compaction?.coveredThrough,
+        replacementHistory: expect.arrayContaining([{ type: "compaction", encrypted_content: "smaller-prefix" }]),
+      })
+    }))
+
+  test("chains a remote artifact with retained messages that precede its local summary", () =>
+    runtime.run(async () => {
+      using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
+      using remote = spyOn(CodexProvider, "requestRemoteCompactionV2").mockResolvedValue({
+        compactionItem: { type: "compaction", encrypted_content: "covered-prefix" },
+      })
+      const chunks = Array.from({ length: 4 }, (_, index) => `history-${index}: ${"observed details ".repeat(2400)}`)
+      const observed = await runCompactionProcessCase({
+        providerID: CodexProvider.PROVIDER_ID,
+        native: true,
+        rounds: 2,
+        historyChunks: chunks,
+        text: "Local prefix summary",
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(remote).toHaveBeenCalledTimes(2)
+      const second = JSON.stringify(remote.mock.calls[1][0].items)
+      expect(second).toContain("covered-prefix")
+      expect(second).toContain("history-1:")
+      expect(second).not.toContain("history-2:")
+      expect(second).not.toContain("Continue this task after compaction.")
+      expect(observed.attempt.info.metadata?.remoteCompaction.coveredThrough).toEqual(
+        observed.attempt.info.compaction?.coveredThrough,
+      )
+      expect(
+        observed.workingSet.some((message) =>
+          message.parts.some((part) => part.type === "text" && part.text === chunks[2]),
+        ),
+      ).toBe(true)
+    }))
+
   test("awaits remote evidence and attributes the call to the source root", () =>
     runtime.run(async () => {
       using config = spyOn(Config, "current").mockResolvedValue({ compaction: { codexRemote: true } } as Config.Info)
@@ -2130,7 +2460,7 @@ describe("remote compaction rollout", () => {
           includeInContext: true,
           metadata: { compactionAttempt: { state: "committed" } },
         })
-        expect(observed.messages).toHaveLength(2)
+        expect(observed.messages).toHaveLength(3)
       } finally {
         clearTimeout(rescue)
         release.resolve()
@@ -2176,7 +2506,7 @@ describe("remote compaction rollout", () => {
       })
       expect(observed.attempt.info.error).toBeUndefined()
       expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(true)
-      expect(observed.messages).toHaveLength(2)
+      expect(observed.messages).toHaveLength(3)
     }))
 
   test("keeps a committed local summary when optional remote provider work fails", () =>
@@ -2197,7 +2527,7 @@ describe("remote compaction rollout", () => {
       expect(observed.attempt.info.error).toBeUndefined()
       expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
       expect(observed.attempt.info.metadata?.remoteCompaction).toBeUndefined()
-      expect(observed.messages).toHaveLength(3)
+      expect(observed.messages).toHaveLength(4)
     }))
 
   test("does not downgrade a remote recording failure to optional metadata", () =>

@@ -144,6 +144,7 @@ function installLiveTurnMocks() {
     systemCacheBreakpoint: input.systemCacheBreakpoint,
     lateSystem: input.lateSystem,
     messages: input.messages,
+    messageSources: input.messageSources,
     toolDefinitions: input.toolDefinitions,
   }))
   ;(PromptBudgeter.decide as any) = mock(async () => ({
