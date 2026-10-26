@@ -27,14 +27,21 @@ async function retireFile(filename: string, wrapped: boolean) {
   if (!credentials) throw new Error("Cannot retire credentials from an invalid credential store")
   let changed = false
   for (const [id, value] of Object.entries(credentials)) {
+    const entry = record(value)
+    const pool = Array.isArray(entry?.pool) ? entry.pool.filter((item) => !retired(item)) : undefined
     if (retired(value)) {
-      delete credentials[id]
+      const replacement = pool?.map(record).find((item) => item !== undefined)
+      if (entry && replacement) {
+        for (const key of ["authKind", "tokens", "auth", "expiresAt", "metadata", "source", "updatedAt"]) {
+          delete entry[key]
+          if (key in replacement) entry[key] = replacement[key]
+        }
+        entry.pool = pool
+      } else delete credentials[id]
       changed = true
       continue
     }
-    const entry = record(value)
-    if (!Array.isArray(entry?.pool)) continue
-    const pool = entry.pool.filter((item) => !retired(item))
+    if (!entry || !pool || !Array.isArray(entry.pool)) continue
     if (pool.length === entry.pool.length) continue
     entry.pool = pool
     changed = true

@@ -8,7 +8,7 @@ Personal work does not require a centralized identity. Retiring the identity int
 
 ## Decision
 
-Harness registers separate startup migrations for retired identity credentials and file configuration. Credential cleanup precedes the legacy provider-store conversion, operates on raw records under the provider-store lock, and preserves unrelated fields and pool entries. Changed secret files are atomically published with private permissions. Invalid credential stores fail the migration without being replaced with an empty store.
+Harness registers separate startup migrations for retired identity credentials and file configuration. Credential cleanup precedes the legacy provider-store conversion, operates on raw records under the provider-store lock, and preserves unrelated fields and pool entries. When a retired primary credential has unrelated pool entries, the migration promotes a retained entry without discarding the pool. Changed secret files are atomically published with private permissions. Invalid credential stores fail the migration without being replaced with an empty store.
 
 Configuration retirement removes the former identity domain, its legacy fields and the dependent channel accounts. The central import transform also handles configuration discovered after startup. Saved feature choices are retired explicitly while unknown and unrelated choices remain intact. Exclusive configuration hosts still migrate credentials and leave file configuration pending.
 

@@ -81,6 +81,81 @@ test("retirement removes only retired credentials, including mixed pools and old
   })
 })
 
+test("legacy flat credential stores and their backups retain unrelated authentication", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const retained = {
+      api: { type: "api", key: "fixture-api" },
+      oauth: { type: "oauth", access: "fixture-access", refresh: "fixture-refresh", expires: 9876543210 },
+    }
+    const input = { ...retained, retired: { type: "holos", agentId: "fixture", agentSecret: "fixture-secret" } }
+    for (const file of [Global.Path.authApiKey, `${Global.Path.authApiKey}.bak`])
+      await Bun.write(file, JSON.stringify(input))
+    await runMigration(credentialID)
+    for (const file of [Global.Path.authApiKey, `${Global.Path.authApiKey}.bak`]) {
+      expect(await Bun.file(file).json()).toEqual(retained)
+      expect((await fs.stat(file)).mode & 0o777).toBe(0o600)
+    }
+  })
+})
+
+test("a retired primary credential preserves and promotes unrelated pool credentials", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    const poolEntry = { id: "kept", status: "active", ...retained }
+    const legacyAuth = {
+      type: "oauth",
+      access: "fixture-access",
+      refresh: "fixture-refresh",
+      expires: 9876543210,
+    } satisfies Auth.Info
+    const legacyPool = { id: "legacy-kept", status: "active", auth: legacyAuth, updatedAt: 123 }
+    await Bun.write(
+      Global.Path.authProvider,
+      JSON.stringify({
+        schemaVersion: 2,
+        credentials: {
+          mixed: {
+            providerID: "mixed",
+            ...retired,
+            metadata: { agentSecret: "retired-secret" },
+            pool: [{ id: "retired", ...retired }, poolEntry],
+            future: true,
+          },
+          legacy: {
+            providerID: "legacy",
+            authKind: "holos",
+            auth: { type: "holos", agentSecret: "retired-secret" },
+            updatedAt: 100,
+            pool: [legacyPool],
+          },
+        },
+      }),
+    )
+    await runMigration(credentialID)
+    const data = await Bun.file(Global.Path.authProvider).json()
+    expect(data.credentials.mixed).toEqual({
+      providerID: "mixed",
+      authKind: "api_key",
+      tokens: retained.tokens,
+      updatedAt: 123,
+      pool: [poolEntry],
+      future: true,
+    })
+    expect(data.credentials.legacy).toEqual({
+      providerID: "legacy",
+      auth: legacyAuth,
+      updatedAt: 123,
+      pool: [legacyPool],
+    })
+    expect(await Auth.get("mixed")).toMatchObject({ type: "api", key: "fixture-only-key" })
+    expect(await Auth.get("legacy")).toEqual(legacyAuth)
+    const once = await Bun.file(Global.Path.authProvider).text()
+    await runMigration(credentialID)
+    expect(await Bun.file(Global.Path.authProvider).text()).toBe(once)
+  })
+})
+
 test("retirement preserves unrelated config and comments across global, project, config sets and imports", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
