@@ -291,6 +291,22 @@ test.skipIf(!previous || !candidate)(
       expect(await version(installations.candidate)).toBe(expectedVersion)
       {
         await using upgraded = await start(installations.candidate, "upgraded")
+        const preparationRoute = `/global/storage/upgrade/sessions/${sessionID}`
+        const preparationSchema = z
+          .object({ state: z.enum(["pending", "preparing", "ready", "blocked", "failed"]) })
+          .passthrough()
+        let preparation = preparationSchema.parse(
+          await upgraded.request(`${preparationRoute}/prepare`, undefined, "POST"),
+        )
+        const preparationDeadline = Date.now() + 120000
+        while (preparation.state !== "ready") {
+          if (preparation.state === "blocked" || preparation.state === "failed")
+            throw new Error(`Historical Session preparation failed: ${JSON.stringify(preparation)}`)
+          if (Date.now() >= preparationDeadline)
+            throw new Error(`Historical Session preparation did not become ready: ${JSON.stringify(preparation)}`)
+          await Bun.sleep(100)
+          preparation = preparationSchema.parse(await upgraded.request(preparationRoute))
+        }
         const messages = z.array(messageSchema).parse(await upgraded.request(`/session/${sessionID}/message?raw=true`))
         expect(messages.map((message) => message.info.id)).toEqual(before.map((message) => message.info.id))
         expect(

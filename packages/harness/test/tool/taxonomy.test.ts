@@ -55,11 +55,12 @@ describe("tool taxonomy", () => {
     })
   })
 
-  test("classifies Clarus result submission as stateful external collaboration", () => {
-    const entry = ToolTaxonomy.classify("clarus_submit_task_result")
+  test("keeps current collaboration tools classified and retired tools generic", () => {
+    const entry = ToolTaxonomy.classify("github_deliver_fix")
 
     expect(entry.kind).toBe("platform.collaboration")
     expect(entry.traits).toEqual({ stateful: true, externalIO: true })
+    expect(ToolTaxonomy.classify("clarus_submit_task_result").kind).toBe("platform.external")
   })
 
   test("labels collaboration tools without a retired product name", () => {

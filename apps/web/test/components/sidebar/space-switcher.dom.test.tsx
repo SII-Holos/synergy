@@ -2,18 +2,16 @@ import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solid from "vite-plugin-solid"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
-let server: ViteDevServer
+let server: BrowserFixture
 let directory: string
 let url: string
 const source = path.resolve(import.meta.dir, "../../../src")
 
 beforeAll(async () => {
-  directory = await mkdtemp(path.join(import.meta.dir, ".space-switcher-"))
+  directory = await mkdtemp(path.resolve(source, "../node_modules/.space-switcher-"))
   await Bun.write(
     path.join(directory, "index.html"),
     '<div id="root"></div><script type="module" src="/main.tsx"></script>',
@@ -37,24 +35,11 @@ beforeAll(async () => {
     </div></I18nProvider>, document.getElementById("root"))
   `,
   )
-  server = await createServer({
+  server = await createBrowserFixture({
     root: directory,
-    cacheDir: path.join(directory, "vite-cache"),
-    configFile: false,
-    plugins: [solid()],
-    resolve: { alias: { "@": source }, conditions: ["browser", "development"] },
-    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
-    server: {
-      watch: null,
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      strictPort: true,
-      fs: { allow: [path.resolve(source, "../../..")] },
-    },
+    aliases: [{ find: "@", replacement: source }],
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
-  url = server.resolvedUrls!.local[0]
+  url = server.url
   browser = await chromium.launch({ headless: true })
 }, 30_000)
 
