@@ -57,13 +57,11 @@ beforeAll(async () => {
       definition.load = () => { window.fixture.loads++; return load() }
     }
     import { LocaleProvider } from ${JSON.stringify(`/@fs/${source}/context/locale/index.ts`)}
-    import { NewSessionGreeting } from ${JSON.stringify(`/@fs/${source}/components/session/session-new-view.tsx`)}
+    import { NewSessionGreeting, SessionEmptyView } from ${JSON.stringify(`/@fs/${source}/components/session/session-new-view.tsx`)}
     function App() {
-      return <div class="session-workbench-pane" style="height:100dvh"><div class="session-empty-view" data-interactive>
-        <div class="session-welcome-region">
+      return <div class="session-workbench-pane" style="height:100dvh"><SessionEmptyView interactive greeting={
           <NewSessionGreeting disabled={false} onProject={() => { window.fixture.projects++ }} onFiles={() => { window.fixture.files++ }} />
-        </div>
-      </div></div>
+      } /></div>
     }
     render(() => <LocaleProvider><ThemeProvider><DialogProvider><App /></DialogProvider></ThemeProvider></LocaleProvider>, document.getElementById("root"))
     `,

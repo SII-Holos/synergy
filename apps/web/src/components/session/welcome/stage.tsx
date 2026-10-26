@@ -36,7 +36,6 @@ export function WelcomeStage(props: {
   const [visible, setVisible] = createSignal(document.visibilityState !== "hidden")
   const [intersecting, setIntersecting] = createSignal(true)
   const [covered, setCovered] = createSignal(false)
-  const [resting, setResting] = createSignal(0)
   const [scene, { refetch }] = createResource(
     () => props.definition,
     (definition) => definition.load(),
@@ -47,12 +46,6 @@ export function WelcomeStage(props: {
   const gameActive = () => !paused() && visible() && intersecting() && !covered() && !props.blocked
   createEffect(() => {
     if (reducedMotion()) setPaused(true)
-  })
-  createEffect(() => {
-    const height = resting()
-    if (!root) return
-    if (covered() && height > 0) root.style.minHeight = `${height}px`
-    else root.style.removeProperty("min-height")
   })
   onMount(() => {
     const visibility = () => setVisible(document.visibilityState !== "hidden")
@@ -88,16 +81,11 @@ export function WelcomeStage(props: {
         attributeFilter: ["data-expanded", "data-resized", "data-motion"],
       })
     measureCovered()
-    const resize = new ResizeObserver(() => {
-      if (!covered()) setResting(root.clientHeight)
-    })
-    resize.observe(root)
     onCleanup(() => {
       document.removeEventListener("visibilitychange", visibility)
       observer.disconnect()
       visualChanges.disconnect()
       mutation.disconnect()
-      resize.disconnect()
     })
   })
   return (

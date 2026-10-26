@@ -1,6 +1,7 @@
 # Decision Record: Keep the welcome playfield at its resting size under a covering Composer
 
 Status: implemented
+Archived: 2026-10-26
 
 ## Problem
 
