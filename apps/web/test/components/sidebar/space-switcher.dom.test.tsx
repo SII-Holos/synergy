@@ -39,10 +39,13 @@ beforeAll(async () => {
   )
   server = await createServer({
     root: directory,
+    cacheDir: path.join(directory, "vite-cache"),
     configFile: false,
     plugins: [solid()],
     resolve: { alias: { "@": source }, conditions: ["browser", "development"] },
+    optimizeDeps: { noDiscovery: true, include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"] },
     server: {
+      watch: null,
       host: "127.0.0.1",
       port: await fixturePort(),
       strictPort: true,
@@ -50,6 +53,7 @@ beforeAll(async () => {
     },
   })
   await server.listen()
+  await server.warmupRequest("/main.tsx")
   url = server.resolvedUrls!.local[0]
   browser = await chromium.launch({ headless: true })
 }, 30_000)
