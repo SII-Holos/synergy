@@ -140,6 +140,14 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         ),
       ]
     case "desktop":
+      if (task.variant === "mac-signing")
+        return [
+          test(
+            "macos-signing",
+            task.files!.map((file) => path.relative("apps/desktop", file)),
+            "apps/desktop",
+          ),
+        ]
       return [
         bun("desktop-build", ["run", "--cwd", "apps/desktop", "desktop:build"]),
         bun("desktop-package", ["x", "electron-builder", "--dir", "--publish=never"], "apps/desktop", {
@@ -311,6 +319,21 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         ),
       ]
     case "artifacts": {
+      if (task.variant === "released-upgrade") {
+        const { candidateVersion } = await import("../release/verify-released-upgrade")
+        const candidate = path.join(root, "packages/presets/dist/synergy-linux-x64")
+        return [
+          bun("released-upgrade", [
+            "script/release/verify-released-upgrade.ts",
+            "--candidate",
+            candidate,
+            "--version",
+            await candidateVersion(candidate),
+            "--junit",
+            path.join(root, OUTPUT, "raw", task.id, "upgrade.xml"),
+          ]),
+        ]
+      }
       const owner = task.profile === "core" ? "cli" : "presets"
       const scenarioPrefix = "installed runtime artifact preserves "
       const scenarios = task.scenarios?.map((name) =>

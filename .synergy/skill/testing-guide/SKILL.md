@@ -49,6 +49,8 @@ When migration ownership moves, update historical fixtures to execute the migrat
 
 Read [the domain guidance](references/test-design.md#choose-the-lowest-useful-level) when this area is affected.
 
+For published declaration failures, emit the owning module and compile a separate consumer against that output. Verify both successful and failed narrowing plus preserved payload or serialization types; importing source directly cannot establish declaration correctness. See the [error declaration regression](../../../packages/util/test/error-declarations.test.ts).
+
 ## Use Real Isolation
 
 Read [the domain guidance](references/isolation.md#use-real-isolation) when this area is affected.

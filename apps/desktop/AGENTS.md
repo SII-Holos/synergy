@@ -31,4 +31,8 @@ For keep-awake changes, run `bun test test/power-save.test.ts` and verify in an 
 
 Packaging consumes the shared release `runtime-layout.cjs` contract and copies the sealed module seed as a unit. Preserve its complete inventory and reject unlisted payloads before copying.
 
+Sign children, reseal both inventories, then sign the app; never mutate afterward. Preserve notarization. Run `bun test test/mac-signing.test.ts test/runtime-seal.test.ts test/packaging.test.ts` on macOS. See the [decision](../../docs/decisions/implemented/bug-fix/2026-10-25-seal-runtime-between-child-and-app-signatures.md).
+
+Keep `test/fixture/branding.js.txt` unchanged. Reassess the detector override when osx-sign upgrades.
+
 Portable application receipts bind release version, artifact hash, executable and actual native signing identity. Publish the application package only after all supported targets have receipts and their uploaded bytes match.

@@ -163,7 +163,7 @@ test("independent browser suite selection retains its executable prerequisites",
 test("required plans and installation diagnostics retain every control within the Linux worker budget", async () => {
   const entries = await catalog()
   const controls = entries.filter((entry) => entry.kind === "artifacts")
-  expect(controls).toHaveLength(9)
+  expect(controls).toHaveLength(10)
   expect(LIMITS.linux).toBe(12)
   const workspaces = [
     { name: "local-runtime", directory: "packages/local-runtime", dependencies: [], testDependencies: [] },
@@ -216,7 +216,7 @@ test("required plans and installation diagnostics retain every control within th
 
 test("installed controls share two profile builds while preserving every distribution behavior exactly once", async () => {
   const entries = await catalog()
-  const controls = entries.filter((entry) => entry.kind === "artifacts")
+  const controls = entries.filter((entry) => entry.kind === "artifacts" && entry.variant !== "released-upgrade")
   const root = path.resolve(import.meta.dir, "../..")
   const selected = createPlan({
     base: "base",

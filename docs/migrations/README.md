@@ -2,6 +2,8 @@
 
 This directory documents host-data migrations and explicit clean breaks that still affect Synergy users. It is not the source of truth for current plugin authoring.
 
+- [Upgrading from 3.0.22 to 3.1.0](upgrading-to-3.1.0.md) — complete-distribution upgrade, stopped-Home backup, behavioral verification and recovery.
+
 - [Managed SDK startup](2026-09-25-managed-sdk-startup.md) — explicit executable, version, home, component selection and owned-process lifecycle.
 
 - [Plugin API 4](plugin-api-4.md) — explains the API 4 runtime, approval, contribution-health, trusted UI, and package-export clean break.

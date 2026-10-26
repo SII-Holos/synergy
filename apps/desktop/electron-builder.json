@@ -47,6 +47,7 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "hardenedRuntime": true,
+    "sign": "script/mac-sign.cjs",
     "icon": "build/icon.png",
     "target": [
       {
