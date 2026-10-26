@@ -1300,7 +1300,10 @@ async function start() {
   if (dockIconPath) app.dock?.setIcon(dockIconPath)
 
   const channel = desktopChannel(app.isPackaged)
-  installSessionSecurity()
+  installSessionSecurity(
+    () => mainWindow?.webContents,
+    () => currentAppURL,
+  )
   installAppMenu({
     channel,
     debug: isDebugEnabled(channel),

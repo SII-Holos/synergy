@@ -7,9 +7,12 @@ const { enforceProductionLoading, installSessionSecurity, installWindowSecurity,
   await import("../src/security.js")
 
 describe("desktop session security", () => {
-  test("denies every renderer permission request except microphone-only media", () => {
+  test("keeps media and device permissions restricted", () => {
     electronMockState.permissionRequestHandlers = []
-    installSessionSecurity()
+    installSessionSecurity(
+      () => undefined,
+      () => null,
+    )
     expect(electronMockState.permissionRequestHandlers).toHaveLength(1)
 
     const handler = electronMockState.permissionRequestHandlers[0]! as (
@@ -28,6 +31,58 @@ describe("desktop session security", () => {
     request("media")
     request("geolocation")
     expect(decisions).toEqual([true, false, false, false, false])
+  })
+
+  test("allows fullscreen only for the current trusted app main frame", () => {
+    electronMockState.permissionRequestHandlers = []
+    let url = "http://127.0.0.1:8765/session"
+    let appURL: string | null = "http://127.0.0.1:8765"
+    let destroyed = false
+    const contents = { getURL: () => url, isDestroyed: () => destroyed }
+    let current: typeof contents | undefined = contents
+    installSessionSecurity(
+      () => current as never,
+      () => appURL,
+    )
+    const handler = electronMockState.permissionRequestHandlers[0]! as (
+      webContents: unknown,
+      permission: string,
+      callback: (granted: boolean) => void,
+      details: { requestingUrl: string; isMainFrame: boolean },
+    ) => void
+    const request = (sender: unknown = contents, requestingUrl = url, isMainFrame = true) => {
+      let granted = false
+      handler(
+        sender,
+        "fullscreen",
+        (value) => {
+          granted = value
+        },
+        { requestingUrl, isMainFrame },
+      )
+      return granted
+    }
+    expect(request()).toBe(true)
+    expect(request(contents, url, false)).toBe(false)
+    expect(request({ ...contents })).toBe(false)
+    expect(request(null)).toBe(false)
+    expect(request(contents, "https://other.example/page")).toBe(false)
+    expect(request(contents, "http://127.0.0.1:8766/session")).toBe(false)
+    expect(request(contents, "http://127.0.0.1:8765/previous-document")).toBe(false)
+    expect(request(contents, "not a URL")).toBe(false)
+    current = undefined
+    expect(request()).toBe(false)
+    current = contents
+    destroyed = true
+    expect(request()).toBe(false)
+    destroyed = false
+    appURL = null
+    expect(request()).toBe(false)
+    appURL = "http://127.0.0.1:8765"
+    url = "https://other.example/page"
+    expect(request()).toBe(false)
+    url = "data:text/html,recovery"
+    expect(request()).toBe(false)
   })
 
   test("opens only http, https, and mailto URLs externally", async () => {

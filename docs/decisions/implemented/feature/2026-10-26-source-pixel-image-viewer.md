@@ -20,6 +20,8 @@ Source navigation shares that operation lifetime, including cancellation before 
 
 Keyboard context-menu keys use the same Kobalte menu and return focus to their invoking image control. Gallery navigation reveals the selected thumbnail without moving focus out of the image stage.
 
+Desktop grants HTML fullscreen only to the current application window's main frame, with the requesting URL matched against that window and the trusted app origin. Subframes, other windows, recovery documents and other permissions retain their existing restrictions. A minimal Electron 44.9.0 probe reproduced a pending fullscreen promise under the previous blanket denial; the fix stays at the session permission owner rather than introducing a second fullscreen implementation. The request identity fields follow Electron's [PermissionRequest contract](https://www.electronjs.org/docs/latest/api/structures/permission-request).
+
 ## Alternatives considered
 
 **Keep fit-relative percentages.** Rejected because 100% would still conceal source pixels and mean different things in differently sized surfaces.
