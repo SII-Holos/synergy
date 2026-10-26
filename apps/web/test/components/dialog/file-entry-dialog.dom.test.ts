@@ -25,7 +25,7 @@ beforeAll(async () => {
       async createDirectory(path){h.calls.push({kind:"createDirectory",path})},
       async move(input){h.calls.push({kind:"move",...input}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
       async copy(input){h.calls.push({kind:"copy",...input})},
-      async remove(input){h.calls.push({kind:"remove",...input})},
+      async remove(input){h.calls.push({kind:"remove",...input}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
     }
 
   `,
@@ -41,7 +41,7 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
-    import {FileEntryDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
+    import {FileDeleteDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
     import {FileCloseDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/close-dialog.tsx`)}
     import {actions} from "./stubs"
     import {MetaProvider} from "@solidjs/meta"
@@ -65,8 +65,8 @@ beforeAll(async () => {
         window.fixture.closeResults.push(choice)
       }
       return <>
-        <button id="open" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} operation="move" dirty={true}/>)}>Open</button>
-        <button id="create" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace"/>)}>Create entry</button>
+        <button id="open" onClick={()=>dialog.show(()=><FileDeleteDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} dirty={true}/>)}>Open</button>
+        <button id="create" onClick={()=>dialog.show(()=><FileDeleteDialog actions={actions} workspacePath="/workspace" node={{path:"unknown.txt",type:"file",name:"unknown.txt"}}/>)}>Unavailable entry</button>
         <button id="leave" onClick={leave}>Leave file</button>
       </>
     }
@@ -103,30 +103,21 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-async function open() {
-  errors.length = 0
+test("delete retains the captured entry version and errors until success", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByRole("button", { name: "/first", exact: true }).waitFor()
-  expect(errors).toEqual([])
-}
-
-test("entry actions retain captured versions, errors and entered paths until success", async () => {
-  await page.goto(base)
-  await page.locator("#open").click()
-  await page.getByLabel("Path within Workspace").fill("folder/renamed.txt")
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click()
   await page.getByRole("alert").filter({ hasText: "Workspace is busy" }).waitFor()
-  expect(await page.getByLabel("Path within Workspace").inputValue()).toBe("folder/renamed.txt")
+  expect(await page.getByText("folder/source.txt", { exact: true }).isVisible()).toBe(true)
   await page.evaluate(() => {
-    ;(window as any).fixture.fail = false
+    Reflect.get(window, "fixture").fail = false
   })
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
-  const calls = await page.evaluate(() => (window as any).fixture.calls)
+  const calls = await page.evaluate(() => Reflect.get(window, "fixture").calls)
   expect(calls).toEqual([
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
+    { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
+    { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
   ])
   await page.waitForFunction(() => document.activeElement?.id === "open")
   expect(errors).toEqual([])
@@ -135,72 +126,33 @@ test("entry actions retain captured versions, errors and entered paths until suc
 test("delete is explicit, localized and preserves the selected filesystem identity", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByRole("button", { name: "Operation: Move or rename", exact: true }).click()
-  await page.getByRole("option", { name: "Delete permanently", exact: true }).click()
-  await page.evaluate(() => (window as any).fixture.locale())
-  await page.getByRole("dialog", { name: "文件操作" }).waitFor()
+  await page.evaluate(() => {
+    const fixture = Reflect.get(window, "fixture")
+    fixture.fail = false
+    fixture.locale()
+  })
+  await page.getByRole("dialog", { name: "永久删除" }).waitFor()
   expect(await page.getByText("folder/source.txt", { exact: false }).count()).toBeGreaterThan(0)
   await page.getByRole("button", { name: "永久删除", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
-  expect(await page.evaluate(() => (window as any).fixture.calls)).toEqual([
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([
     { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
   ])
   expect(errors).toEqual([])
 }, 30_000)
 
-test("operation menu stays in its dialog, dismisses before the dialog and disables source-only actions", async () => {
+test("delete requires an observed entry version and exposes no operation selector", async () => {
   errors.length = 0
   await page.goto(base)
   await page.locator("#create").click()
-  const dialog = page.getByRole("dialog", { name: "File actions", exact: true })
+  const dialog = page.getByRole("dialog", { name: "Delete permanently", exact: true })
   await page.waitForFunction((element) => element?.contains(document.activeElement), await dialog.elementHandle())
-  const trigger = page.getByRole("button", { name: "Operation: New file", exact: true })
-  await trigger.press("ArrowDown")
-  const listbox = page.getByRole("listbox", { name: "Operation", exact: true })
-  await listbox.waitFor()
-  expect(await listbox.getByRole("option").count()).toBe(5)
-  for (const name of ["Move or rename", "Copy", "Delete permanently"]) {
-    expect(await listbox.getByRole("option", { name, exact: true }).getAttribute("aria-disabled")).toBe("true")
-  }
-  const colors: string[] = []
-  await page.locator(".menu-field-surface").evaluate(async (element) => {
-    await Promise.all(element.getAnimations().map((animation) => animation.finished))
-    await document.fonts.ready
-  })
-  for (const colorScheme of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme })
-    await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, colorScheme)
-    const appearance = await page.locator(".menu-field-surface").evaluate((element) => {
-      const bounds = element.getBoundingClientRect()
-      return {
-        background: getComputedStyle(element).backgroundColor,
-        fits: bounds.x >= 0 && bounds.right <= innerWidth && bounds.y >= 0 && bounds.bottom <= innerHeight,
-      }
-    })
-    expect(appearance.fits).toBe(true)
-    colors.push(appearance.background)
-  }
-  expect(colors[0]).not.toBe(colors[1])
-  await page.waitForFunction(
-    (element) => document.activeElement === element,
-    await listbox.getByRole("option", { name: "New file", exact: true }).elementHandle(),
+  expect(await dialog.getByRole("button", { name: "Delete permanently", exact: true }).isDisabled()).toBe(true)
+  expect(await dialog.getByText("Refresh the file list before changing this entry.", { exact: true }).isVisible()).toBe(
+    true,
   )
-  await page.keyboard.press("ArrowDown")
-  expect(await listbox.getByRole("option", { name: "New folder", exact: true }).getAttribute("data-highlighted")).toBe(
-    "",
-  )
-  await page.keyboard.press("Escape")
-  await listbox.waitFor({ state: "hidden" })
-  expect(await dialog.isVisible()).toBe(true)
-  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Operation: New file")
-  await trigger.click()
-  await listbox.getByRole("option", { name: "New folder", exact: true }).click()
-  await page.getByLabel("Path within Workspace").fill("created-folder")
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click()
-  await dialog.waitFor({ state: "hidden" })
-  expect(await page.evaluate(() => (window as { fixture?: { calls: unknown[] } }).fixture?.calls)).toEqual([
-    { kind: "createDirectory", path: "created-folder" },
-  ])
+  expect(await dialog.getByRole("combobox").count()).toBe(0)
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([])
   expect(errors).toEqual([])
 }, 30_000)
 

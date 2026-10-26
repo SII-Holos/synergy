@@ -107,6 +107,7 @@ export function FileSourceView(props: {
   path: string
   content: string
   editable?: boolean
+  wordWrap?: boolean
   onDirtyChange?: (dirty: boolean) => void
   onRegister?: (api: FileSourceViewApi) => void
 }) {
@@ -205,7 +206,7 @@ export function FileSourceView(props: {
         renderLineHighlight: "line",
         scrollBeyondLastLine: false,
         smoothScrolling: false,
-        wordWrap: "off",
+        wordWrap: (props.wordWrap ?? true) ? "on" : "off",
         quickSuggestions: false,
         suggest: { showWords: false },
         fontFamily: getConfiguredMonoFontFamily(),
@@ -295,6 +296,12 @@ export function FileSourceView(props: {
     // the effect re-runs once Monaco exists and the edit toggle changes.
     const editable = props.editable
     editor?.updateOptions({ readOnly: !editable, domReadOnly: !editable })
+  })
+
+  createEffect(() => {
+    const wordWrap = props.wordWrap ?? true
+    if (!ready() || !editor) return
+    editor.updateOptions({ wordWrap: wordWrap ? "on" : "off" })
   })
 
   createEffect(() => {

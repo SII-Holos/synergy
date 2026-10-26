@@ -6,8 +6,63 @@ import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 
+type SourceFixture = {
+  sourceEditor(): Promise<import("monaco-editor").editor.IStandaloneCodeEditor>
+  setWordWrap(value: boolean | undefined): void
+  sourceDraft(): { content: string; baseContent: string } | undefined
+  sourceDirtyChanges: boolean[]
+  sourceIdentity?: {
+    editor: import("monaco-editor").editor.IStandaloneCodeEditor
+    model: import("monaco-editor").editor.ITextModel
+    host: HTMLElement | null
+    focused: Element | null
+  }
+}
+
 let browser: Browser, page: Page, server: ViteDevServer, directory: string, url: string
 const errors: string[] = []
+
+async function sourceSnapshot() {
+  return page.evaluate(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    const fixture = window as unknown as SourceFixture
+    const editor = await fixture.sourceEditor()
+    const model = editor.getModel()!
+    const visible = editor.getVisibleRanges()[0]!
+    const start = editor.getScrolledVisiblePosition({ lineNumber: visible.startLineNumber, column: 1 })!
+    const end = editor.getScrolledVisiblePosition({ lineNumber: visible.startLineNumber, column: 150 })!
+    const composer = document.querySelector<HTMLInputElement>('input[aria-label="Composer"]')!
+    return {
+      state: {
+        sameEditor: editor === fixture.sourceIdentity?.editor,
+        sameModel: model === fixture.sourceIdentity?.model,
+        sameHost: editor.getDomNode() === fixture.sourceIdentity?.host,
+        sameFocus: document.activeElement === fixture.sourceIdentity?.focused,
+        editorFocused: editor.hasTextFocus(),
+        content: model.getValue(),
+        version: model.getAlternativeVersionId(),
+        selections: editor.getSelections(),
+        canUndo: model.canUndo(),
+        canRedo: model.canRedo(),
+        draft: fixture.sourceDraft(),
+        dirtyChanges: [...fixture.sourceDirtyChanges],
+        composer: [composer.value, composer.selectionStart, composer.selectionEnd],
+      },
+      reading: {
+        line: visible.startLineNumber,
+        offset: editor.getTopForLineNumber(visible.startLineNumber) - editor.getScrollTop(),
+      },
+      layout: {
+        wrapped: end.top > start.top,
+        horizontalOverflow: editor.getScrollWidth() > editor.getLayoutInfo().contentWidth,
+        visibleContinuation: Array.from(editor.getDomNode()!.querySelectorAll(".view-line")).some(
+          (element) => element.textContent?.includes("wrap-segment") && !/const\s+sample\d+/.test(element.textContent),
+        ),
+      },
+    }
+  })
+}
+
 beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".source-navigation-"))
   const source = path.resolve(import.meta.dir, "../../../src")
@@ -17,9 +72,17 @@ beforeAll(async () => {
     `
     import { createSignal } from "solid-js"
     const [navigation, setNavigation] = createSignal()
+    export const [draft, setDraft] = createSignal()
+    const parameters = new URLSearchParams(location.search)
+    export const [wordWrap, setWordWrap] = createSignal(parameters.has("wrap") ? parameters.get("wrap") === "true" : undefined)
+    export const editable = parameters.has("editable")
+    export const dirtyChanges = []
+    window.setWordWrap = setWordWrap
+    window.sourceDraft = draft
+    window.sourceDirtyChanges = dirtyChanges
     export const useFile = () => ({
       resourceKey: "source-navigation", navigation,
-      draft: { get: () => undefined },
+      draft: { get: draft, update: (_, content) => setDraft(previous => ({ ...previous, content })) },
       view: { sourceScrollTop: () => 0, sourceScrollLeft: () => 0, selectedLines: () => undefined,
         setSourceScroll() {}, setSelectedLines() {} },
     })
@@ -41,14 +104,18 @@ beforeAll(async () => {
     path.join(directory, "main.tsx"),
     `
     import { render } from "solid-js/web"
-    import { start } from "./bridge"
+    import { start, setDraft, wordWrap, editable, dirtyChanges } from "./bridge"
     import { FileSourceView } from ${JSON.stringify(`/@fs/${source}/components/file-workbench/source-view.tsx`)}
-    const content = Array.from({length: 200}, (_, i) => "const sample" + (i+1) + " = " + (i+1)).join("\\n")
-    window.editorSelection = async () => (await import("monaco-editor/editor/editor.api.js")).editor.getEditors()[0].getSelection()
+    const suffix = new URLSearchParams(location.search).has("long") ? "; // " + "wrap-segment ".repeat(18) : ""
+    const content = Array.from({length: 200}, (_, i) => "const sample" + (i+1) + " = " + (i+1) + suffix).join("\\n")
+    if (editable) setDraft({ content, baseContent: content })
+    window.sourceEditor = async () => (await import("monaco-editor/editor/editor.api.js")).editor.getEditors()[0]
+    window.editorSelection = async () => (await window.sourceEditor()).getSelection()
     render(() => <><button data-resource-reference="a.ts#L120" onClick={start}>First reference</button>
       <button data-resource-reference="b.ts#L2">Next reference</button><input aria-label="Composer" />
       <style>{".file-source-view-editor { width: 700px; height: 420px }"}</style>
-      <FileSourceView path="a.ts" content={content} /></>, document.getElementById("root"))
+      <FileSourceView path="a.ts" content={content} wordWrap={wordWrap()} editable={editable}
+        onDirtyChange={dirty => dirtyChanges.push(dirty)} /></>, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -159,4 +226,105 @@ test.each(["Composer", "Editor", "Body"])(
     expect(errors).toEqual([])
   },
   30000,
+)
+
+test.each([
+  ["default", undefined],
+  ["enabled", true],
+  ["disabled", false],
+] as const)(
+  "initial source wrapping uses the requested value: %s",
+  async (_label, wordWrap) => {
+    errors.length = 0
+    await page.goto(`${url}?long=1${wordWrap === undefined ? "" : `&wrap=${wordWrap}`}`)
+    await page.locator(".monaco-editor .view-lines").waitFor()
+    const snapshot = await sourceSnapshot()
+    expect(snapshot.layout).toEqual({
+      wrapped: wordWrap !== false,
+      horizontalOverflow: wordWrap === false,
+      visibleContinuation: wordWrap !== false,
+    })
+    expect(errors).toEqual([])
+  },
+  30_000,
+)
+
+test.each(["Composer", "Editor"])(
+  "source wrap changes preserve reading, editing state and focus: %s",
+  async (target) => {
+    errors.length = 0
+    await page.goto(`${url}?long=1&wrap=false&editable=1`)
+    await page.locator(".monaco-editor .view-lines").waitFor()
+    await page.evaluate(async () => {
+      const editor = await (window as unknown as SourceFixture).sourceEditor()
+      editor.setPosition({ lineNumber: 80, column: 1 })
+      editor.revealLineInCenter(80)
+      editor.pushUndoStop()
+      editor.focus()
+    })
+    await page.keyboard.insertText("x")
+    await page.evaluate(async () => {
+      const editor = await (window as unknown as SourceFixture).sourceEditor()
+      editor.pushUndoStop()
+      editor.setSelection({
+        selectionStartLineNumber: 80,
+        selectionStartColumn: 24,
+        positionLineNumber: 80,
+        positionColumn: 7,
+      })
+      editor.setScrollPosition({ scrollTop: editor.getTopForLineNumber(80), scrollLeft: 0 })
+    })
+    if (target === "Composer") {
+      const composer = page.getByRole("textbox", { name: "Composer" })
+      await composer.fill("composer draft")
+      await composer.press("ArrowLeft")
+    }
+    await page.evaluate(async () => {
+      const fixture = window as unknown as SourceFixture
+      const editor = await fixture.sourceEditor()
+      fixture.sourceIdentity = {
+        editor,
+        model: editor.getModel()!,
+        host: editor.getDomNode(),
+        focused: document.activeElement,
+      }
+    })
+    const before = await sourceSnapshot()
+    expect(before.reading.line).toBe(80)
+    expect(before.state.editorFocused).toBe(target === "Editor")
+    expect(before.state.canUndo).toBe(true)
+    expect(before.state.dirtyChanges.length).toBeGreaterThan(0)
+    expect(before.state.dirtyChanges.every(Boolean)).toBe(true)
+    expect(before.state.draft?.content).toBe(before.state.content)
+    expect(before.state.draft?.content).not.toBe(before.state.draft?.baseContent)
+
+    for (const wordWrap of [true, false, undefined]) {
+      await page.evaluate((value) => (window as unknown as SourceFixture).setWordWrap(value), wordWrap)
+      const after = await sourceSnapshot()
+      expect(after.layout).toEqual({
+        wrapped: wordWrap !== false,
+        horizontalOverflow: wordWrap === false,
+        visibleContinuation: wordWrap !== false,
+      })
+      expect(after.state).toEqual(before.state)
+      expect(after.reading.line).toBe(before.reading.line)
+      expect(Math.abs(after.reading.offset - before.reading.offset)).toBeLessThan(1)
+    }
+
+    await page.evaluate(async () => (await (window as unknown as SourceFixture).sourceEditor()).focus())
+    await page.keyboard.press("ControlOrMeta+z")
+    const undone = await sourceSnapshot()
+    if (!before.state.draft) throw new Error("The editable fixture did not capture a draft baseline")
+    expect(undone.state.content).toBe(before.state.draft.baseContent)
+    expect(undone.state.draft?.content).toBe(before.state.draft.baseContent)
+    expect(undone.state.dirtyChanges).toEqual([...before.state.dirtyChanges, false])
+    expect(undone.state.canRedo).toBe(true)
+    await page.keyboard.press("ControlOrMeta+Shift+z")
+    const redone = await sourceSnapshot()
+    expect(redone.state.content).toBe(before.state.content)
+    expect(redone.state.draft).toEqual(before.state.draft)
+    expect(redone.state.dirtyChanges).toEqual([...before.state.dirtyChanges, false, true])
+    expect(errors).toEqual([])
+  },
+  30_000,
 )

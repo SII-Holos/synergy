@@ -2955,6 +2955,10 @@ msgid "app.file.workspace.missing"
 msgstr "请从文件所属的工作区重新打开此文件。"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.alreadyExists"
+msgstr "此文件夹中已存在同名项目。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.apply"
 msgstr "执行"
 
@@ -2967,12 +2971,32 @@ msgid "app.fileEntries.copy"
 msgstr "复制"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyName"
+msgstr "{name} 副本"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyNameNumbered"
+msgstr "{name} 副本 {number}"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPath"
+msgstr "复制相对路径"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPathFailed"
+msgstr "无法复制相对路径。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createDirectory"
 msgstr "新建文件夹"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createFile"
 msgstr "新建文件"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cut"
+msgstr "剪切"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.deleteWarning"
@@ -2987,12 +3011,28 @@ msgid "app.fileEntries.failed"
 msgstr "文件操作失败。"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidDestination"
+msgstr "请选择其他目标文件夹。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidName"
+msgstr "请输入有效的文件或文件夹名称，不含路径分隔符。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.move"
 msgstr "移动或重命名"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.name"
+msgstr "名称"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.operation"
 msgstr "操作"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.paste"
+msgstr "粘贴"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.path"
@@ -3005,6 +3045,10 @@ msgstr "请先刷新文件列表，再修改此项目。"
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.remove"
 msgstr "永久删除"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.rename"
+msgstr "重命名"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.title"
@@ -13399,6 +13443,18 @@ msgstr "显示文件列表"
 #. js-lingui-explicit-id
 msgid "fileWorkbench.options"
 msgstr "文件选项"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.label"
+msgstr "工作区"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.workingCopy"
+msgstr "工作副本"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.wordWrap"
+msgstr "自动换行"
 
 #. js-lingui-explicit-id
 msgid "list.for-label"

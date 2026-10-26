@@ -1,22 +1,19 @@
 import { fileWorkspaceLabel, type FileWorkspace } from "@/context/file/workspace"
 import { useLingui } from "@lingui/solid"
-import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { For, Show, createEffect, createMemo, createSignal, createUniqueId, onCleanup, onMount } from "solid-js"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
-import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"
 import { VList, type VListHandle } from "virtua/solid"
-import { useFile, useProjectFiles, FileWorkspaceProvider } from "@/context/file"
+import { useFile, useProjectFiles } from "@/context/file"
 import { fileExplorer as X, fileEntries as A } from "@/locales/messages"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { FileEntryDialog, type FileEntryOperation } from "./entry-dialog"
+import { createFileEntryActions, FileEntryMenu, FileEntryName } from "./entry-actions"
 
 type TreeNodeRow = { kind: "node"; path: string; level: number; parent: string }
-type TreeStateRow = { kind: "loading" | "error" | "more"; path: string; level: number }
+type TreeStateRow = { kind: "loading" | "error" | "more" | "entry"; path: string; level: number }
 type TreeRow = TreeNodeRow | TreeStateRow
 
 function gitStatus(status: string | undefined) {
@@ -29,45 +26,9 @@ function gitStatus(status: string | undefined) {
 }
 
 export function FileExplorer(props: { onClose: () => void; onOpenResource?: () => void }) {
-  const project = useProjectFiles()
-  const file = useFile()
-  const [chosen, setChosen] = createSignal<string>()
-  const root = createMemo(
-    () =>
-      project.roots().find((item) => item.id === chosen()) ??
-      project.roots().find((item) => item.id === file.workspace?.id) ??
-      project.roots()[0],
-  )
-  return (
-    <Show
-      when={root()}
-      keyed
-      fallback={<SingleFileExplorer onClose={props.onClose} onOpenResource={props.onOpenResource} />}
-    >
-      {(workspace) => (
-        <FileWorkspaceProvider workspace={workspace}>
-          <SingleFileExplorer
-            onClose={props.onClose}
-            onOpenResource={props.onOpenResource}
-            folders={project.roots()}
-            onFolderChange={setChosen}
-          />
-        </FileWorkspaceProvider>
-      )}
-    </Show>
-  )
-}
-
-function SingleFileExplorer(props: {
-  onClose: () => void
-  onOpenResource?: () => void
-  folders?: FileWorkspace[]
-  onFolderChange?: (id: string) => void
-}) {
   const file = useFile()
   const project = useProjectFiles()
   const lingui = useLingui()
-  const dialog = useDialog()
   const active = useViewActivity()
   const [query, setQuery] = createSignal("")
   const [searching, setSearching] = createSignal(false)
@@ -81,6 +42,20 @@ function SingleFileExplorer(props: {
   let searchController: AbortController | undefined
   let debounce: number | undefined
   let listHandle: VListHandle | undefined
+  let treeElement: HTMLDivElement | undefined
+  const treeID = createUniqueId()
+  const focusTree = () => {
+    if (active() && treeElement?.isConnected) treeElement.focus({ preventScroll: true })
+  }
+  const entryActions = createFileEntryActions({
+    selected: () => {
+      const path = focusedPath() ?? file.activePath()
+      return path ? (file.explorer.node(path) ?? file.get(path)?.node) : undefined
+    },
+    prepare: () => setQuery(""),
+    focusTree,
+    onOpenResource: props.onOpenResource,
+  })
   async function openDocument(path: string, newTab = false) {
     if (await file.openWorkspaceFile(path, { newTab })) props.onOpenResource?.()
   }
@@ -89,6 +64,9 @@ function SingleFileExplorer(props: {
     const result: TreeRow[] = []
     const append = (parent: string, level: number) => {
       const directory = file.explorer.directory(parent)
+      const entry = entryActions.edit()
+      if (entry && entry.kind !== "rename" && entry.parent === parent)
+        result.push({ kind: "entry", path: parent, level })
       for (const path of directory?.items ?? []) {
         result.push({ kind: "node", path, level, parent })
         const node = file.explorer.node(path)
@@ -103,7 +81,7 @@ function SingleFileExplorer(props: {
   })
 
   const visibleNodeRows = createMemo(() => rows().filter((row): row is TreeNodeRow => row.kind === "node"))
-  const selectedPath = () => file.activePath()
+  const selectedPath = () => focusedPath() ?? file.activePath()
   const activeHidden = createMemo(() => {
     if (file.explorer.showHidden()) return false
     const path = file.activePath()
@@ -167,24 +145,36 @@ function SingleFileExplorer(props: {
     if (rowIndex >= 0) listHandle?.scrollToIndex(rowIndex, { align: "nearest" })
   }
 
-  const openActions = (path = focusedPath() ?? selectedPath(), operation?: FileEntryOperation) => {
-    const node = path ? (file.explorer.node(path) ?? file.get(path)?.node) : undefined
-    const actions = file.entries
-    if (!file.workspace) return
-    const workspacePath = fileWorkspaceLabel(file.workspace)
-    const dirty = path ? file.draft.within(path) : false
-    dialog.show(() => (
-      <FileEntryDialog
-        actions={actions}
-        workspacePath={workspacePath}
-        node={node}
-        operation={operation}
-        dirty={dirty}
-      />
-    ))
-  }
+  createEffect(() => {
+    const entry = entryActions.edit()
+    if (!entry || !active()) return
+    const index = rows().findIndex((row) =>
+      entry.kind === "rename"
+        ? row.kind === "node" && row.path === entry.source?.path
+        : row.kind === "entry" && row.path === entry.parent,
+    )
+    if (index < 0) return
+    queueMicrotask(() => {
+      if (active() && entryActions.edit() === entry) listHandle?.scrollToIndex(index, { align: "nearest" })
+    })
+  })
 
   const handleTreeKey = (event: KeyboardEvent) => {
+    if (
+      !active() ||
+      event.defaultPrevented ||
+      (event.target as HTMLElement).closest("button, a, input, textarea, [contenteditable='true']")
+    )
+      return
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+      const key = event.key.toLowerCase()
+      if (key === "x") entryActions.capture("move")
+      else if (key === "c") entryActions.capture("copy")
+      else if (key === "v") void entryActions.paste()
+      else return
+      event.preventDefault()
+      return
+    }
     const nodes = visibleNodeRows()
     if (nodes.length === 0) return
     const current = Math.max(
@@ -210,9 +200,14 @@ function SingleFileExplorer(props: {
     } else if (event.key === "Enter") {
       if (node?.type === "directory") file.explorer.setExpanded(row.path, !file.explorer.isExpanded(row.path))
       else void openDocument(row.path, event.metaKey || event.ctrlKey)
-    } else if (event.key === "F2") openActions(row.path, "move")
-    else if (event.key === "Delete") openActions(row.path, "remove")
-    else return
+    } else if (event.key === "F2") entryActions.begin("rename", node)
+    else if (event.key === "Delete") entryActions.remove(node)
+    else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+      const rect = treeElement
+        ?.querySelector<HTMLElement>(`[data-path="${CSS.escape(row.path)}"]`)
+        ?.getBoundingClientRect()
+      if (rect) entryActions.openMenu(node, { x: rect.x, y: rect.bottom, width: rect.width, height: 0 })
+    } else return
     event.preventDefault()
   }
 
@@ -222,31 +217,32 @@ function SingleFileExplorer(props: {
   }
 
   return (
-    <aside
-      class="file-explorer"
-      aria-label={lingui._({ id: X.label.id, message: X.label.message })}
-      style={{ width: `${file.explorer.width()}px` }}
-    >
-      <ResizeHandle
-        direction="horizontal"
-        edge="start"
-        aria-label={lingui._({ id: X.resize.id, message: X.resize.message })}
-        size={file.explorer.width()}
-        min={208}
-        max={420}
-        collapseThreshold={180}
-        onResize={file.explorer.setWidth}
-        onCollapse={props.onClose}
-      />
+    <aside class="file-explorer" aria-label={lingui._({ id: X.label.id, message: X.label.message })}>
       <div class="file-explorer-header">
         <span class="file-explorer-title">{lingui._({ id: X.title.id, message: X.title.message })}</span>
         <div class="file-explorer-actions">
-          <IconButton
-            icon={getSemanticIcon("action.more")}
-            variant="ghost"
-            aria-label={lingui._(A.title)}
-            onClick={() => openActions()}
-          />
+          <For each={["createFile", "createDirectory"] as const}>
+            {(kind) => (
+              <button
+                type="button"
+                class="file-entry-create"
+                aria-label={lingui._(kind === "createFile" ? A.createFile : A.createDirectory)}
+                disabled={!entryActions.available()}
+                onClick={() => entryActions.begin(kind)}
+              >
+                <FileIcon
+                  node={{
+                    path: kind === "createFile" ? "file" : "folder",
+                    type: kind === "createFile" ? "file" : "directory",
+                  }}
+                  class="size-4"
+                />
+                <span class="file-entry-create-mark">
+                  <Icon name={getSemanticIcon("action.add")} size="small" />
+                </span>
+              </button>
+            )}
+          </For>
           <IconButton
             icon={getSemanticIcon(file.explorer.showHidden() ? "action.hide" : "action.view")}
             variant="ghost"
@@ -278,16 +274,6 @@ function SingleFileExplorer(props: {
           />
         </div>
       </div>
-      <Show when={(props.folders?.length ?? 0) > 1}>
-        <div class="file-explorer-folder">
-          <MenuField
-            ariaLabel={lingui._({ id: "project.entry.folders", message: "Folders" })}
-            value={file.workspace?.id ?? ""}
-            options={(props.folders ?? []).map((folder) => ({ value: folder.id, label: fileWorkspaceLabel(folder) }))}
-            onChange={(value) => props.onFolderChange?.(value)}
-          />
-        </div>
-      </Show>
       <div class="file-explorer-search">
         <Icon name={getSemanticIcon("action.search")} size="small" />
         <input
@@ -309,6 +295,13 @@ function SingleFileExplorer(props: {
           <Spinner class="size-3.5" />
         </Show>
       </div>
+      <Show when={entryActions.error()}>
+        {(message) => (
+          <div class="file-entry-error" role="alert">
+            {message()}
+          </div>
+        )}
+      </Show>
       <Show when={activeHidden()}>
         <div class="file-explorer-hidden-notice">
           <span>{lingui._({ id: X.hiddenNotice.id, message: X.hiddenNotice.message })}</span>
@@ -322,11 +315,19 @@ function SingleFileExplorer(props: {
           when={query().trim()}
           fallback={
             <div
+              ref={treeElement}
               class="file-tree"
               role="tree"
+              aria-activedescendant={focusedPath() ? `${treeID}-${encodeURIComponent(focusedPath()!)}` : undefined}
               aria-label={lingui._({ id: X.workspaceFiles.id, message: X.workspaceFiles.message })}
               tabIndex={0}
               onKeyDown={handleTreeKey}
+              onContextMenu={(event) => {
+                if (event.defaultPrevented || (event.target as HTMLElement).closest("input")) return
+                event.preventDefault()
+                setFocusedPath(undefined)
+                entryActions.openMenu(undefined, { x: event.clientX, y: event.clientY, width: 0, height: 0 })
+              }}
             >
               <VList
                 ref={(handle) => (listHandle = handle)}
@@ -340,6 +341,16 @@ function SingleFileExplorer(props: {
                     when={row.kind === "node" ? row : undefined}
                     fallback={
                       <div class="file-tree-state" style={{ "padding-left": `${row.level * 14 + 8}px` }}>
+                        <Show when={row.kind === "entry"}>
+                          <FileIcon
+                            node={{
+                              path: "file",
+                              type: entryActions.edit()?.kind === "createDirectory" ? "directory" : "file",
+                            }}
+                            class="file-tree-icon"
+                          />
+                          <FileEntryName actions={entryActions} />
+                        </Show>
                         <Show when={row.kind === "loading"}>
                           <Spinner class="size-3.5" />{" "}
                           <span>{lingui._({ id: X.loading.id, message: X.loading.message })}</span>
@@ -363,19 +374,26 @@ function SingleFileExplorer(props: {
                           classList={{
                             "file-tree-row--selected": selectedPath() === nodeRow().path,
                             "file-tree-row--focused": focusedPath() === nodeRow().path,
+                            "file-tree-row--cut":
+                              project.clipboard.get()?.resourceKey === file.resourceKey &&
+                              project.clipboard.get()?.operation === "move" &&
+                              project.clipboard.get()?.node.path === nodeRow().path,
                           }}
                           role="treeitem"
+                          id={`${treeID}-${encodeURIComponent(nodeRow().path)}`}
                           aria-level={nodeRow().level}
                           aria-expanded={directory() ? expanded() : undefined}
                           aria-selected={selectedPath() === nodeRow().path}
                           data-path={nodeRow().path}
                           style={{ "padding-left": `${(nodeRow().level - 1) * 14 + 6}px` }}
                           onContextMenu={(event) => {
+                            if ((event.target as HTMLElement).closest("input")) return
                             event.preventDefault()
                             setFocusedPath(nodeRow().path)
-                            openActions(nodeRow().path)
+                            entryActions.openMenu(node(), { x: event.clientX, y: event.clientY, width: 0, height: 0 })
                           }}
                           onMouseDown={() => setFocusedPath(nodeRow().path)}
+                          onFocus={() => setFocusedPath(nodeRow().path)}
                           onClick={(event) => {
                             if (directory()) file.explorer.setExpanded(nodeRow().path, !expanded())
                             else void openDocument(nodeRow().path, event.metaKey || event.ctrlKey)
@@ -394,7 +412,36 @@ function SingleFileExplorer(props: {
                             expanded={expanded()}
                             class="file-tree-icon"
                           />
-                          <span class="file-tree-name">{node()?.name ?? nodeRow().path.split("/").at(-1)}</span>
+                          <Show
+                            when={
+                              entryActions.edit()?.kind === "rename" &&
+                              entryActions.edit()?.source?.path === nodeRow().path
+                            }
+                            fallback={
+                              <span class="file-tree-name">{node()?.name ?? nodeRow().path.split("/").at(-1)}</span>
+                            }
+                          >
+                            <FileEntryName actions={entryActions} />
+                          </Show>
+                          <IconButton
+                            class="file-tree-entry-menu"
+                            icon={getSemanticIcon("action.more")}
+                            variant="ghost"
+                            aria-label={lingui._(A.title)}
+                            aria-haspopup="menu"
+                            aria-expanded={entryActions.menu()?.node?.path === nodeRow().path}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setFocusedPath(nodeRow().path)
+                              const rect = event.currentTarget.getBoundingClientRect()
+                              entryActions.openMenu(node(), {
+                                x: rect.left,
+                                y: rect.bottom,
+                                width: rect.width,
+                                height: 0,
+                              })
+                            }}
+                          />
                           <Show when={!directory()}>
                             <IconButton
                               class="file-tree-new-tab"
@@ -480,6 +527,7 @@ function SingleFileExplorer(props: {
           </div>
         </Show>
       </div>
+      <FileEntryMenu actions={entryActions} focusTree={focusTree} />
     </aside>
   )
 }

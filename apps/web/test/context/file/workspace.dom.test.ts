@@ -5,6 +5,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
+import type { FileEntryClipboard, useFile, useProjectFiles } from "../../../src/context/file"
 
 let server: ViteDevServer
 let browser: Browser
@@ -24,6 +25,7 @@ beforeAll(async () => {
     export const b = { ...a, id: "wsp_b", path: "/b" }
     const [state, setState] = createStore({ session: { id: "session", workspace: { ...a } }, tabs: [], active: undefined, visible: true, secondVisible: false })
     const statuses = []; const pendingStatuses = []
+    const entryState = { hold: false, signal: undefined, outcome: undefined }
     const childPages = {}; const childRequests = []; const heldDirectories = []; const pendingDirectories = []; const childFailures = []
     const requests = []; const writes = []; const entries = []; const disk = {}; const pending = []; const listeners = new Set(); const writeState = { mode: "conflict", finish: undefined }
     const result = (query) => ({ data: { kind: "text", path: query.path, content: disk[query.workspaceID]?.content ?? query.workspaceID ?? "wsp_a",
@@ -38,7 +40,7 @@ beforeAll(async () => {
           disk[query.workspaceID] = { content: body.content, version: "sha256:" + "c".repeat(64) }
           return { data: { contentVersion: disk[query.workspaceID].version, mtime: 2, size: body.content.length, path: body.path, existed: true } }
         },
-        createDirectory: async (query) => { entries.push(query); return { data: { path: "created", node: { path: "created", type: "directory" } } } },
+        createDirectory: async (query, options) => { entries.push(query); entryState.signal = options.signal; if(entryState.hold) await new Promise((resolve,reject)=> { entryState.finish=resolve; options.signal.addEventListener("abort",()=>reject(new DOMException("Operation aborted","AbortError")),{once:true}) }); return { data: { path: "created", node: { path: "created", type: "directory" } } } },
         copy: async (query) => { entries.push(query); return { data: { path: query.workspaceFileCopyInput.to, node: {} } } },
         move: async (query) => { entries.push(query); return { data: { path: query.workspaceFileMoveInput.to, node: {} } } },
         remove: async (query) => { entries.push(query); return { data: { removed: true, path: query.workspaceFileDeleteInput.path } } },
@@ -59,7 +61,7 @@ beforeAll(async () => {
       updateTab() {} })
     export const Persist = { workspace: (owner, key) => ({ storage: "fixture:" + owner, key }), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
-    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState, statuses,
+    window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, entryState, disk, state, writeState, statuses,
       childPages, childRequests, heldDirectories, childFailures, flushDirectories() { pendingDirectories.splice(0).forEach(resolve => resolve()) },
       visible(value) { setState("visible", value) },
       switchConsumer() { setState("visible", false); setState("secondVisible", true) },
@@ -79,10 +81,13 @@ beforeAll(async () => {
     path.join(fixture, "main.tsx"),
     `
     import { render } from "solid-js/web"
+    import { Show, createSignal } from "solid-js"
     import { ViewActivityProvider } from "@ericsanchezok/synergy-ui/context/view-activity"
-    import { FileProvider, useFile } from ${JSON.stringify(`/@fs/${appSrc}/context/file/index.tsx`)}
-    function Probe(props) { const file = useFile(); if(props.second) {window.fixture.second = file;return <span/>} window.fixture.file = file; return <output>{file.get("same.txt")?.content?.content || "empty"}</output> }
-    render(() => <><ViewActivityProvider active={() => window.fixture.state.visible}><FileProvider><Probe /></FileProvider></ViewActivityProvider><ViewActivityProvider active={() => window.fixture.state.secondVisible}><FileProvider><Probe second /></FileProvider></ViewActivityProvider></>, document.getElementById("root"))
+    import { FileProvider, useFile, useProjectFiles } from ${JSON.stringify(`/@fs/${appSrc}/context/file/index.tsx`)}
+    function Probe(props) { const file = useFile(); const manager = useProjectFiles(); if(props.second) {window.fixture.second = file;window.fixture.secondManager = manager;return <span/>} window.fixture.file = file;window.fixture.manager = manager; return <output>{file.get("same.txt")?.content?.content || "empty"}</output> }
+    const [mounted,setMounted] = createSignal(true)
+    window.fixture.unmount = () => setMounted(false)
+    render(() => <><Show when={mounted()}><ViewActivityProvider active={() => window.fixture.state.visible}><FileProvider><Probe /></FileProvider></ViewActivityProvider></Show><ViewActivityProvider active={() => window.fixture.state.secondVisible}><FileProvider><Probe second /></FileProvider></ViewActivityProvider></>, document.getElementById("root"))
   `,
   )
   server = await createServer({
@@ -542,15 +547,12 @@ test("retained Session providers share a Workspace status request across a visib
 
 type ExplorerFixtureWindow = Window & {
   fixture: {
-    file: {
-      explorer: {
-        expandAll: (signal?: AbortSignal) => Promise<void>
-        collapseAll: () => void
-        expandingAll: () => boolean
-        expanded: () => string[]
-        directory: (path: string) => { error?: string }
-      }
-    }
+    file: ReturnType<typeof useFile>
+    manager: Pick<ReturnType<typeof useProjectFiles>, "clipboard">
+    secondManager: Pick<ReturnType<typeof useProjectFiles>, "clipboard">
+    entryState: { hold: boolean; signal: AbortSignal; outcome?: string }
+    caller: AbortController
+    unmount: () => void
     childPages: Record<
       string,
       {
@@ -573,10 +575,93 @@ type ExplorerFixtureWindow = Window & {
     flushDirectories: () => void
     cancelExpansion: () => void
     expansionDone: boolean
+    a: { id: string; generation: number; scopeID: string; type: "directory"; path: string }
+    b: { id: string; generation: number; scopeID: string; type: "directory"; path: string }
+    select: (workspace: ExplorerFixtureWindow["fixture"]["a"]) => void
   }
 }
 
 declare const window: ExplorerFixtureWindow
+
+test("source wrapping stays with the file and captured Workspace generation", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  expect(await page.evaluate(() => window.fixture.file.view.wordWrap("same.txt"))).toBe(true)
+  await page.evaluate(() => window.fixture.file.view.setWordWrap("same.txt", false))
+  expect(await page.evaluate(() => window.fixture.file.view.wordWrap("other.txt"))).toBe(true)
+  await page.evaluate(() => window.fixture.select(window.fixture.b))
+  expect(await page.evaluate(() => window.fixture.file.view.wordWrap("same.txt"))).toBe(true)
+  await page.evaluate(() => window.fixture.select(window.fixture.a))
+  expect(await page.evaluate(() => window.fixture.file.view.wordWrap("same.txt"))).toBe(false)
+  await page.evaluate(() => window.fixture.select({ ...window.fixture.a, generation: 2 }))
+  expect(await page.evaluate(() => window.fixture.file.view.wordWrap("same.txt"))).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("file clipboard snapshots retain their source across selection changes and stay local to their provider", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  const snapshot = await page.evaluate(() => {
+    const fixture = Reflect.get(window, "fixture")
+    const node: FileEntryClipboard["node"] = {
+      path: "original.txt",
+      name: "original.txt",
+      type: "file",
+      entryVersion: "entry:observed",
+      size: 0,
+      mtime: 1,
+      ctime: 1,
+      ignored: false,
+      hidden: false,
+      readonly: false,
+      symlink: false,
+      binary: false,
+    }
+    const workspace = { ...fixture.a }
+    const resourceKey = fixture.file.resourceKey
+    fixture.manager.clipboard.set({ resourceKey, workspace, node, operation: "move" })
+    node.entryVersion = "entry:changed"
+    node.path = "changed.txt"
+    workspace.generation = 99
+    fixture.select(fixture.b)
+    return {
+      clipboard: fixture.manager.clipboard.get(),
+      sameOwner: fixture.manager.clipboard.get()?.resourceKey === fixture.file.resourceKey,
+      otherProvider: fixture.secondManager.clipboard.get(),
+    }
+  })
+  expect(snapshot.clipboard).toMatchObject({
+    workspace: { id: "wsp_a", generation: 1 },
+    node: { path: "original.txt", entryVersion: "entry:observed" },
+    operation: "move",
+  })
+  expect(snapshot.sameOwner).toBe(false)
+  expect(snapshot.otherProvider).toBeUndefined()
+  await page.reload()
+  await page.waitForSelector("output")
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").manager.clipboard.get())).toBeUndefined()
+  expect(errors).toEqual([])
+})
+
+test("entry writes are cancelled by their FileProvider without aborting the caller's controller", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const fixture = Reflect.get(window, "fixture")
+    fixture.entryState.hold = true
+    fixture.caller = new AbortController()
+    void fixture.file.entries.createDirectory("created", fixture.caller.signal).catch((error: Error) => {
+      fixture.entryState.outcome = error.name
+    })
+  })
+  await page.waitForFunction(() => Reflect.get(window, "fixture").entryState.signal)
+  await page.evaluate(() => Reflect.get(window, "fixture").unmount())
+  await page.waitForSelector("output", { state: "hidden" })
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").entryState.signal.aborted)).toBe(true)
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").caller.signal.aborted)).toBe(false)
+  await page.waitForFunction(() => Reflect.get(window, "fixture").entryState.outcome === "AbortError")
+  expect(errors).toEqual([])
+})
 
 test("expand all loads every directory page and nested folder without following symbolic links or reading files", async () => {
   await page.goto(base)

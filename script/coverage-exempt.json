@@ -195,6 +195,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/file-workbench/entry-actions.tsx",
+          "reason": "Inline naming, conflicts, captured entry versions, clipboard copy/move, resource remounts and Desktop path copying are exercised by test/components/file-workbench/explorer-restore.dom.test.ts in Vite/Chromium. Bun cannot attribute that renderer execution to the TSX source; package coverage thresholds remain unchanged."
+        },
+        {
           "glob": "src/components/file-workbench/explorer.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
