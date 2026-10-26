@@ -125,7 +125,7 @@ export function imageViewerDisplayRect(state: ImageViewerState): ImageViewerRect
 }
 
 export function imageViewerZoomPercent(state: ImageViewerState) {
-  return Math.round(state.scale * 100)
+  return Number((state.scale * 100).toPrecision(3))
 }
 
 export function imageViewerEntryKey(image: { id: string; src: string }) {
@@ -177,7 +177,7 @@ export function zoomImageViewerAt(
     x: (point.x - before.x) / state.scale,
     y: (point.y - before.y) / state.scale,
   }
-  const natural = state.image ? naturalSize(state.image, state.rotation) : { width: 0, height: 0 }
+  const natural = naturalSize(state.image, state.rotation)
   const offset = boundedOffset(state, scale, {
     x: point.x - source.x * scale - (state.viewport.width - natural.width * scale) / 2,
     y: point.y - source.y * scale - (state.viewport.height - natural.height * scale) / 2,
@@ -266,7 +266,6 @@ export function resolveImageViewerWheel(event: {
   deltaY: number
   ctrlKey?: boolean
   metaKey?: boolean
-  shiftKey?: boolean
 }): ImageViewerWheelCommand | undefined {
   if (!Number.isFinite(event.deltaX) || !Number.isFinite(event.deltaY)) return undefined
   if (event.deltaX === 0 && event.deltaY === 0) return undefined
@@ -281,7 +280,7 @@ export function resolveImageViewerWheel(event: {
 
 export function applyImageViewerWheel(
   state: ImageViewerState,
-  event: { deltaX: number; deltaY: number; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean },
+  event: { deltaX: number; deltaY: number; ctrlKey?: boolean; metaKey?: boolean },
   anchor?: ImageViewerOffset,
 ): ImageViewerState {
   const command = resolveImageViewerWheel(event)

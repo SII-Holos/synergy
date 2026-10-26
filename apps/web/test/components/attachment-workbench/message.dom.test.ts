@@ -44,6 +44,12 @@ async function visit(query = "") {
     })
 }
 
+async function saveImage() {
+  const pending = page.waitForEvent("download")
+  await page.getByRole("button", { name: "Save image", exact: true }).click()
+  return (await pending).suggestedFilename()
+}
+
 async function surface(target: Locator) {
   return target.evaluate(async (element) => {
     await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
@@ -182,8 +188,8 @@ test("a captured first-send attachment uses the temporary reader until canonical
   await page.locator(".draft-attachment-dialog").waitFor()
   expect(await page.evaluate<number>("window.fixture.tabs().length")).toBe(0)
   await page.getByRole("button", { name: "Zoom in", exact: true }).click()
-  expect(await page.locator(".attachment-image-preview").textContent()).toContain("125%")
-  expect(await page.getByRole("link", { name: "Download", exact: true }).getAttribute("download")).toBe("portrait.svg")
+  expect(await page.locator("[data-component=image-viewer]").textContent()).toContain("125%")
+  expect(await saveImage()).toBe("portrait.svg")
   await page.keyboard.press("Escape")
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open portrait.svg")
   await page.evaluate("window.fixture.admit()")
@@ -219,9 +225,9 @@ test("the actual chat button opens the registered reader by pointer, Enter and S
     await button.press(key)
   }
   expect(await page.evaluate<number>("window.fixture.tabs().length")).toBe(1)
-  expect(await page.getByRole("link", { name: "Download", exact: true }).getAttribute("download")).toBe("portrait.svg")
+  expect(await saveImage()).toBe("portrait.svg")
   await page.getByRole("button", { name: "Zoom in", exact: true }).click()
-  expect(await page.locator(".attachment-image-preview").textContent()).toContain("125%")
+  expect(await page.locator("[data-component=image-viewer]").textContent()).toContain("125%")
   expect(errors).toEqual([])
 })
 
@@ -234,7 +240,7 @@ test("reader fullscreen and closing retain the original attachment and return fo
   expect(await page.getByRole("button", { name: "Exit full screen", exact: true }).getAttribute("aria-pressed")).toBe(
     "true",
   )
-  expect(await page.getByRole("link", { name: "Download", exact: true }).getAttribute("download")).toBe("portrait.svg")
+  expect(await saveImage()).toBe("portrait.svg")
   await page.getByRole("button", { name: "Exit full screen", exact: true }).click()
   await page.getByRole("button", { name: "Close portrait.svg", exact: true }).click()
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Open portrait.svg")
@@ -343,7 +349,7 @@ test("failed thumbnails try the original and the remaining attachment button ope
   await page.getByText("Unable to preview this attachment.", { exact: true }).waitFor()
   fail = false
   await page.getByRole("button", { name: "Retry", exact: true }).click()
-  await page.locator(".attachment-image-stage img").waitFor()
+  await page.locator("[data-slot=image-viewer-image]").waitFor()
   await page.unroute("**/missing-*")
   expect(errors).toEqual([])
 })
@@ -364,7 +370,7 @@ test("transparent images remain readable and actionable at 200 percent interface
     expect(await page.locator('[data-slot="user-message-time"]').count()).toBe(1)
     await button.focus()
     await button.press("Enter")
-    await page.locator(".attachment-image-stage img").waitFor()
+    await page.locator("[data-slot=image-viewer-image]").waitFor()
     await page.getByRole("button", { name: "Close portrait.svg", exact: true }).click()
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -396,7 +402,7 @@ test.each(["data", "blob"])("%s Markdown images load and open the shared preview
     await image.locator("..").press("Enter")
     await page.locator('[data-component="image-preview"]').waitFor()
     expect(await page.locator('[data-component="image-preview"] img').first().getAttribute("src")).toBe(url)
-    expect(await page.getByRole("button", { name: "Open image in new window", exact: true }).count()).toBe(0)
+    expect(await page.getByRole("button", { name: "Open in system browser", exact: true }).count()).toBe(0)
     expect(await page.evaluate(() => document.documentElement.dataset.imageExecuted)).toBeUndefined()
     await page.keyboard.press("Escape")
     expect(errors).toEqual([])

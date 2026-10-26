@@ -316,25 +316,6 @@
   padding: 0;
   overflow: hidden;
 }
-.attachment-image-preview {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-.attachment-image-stage {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 20px;
-}
-.attachment-image-stage img {
-  display: block;
-  max-width: none;
-  height: auto;
-  margin: 0 auto;
-  object-fit: contain;
-}
-
 .attachment-source-preview {
   padding: 12px;
   min-height: 100%;

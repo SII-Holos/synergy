@@ -14,6 +14,7 @@ import { useData } from "@ericsanchezok/synergy-ui/context/data"
 import { usePlatform } from "@/context/platform"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useSDK } from "@/context/sdk"
+import { useImageActions } from "@/hooks/use-image-actions"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { attachmentWorkbench as A } from "@/locales/messages"
 import { attachmentResourceState, findAttachmentByLocator } from "./model"
@@ -25,6 +26,7 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
   const data = useData()
   const platform = usePlatform()
   const sdk = useSDK()
+  const imageActions = useImageActions(() => sdk.url)
   const workbench = useWorkbenchPanels()
   const resources = useResourceOpen()
   const [browserOpenNonce, setBrowserOpenNonce] = createSignal(0)
@@ -95,6 +97,7 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
           file={current()}
           serverUrl={sdk.url}
           fetcher={platform.fetch}
+          imageActions={imageActions}
           referenceContext={resource()?.referenceContext}
           location={resource()?.location}
           navigation={resource()?.navigation}

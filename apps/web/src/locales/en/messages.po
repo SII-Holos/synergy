@@ -3271,6 +3271,22 @@ msgstr "Agent switch failed"
 msgid "app.home.start"
 msgstr "Start"
 
+#. js-lingui-explicit-id
+msgid "app.imageActions.clipboardUnavailable"
+msgstr "Image copying is unavailable here. Save the image instead."
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.linkCopyFailed"
+msgstr "Could not copy the link. Try again."
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.readFailed"
+msgstr "Could not read the image. Retry or open the source."
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.unavailable"
+msgstr "Image data is unavailable. Retry or open the source."
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.addPane"
 msgstr "Add session"
@@ -27401,16 +27417,64 @@ msgid "ui.execution.waiting"
 msgstr "Waiting for input"
 
 #. js-lingui-explicit-id
+msgid "ui.imagePreview.actionFailed"
+msgstr "Action failed. Try again."
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.actual"
+msgstr "Actual size (1:1)"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.background"
+msgstr "Transparency grid"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.cancelled"
+msgstr "Cancelled"
+
+#. js-lingui-explicit-id
 msgid "ui.imagePreview.close"
 msgstr "Close image preview"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.download"
-msgstr "Download image"
+msgid "ui.imagePreview.copied"
+msgstr "Image copied"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.copy"
+msgstr "Copy image"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.copyLink"
+msgstr "Copy image link"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.downloadStarted"
+msgstr "Download started"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.exitFullscreen"
+msgstr "Exit fullscreen"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fit"
+msgstr "Fit image"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fitLabel"
+msgstr "Fit"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fullscreen"
+msgstr "Enter fullscreen"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.imageActions"
 msgstr "Image actions"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.linkCopied"
+msgstr "Link copied"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.loadFailed"
@@ -27429,8 +27493,12 @@ msgid "ui.imagePreview.noImageSelected"
 msgstr "No image selected"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.openNewWindow"
-msgstr "Open image in new window"
+msgid "ui.imagePreview.opened"
+msgstr "Opening in system browser"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openExternal"
+msgstr "Open in system browser"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openSource"
@@ -27441,20 +27509,28 @@ msgid "ui.imagePreview.previous"
 msgstr "Previous image"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.resetView"
-msgstr "Reset image view"
+msgid "ui.imagePreview.retry"
+msgstr "Retry"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.rotateClockwise"
 msgstr "Rotate image clockwise"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.unavailable"
-msgstr "Image preview is unavailable."
+msgid "ui.imagePreview.save"
+msgstr "Save image"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.zoomControls"
-msgstr "Zoom controls"
+msgid "ui.imagePreview.saved"
+msgstr "Image saved"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.thumbnails"
+msgstr "Thumbnails"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.working"
+msgstr "Working…"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.zoomIn"

@@ -47,7 +47,7 @@ describe("image viewer fit and actual size", () => {
     expect(rect.height).toBeCloseTo(752, 6)
     expect(rect.x).toBeCloseTo((VIEWPORT.width - rect.width) / 2, 6)
     expect(rect.y).toBeCloseTo(IMAGE_VIEWER_FIT_PADDING, 6)
-    expect(imageViewerZoomPercent(state)).toBe(25)
+    expect(imageViewerZoomPercent(state)).toBe(25.1)
     expect(imageViewerZoomPercent(state)).not.toBe(100)
   })
 
@@ -259,7 +259,7 @@ describe("image viewer wheel rules", () => {
   })
 
   test("pans when horizontal scrolling dominates", () => {
-    expect(resolveImageViewerWheel({ deltaX: 120, deltaY: 10, shiftKey: true })).toEqual({
+    expect(resolveImageViewerWheel({ deltaX: 120, deltaY: 10 })).toEqual({
       kind: "pan",
       delta: { x: -120, y: -10 },
     })

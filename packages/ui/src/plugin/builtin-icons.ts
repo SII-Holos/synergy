@@ -271,6 +271,8 @@ const builtinIconNames = [
   "rocket",
   "rotate-ccw",
   "rotate-cw",
+  "rotate-cw-square",
+  "grid-2x2",
   "route",
   "satellite",
   "scale",
