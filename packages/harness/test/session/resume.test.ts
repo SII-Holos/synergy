@@ -201,6 +201,36 @@ test("abandon cancels an admitted recovery request and never resurrects it on re
     expect((await SessionRecovery.recoverableStatuses(session.scope.id))[session.id]).toBeUndefined()
   }))
 
+test("Continue resumes a completed root with an already materialized unanswered Cortex notification", () =>
+  fixture(async () => {
+    using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})
+    const { session, rootID, messageID, owner } = await failedSession()
+    const reply = await MessageV2.get({ sessionID: session.id, messageID })
+    if (reply.info.role !== "assistant") throw new Error("Expected assistant")
+    await Session.updateMessage({ ...reply.info, error: undefined, finish: "stop" })
+    await RolloutLedger.resumeRun(owner, rootID)
+    await RolloutLedger.finishRun(owner, rootID, "completed")
+    await SessionInbox.deliver({
+      sessionID: session.id,
+      mode: "steer",
+      message: {
+        role: "user",
+        origin: { type: "cortex", taskID: "ctx_fixture" },
+        parts: [{ type: "text", text: "The background task completed; retrieve its result." }],
+      },
+    })
+    const [notification] = await SessionInbox.peekSteer(session.id)
+    await SessionInbox.materializeItem(notification, rootID, { guiding: true })
+
+    const request = { sessionID: session.id, requestID: "continue-saved-notification" }
+    expect((await resumeSession(request)).outcome).toBe("accepted")
+    expect((await resumeSession(request)).outcome).toBe("already_accepted")
+    expect((await RolloutLedger.getRun(owner, rootID)).status).toBe("running")
+    expect((await Session.get(session.id)).paused).toBeUndefined()
+    expect((await MessageV2.get({ sessionID: session.id, messageID })).info).toMatchObject({ finish: "stop" })
+    expect(await SessionInbox.peekSteer(session.id)).toHaveLength(1)
+  }))
+
 test("Continue releases a queued next task without reopening the completed predecessor", () =>
   fixture(async () => {
     using schedule = spyOn(SessionManager, "scheduleWake").mockImplementation(() => {})

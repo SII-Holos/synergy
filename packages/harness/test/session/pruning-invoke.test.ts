@@ -17,6 +17,7 @@ import { SessionPluginHooks } from "../../src/session/plugin-hooks"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { SessionCompaction } from "../../src/session/compaction"
+import { PromptBudgeter } from "../../src/session/prompt-budgeter"
 import { SessionAbort } from "../../src/session/abort"
 import { SessionInbox } from "../../src/session/inbox"
 import { testRuntime } from "../support/runtime"
@@ -99,8 +100,8 @@ for (const scenario of [
                 finishReason: { unified: "tool-calls", raw: "tool_calls" },
                 usage: {
                   inputTokens: {
-                    total: "continuation" in scenario ? 100000 : 180000,
-                    noCache: "continuation" in scenario ? 100000 : 180000,
+                    total: "continuation" in scenario ? 50000 : 180000,
+                    noCache: "continuation" in scenario ? 50000 : 180000,
                     cacheRead: 0,
                     cacheWrite: 0,
                   },
@@ -131,8 +132,8 @@ for (const scenario of [
         },
       }
       const limit = {
-        context: scenario.pressure === "none" ? 800000 : "residual" in scenario ? 70000 : 200000,
-        input: scenario.pressure === "none" ? 800000 : "residual" in scenario ? 70000 : 200000,
+        context: scenario.pressure === "none" ? 800000 : scenario.pressure === "hard" ? 80000 : 100000,
+        input: scenario.pressure === "none" ? 800000 : scenario.pressure === "hard" ? 80000 : 100000,
         output: 8000,
       }
       const configuredModel = (id: string) => ({
@@ -253,49 +254,49 @@ for (const scenario of [
                 origin: "user",
                 text: `Completed task ${index}.`,
               })
-              const assistantID = Identifier.ascending("message")
-              const now = Date.now()
-              await Session.updateMessage({
-                id: assistantID,
-                sessionID: session.id,
-                role: "assistant",
-                parentID: userID,
-                rootID: userID,
-                modelID: "fixture",
-                providerID: "fixture",
-                mode: "fixture",
-                agent: "fixture",
-                path: { cwd: "/", root: "/" },
-                cost: 0,
-                finish: "single" in scenario ? "tool-calls" : "stop",
-                time: { created: now, completed: now },
-                tokens: {
-                  input: scenario.pressure === "hard" ? 220000 : 180000,
-                  output: 5,
-                  reasoning: 0,
-                  cache: { read: 0, write: 0 },
-                },
-              })
-              if (index === ("protected" in scenario ? 1 : 0) || ("residual" in scenario && index === 1)) {
-                for (let result = 0; result < 14; result++) {
-                  const part = await Session.updatePart({
-                    id: Identifier.ascending("part"),
-                    sessionID: session.id,
-                    messageID: assistantID,
-                    type: "tool",
-                    tool: "fixture_step",
-                    callID: `old-evidence-${result}`,
-                    state: {
-                      status: "completed",
-                      input: {},
-                      output: evidence,
-                      title: "Earlier evidence",
-                      metadata: {},
-                      time: { start: now, end: now },
-                    },
-                  })
-                  if (result === 0 && !outputPartID) outputPartID = part.id
-                }
+              const hasEvidence = index === ("protected" in scenario ? 1 : 0) || ("residual" in scenario && index === 1)
+              for (let result = 0; result < (hasEvidence ? 14 : 1); result++) {
+                const assistantID = Identifier.ascending("message")
+                const now = Date.now()
+                await Session.updateMessage({
+                  id: assistantID,
+                  sessionID: session.id,
+                  role: "assistant",
+                  parentID: userID,
+                  rootID: userID,
+                  modelID: "fixture",
+                  providerID: "fixture",
+                  mode: "fixture",
+                  agent: "fixture",
+                  path: { cwd: "/", root: "/" },
+                  cost: 0,
+                  finish: "single" in scenario ? "tool-calls" : "stop",
+                  time: { created: now, completed: now },
+                  tokens: {
+                    input: scenario.pressure === "hard" ? 220000 : 180000,
+                    output: 5,
+                    reasoning: 0,
+                    cache: { read: 0, write: 0 },
+                  },
+                })
+                if (!hasEvidence) continue
+                const part = await Session.updatePart({
+                  id: Identifier.ascending("part"),
+                  sessionID: session.id,
+                  messageID: assistantID,
+                  type: "tool",
+                  tool: "fixture_step",
+                  callID: `old-evidence-${result}`,
+                  state: {
+                    status: "completed",
+                    input: {},
+                    output: evidence,
+                    title: "Earlier evidence",
+                    metadata: {},
+                    time: { start: now, end: now },
+                  },
+                })
+                if (result === 0 && !outputPartID) outputPartID = part.id
               }
             }
             const originalPrune = SessionCompaction.prune
@@ -319,6 +320,13 @@ for (const scenario of [
                   })
                 : undefined
             let failed: unknown
+            const calibrations: Array<PromptBudgeter.Calibration | undefined> = []
+            const originalCalibrate = PromptBudgeter.calibrate
+            const calibrate = spyOn(PromptBudgeter, "calibrate").mockImplementation(async (...args) => {
+              const result = await originalCalibrate(...args)
+              calibrations.push(result)
+              return result
+            })
             try {
               if ("single" in scenario) await SessionInvoke.loop.force(session.id)
               else {
@@ -333,6 +341,7 @@ for (const scenario of [
               failed = error
             } finally {
               prune?.mockRestore()
+              calibrate.mockRestore()
             }
             await LoopJob.drain(session.id)
             const messages = await Session.messages({ sessionID: session.id })
@@ -392,13 +401,11 @@ for (const scenario of [
               expect(beforeReply.findLast((message) => message.info.role === "assistant")?.info.id).toBe(
                 anchor?.info.id,
               )
-              expect(anchor?.info.role === "assistant" && anchor.info.tokens.input).toBe(100000)
+              expect(anchor?.info.role === "assistant" && anchor.info.tokens.input).toBe(50000)
               expect(SessionCompaction.pruningRevision(beforeReply.slice(0, beforeReply.indexOf(anchor!)))).toBe(
                 anchor?.info.metadata?.promptPruning,
               )
-              expect(
-                SessionInvoke.buildCalibration(beforeReply, await Provider.getModel("fixture", "fixture")),
-              ).toMatchObject({ actualInput: 100000 })
+              expect(calibrations.at(-1)).toMatchObject({ actualInput: 50000 })
               expect(toolCalls).toBe(1)
               expect(JSON.stringify(prompts[1]).includes("new-evidence-528")).toBe(true)
             }

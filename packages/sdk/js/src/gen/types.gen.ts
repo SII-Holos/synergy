@@ -10609,6 +10609,12 @@ export type AssistantMessage = {
     root: string | null
   }
   summary?: boolean
+  compaction?: {
+    coveredThrough: {
+      created: number
+      messageID: string
+    }
+  }
   accounting?:
     | {
         kind: "rollout"

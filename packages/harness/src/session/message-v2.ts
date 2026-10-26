@@ -10,6 +10,7 @@ import { markdownAssetReferences } from "@ericsanchezok/synergy-util/markdown-as
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import { ToolIntent } from "./tool-intent"
+import { modelWorkingSetProjection, selectModelWorkingSet } from "./model-working-set"
 import { RuntimeContextMetadata } from "./runtime-context-schema"
 import { ToolActivityEvidence } from "./activity-evidence"
 import { RuntimeContext } from "../lifecycle/context"
@@ -755,6 +756,11 @@ export namespace MessageV2 {
       root: z.string().nullable(),
     }),
     summary: z.boolean().optional(),
+    compaction: z
+      .object({
+        coveredThrough: z.object({ created: z.number(), messageID: z.string() }),
+      })
+      .optional(),
     accounting: RolloutSchema.MessageAccounting.optional(),
     cost: z.number(),
     tokens: z.object({
@@ -1472,7 +1478,12 @@ export namespace MessageV2 {
       maxHistoryImages?: number
       model?: { providerID: string; modelID: string; profileID?: string; apiModelID?: string }
     },
-  ): Promise<{ messages: ModelMessage[]; provenance: ModelMessageProvenance; sanitization: PromptSanitizationStats }> {
+  ): Promise<{
+    messages: ModelMessage[]
+    messageSources: string[]
+    provenance: ModelMessageProvenance
+    sanitization: PromptSanitizationStats
+  }> {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
@@ -1504,11 +1515,13 @@ export namespace MessageV2 {
     }
 
     const result: UIMessage[] = []
+    const sources = new Map<string, string>()
     const provenance = createModelMessageProvenance()
     const sanitization = createPromptSanitizationStats()
 
     for (const msg of input) {
       if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
+      const start = result.length
 
       if (msg.info.role === "user") {
         const userMessage: UIMessage = {
@@ -1700,12 +1713,20 @@ export namespace MessageV2 {
           result.push(assistantMessage)
         }
       }
+      for (let index = start; index < result.length; index++) sources.set(result[index].id, msg.info.id)
     }
 
+    const converted = await Promise.all(
+      result
+        .filter((msg) => msg.parts.some((part) => part.type !== "step-start"))
+        .map(async (msg) => ({
+          source: sources.get(msg.id)!,
+          messages: await convertToModelMessages([msg]),
+        })),
+    )
     return {
-      messages: await convertToModelMessages(
-        result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")),
-      ),
+      messages: converted.flatMap((item) => item.messages),
+      messageSources: converted.flatMap((item) => item.messages.map(() => item.source)),
       provenance,
       sanitization,
     }
@@ -2179,20 +2200,14 @@ export namespace MessageV2 {
           }),
       )
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
-      return parts.map((part) => {
-        if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
-          return {
-            ...part,
-            state: {
-              ...part.state,
-              output: "",
-            },
-          }
-        }
-        return part
-      })
+      return parts.map(withoutPrunedOutput)
     },
   )
+
+  export function withoutPrunedOutput(part: Part): Part {
+    if (part.type !== "tool" || part.state.status !== "completed" || !part.state.time.compacted) return part
+    return { ...part, state: { ...part.state, output: "" } }
+  }
 
   export const get = fn(
     z.object({
@@ -2222,45 +2237,18 @@ export namespace MessageV2 {
   )
 
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
-    const result = [] as MessageV2.WithParts[]
-    const skipped = [] as MessageV2.WithParts[]
-    let boundaryUserID: string | undefined
-    let foundBoundary = false
-    for await (const msg of stream) {
-      if (!boundaryUserID) {
-        result.push(msg)
-        if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) boundaryUserID = msg.info.parentID
-        continue
-      }
-
-      if (
-        msg.info.role !== "user" ||
-        msg.info.id !== boundaryUserID ||
-        !msg.parts.some((part) => part.type === "compaction")
-      ) {
-        skipped.push(msg)
-        continue
-      }
-
-      const boundaryID = boundaryUserID
-      result.push(
-        ...skipped
-          .filter((item) => isFulfilledCompactionSummary(item, boundaryID))
-          .map((item) => ({ ...item, info: { ...item.info, includeInContext: false } })),
-      )
-      result.push(msg)
-      foundBoundary = true
-      break
-    }
-    if (boundaryUserID && !foundBoundary) result.push(...skipped)
-    result.reverse()
-    return result
-  }
-
-  function isFulfilledCompactionSummary(msg: MessageV2.WithParts, parentID: string): boolean {
-    if (msg.info.role !== "assistant") return false
-    const assistant = msg.info as MessageV2.Assistant
-    return assistant.parentID === parentID && assistant.summary === true && !!assistant.finish
+    const messages: WithParts[] = []
+    for await (const message of stream) messages.push(message)
+    messages.sort((a, b) => compareStorageOrder(a.info, b.info))
+    const projection = modelWorkingSetProjection(messages.map((message) => message.info))
+    if (!projection || !messages[projection.boundaryIndex].parts.some((part) => part.type === "compaction"))
+      return messages
+    return selectModelWorkingSet(
+      messages,
+      projection,
+      (message) => message.info,
+      (message) => ({ ...message, info: { ...message.info, includeInContext: false } }),
+    )
   }
 
   export function fromError(e: unknown, ctx: { providerID: string; modelID?: string; endpointHost?: string }) {

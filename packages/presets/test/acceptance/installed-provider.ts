@@ -5,7 +5,7 @@ export function installedProvider() {
     async fetch(request) {
       const input = (await request.json()) as {
         stream?: boolean
-        tools?: unknown[]
+        tools?: Array<{ function?: { name?: string; parameters?: { properties?: Record<string, unknown> } } }>
         messages: Array<{ role: string; content: unknown }>
       }
       const user = input.messages.findLast(
@@ -22,6 +22,8 @@ export function installedProvider() {
       const userIndex = user ? input.messages.indexOf(user) : -1
       const output = input.messages.slice(userIndex + 1).filter((message) => message.role === "tool")
       const call = Boolean(input.tools?.length && command && output.length === 0)
+      const properties = input.tools?.find((tool) => tool.function?.name === "bash")?.function?.parameters?.properties
+      const brief = properties && "description" in properties ? "description" : "workBrief"
       const markers = JSON.stringify(input.messages).match(/(?:FILE|ATTACHMENT)_[a-f0-9]{32}/g) ?? []
       const content = [...new Set(markers)].join(" ") || "Installed task"
       const usage = { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 }
@@ -35,7 +37,7 @@ export function installedProvider() {
                 type: "function",
                 function: {
                   name: "bash",
-                  arguments: JSON.stringify({ command, workBrief: "Execute installed acceptance task" }),
+                  arguments: JSON.stringify({ command, [brief]: "Execute installed acceptance task" }),
                 },
               },
             ],

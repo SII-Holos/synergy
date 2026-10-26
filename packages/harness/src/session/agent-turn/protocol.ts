@@ -141,6 +141,7 @@ export namespace AgentTurnProtocol {
       availableToolIDs: z.array(z.string()).optional(),
       codexReplay: z
         .object({
+          coveredThrough: z.object({ created: z.number(), messageID: z.string() }),
           replacementHistory: z.array(z.unknown()),
           summaryText: z.string(),
         })

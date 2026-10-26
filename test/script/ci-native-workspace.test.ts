@@ -3,8 +3,11 @@ import { catalog } from "../../script/ci/catalog"
 import { createPlan, executionQueue } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 import { verifyResults } from "../../script/ci/evidence"
+import { verifyScenarios } from "../../script/ci/junit"
+import { fileHash } from "../../script/ci/artifacts"
 import path from "node:path"
-import { stat } from "node:fs/promises"
+import os from "node:os"
+import { mkdtemp, rm, stat } from "node:fs/promises"
 import { nativeWorkspaceBatches } from "../../script/native-workspace-coverage"
 
 test("affected native plans retain the complete Local Runtime coverage contributors", async () => {
@@ -131,5 +134,109 @@ test("native batches retain every Windows and macOS control without overlapping 
     expect(files).toContain(
       windows ? "test/process/owned-process-windows.test.ts" : "test/workspace/darwin-coalition.test.ts",
     )
+  }
+})
+
+test("real macOS signing is selected independently of Linux skips without rebuilding the full runtime", async () => {
+  const tasks = await catalog()
+  const signing = tasks.find((task) => task.id === "macos-signing")!
+  expect(signing).toBeDefined()
+  const files = ["test/mac-signing.test.ts", "test/runtime-seal.test.ts", "test/packaging.test.ts"]
+  expect(signing.files).toEqual(files.map((file) => `apps/desktop/${file}`))
+  expect(signing.scenarios).toEqual([
+    "native macOS signing seals the final module bytes before the app signature",
+    "signs config-only development apps without inventing a runtime",
+    "propagates real codesign errors from fail-child to the packager",
+    "propagates real codesign errors from fail-app to the packager",
+  ])
+  expect(signing.outputs).toEqual(["junit"])
+  const desktopSuite = tasks.find((task) => task.kind === "suite" && task.package === "apps/desktop")!
+  for (const file of files) expect(desktopSuite.files).not.toContain(file)
+  const workspaces = [
+    { name: "desktop", directory: "apps/desktop", dependencies: [], testDependencies: [] },
+    { name: "plugin-host", directory: "packages/plugin-host", dependencies: [], testDependencies: [] },
+  ]
+  for (const changed of [
+    "apps/desktop/script/mac-sign.cjs",
+    "apps/desktop/script/after-pack.cjs",
+    "apps/desktop/electron-builder.json",
+    ...signing.files!,
+    "packages/plugin-host/src/installation/generations.ts",
+    "bun.lock",
+  ]) {
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "affected",
+      changed: [changed],
+      baseWorkspaces: workspaces,
+      headWorkspaces: workspaces,
+      tasks,
+    })
+    expect(plan.selected).toContain(signing.id)
+    const units = plan.units.filter((unit) => unit.tasks.includes(signing.id))
+    expect(units).toHaveLength(1)
+    expect(executionQueue(units[0]!)).toBe("macos")
+    expect(units[0]).toMatchObject({ core: false, full: false, desktop: false, sandbox: false })
+    expect(signing.needs).toEqual([])
+    expect(await commands(signing, plan)).toEqual([
+      {
+        name: "macos-signing",
+        args: [process.execPath, "test", "--timeout", "30000", ...files],
+        cwd: "apps/desktop",
+      },
+    ])
+  }
+})
+
+test("missing or skipped real macOS signing evidence cannot satisfy All checks passed", async () => {
+  const task = (await catalog()).find((entry) => entry.id === "macos-signing")!
+  expect(task).toBeDefined()
+  const plan = createPlan({
+    base: "base",
+    head: "head",
+    sha: "tested",
+    run: "fixture",
+    mode: "full",
+    changed: [],
+    baseWorkspaces: [],
+    headWorkspaces: [],
+    tasks: [task],
+  })
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-signing-evidence-"))
+  try {
+    for (const outcome of ["passed", "skipped", "absent"]) {
+      const cases = task.scenarios!.map(
+        (name) => `<testcase name="${name}">${outcome === "skipped" ? "<skipped/>" : ""}</testcase>`,
+      )
+      await Bun.write(
+        path.join(root, "signing.xml"),
+        `<testsuite>${outcome === "absent" ? "" : cases.join("")}</testsuite>`,
+      )
+      const errors = await verifyScenarios(root, plan, [
+        {
+          version: 2,
+          task: task.id,
+          unit: plan.units[0]!.id,
+          plan: plan.digest,
+          sha: plan.sha,
+          run: plan.run,
+          planAttempt: plan.attempt,
+          executionAttempt: plan.attempt,
+          mode: plan.mode,
+          status: "success",
+          exitCode: 0,
+          started: new Date().toISOString(),
+          completed: new Date().toISOString(),
+          steps: [{ name: task.id, seconds: 1, exitCode: 0 }],
+          reports: [{ kind: "junit", path: "signing.xml", sha256: await fileHash(path.join(root, "signing.xml")) }],
+        },
+      ])
+      expect(errors).toHaveLength(outcome === "passed" ? 0 : task.scenarios!.length)
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
   }
 })

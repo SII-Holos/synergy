@@ -7,6 +7,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
 import { Identifier } from "../../src/id/id"
+import { prepareSessionMigrations } from "../../src/migration"
 import { tmpdir } from "../support/fixture"
 import { testRuntime } from "../support/runtime"
 
@@ -283,6 +284,7 @@ test("batched part pages bound a message window with the same semantics as singl
             generation: 0,
           })
         }
+        await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
         using read = spyOn(Storage, "read")
         using readMany = spyOn(Storage, "readMany")
         const result = await SessionHistory.partPages({

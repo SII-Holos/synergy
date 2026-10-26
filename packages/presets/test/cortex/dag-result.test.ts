@@ -122,6 +122,7 @@ function installDagLoopMocks(options?: {
       system: input.system,
       systemCacheBreakpoint: input.systemCacheBreakpoint,
       messages: input.messages,
+      messageSources: input.messageSources,
       toolDefinitions: input.toolDefinitions,
     }
   })

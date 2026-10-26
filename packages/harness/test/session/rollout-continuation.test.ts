@@ -73,6 +73,7 @@ test("compaction cannot hide a completed root from detached rollout reconciliati
         mode: "compaction",
         agent: "compaction",
         summary: true,
+        compaction: { coveredThrough: { created: reply.time.created, messageID: reply.id } },
         metadata: { compactionAttempt: { state: "committed" } },
       })
       expect(

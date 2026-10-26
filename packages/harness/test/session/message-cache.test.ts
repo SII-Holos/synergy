@@ -174,6 +174,7 @@ describe("SessionMessageCache", () => {
       const firstSummary: MessageV2.WithParts = {
         info: {
           id: "msg_summary_1",
+          compaction: { coveredThrough: { created: 2, messageID: "msg_old" } },
           sessionID: SID,
           role: "assistant",
           parentID: root.info.id,
@@ -189,6 +190,7 @@ describe("SessionMessageCache", () => {
         info: {
           ...firstSummary.info,
           id: "msg_summary_2",
+          compaction: { coveredThrough: { created: 4, messageID: "msg_continuation" } },
           time: { created: 5, completed: 5 },
         } as MessageV2.Assistant,
         parts: [],
@@ -214,6 +216,7 @@ describe("SessionMessageCache", () => {
       const summary: MessageV2.WithParts = {
         info: {
           id: "msg_summary",
+          compaction: { coveredThrough: { created: 2, messageID: "msg_old" } },
           sessionID: SID,
           role: "assistant",
           parentID: root.info.id,

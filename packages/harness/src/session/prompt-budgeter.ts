@@ -31,6 +31,7 @@ export namespace PromptBudgeter {
     systemCacheBreakpoint?: number
     lateSystem?: string[]
     messages: ModelMessage[]
+    messageSources?: string[]
     toolDefinitions: ToolResolver.Definition[]
   }
 
@@ -39,6 +40,7 @@ export namespace PromptBudgeter {
     systemCacheBreakpoint?: number
     lateSystem?: string[]
     messages: ModelMessage[]
+    messageSources?: string[]
     toolDefinitions: ToolResolver.Definition[]
   }
 
@@ -79,17 +81,72 @@ export namespace PromptBudgeter {
   /**
    * Calibration data from a previous API call in the same invoke loop.
    *
-   * The API reports real token counts using the model's native tokenizer.
-   * `actualInput` covers the full prompt (system + messages + tools) as of
-   * that call. `outputTokens` is the response length, which becomes part of
-   * the conversation history in subsequent calls. Together they let us
-   * estimate the next call's cost with far better accuracy than re-tokenizing
-   * everything through a mismatched tokenizer (e.g. o200k_base for Claude).
+   * Only an unchanged request envelope and message prefix may reuse actual
+   * input usage. The unified meter measures the appended projection, including
+   * replayed reasoning and tool results, instead of guessing from characters.
    */
   export interface Calibration {
     actualInput: number
     outputTokens: number
     deltaTokens: number
+  }
+
+  export interface Snapshot {
+    envelope: string
+    messages: string[]
+    estimatedTokens: number
+  }
+
+  export type Baseline = Snapshot & { actualInput: number }
+
+  function fingerprint(value: unknown) {
+    return Bun.hash(JSON.stringify(value)).toString(16)
+  }
+
+  function envelope(plan: PromptPlan, model: Provider.Model) {
+    return fingerprint({
+      providerID: model.providerID,
+      modelID: model.id,
+      api: model.api,
+      options: model.options,
+      system: plan.system,
+      lateSystem: plan.lateSystem ?? [],
+      systemCacheBreakpoint: plan.systemCacheBreakpoint,
+      tools: plan.toolDefinitions.map(({ id, description, inputSchema }) => ({ id, description, inputSchema })),
+    })
+  }
+
+  export async function snapshot(
+    plan: PromptPlan,
+    model: Provider.Model,
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+  ): Promise<Snapshot> {
+    return {
+      envelope: envelope(plan, model),
+      messages: plan.messages.map(fingerprint),
+      estimatedTokens: (await measure(plan, model.id, { encryptedReasoningTokens })).total,
+    }
+  }
+
+  export function withUsage(request: Snapshot, usage: ModelLimit.TokenUsage): Baseline | undefined {
+    const actualInput = ModelLimit.actualInput(usage)
+    if (!Number.isFinite(actualInput) || actualInput <= 0) return
+    return { ...request, actualInput }
+  }
+
+  export async function calibrate(
+    plan: PromptPlan,
+    model: Provider.Model,
+    baseline?: Baseline,
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+  ): Promise<Calibration | undefined> {
+    if (!baseline || baseline.envelope !== envelope(plan, model)) return
+    if (plan.messages.length < baseline.messages.length) return
+    if (baseline.messages.some((key, index) => key !== fingerprint(plan.messages[index]))) return
+    const measured = await measure(plan, model.id, { encryptedReasoningTokens })
+    const deltaTokens = measured.total - baseline.estimatedTokens
+    if (deltaTokens < 0 || deltaTokens > baseline.actualInput * 0.25) return
+    return { actualInput: baseline.actualInput, outputTokens: 0, deltaTokens }
   }
 
   export async function buildPlan(input: PromptPlanInput): Promise<PromptPlan> {
@@ -118,14 +175,27 @@ export namespace PromptBudgeter {
     })
 
     const lateSystem = [...(input.lateSystem ?? [])]
+    const source = Symbol("messageSource")
+    const projected = ProviderTransform.message(
+      input.messages.map((message, index) => ({ ...message, [source]: input.messageSources?.[index] })),
+      input.model,
+      {
+        lookAtAvailable: input.toolDefinitions.some((tool) => tool.id === "look_at"),
+        viewImageAvailable: input.toolDefinitions.some((tool) => tool.id === "view_image"),
+      },
+    ) as Array<ModelMessage & { [source]?: string }>
+    let previousSource = ""
+    const messageSources = projected.map((message) => {
+      previousSource = message[source] ?? previousSource
+      delete message[source]
+      return previousSource
+    })
     return {
       system: normalizedSystem,
       systemCacheBreakpoint: normalizeCacheBreakpoint(input.systemCacheBreakpoint, normalizedSystem.length),
       lateSystem,
-      messages: ProviderTransform.message(input.messages, input.model, {
-        lookAtAvailable: input.toolDefinitions.some((tool) => tool.id === "look_at"),
-        viewImageAvailable: input.toolDefinitions.some((tool) => tool.id === "view_image"),
-      }),
+      messages: projected,
+      messageSources: input.messageSources ? messageSources : undefined,
       toolDefinitions: input.toolDefinitions,
     }
   }
@@ -256,10 +326,13 @@ export namespace PromptBudgeter {
    * Text tokenizers count encoded bytes as text rather than provider-side
    * tokens, producing inflated estimates and premature compaction.
    */
-  function sanitizeForEstimation(msgs: ModelMessage[], encryptedReasoningTokens?: ReadonlyMap<string, number>) {
+  function sanitizeForEstimation(
+    msgs: ModelMessage[],
+    encryptedReasoningTokens?: ReadonlyMap<string, number>,
+    reasoningItems = new Set<string>(),
+  ) {
     let imageParts = 0
     let encryptedReasoningCost = 0
-    const reasoningItems = new Set<string>()
     const sanitized = msgs.map((msg) => ({
       ...msg,
       content: Array.isArray(msg.content)
@@ -309,7 +382,10 @@ export namespace PromptBudgeter {
       modelID,
       [...plan.system, ...(plan.lateSystem ?? [])].map((content) => ({ role: "system", content })),
     )
-    const messageCost = await estimateMessages(plan.messages, modelID, options?.encryptedReasoningTokens)
+    const messageCost = (await measureMessageCosts(plan.messages, modelID, options?.encryptedReasoningTokens)).reduce(
+      (sum, cost) => sum + cost,
+      0,
+    )
     const toolCost = await estimateTools(plan.toolDefinitions, modelID)
     return {
       system: systemCost,
@@ -319,21 +395,27 @@ export namespace PromptBudgeter {
     }
   }
 
-  async function estimateMessages(
+  export async function measureMessageCosts(
     messages: ModelMessage[],
     modelID: string,
     encryptedReasoningTokens?: ReadonlyMap<string, number>,
   ) {
-    let total = 0
+    await Token.warmup(modelID)
+    const costs: number[] = []
+    const reasoningItems = new Set<string>()
     for (const message of messages) {
       const { sanitized, imageParts, encryptedReasoningCost } = sanitizeForEstimation(
         [message],
         encryptedReasoningTokens,
+        reasoningItems,
       )
-      total +=
-        (await estimateModelJSONCached(modelID, sanitized)) + imageParts * IMAGE_TOKEN_ESTIMATE + encryptedReasoningCost
+      costs.push(
+        (await estimateModelJSONCached(modelID, sanitized)) +
+          imageParts * IMAGE_TOKEN_ESTIMATE +
+          encryptedReasoningCost,
+      )
     }
-    return total
+    return costs
   }
 
   async function estimateModelJSONCached(modelID: string, value: unknown) {

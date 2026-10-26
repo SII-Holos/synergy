@@ -28,7 +28,6 @@ import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
 import { Token } from "../util/token"
 import { Lock } from "../util/lock"
-import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { Bus } from "../bus"
 import { SystemPrompt } from "./system"
 import { SessionEndpoint } from "./endpoint"
@@ -73,6 +72,7 @@ import { cacheResult, getCachedResult, evictRecallCache } from "./recall"
 
 import { LLM } from "./llm"
 import { AgentTurn } from "./agent-turn"
+import { modelWorkingSetForPrompt } from "./model-working-set"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { LoopJob } from "./loop-job"
@@ -101,11 +101,6 @@ export namespace SessionInvoke {
     ephemeralToolsByMessage: new Map<string, ToolResolver.EphemeralTool[]>(),
     maxOutputTokensByMessage: new Map<string, number>(),
   }))
-  // Calibration adds a cheap chars/4 delta to provider-reported input. That is
-  // only trustworthy while the delta stays small relative to the measured
-  // baseline; past this ratio the heuristic's own error dominates and a
-  // full measurement is cheaper than guessing.
-  const CALIBRATION_MAX_DELTA_RATIO = 0.25
 
   function channelDeliveryMetadata(messages: MessageV2.WithParts[], afterIndex: number) {
     let channelPush = false
@@ -626,7 +621,8 @@ export namespace SessionInvoke {
     let step = 0
     let recalledRootID: string | undefined
     let emergencyCompactionTriggered = false
-    let hardOverflowCompactionRootID: string | undefined
+    let recoveringCompaction = false
+    let promptBaseline: PromptBudgeter.Baseline | undefined
     let session = await Session.get(sessionID)
     SessionManager.assertExecutionContext(session, "session loop")
     let scopeID = (session.scope as Scope).id
@@ -763,6 +759,8 @@ export namespace SessionInvoke {
                   }
                   processedRootID = R.id
                   if (!segment) {
+                    if (SessionProgress.findTerminalReply(msgs, R.id))
+                      await RolloutLedger.continueRun(RolloutLifecycle.owner(session), R.id)
                     SessionManager.setActivity(
                       sessionID,
                       { phase: "preparing_files" },
@@ -1306,7 +1304,7 @@ export namespace SessionInvoke {
                   })
                   return {
                     messages,
-                    projection: await MessageV2.projectModelMessages(messages, {
+                    projection: await MessageV2.projectModelMessages(modelWorkingSetForPrompt(messages), {
                       maxHistoryImages: jobCtx.compactionMaxHistoryImages,
                       model: {
                         providerID: model.providerID,
@@ -1351,6 +1349,7 @@ export namespace SessionInvoke {
                     system: systemParts,
                     systemCacheBreakpoint,
                     messages: preparedMessages,
+                    messageSources: [...modelProjection.messageSources, ...(isLastStep ? [R!.id] : [])],
                     lateSystem: lateSystemParts,
                     toolDefinitions,
                   }).catch(async (error) => {
@@ -1363,10 +1362,9 @@ export namespace SessionInvoke {
                 if (!promptPlan) break
 
                 const requestedMaxOutputTokens = runtimeState().maxOutputTokensByMessage.get(R.id)
-                const decidePrompt = (calibration?: PromptBudgeter.Calibration) =>
+                const decidePrompt = () =>
                   PromptBudgeter.decide(promptPlan!, model.limit, model.id, {
                     overflowThreshold: jobCtx.compactionOverflowThreshold,
-                    calibration,
                     maxOutputTokens: requestedMaxOutputTokens,
                     encryptedReasoningTokens: PromptBudgeter.reasoningReplayTokens(modelSessionMessages),
                   }).catch(async (error) => {
@@ -1374,14 +1372,14 @@ export namespace SessionInvoke {
                     return undefined
                   })
                 const promptDecideTimer = log.time("promptBudgeter.decide")
-                let promptDecision = await decidePrompt(buildCalibration(msgs, model))
+                let promptDecision = await decidePrompt()
                 promptDecideTimer.stop()
                 if (!promptDecision) break
                 let promptPruning = SessionCompaction.pruningRevision(msgs)
 
                 // Provenance: docs/decisions/implemented/bug-fix/2026-10-16-pressure-driven-task-safe-pruning.md
                 // Local adaptation: reuse the existing prompt-pressure decision and remeasure after canonical pruning.
-                if (promptDecision.shouldCompact || promptDecision.contextExceeded) {
+                if (!recoveringCompaction && (promptDecision.shouldCompact || promptDecision.contextExceeded)) {
                   let pruned: MessageV2.ToolPart[]
                   try {
                     pruned = await SessionCompaction.prune({ sessionID, messages: msgs, modelID: model.id, abort })
@@ -1425,7 +1423,6 @@ export namespace SessionInvoke {
 
                 const shouldInjectCompaction =
                   !jobCtx.compactionAutoDisabled &&
-                  hardOverflowCompactionRootID !== R.id &&
                   !SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id) &&
                   (promptDecision.shouldCompact || promptDecision.contextExceeded)
                 if (shouldInjectCompaction) {
@@ -1439,7 +1436,6 @@ export namespace SessionInvoke {
                     margin: promptDecision.budget.margin,
                     contextExceeded: promptDecision.contextExceeded,
                   })
-                  if (promptDecision.contextExceeded) hardOverflowCompactionRootID = R.id
                   await Session.updatePart({
                     id: Identifier.ascending("part"),
                     messageID: R.id,
@@ -1460,6 +1456,7 @@ export namespace SessionInvoke {
                     systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
                     lateSystem: promptPlan.lateSystem,
                     messages: promptPlan.messages,
+                    messageSources: promptPlan.messageSources!,
                     toolDefinitions: catalog,
                     activeToolIDs: catalog.map((definition) => definition.id),
                     codexReplay: await SessionCompaction.codexReplayPlan({
@@ -1483,6 +1480,8 @@ export namespace SessionInvoke {
                     })
                     if (compacted === "stop") break
                     emergencyCompactionTriggered = false
+                    recoveringCompaction = true
+                    promptBaseline = undefined
                     continue
                   } catch (error) {
                     if (RolloutRecordingError.isInstance(error)) throw error
@@ -1567,6 +1566,7 @@ export namespace SessionInvoke {
                     lateSystemParts.length = 0
                     modelSessionMessages.length = 0
                     modelProjection.messages.length = 0
+                    modelProjection.messageSources.length = 0
                     for (const contributions of Object.values(modelProjection.provenance.categories)) {
                       contributions.length = 0
                     }
@@ -1574,6 +1574,7 @@ export namespace SessionInvoke {
                     promptPlan?.system.splice(0)
                     promptPlan?.lateSystem?.splice(0)
                     promptPlan?.messages.splice(0)
+                    promptPlan?.messageSources?.splice(0)
                     promptPlan?.toolDefinitions.splice(0)
                     resolvedTools?.activeToolIDs.splice(0)
                     if (resolvedTools) {
@@ -1726,9 +1727,43 @@ export namespace SessionInvoke {
                       (async () => {
                         const preparedRequest = await AgentTurn.prepare(currentStreamInput)
                         combinedAbort.throwIfAborted()
-                        compactionRequest = SessionCompaction.captureRequest(preparedRequest)
+                        compactionRequest = SessionCompaction.captureRequest(
+                          preparedRequest,
+                          promptPlan!.messageSources!,
+                        )
                         streamInput = { ...currentStreamInput, ...preparedRequest }
-                        return processor.process(streamInput)
+                        const finalPlan: PromptBudgeter.PromptPlan = {
+                          ...promptPlan!,
+                          system: preparedRequest.prepared.system,
+                          messages: preparedRequest.messages,
+                          toolDefinitions: activeToolDefinitions,
+                        }
+                        const reasoningTokens = PromptBudgeter.reasoningReplayTokens(modelSessionMessages)
+                        const finalDecision = await PromptBudgeter.decide(finalPlan, model.limit, model.id, {
+                          overflowThreshold: jobCtx.compactionOverflowThreshold,
+                          maxOutputTokens: requestedMaxOutputTokens,
+                          encryptedReasoningTokens: reasoningTokens,
+                          calibration: codexReplay
+                            ? undefined
+                            : await PromptBudgeter.calibrate(finalPlan, model, promptBaseline, reasoningTokens),
+                        })
+                        if (
+                          finalDecision.contextExceeded ||
+                          (!jobCtx.compactionAutoDisabled && finalDecision.shouldCompact)
+                        ) {
+                          if (jobCtx.compactionAutoDisabled) compactionRequest = undefined
+                          throw new PromptBudgeter.ContextBudgetExceededError()
+                        }
+                        streamInput.maxOutputTokens = finalDecision.maxOutputTokens
+                        const requestSnapshot = codexReplay
+                          ? undefined
+                          : await PromptBudgeter.snapshot(finalPlan, model, reasoningTokens)
+                        promptBaseline = undefined
+                        combinedAbort.throwIfAborted()
+                        const result = await processor.process(streamInput)
+                        if (requestSnapshot && !processor.message.error && !combinedAbort.aborted)
+                          promptBaseline = PromptBudgeter.withUsage(requestSnapshot, processor.message.tokens)
+                        return result
                       })(),
                       deadlinePromise,
                     ])
@@ -1793,7 +1828,7 @@ export namespace SessionInvoke {
                     })
                   }
                 }
-                hardOverflowCompactionRootID = undefined
+                recoveringCompaction = false
 
                 let postRequestedStop = false
                 {
@@ -1860,6 +1895,9 @@ export namespace SessionInvoke {
                     })
                     compactionRequest = undefined
                     if (compacted === "stop") break
+                    emergencyCompactionTriggered = false
+                    recoveringCompaction = true
+                    promptBaseline = undefined
                     continue
                   }
                   break
@@ -3011,88 +3049,5 @@ export namespace SessionInvoke {
 
   async function effectiveCompactedMessages(sessionID: string) {
     return SessionHistory.modelMessages({ sessionID })
-  }
-
-  /**
-   * Build calibration data from the most recent assistant message that has
-   * real API-reported token counts. This lets PromptBudgeter use the model's
-   * native token count as a baseline and only estimate the small delta of
-   * new messages, rather than re-tokenizing the entire conversation through
-   * a mismatched tokenizer (o200k_base can overestimate by ~2x for Claude).
-   */
-  export function buildCalibration(
-    msgs: MessageV2.WithParts[],
-    model: Provider.Model,
-  ): PromptBudgeter.Calibration | undefined {
-    let calibrationIdx = -1
-    let calibrationTokens: MessageV2.Assistant["tokens"] | undefined
-    for (let i = msgs.length - 1; i >= 0; i--) {
-      const info = msgs[i].info
-      if (info.role !== "assistant") continue
-      const assistant = info as MessageV2.Assistant
-      if (assistant.summary) {
-        if (assistant.finish) break
-        continue
-      }
-      // Provider-reported input is only a valid baseline for the same model: a
-      // model switch changes the system prompt, the tool set, and the
-      // tokenizer, so another model's count is not a starting point for this
-      // prompt. Skipping it falls back to a full measurement instead.
-      if (assistant.providerID !== model.providerID || assistant.modelID !== model.id) continue
-      const tokens = assistant.tokens
-      if (ModelLimit.actualInput(tokens) > 0) {
-        calibrationIdx = i
-        calibrationTokens = tokens
-        break
-      }
-    }
-    if (calibrationIdx < 0 || !calibrationTokens) return undefined
-
-    const anchor = msgs[calibrationIdx].info
-    const pruning = SessionCompaction.pruningRevision(msgs.slice(0, calibrationIdx))
-    if (pruning !== anchor.metadata?.promptPruning) return undefined
-
-    const actualInput = ModelLimit.actualInput(calibrationTokens)
-    const outputTokens = calibrationTokens.output
-
-    // Reasoning traces are part of the outgoing prompt: the model projection
-    // keeps `reasoning` parts on the assistant messages, and the compatible SDK
-    // serializes them back to the provider (verified against a recorded request
-    // body, where the provider-reported input only reconciles when reasoning is
-    // counted). They are large and accumulate every turn, so omitting them
-    // under-counts the prompt by an amount that grows with conversation length.
-    let deltaChars = 0
-    for (let i = calibrationIdx + 1; i < msgs.length; i++) {
-      for (const part of msgs[i].parts) {
-        switch (part.type) {
-          case "text":
-            deltaChars += part.text?.length ?? 0
-            break
-          case "reasoning":
-            deltaChars += part.text.length
-            break
-          case "tool":
-            if (part.state.status === "completed") {
-              deltaChars += part.state.time.compacted ? 40 : (part.state.output?.length ?? 0)
-              deltaChars += JSON.stringify(part.state.input).length
-            }
-            break
-          case "attachment":
-            deltaChars += 200
-            break
-        }
-      }
-    }
-    // This deliberately uses the cheap four-chars-per-token heuristic instead
-    // of PromptBudgeter.measure's model-aware tokenizer path. Calibration runs
-    // between tool steps and starts from provider-reported actual input tokens,
-    // so only the small post-calibration delta is approximate.
-    const deltaTokens = Math.ceil(deltaChars / 4)
-    // The heuristic is only trustworthy while the delta stays small next to the
-    // baseline it is added to. Once the delta dominates, its error does too;
-    // re-measuring costs a tokenizer pass and removes the guesswork.
-    if (deltaTokens > actualInput * CALIBRATION_MAX_DELTA_RATIO) return undefined
-
-    return { actualInput, outputTokens, deltaTokens }
   }
 }

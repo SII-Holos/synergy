@@ -4,6 +4,8 @@ import { createRequire } from "node:module"
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { assertRuntimeManifest } from "../../../script/release/shared/runtime-contract"
+import { runtimeTarget, signingRuntime } from "./fixture/signing-runtime"
 
 interface ElectronBuilderConfig {
   mac?: {
@@ -54,7 +56,13 @@ afterEach(async () => {
 
 const require = createRequire(import.meta.url)
 const afterPack = require("../script/after-pack.cjs") as {
+  default(context: { electronPlatformName: string; arch: string }): Promise<void>
   assertRuntimeAssets(runtimeDir: string, platform: string): void
+  copyRuntime(
+    source: string,
+    destination: string,
+    context: { electronPlatformName: string; arch: string; packager: { appInfo: { version: string } } },
+  ): void
 }
 
 async function createRuntimeFixture(platform: "darwin" | "linux" | "win32" = "darwin", includeBinary = true) {
@@ -95,6 +103,20 @@ async function writeRuntimeManifest(runtimeDir: string) {
 }
 
 describe("desktop packaging", () => {
+  test("requires explicit opt-in to package without a prepared runtime", async () => {
+    const original = process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME
+    const context = { electronPlatformName: "darwin", arch: "missing-signing-test" }
+    try {
+      delete process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME
+      await expect(afterPack.default(context)).rejects.toThrow("Synergy runtime is missing")
+      process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME = "1"
+      expect(await afterPack.default(context)).toBeUndefined()
+    } finally {
+      if (original === undefined) delete process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME
+      else process.env.SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME = original
+    }
+  })
+
   test("accepts sealed module filenames with spaces and rejects unlisted code", async () => {
     const runtimeDir = await createRuntimeFixture()
     await fs.writeFile(path.join(runtimeDir, "runtime/Third Party.txt"), "license")
@@ -185,11 +207,18 @@ describe("desktop packaging", () => {
     expect(nsisScript).not.toContain("Call StrStr")
   })
 
-  test("writes Desktop package version metadata beside the embedded runtime", async () => {
-    const afterPackScript = await Bun.file(new URL("../script/after-pack.cjs", import.meta.url)).text()
-
-    expect(afterPackScript).toContain("desktop-package.json")
-    expect(afterPackScript).toContain("appInfo?.version")
+  test("copies the sealed runtime and inventories Desktop version metadata even without signing", async () => {
+    await using fixture = await signingRuntime()
+    const destination = path.join(fixture.root, "unsigned-copy")
+    afterPack.copyRuntime(fixture.runtimeDir, destination, {
+      electronPlatformName: "darwin",
+      arch: process.arch === "arm64" ? "arm64" : "x64",
+      packager: { appInfo: { version: "1.2.3" } },
+    })
+    expect(await Bun.file(path.join(destination, "desktop-package.json")).json()).toEqual({ version: "1.2.3" })
+    await assertRuntimeManifest(destination, runtimeTarget)
+    await fs.writeFile(path.join(destination, "desktop-package.json"), '{"version":"tampered"}')
+    await expect(assertRuntimeManifest(destination, runtimeTarget)).rejects.toThrow("checksum mismatch")
   })
 
   test("rejects a runtime without its integrity manifest", async () => {

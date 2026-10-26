@@ -71072,6 +71072,24 @@
           "summary": {
             "type": "boolean"
           },
+          "compaction": {
+            "type": "object",
+            "properties": {
+              "coveredThrough": {
+                "type": "object",
+                "properties": {
+                  "created": {
+                    "type": "number"
+                  },
+                  "messageID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["created", "messageID"]
+              }
+            },
+            "required": ["coveredThrough"]
+          },
           "accounting": {
             "oneOf": [
               {

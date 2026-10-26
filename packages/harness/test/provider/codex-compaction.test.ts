@@ -226,7 +226,11 @@ describe("codex-compaction buildReplacementHistory", () => {
 
 describe("codex-compaction applyReplaySplice", () => {
   const history = buildReplacementHistory([...USER_ITEMS, COMPACTION_ITEM], COMPACTION_ITEM)
-  const plan = { replacementHistory: history, summaryText: "SUMMARY TEXT HERE" }
+  const plan = {
+    coveredThrough: { created: 1, messageID: "msg_covered" },
+    replacementHistory: history,
+    summaryText: "SUMMARY TEXT HERE",
+  }
 
   const normalBody = {
     model: "gpt-5.3-codex",
@@ -246,7 +250,7 @@ describe("codex-compaction applyReplaySplice", () => {
       // developer prefix preserved
       expect(input[0]).toEqual(devItem("system prompt"))
       // replacement history present
-      const replacementTexts = input.slice(1, 1 + history.length)
+      const replacementTexts = input.slice(2, 2 + history.length)
       expect(replacementTexts).toEqual(history)
       // trailing messages after the summary preserved
       expect(input[input.length - 1]).toEqual(userItem("continue working"))
@@ -291,7 +295,7 @@ describe("codex-compaction applyReplaySplice", () => {
       const spliced = applyReplaySplice(body, plan)
       expect(spliced).toBeDefined()
       const input = spliced!.input as CodexResponseItem[]
-      expect(input).toEqual([devItem("sys"), ...history, userItem("tail")])
+      expect(input).toEqual([devItem("sys"), userItem("root"), ...history, userItem("tail")])
       expect(JSON.stringify(input)).not.toContain("opaque-summary-reasoning")
     }))
 
@@ -327,7 +331,11 @@ describe("codex-compaction applyReplaySplice", () => {
   test("returns undefined when replacement history lacks a trailing compaction item", () =>
     runtime.run(() => {
       expect(
-        applyReplaySplice(normalBody, { replacementHistory: [userItem("only")], summaryText: "SUMMARY TEXT HERE" }),
+        applyReplaySplice(normalBody, {
+          ...plan,
+          replacementHistory: [userItem("only")],
+          summaryText: "SUMMARY TEXT HERE",
+        }),
       ).toBeUndefined()
     }))
 
@@ -351,22 +359,33 @@ describe("codex-compaction applyReplaySplice", () => {
       expect(input[input.length - 1]).toEqual(userItem("tail"))
       // Neither summary fragment remains; replacement history occupies the middle.
       expect(JSON.stringify(input)).not.toContain("SUMMARY PART")
-      expect(input[1]).toEqual(history[0])
+      expect(input[1]).toEqual(userItem("root"))
+      expect(input[2]).toEqual(history[0])
     }))
 
-  test("falls back when a consecutive assistant run does not equal the summary", () =>
+  test.each([false, true])("preserves an adjacent assistant tail after a split=%s summary", (split) =>
     runtime.run(() => {
+      const summary = split
+        ? [assistantItem("SUMMARY TEXT "), assistantItem("HERE")]
+        : [assistantItem("SUMMARY TEXT HERE")]
+      const tail = [assistantItem("UNCOMPRESSED ASSISTANT"), userItem("tail")]
       const body = {
-        input: [
-          devItem("sys"),
-          userItem("root"),
-          assistantItem("SUMMARY TEXT HERE"),
-          assistantItem("EXTRA TEXT"),
-          userItem("tail"),
-        ],
+        input: [devItem("sys"), userItem("root"), ...summary, ...tail],
       }
-      // Joined text ("SUMMARY TEXT HEREEXTRA TEXT") != stored summary → no splice.
-      expect(applyReplaySplice(body, plan)).toBeUndefined()
+      const original = structuredClone(body)
+      expect(applyReplaySplice(body, plan)?.input).toEqual([devItem("sys"), userItem("root"), ...history, ...tail])
+      expect(body).toEqual(original)
+    }),
+  )
+
+  test("does not replace only a text prefix within an assistant item", () =>
+    runtime.run(() => {
+      expect(
+        applyReplaySplice(
+          { input: [devItem("sys"), userItem("root"), assistantItem("SUMMARY TEXT HERE EXTRA TEXT")] },
+          plan,
+        ),
+      ).toBeUndefined()
     }))
 
   test("tolerates whitespace drift between the stored summary and serialized text", () =>
@@ -379,11 +398,12 @@ describe("codex-compaction applyReplaySplice", () => {
 })
 
 describe("codex-compaction metadata", () => {
-  test("extracts v2 metadata from a message metadata record", () =>
+  test("extracts coverage-bound metadata from a message metadata record", () =>
     runtime.run(() => {
       const meta = extractRemoteCompactionMetadata({
         remoteCompaction: {
-          version: 2,
+          version: 3,
+          coveredThrough: { created: 1, messageID: "msg_covered" },
           provider: "openai-responses-compaction",
           implementation: "responses_compaction_v2",
           modelKey: "openai-codex/gpt-5.3-codex",
@@ -401,12 +421,17 @@ describe("codex-compaction metadata", () => {
       expect(meta!.replacementHistory).toHaveLength(USER_ITEMS.length)
     }))
 
-  test("rejects non-v2 or non-compaction records", () =>
+  test("rejects unbound or non-compaction records", () =>
     runtime.run(() => {
       expect(extractRemoteCompactionMetadata({ remoteCompaction: { version: 1, provider: "old" } })).toBeUndefined()
       expect(
         extractRemoteCompactionMetadata({
-          remoteCompaction: { version: 2, provider: "openai-responses-compaction", replacementHistory: [] },
+          remoteCompaction: {
+            version: 3,
+            coveredThrough: { created: 1, messageID: "msg_covered" },
+            provider: "openai-responses-compaction",
+            replacementHistory: [],
+          },
         }),
       ).toBeUndefined()
       expect(extractRemoteCompactionMetadata(undefined)).toBeUndefined()
@@ -416,7 +441,8 @@ describe("codex-compaction metadata", () => {
     runtime.run(() => {
       const meta = extractRemoteCompactionMetadata({
         remoteCompaction: {
-          version: 2,
+          version: 3,
+          coveredThrough: { created: 1, messageID: "msg_covered" },
           provider: "openai-responses-compaction",
           modelKey: "k",
           providerID: "openai-codex",
@@ -482,7 +508,11 @@ describe("codex-compaction type guard", () => {
 })
 
 describe("codex-compaction replay registry", () => {
-  const plan = { replacementHistory: [COMPACTION_ITEM], summaryText: "SUMMARY" }
+  const plan = {
+    coveredThrough: { created: 1, messageID: "msg_covered" },
+    replacementHistory: [COMPACTION_ITEM],
+    summaryText: "SUMMARY",
+  }
 
   test("registers, reads, and clears a plan by cache key", () =>
     runtime.run(() => {
@@ -496,7 +526,7 @@ describe("codex-compaction replay registry", () => {
   test("re-registering a session replaces the previous plan", () =>
     runtime.run(() => {
       setReplayPlan("session-a", "cache-a", plan)
-      setReplayPlan("session-a", "cache-b", { replacementHistory: [COMPACTION_ITEM], summaryText: "NEW" })
+      setReplayPlan("session-a", "cache-b", { ...plan, replacementHistory: [COMPACTION_ITEM], summaryText: "NEW" })
       expect(getReplayPlan("cache-a")).toBeUndefined()
       expect(getReplayPlan("cache-b")).toBeDefined()
       clearReplayPlan("session-a")
@@ -609,7 +639,8 @@ describe("codex-compaction metadata apiModelID", () => {
     runtime.run(() => {
       const meta = extractRemoteCompactionMetadata({
         remoteCompaction: {
-          version: 2,
+          version: 3,
+          coveredThrough: { created: 1, messageID: "msg_covered" },
           provider: "openai-responses-compaction",
           implementation: "responses_compaction_v2",
           modelKey: "openai-codex/alias",
@@ -628,7 +659,8 @@ describe("codex-compaction metadata apiModelID", () => {
     runtime.run(() => {
       const meta = extractRemoteCompactionMetadata({
         remoteCompaction: {
-          version: 2,
+          version: 3,
+          coveredThrough: { created: 1, messageID: "msg_covered" },
           provider: "openai-responses-compaction",
           implementation: "responses_compaction_v2",
           modelKey: "openai-codex/gpt-5.4-codex",

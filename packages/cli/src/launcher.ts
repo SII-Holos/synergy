@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { z } from "zod"
 import { serialize } from "node:v8"
 import { runtimeStartupLine } from "@ericsanchezok/synergy-util/runtime-startup"
+import { INSTALLED_WORKER_CONTROL_VERSION, InstalledWorkerReady } from "@ericsanchezok/synergy-util/installed-launcher"
 import {
   prepareInstalledLaunch,
   verifyInstalledWorkerPlan,
@@ -27,8 +28,13 @@ export async function launch() {
     earlyMessages.push(message)
   }
   if (process.send) process.on("message", receive)
+  const requestedControl = process.env.SYNERGY_WORKER_CONTROL_VERSION === String(INSTALLED_WORKER_CONTROL_VERSION)
+  let resumed = false
   const resumeWorker = () => {
+    if (resumed) return
+    resumed = true
     process.off("message", receive)
+    if (control) process.send?.(control)
     for (const message of earlyMessages.splice(0)) process.emit("message", message, undefined)
   }
   const standalone = typeof SYNERGY_STANDALONE === "boolean" && SYNERGY_STANDALONE
@@ -57,6 +63,15 @@ export async function launch() {
       ? { seed }
       : {}),
   })
+  const control =
+    requestedControl && runner === "__plugin-runtime-runner"
+      ? InstalledWorkerReady.parse({
+          synergyLauncher: "worker-ready",
+          version: INSTALLED_WORKER_CONTROL_VERSION,
+          runner,
+          pin: { id: generation.id, sha256: generation.sha256 },
+        })
+      : undefined
   Object.assign(globalThis, {
     SYNERGY_VERSION: generation.hostVersion,
     SYNERGY_CHANNEL: typeof SYNERGY_CHANNEL === "string" ? SYNERGY_CHANNEL : "stable",
@@ -74,6 +89,7 @@ export async function launch() {
   process.env.SYNERGY_LAUNCHER_COMMAND = JSON.stringify(
     standalone ? [process.execPath] : [process.execPath, fileURLToPath(import.meta.url)],
   )
+  process.env.SYNERGY_LAUNCHER_CONTROL_VERSION = String(INSTALLED_WORKER_CONTROL_VERSION)
   if (runner === "__agent-turn-runner" || runner === "__policy-worker-runner")
     await verifyInstalledWorkerPlan(generation, process.env.SYNERGY_WORKER_COMPONENTS)
   const entry = Bun.resolveSync("@ericsanchezok/synergy-cli/index", generation.directory)

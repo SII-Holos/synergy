@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { Global } from "../../src/global"
 import { Identifier } from "../../src/id/id"
+import { prepareSessionMigrations } from "../../src/migration"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { Storage } from "../../src/storage/storage"
@@ -149,6 +150,7 @@ describe("session history memory bounds", () => {
             })
           }
 
+          await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
           const observed = observeMessageInfoReads(session.id)
           using _read = observed.read
           using _readMany = observed.readMany
