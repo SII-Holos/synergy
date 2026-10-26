@@ -2,11 +2,10 @@ import type { Migration } from "../migration"
 import { Global } from "../global"
 import { ConfigReferenceMigration } from "./reference-migration"
 import { retireFeaturePreferences } from "./feature-migration"
+import { isRecord } from "../util/is-record"
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
+  return isRecord(value) ? value : undefined
 }
 
 const retiredFeatures = ["holos", "channel-clarus"]

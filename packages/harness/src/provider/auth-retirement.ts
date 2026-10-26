@@ -3,11 +3,10 @@ import path from "node:path"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { Auth } from "./api-key"
 import { Global } from "../global"
+import { isRecord } from "../util/is-record"
 
 function record(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
+  return isRecord(value) ? value : undefined
 }
 
 function retired(value: unknown) {
