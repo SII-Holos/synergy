@@ -168,6 +168,61 @@ describe("fork confirm dialog", () => {
     await expect(page.getByRole("button", { name: "Fork session" }).count()).resolves.toBe(1)
   })
 
+  test("keeps the selected location and parent dialog when the dropdown is dismissed", async () => {
+    await page.goto(baseUrl)
+    await page.getByRole("button", { name: "Fork session", exact: true }).waitFor()
+    const trigger = page.getByRole("button", { name: "Working location: Same worktree", exact: true })
+    expect(await trigger.count()).toBe(1)
+    await trigger.click()
+    const options = page.getByRole("listbox", { name: "Working location", exact: true })
+    await options.waitFor()
+    expect(await options.getByRole("option").count()).toBe(3)
+    expect(
+      await options.getByRole("option", { name: "Same worktree", exact: true }).getAttribute("aria-selected"),
+    ).toBe("true")
+    await page.keyboard.press("Escape")
+    await options.waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.getAttribute("data-component") === "menu-field")
+    expect(await page.getByRole("dialog", { name: "Fork session", exact: true }).isVisible()).toBe(true)
+    expect(await trigger.isVisible()).toBe(true)
+    expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
+  })
+
+  for (const colorScheme of ["light", "dark"] as const) {
+    test(`shows selection only as a checkmark and highlights only the hovered location in ${colorScheme} mode`, async () => {
+      const appearance = await browser.newPage({ colorScheme, reducedMotion: "reduce" })
+      try {
+        await appearance.goto(baseUrl)
+        await appearance.getByRole("button", { name: "Working location: Same worktree", exact: true }).click()
+        const options = appearance.getByRole("listbox", { name: "Working location", exact: true })
+        const main = options.getByRole("option", { name: "Main directory", exact: true })
+        const create = options.getByRole("option", { name: "New worktree", exact: true })
+        const selected = options.getByRole("option", { name: "Same worktree", exact: true })
+        const backgrounds = () =>
+          options
+            .getByRole("option")
+            .evaluateAll((items) => items.map((item) => getComputedStyle(item).backgroundColor))
+        const transparent = "rgba(0, 0, 0, 0)"
+
+        await create.hover()
+        expect(await selected.locator('[data-slot="menu-field-indicator"]').isVisible()).toBe(true)
+        expect(await options.locator('[data-slot="menu-field-indicator"]').count()).toBe(1)
+        const hoverBackground = await create.evaluate((item) => getComputedStyle(item).backgroundColor)
+        expect(hoverBackground).not.toBe(transparent)
+        expect(await backgrounds()).toEqual([transparent, hoverBackground, transparent])
+
+        await selected.hover()
+        expect(await backgrounds()).toEqual([transparent, transparent, hoverBackground])
+
+        await main.hover()
+        expect(await backgrounds()).toEqual([hoverBackground, transparent, transparent])
+        expect(await selected.getAttribute("aria-selected")).toBe("true")
+      } finally {
+        await appearance.close()
+      }
+    })
+  }
+
   test("cannot dismiss with Escape or backdrop click while the fork is pending", async () => {
     await page.goto(`${baseUrl}?pending=true`)
     const dialog = page.locator('[data-component="dialog"]')
@@ -175,6 +230,9 @@ describe("fork confirm dialog", () => {
 
     await page.getByRole("button", { name: "Fork session" }).click()
     await expect(page.getByText("Forking…").count()).resolves.toBe(1)
+    expect(await page.getByRole("button", { name: "Working location: Same worktree", exact: true }).isDisabled()).toBe(
+      true,
+    )
 
     await page.keyboard.press("Escape")
     await expect(dialog.count()).resolves.toBe(1)
@@ -199,8 +257,12 @@ describe("fork confirm dialog", () => {
 
   test("selects main explicitly instead of keeping the source worktree", async () => {
     await page.goto(baseUrl)
-    await page.getByText("Main directory", { exact: true }).click()
-    expect(await page.getByRole("radio", { name: "Main directory", exact: true }).isChecked()).toBe(true)
+    await page.getByRole("button", { name: "Working location: Same worktree", exact: true }).click()
+    await page.getByRole("option", { name: "Main directory", exact: true }).click()
+    await page.getByRole("listbox").waitFor({ state: "hidden" })
+    expect(await page.getByRole("button", { name: "Working location: Main directory", exact: true }).isVisible()).toBe(
+      true,
+    )
     await page.getByRole("button", { name: "Fork session", exact: true }).click()
     expect(await page.locator("body").getAttribute("data-destination")).toBe(
       '{"mode":"workspace","workspaceID":"main","workspaceGeneration":3}',
@@ -210,7 +272,9 @@ describe("fork confirm dialog", () => {
 
   test("stages new worktree choice and cancellation does not create anything", async () => {
     await page.goto(baseUrl)
-    await page.getByText("New worktree", { exact: true }).click()
+    await page.getByRole("button", { name: "Working location: Same worktree", exact: true }).click()
+    await page.getByRole("option", { name: "New worktree", exact: true }).click()
+    await page.getByRole("listbox").waitFor({ state: "hidden" })
     expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
     await page.getByRole("button", { name: "Cancel", exact: true }).click()
     expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
@@ -219,9 +283,19 @@ describe("fork confirm dialog", () => {
 
   test("the whole-conversation fork uses the same destination chooser", async () => {
     await page.goto(`${baseUrl}?current=true`)
-    await page.getByRole("radio", { name: "Same worktree", exact: true }).focus()
-    await page.keyboard.press("ArrowUp")
-    expect(await page.getByRole("radio", { name: "New worktree", exact: true }).isChecked()).toBe(true)
+    const trigger = page.getByRole("button", { name: "Working location: Same worktree", exact: true })
+    await trigger.focus()
+    await page.keyboard.press("ArrowDown")
+    await page.getByRole("listbox").waitFor()
+    await page.waitForFunction(() => document.querySelector('[role="listbox"]')?.contains(document.activeElement))
+    await page.keyboard.press("Home")
+    await page.keyboard.press("ArrowDown")
+    expect(await trigger.textContent()).toContain("Same worktree")
+    await page.keyboard.press("Enter")
+    await page.getByRole("listbox").waitFor({ state: "hidden" })
+    expect(await page.getByRole("button", { name: "Working location: New worktree", exact: true }).isVisible()).toBe(
+      true,
+    )
     expect(
       await page.getByRole("dialog").getByText("Copy the conversation into a new session.", { exact: true }).count(),
     ).toBe(1)
@@ -233,9 +307,11 @@ describe("fork confirm dialog", () => {
 
   test("non-Git main projects omit worktree choices and duplicate current location", async () => {
     await page.goto(`${baseUrl}?main=true&nonGit=true`)
-    await page.getByRole("radio", { name: "Main directory", exact: true }).waitFor()
-    expect(await page.getByRole("radio").count()).toBe(1)
-    expect(await page.getByRole("radio", { name: "Main directory", exact: true }).isChecked()).toBe(true)
+    await page.getByRole("button", { name: "Working location: Main directory", exact: true }).click()
+    expect(await page.getByRole("option").count()).toBe(1)
+    expect(await page.getByRole("option", { name: "Main directory", exact: true }).getAttribute("aria-selected")).toBe(
+      "true",
+    )
   })
 
   test("loading keeps cancel reachable and does not permit an implicit fallback", async () => {
@@ -250,7 +326,7 @@ describe("fork confirm dialog", () => {
     await page.getByRole("alert").waitFor()
     expect(await page.getByRole("button", { name: "Fork session", exact: true }).isDisabled()).toBe(true)
     await page.getByRole("button", { name: "Retry", exact: true }).click()
-    await page.getByRole("radio", { name: "Same worktree", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Working location: Same worktree", exact: true }).waitFor()
     expect(await page.getByRole("button", { name: "Fork session", exact: true }).isEnabled()).toBe(true)
     expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
   })

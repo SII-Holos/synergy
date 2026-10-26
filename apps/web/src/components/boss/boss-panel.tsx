@@ -3,6 +3,7 @@ import { DagGraph, type DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -440,22 +441,22 @@ export function BossPanel(props: { sdk: SDKContext; sessionID: string }) {
                 </Button>
                 <Show when={assignOpen()}>
                   <div class="mt-2 grid gap-2 @md:grid-cols-[minmax(160px,0.7fr)_minmax(240px,1.5fr)_auto]">
-                    <select
-                      class="h-8 rounded-lg border border-border-base bg-surface-base px-2 text-11-regular text-text-strong outline-none"
+                    <MenuField
+                      ariaLabel={_({ id: "app.boss.assign.selectWorker", message: "Select worker…" })}
+                      options={[
+                        {
+                          value: "",
+                          label: _({ id: "app.boss.assign.selectWorker", message: "Select worker…" }),
+                          disabled: true,
+                        },
+                        ...directIdle().map((worker) => ({
+                          value: worker.sessionID,
+                          label: `${bossNodeLabel(worker)} (${worker.workerRole ?? "worker"})`,
+                        })),
+                      ]}
                       value={assignTarget() ?? ""}
-                      onChange={(event) => setAssignTarget(event.currentTarget.value)}
-                    >
-                      <option value="" disabled>
-                        {_({ id: "app.boss.assign.selectWorker", message: "Select worker…" })}
-                      </option>
-                      <For each={directIdle()}>
-                        {(worker) => (
-                          <option value={worker.sessionID}>
-                            {bossNodeLabel(worker)} ({worker.workerRole ?? "worker"})
-                          </option>
-                        )}
-                      </For>
-                    </select>
+                      onChange={setAssignTarget}
+                    />
                     <textarea
                       class="min-h-8 resize-none rounded-lg border border-border-base bg-surface-base px-2 py-1.5 text-11-regular text-text-strong outline-none placeholder:text-text-weaker"
                       placeholder={_({ id: "app.boss.assign.taskPlaceholder", message: "Task description…" })}

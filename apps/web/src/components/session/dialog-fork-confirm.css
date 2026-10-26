@@ -75,20 +75,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-
-  [data-slot="radio-group-wrapper"],
-  [data-slot="radio-group-items"] {
-    width: 100%;
-  }
-
-  [data-slot="radio-group-item-label"] {
-    justify-content: flex-start;
-    align-items: center;
-    min-height: 44px;
-    padding: 10px 14px;
-    font-size: var(--type-ui-body-size);
-    line-height: var(--type-ui-body-line-height);
-  }
 }
 
 .fork-confirm-location-path {

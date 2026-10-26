@@ -32,6 +32,7 @@ import { sameProjectDirectories } from "../dialog/project-directory-recovery"
 import { projectEntryCopy as copy } from "../dialog/project-entry-copy"
 import { workspaceBranch, workspaceLabel } from "../dialog/workspace-dialog-model"
 import { locationCopy } from "../dialog/task-location-copy"
+import { resourceMenuPointerMove } from "../workspace/resource-menu"
 
 type WorkContextProps = {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
@@ -293,6 +294,7 @@ function WorkContextContent(props: WorkContextProps) {
         <Popover
           variant="menu"
           title={_(copy.worktrees)}
+          contentProps={{ onPointerMove: resourceMenuPointerMove }}
           open={open()}
           onOpenChange={setOpen}
           placement="top-start"

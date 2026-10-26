@@ -4,6 +4,7 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount }
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -263,14 +264,13 @@ function SingleFileExplorer(props: {
         </div>
       </div>
       <Show when={(props.folders?.length ?? 0) > 1}>
-        <select
-          class="file-explorer-folder"
-          aria-label={lingui._({ id: "project.entry.folders", message: "Folders" })}
-          value={file.workspace?.id}
-          onChange={(event) => props.onFolderChange?.(event.currentTarget.value)}
-        >
-          <For each={props.folders}>{(folder) => <option value={folder.id}>{fileWorkspaceLabel(folder)}</option>}</For>
-        </select>
+        <MenuField
+          triggerClass="menu-field-trigger file-explorer-folder"
+          ariaLabel={lingui._({ id: "project.entry.folders", message: "Folders" })}
+          options={(props.folders ?? []).map((folder) => ({ value: folder.id, label: fileWorkspaceLabel(folder) }))}
+          value={file.workspace?.id ?? ""}
+          onChange={(value) => props.onFolderChange?.(value)}
+        />
       </Show>
       <div class="file-explorer-search">
         <Icon name={getSemanticIcon("action.search")} size="small" />

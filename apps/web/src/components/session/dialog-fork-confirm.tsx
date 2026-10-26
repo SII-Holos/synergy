@@ -3,7 +3,7 @@ import type { ProjectDirectories, Session, SessionWorkspaceSelection } from "@er
 import { createStore } from "solid-js/store"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
-import { RadioGroup } from "@ericsanchezok/synergy-ui/radio-group"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -48,11 +48,10 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
   })
   const [selected, setSelected] = createSignal<ForkWorkspaceChoice["id"]>()
   const choices = createMemo(() => forkWorkspaceChoices(props.source.workspace, directories.latest?.data))
-  const choice = createMemo(() =>
-    choices().find(
-      (item) => item.id === (selected() ?? (choices().some((item) => item.id === "current") ? "current" : "main")),
-    ),
+  const selectedID = createMemo(
+    () => selected() ?? (choices().some((item) => item.id === "current") ? "current" : "main"),
   )
+  const choice = createMemo(() => choices().find((item) => item.id === selectedID()))
   const labels = createMemo(() => ({
     main: _(S.forkLocationMain),
     create: _(S.forkLocationCreate),
@@ -165,14 +164,11 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
               </div>
             }
           >
-            <RadioGroup
-              aria-label={_(S.forkLocationTitle)}
-              orientation="vertical"
-              options={choices()}
-              current={choice()}
-              value={(item) => item.id}
-              label={(item) => labels()[item.kind]}
-              onSelect={(item) => item && setSelected(item.id)}
+            <MenuField
+              ariaLabel={_(S.forkLocationTitle)}
+              options={choices().map((item) => ({ value: item.id, label: labels()[item.kind] }))}
+              value={selectedID()}
+              onChange={setSelected}
               disabled={state.pending}
             />
             <Show when={choice()?.path}>

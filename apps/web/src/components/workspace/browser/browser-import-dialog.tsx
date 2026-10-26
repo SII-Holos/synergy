@@ -306,7 +306,7 @@ export function BrowserImportForm(props: {
               value={sourceId()}
               ariaLabel={_(M.source)}
               disabled={busy()}
-              triggerClass="browser-import-source-trigger"
+              triggerClass="menu-field-trigger browser-import-source-trigger"
               surfaceClass="browser-import-source-menu"
               onChange={(id) => {
                 setSourceId(id)

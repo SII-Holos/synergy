@@ -103,7 +103,7 @@ export function BrowserProfileDataDialog(props: { section: "import" | "passwords
           ariaLabel={targetLabel()}
           options={profiles().map((profile) => ({ value: profile.id, label: profile.name }))}
           disabled={busy()}
-          triggerClass="browser-import-source-trigger"
+          triggerClass="menu-field-trigger browser-import-source-trigger"
           surfaceClass="browser-import-source-menu"
           onChange={(id) => void load(id)}
         />
