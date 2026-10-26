@@ -5,7 +5,6 @@ const requirements: Record<
   settings: {
     "digital-twin": "digital-twin",
     browser: "browser",
-    account: "holos",
     github: "github",
     channels: "channels",
     email: "email",

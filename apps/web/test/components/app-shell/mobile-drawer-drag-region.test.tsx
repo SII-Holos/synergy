@@ -71,6 +71,7 @@ const stubModules: Record<string, string> = {
     export function usePlatform() {
       return {
         platform: "desktop",
+        openLink: url => { window.openedLink = url },
         desktopWindow: {
           chrome: "custom",
           minimize: async () => {},
@@ -107,7 +108,7 @@ const stubModules: Record<string, string> = {
   `,
   "stub-global-sdk.ts": `
     import { createSignal } from "solid-js"
-    export const [features, setFeatures] = createSignal(["workbench", "agenda", "library", "plugin-host", "note", "browser", "holos", "kanban"])
+    export const [features, setFeatures] = createSignal(["workbench", "agenda", "library", "plugin-host", "note", "browser", "kanban"])
     window.setFeatures = setFeatures
     export function useGlobalSDK() {
       return { capabilities: { has: id => features()?.includes(id) ?? false }, drafts: { hasDraftSession: () => false }, url: "", client: {}, connected: () => true }
@@ -127,31 +128,6 @@ const stubModules: Record<string, string> = {
       }
     }
   `,
-  "stub-theme.ts": `
-    export function useTheme() {
-      return { mode: () => matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light" }
-    }
-  `,
-  "stub-holos.ts": `
-    import { createStore } from "solid-js/store"
-    const [holos, setHolos] = createStore({
-      loaded: false,
-      state: {
-        identity: { loggedIn: false, agentId: null, activeAccount: null, accounts: [] },
-        connection: { status: "disabled" },
-        readiness: { ready: false },
-        social: { profile: null, contacts: [], presence: {} },
-      },
-    })
-    window.setHolosProfile = profile => {
-      setHolos("state", "identity", { loggedIn: true, agentId: "agent_fixture", activeAccount: { agentId: "agent_fixture" }, accounts: [] })
-      setHolos("state", "social", "profile", profile)
-      setHolos("loaded", true)
-    }
-    export function useHolos() {
-      return holos
-    }
-  `,
   "stub-confirm.ts": `
     export function useConfirm() {
       return { show: () => {} }
@@ -160,7 +136,7 @@ const stubModules: Record<string, string> = {
   "stub-settings.tsx": `
     import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
     export function SettingsDialog(props) {
-      return <Dialog title="Settings fixture"><h2>{props.initialTab === "account" ? "Account" : "General"}</h2><button>Settings action</button></Dialog>
+      return <Dialog title="Settings fixture"><h2>{props.initialTab === "providers" ? "Providers" : "General"}</h2><button>Settings action</button></Dialog>
     }
   `,
   "stub-topbar-services.ts": `
@@ -302,7 +278,6 @@ beforeAll(async () => {
       { find: "@/context/notification", replacement: path.join(fixtureDirectory, "stub-notification.ts") },
       { find: "@/context/global-sync", replacement: path.join(fixtureDirectory, "stub-global-sync.ts") },
       { find: "@/context/global-sdk", replacement: path.join(fixtureDirectory, "stub-global-sdk.ts") },
-      { find: "@/context/holos", replacement: path.join(fixtureDirectory, "stub-holos.ts") },
       { find: "@/context/workbench", replacement: path.join(fixtureDirectory, "stub-workbench.ts") },
       { find: "@/components/settings", replacement: path.join(fixtureDirectory, "stub-settings.tsx") },
       {
@@ -344,7 +319,6 @@ beforeAll(async () => {
         find: "@/components/scopes/pagination-bar",
         replacement: path.join(fixtureDirectory, "stub-scope-components.tsx"),
       },
-      { find: "@ericsanchezok/synergy-ui/theme", replacement: path.join(fixtureDirectory, "stub-theme.ts") },
 
       { find: "@ericsanchezok/synergy-sdk/client", replacement: path.join(fixtureDirectory, "stub-sdk.ts") },
       { find: "@/", replacement: `${appSrc}/` },
@@ -466,16 +440,11 @@ describe("mobile drawer session status", () => {
 })
 
 describe("mobile drawer localization", () => {
-  // The drawer is the second navigation surface that renders the shared account
-  // identity. Translating the labels once while the row is created would keep
-  // the old language here while the header and every other string follow the
-  // switch, so the assertion activates the catalog in place rather than
-  // remounting the fixture.
-  test("the account row and header follow a locale switch without remounting", async () => {
+  test("the personal space and header follow a locale switch without remounting", async () => {
     await withFixture(async (page) => {
-      const account = page.locator('[data-action="account"]')
+      const account = page.locator(".space-switcher-trigger")
       await account.waitFor()
-      expect(await account.innerText()).toContain("Loading identity...")
+      expect(await account.innerText()).toContain("Personal space")
       expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
 
       await page.evaluate(() =>
@@ -483,80 +452,40 @@ describe("mobile drawer localization", () => {
       )
 
       await page.waitForFunction(() =>
-        document.querySelector('[data-action="account"]')?.textContent?.includes("正在加载身份…"),
+        document.querySelector(".space-switcher-trigger")?.textContent?.includes("个人空间"),
       )
       expect(await page.getByRole("button", { name: "搜索会话", exact: true }).count()).toBe(1)
-      expect(await account.innerText()).not.toContain("Loading identity...")
+      expect(await account.innerText()).not.toContain("Personal space")
     })
   })
 })
 
 describe("single mobile navigation", () => {
-  const projectRoute = `/${base64Encode("scp_fixture")}/session/ses_fixture`
-
-  test("opens Account from remote identity and General from the gear without replacing the drawer", async () => {
+  test("personal space is always available and routes providers and repository correctly", async () => {
     await withFixture(async (page) => {
-      const profile = {
-        name: "Remote agent",
-        description: "Remote profile description",
-        avatarUrl: "/remote-avatar.png",
-      }
-      await page.evaluate(
-        (value) => (window as unknown as { setHolosProfile(profile: typeof value): void }).setHolosProfile(value),
-        profile,
-      )
-      const account = page.locator('[data-action="account"]')
-      expect(await account.innerText()).toContain(profile.name)
-      expect(await account.innerText()).toContain(profile.description)
-      expect(await account.locator("img").getAttribute("src")).toBe(profile.avatarUrl)
-      await account.click()
-      const settings = page.getByRole("dialog", { name: "Settings fixture" })
-      await settings.waitFor()
-      expect(await settings.getByRole("heading", { name: "Account", exact: true }).count()).toBe(1)
-      await page.getByRole("dialog", { name: "Navigation", exact: true }).waitFor({ state: "hidden" })
-      expect(await page.getByRole("dialog", { name: "Navigation", exact: true }).count()).toBe(0)
-      await page.keyboard.press("Escape")
-      await page.waitForFunction(() => document.activeElement?.getAttribute("data-action") === "account")
-      await page.getByRole("button", { name: "Settings", exact: true }).click()
-      await settings.waitFor()
-      expect(await settings.getByRole("heading", { name: "General", exact: true }).count()).toBe(1)
-      await page.keyboard.press("Escape")
-      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
-      await page.evaluate(
-        (value) => (window as unknown as { setHolosProfile(profile: typeof value): void }).setHolosProfile(value),
-        { ...profile, name: "Updated remote agent" },
-      )
-      expect(await account.innerText()).toContain("Updated remote agent")
-    })
-  })
-
-  test("keeps unconfirmed or absent Holos identity noninteractive while Settings remains reachable", async () => {
-    await withFixture(async (page) => {
-      for (const features of [undefined, [], ["holos"], undefined, ["holos"]]) {
+      for (const features of [undefined, [], ["workbench"]]) {
         await page.evaluate(
-          (value) => (window as unknown as { setFeatures(features: string[] | undefined): void }).setFeatures(value),
+          (value) => (window as unknown as { setFeatures(value: string[] | undefined): void }).setFeatures(value),
           features,
         )
-        const account = page.locator(".mobile-drawer-account")
-        const available = features?.includes("holos") ?? false
-        expect(await account.locator('[data-action="account"]').count()).toBe(available ? 1 : 0)
-        expect(await account.getByRole("button").count()).toBe(available ? 2 : 1)
-        expect(await account.locator('[data-component="icon"]').count()).toBe(available ? 2 : 1)
-        if (available) continue
-        expect(await account.getByText("Synergy", { exact: true }).count()).toBe(1)
-        const settings = account.getByRole("button", { name: "Settings", exact: true })
-        await settings.focus()
-        await page.keyboard.press("Enter")
-        const nested = page.getByRole("dialog", { name: "Settings fixture" })
-        await nested.waitFor()
-        expect(await nested.getByRole("heading", { name: "General", exact: true }).count()).toBe(1)
+        const trigger = page.getByRole("button", { name: "Current space", exact: true })
+        expect(await trigger.innerText()).toContain("Personal space")
+        await trigger.click()
+        expect(await page.getByRole("menuitem").allTextContents()).toEqual(["Settings", "Providers", "Repository"])
+        await page.getByRole("menuitem", { name: "Providers", exact: true }).click()
+        await page.getByRole("heading", { name: "Providers", exact: true }).waitFor()
         await page.keyboard.press("Escape")
-        await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
-        await page.keyboard.press("Shift+Tab")
-        expect(await page.evaluate(() => !!document.activeElement?.closest(".mobile-drawer-account"))).toBe(false)
+        await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Current space")
+        await trigger.click()
+        await page.getByRole("menuitem", { name: "Repository", exact: true }).click()
+        await page.waitForFunction(() => !!(window as unknown as { openedLink: string }).openedLink)
+        expect(await page.evaluate(() => (window as unknown as { openedLink: string }).openedLink)).toBe(
+          "https://github.com/SII-Holos/synergy",
+        )
       }
     })
   })
+  const projectRoute = `/${base64Encode("scp_fixture")}/session/ses_fixture`
 
   for (const viewport of [
     { width: 320, height: 480 },
@@ -571,14 +500,8 @@ describe("single mobile navigation", () => {
             await page.evaluate(() => {
               const fixture = window as unknown as {
                 __drawerControl: { populateCollections(): void }
-                setHolosProfile(profile: { name: string; description: string; avatarUrl: string }): void
               }
               fixture.__drawerControl.populateCollections()
-              fixture.setHolosProfile({
-                name: "Remote account with a very long authoritative name ".repeat(8),
-                description: "Long remote profile description ".repeat(16),
-                avatarUrl: "/remote-avatar.png",
-              })
             })
             const account = page.locator(".mobile-drawer-account")
             const initial = (await account.boundingBox())!
@@ -659,16 +582,16 @@ describe("single mobile navigation", () => {
             await expectReachable(page.getByRole("button", { name: "Add project", exact: true }))
             await expectReachable(page.getByRole("button", { name: "Home", exact: true }))
             await expectReachable(page.getByRole("dialog").getByRole("button", { name: "New session", exact: true }))
-            await expectReachable(page.getByRole("button", { name: "Settings", exact: true }))
-            await expectReachable(page.locator('[data-action="account"]'))
+            await expectReachable(page.getByRole("button", { name: "Current space", exact: true }))
             expect(
               await page.getByRole("dialog").evaluate((element) => element.scrollWidth <= element.clientWidth),
             ).toBe(true)
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-            await page.getByRole("button", { name: "Settings", exact: true }).click()
+            await page.getByRole("button", { name: "Current space", exact: true }).click()
+            await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
             await page.getByRole("dialog", { name: "Settings fixture" }).waitFor()
             await page.keyboard.press("Escape")
-            await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
+            await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Current space")
             expect(await account.boundingBox()).toEqual(initial)
           },
           { viewport, colorScheme, route: projectRoute },
@@ -733,7 +656,7 @@ describe("single mobile navigation", () => {
         expect(await page.getByRole("button", { name: "Notes", exact: true }).count()).toBe(1)
         await page.evaluate(() => (window as unknown as { setNative(value: boolean): void }).setNative(true))
         expect(await page.getByRole("button", { name: "Browser", exact: true }).isDisabled()).toBe(true)
-        expect(await page.getByRole("button", { name: "Settings", exact: true }).count()).toBe(1)
+        expect(await page.getByRole("button", { name: "Current space", exact: true }).count()).toBe(1)
       },
       { route: projectRoute },
     )
@@ -749,13 +672,14 @@ describe("single mobile navigation", () => {
         await page.keyboard.press(index < 12 ? "Tab" : "Shift+Tab")
         expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
       }
-      await page.getByRole("button", { name: "Settings", exact: true }).click()
+      await page.getByRole("button", { name: "Current space", exact: true }).click()
+      await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
       await page.getByRole("dialog", { name: "Settings fixture" }).waitFor()
       await dialog.waitFor({ state: "hidden" })
       expect(await dialog.count()).toBe(0)
       await page.keyboard.press("Escape")
       await dialog.waitFor()
-      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Settings")
+      await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Current space")
       await page.keyboard.press("Escape")
       await page.getByRole("dialog").waitFor({ state: "detached" })
       await page.waitForFunction(() => document.activeElement?.textContent === "Open navigation")

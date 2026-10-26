@@ -79,7 +79,7 @@ A task-only Channel provider can provision a managed Project Scope from a remote
 
 Remote lifecycle and local archive are separate. Active and remotely paused managed Projects remain locally usable and are protected from local archive. Stale or remote-archived Projects preserve their directory, files, and Sessions and can later follow the normal local archive workflow.
 
-A Clarus assignment creates one dedicated unattended Task Session in that managed Project Scope. The external Task ID is the stable Session target: redelivery or a new run reuses it, while a retry with a new Task ID creates another Session with lineage. Project discovery alone never creates a conversation Session.
+A Channel task assignment creates one dedicated unattended Task Session in that managed Project Scope. The external Task ID is the stable Session target: redelivery or a new run reuses it, while a retry with a new Task ID creates another Session with lineage. Project discovery alone never creates a conversation Session.
 
 ### Completion notices
 

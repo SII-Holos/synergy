@@ -43,7 +43,6 @@
     "@ericsanchezok/synergy-boss-feishu": "workspace:*",
     "@ericsanchezok/synergy-browser-runtime": "workspace:*",
     "@ericsanchezok/synergy-channel-blueprint": "workspace:*",
-    "@ericsanchezok/synergy-channel-clarus": "workspace:*",
     "@ericsanchezok/synergy-channel-feishu": "workspace:*",
     "@ericsanchezok/synergy-channel-github": "workspace:*",
     "@ericsanchezok/synergy-channel-lattice": "workspace:*",
@@ -60,7 +59,6 @@
     "@ericsanchezok/synergy-github": "workspace:*",
     "@ericsanchezok/synergy-github-agenda": "workspace:*",
     "@ericsanchezok/synergy-harness": "workspace:*",
-    "@ericsanchezok/synergy-holos": "workspace:*",
     "@ericsanchezok/synergy-library": "workspace:*",
     "@ericsanchezok/synergy-local-runtime": "workspace:*",
     "@ericsanchezok/synergy-lsp": "workspace:*",
@@ -116,8 +114,7 @@
       "note": "1.1.26",
       "agenda": "1.1.26",
       "blueprint": "1.1.26",
-      "channels": "1.1.26",
-      "holos": "1.1.26"
+      "channels": "1.1.26"
     },
     "packages": {
       "@ericsanchezok/synergy-library": "1.1.26",
@@ -125,8 +122,7 @@
       "@ericsanchezok/synergy-agenda": "1.1.26",
       "@ericsanchezok/synergy-blueprint": "1.1.26",
       "@ericsanchezok/synergy-lattice": "1.1.26",
-      "@ericsanchezok/synergy-channels": "1.1.26",
-      "@ericsanchezok/synergy-holos": "1.1.26"
+      "@ericsanchezok/synergy-channels": "1.1.26"
     },
     "features": {
       "kind": "foundation",

@@ -229,12 +229,6 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           variant: account.variant ?? "",
         }))
       : [],
-    clarusAccounts: cfg.channel?.clarus?.accounts
-      ? Object.entries(cfg.channel.clarus.accounts).map(([key, account]) => ({
-          key,
-          enabled: account.enabled !== false,
-        }))
-      : [],
     githubAccounts: cfg.channel?.github?.accounts
       ? Object.entries(cfg.channel.github.accounts).map(([key, account]) => ({
           key,

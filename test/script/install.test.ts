@@ -24,10 +24,6 @@ const sharedRuntimeFiles = [
   "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt",
   "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
   "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2",
-  "lib/holos-cli/index.js",
-  "lib/holos-cli/vendor/clarus-shared/index.js",
-  "lib/holos-cli/node_modules/ws/package.json",
-  "lib/holos-cli/node_modules/zod/package.json",
   "watcher.node",
 ]
 
@@ -111,7 +107,7 @@ describe("CLI bundle installer", () => {
       fs.mkdir(path.join(bundle, "sandbox"), { recursive: true }),
       fs.mkdir(path.join(bundle, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "onnxruntime-web"), { recursive: true }),
-      fs.mkdir(path.join(bundle, "lib", "holos-cli"), { recursive: true }),
+      fs.mkdir(path.join(bundle, "lib", "legacy-addon"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "resvg-wasm", "fonts"), { recursive: true }),
     ])
     await Promise.all([
@@ -134,7 +130,7 @@ describe("CLI bundle installer", () => {
         "font",
       ),
       fs.writeFile(path.join(bundle, "lib", "resvg-wasm", "fonts", "noto-sans-sc-latin-400-normal.woff2"), "font"),
-      fs.writeFile(path.join(bundle, "lib", "holos-cli", "index.js"), "runtime"),
+      fs.writeFile(path.join(bundle, "lib", "legacy-addon", "index.js"), "runtime"),
     ])
 
     const installScript = path.resolve(import.meta.dir, "..", "..", "install")
@@ -193,9 +189,9 @@ describe("CLI bundle installer", () => {
 
     expect(result.exitCode).toBe(0)
     expect(await Bun.file(path.join(home, ".synergy", "runtime-manifest.sha256")).exists()).toBe(true)
-    expect(
-      await Bun.file(path.join(home, ".synergy", "lib", "holos-cli", "vendor", "clarus-shared", "index.js")).text(),
-    ).toBe("lib/holos-cli/vendor/clarus-shared/index.js\n")
+    expect(await Bun.file(path.join(home, ".synergy", "lib", "resvg-wasm", "index_bg.wasm")).text()).toBe(
+      "lib/resvg-wasm/index_bg.wasm\n",
+    )
   })
 
   test("installs a complete Windows runtime contract", async () => {
@@ -325,7 +321,7 @@ describe("CLI bundle installer", () => {
       fs.mkdir(path.join(bundle, "schema"), { recursive: true }),
       fs.mkdir(path.join(bundle, "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(path.join(bundle, "lib", "onnxruntime-web"), { recursive: true }),
-      fs.mkdir(path.join(bundle, "lib", "holos-cli"), { recursive: true }),
+      fs.mkdir(path.join(bundle, "lib", "legacy-addon"), { recursive: true }),
       fs.mkdir(path.join(bundle, "sandbox"), { recursive: true }),
     ])
     await fs.copyFile("/bin/sleep", installed)
@@ -340,7 +336,7 @@ describe("CLI bundle installer", () => {
       fs.writeFile(path.join(bundle, "browser-runtime", "playwright-core", "lib", "coreBundle.js"), "runtime"),
       fs.writeFile(path.join(bundle, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.mjs"), "runtime"),
       fs.writeFile(path.join(bundle, "lib", "onnxruntime-web", "ort-wasm-simd-threaded.asyncify.wasm"), "runtime"),
-      fs.writeFile(path.join(bundle, "lib", "holos-cli", "index.js"), "runtime"),
+      fs.writeFile(path.join(bundle, "lib", "legacy-addon", "index.js"), "runtime"),
       fs.writeFile(path.join(bundle, "sandbox", "synergy-sandbox-linux"), "helper"),
     ])
 
@@ -474,9 +470,9 @@ describe("CLI bundle installer", () => {
       await fs.writeFile(path.join(bundle, relative), `new:${relative}`)
     }
     await fs.mkdir(path.join(installed, "app"), { recursive: true })
-    await fs.mkdir(path.join(installed, "lib", "holos-cli"), { recursive: true })
+    await fs.mkdir(path.join(installed, "lib", "legacy-addon"), { recursive: true })
     await fs.writeFile(path.join(installed, "app", "index.html"), "old-app")
-    await fs.writeFile(path.join(installed, "lib", "holos-cli", "index.js"), "old-holos")
+    await fs.writeFile(path.join(installed, "lib", "legacy-addon", "index.js"), "old-addon")
 
     const command = 'install_bin_contents() { return 17; }; install_bundle_contents "$1"'
     const result = runInstallFunction(command, [bundle], {
@@ -486,7 +482,7 @@ describe("CLI bundle installer", () => {
 
     expect(result.exitCode).not.toBe(0)
     expect(await Bun.file(path.join(installed, "app", "index.html")).text()).toBe("old-app")
-    expect(await Bun.file(path.join(installed, "lib", "holos-cli", "index.js")).text()).toBe("old-holos")
+    expect(await Bun.file(path.join(installed, "lib", "legacy-addon", "index.js")).text()).toBe("old-addon")
     expect(await Bun.file(path.join(installed, "runtime-manifest.sha256")).exists()).toBe(false)
   })
 
@@ -537,10 +533,6 @@ describe("CLI bundle installer", () => {
       "browser-runtime/playwright-core/lib/coreBundle.js",
       "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
       "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
-      "lib/holos-cli/index.js",
-      "lib/holos-cli/vendor/clarus-shared/index.js",
-      "lib/holos-cli/node_modules/ws/package.json",
-      "lib/holos-cli/node_modules/zod/package.json",
       "sandbox/synergy-sandbox-linux",
     ]
     for (const relative of [...files, "shadow/app/index.html"]) {
@@ -578,10 +570,6 @@ describe("CLI bundle installer", () => {
         "browser-runtime/playwright-core/lib/coreBundle.js",
         "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
         "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
-        "lib/holos-cli/index.js",
-        "lib/holos-cli/vendor/clarus-shared/index.js",
-        "lib/holos-cli/node_modules/ws/package.json",
-        "lib/holos-cli/node_modules/zod/package.json",
         "sandbox/synergy-sandbox-linux",
       ]
       for (const relative of files) {
@@ -1033,7 +1021,7 @@ describe("CLI installer guidance", () => {
       fs.mkdir(path.join(home, ".synergy", "sandbox"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "browser-runtime", "playwright-core", "lib"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "lib", "onnxruntime-web"), { recursive: true }),
-      fs.mkdir(path.join(home, ".synergy", "lib", "holos-cli"), { recursive: true }),
+      fs.mkdir(path.join(home, ".synergy", "lib", "legacy-addon"), { recursive: true }),
       fs.mkdir(path.join(home, ".synergy", "lib", "resvg-wasm", "fonts"), { recursive: true }),
       fs.mkdir(bin, { recursive: true }),
     ])
@@ -1067,7 +1055,7 @@ describe("CLI installer guidance", () => {
         path.join(home, ".synergy", "lib", "resvg-wasm", "fonts", "noto-sans-sc-latin-400-normal.woff2"),
         "font",
       ),
-      fs.writeFile(path.join(home, ".synergy", "lib", "holos-cli", "index.js"), "runtime"),
+      fs.writeFile(path.join(home, ".synergy", "lib", "legacy-addon", "index.js"), "runtime"),
       writeExecutable(path.join(bin, "synergy"), 'printf "1.2.3\\n"'),
     ])
 

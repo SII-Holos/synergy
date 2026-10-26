@@ -4,8 +4,6 @@ import {
   channelAccountActionKey,
   channelAccountVariantKeys,
   channelRuntimeStatusLabel,
-  clarusAccountDisplayName,
-  clarusDiagnosticsFilename,
   isChannelAccountActionPending,
   shouldRefreshChannelStatuses,
 } from "../../../../src/components/settings/channel-account-model"
@@ -26,32 +24,7 @@ describe("Feishu account model selection", () => {
   })
 })
 
-describe("Clarus account presentation", () => {
-  test("uses the Holos profile name without exposing the internal account ID", () => {
-    expect(
-      clarusAccountDisplayName("3c1d9f62-e2e1-47fd-bc59-9f1cbd0d9ed2", [
-        {
-          agentId: "3c1d9f62-e2e1-47fd-bc59-9f1cbd0d9ed2",
-          createdAt: 1,
-          updatedAt: 1,
-          profile: { name: "Research Agent", description: "", avatarUrl: null },
-        },
-      ]),
-    ).toBe("Research Agent")
-  })
-
-  test("falls back to a generic Holos Agent label rather than a UUID", () => {
-    expect(clarusAccountDisplayName("3c1d9f62-e2e1-47fd-bc59-9f1cbd0d9ed2", [])).toBe("Holos Agent")
-  })
-
-  test("uses a stable diagnostics filename without exposing the internal account ID", () => {
-    const accountID = "3c1d9f62-e2e1-47fd-bc59-9f1cbd0d9ed2"
-    const filename = clarusDiagnosticsFilename()
-
-    expect(filename).toBe("clarus-diagnostics.ndjson")
-    expect(filename).not.toContain(accountID)
-  })
-
+describe("Channel account presentation", () => {
   test("maps the real channel runtime status for Settings presentation", () => {
     expect(channelRuntimeStatusLabel({ status: "connected" }).message).toBe("Connected")
     expect(channelRuntimeStatusLabel({ status: "syncing" }).message).toBe("Syncing…")
@@ -71,7 +44,7 @@ describe("Clarus account presentation", () => {
   test("refreshes runtime status only for Channel lifecycle events", () => {
     expect(shouldRefreshChannelStatuses("channel.connected")).toBe(true)
     expect(shouldRefreshChannelStatuses("channel.disconnected")).toBe(true)
-    expect(shouldRefreshChannelStatuses("holos.connection.status_changed")).toBe(false)
+    expect(shouldRefreshChannelStatuses("session.updated")).toBe(false)
     expect(shouldRefreshChannelStatuses(undefined)).toBe(false)
   })
 

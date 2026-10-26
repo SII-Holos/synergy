@@ -3192,36 +3192,6 @@
           {
             "type": "object",
             "properties": {
-              "type": { "type": "string", "const": "clarus" },
-              "accounts": {
-                "type": "object",
-                "propertyNames": { "type": "string" },
-                "additionalProperties": {
-                  "type": "object",
-                  "properties": {
-                    "enabled": { "default": false, "type": "boolean" },
-                    "apiUrl": {
-                      "description": "Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL",
-                      "type": "string"
-                    },
-                    "agent": {
-                      "description": "Primary Synergy agent for project and assignment Sessions",
-                      "type": "string"
-                    }
-                  },
-                  "required": ["enabled"],
-                  "additionalProperties": false,
-                  "ref": "ChannelClarusAccountConfig"
-                }
-              }
-            },
-            "required": ["type", "accounts"],
-            "additionalProperties": false,
-            "ref": "ChannelClarusConfig"
-          },
-          {
-            "type": "object",
-            "properties": {
               "type": { "type": "string", "const": "github" },
               "accounts": {
                 "type": "object",
@@ -3303,23 +3273,6 @@
         ]
       }
     },
-    "holos": {
-      "type": "object",
-      "properties": {
-        "enabled": { "default": true, "description": "Enable the Holos runtime connection", "type": "boolean" },
-        "apiUrl": { "default": "https://api.holosai.io", "description": "Holos API base URL", "type": "string" },
-        "wsUrl": { "default": "wss://api.holosai.io", "description": "Holos WebSocket base URL", "type": "string" },
-        "portalUrl": {
-          "default": "https://www.holosai.io",
-          "description": "Holos portal URL for browser-facing pages (bind/start)",
-          "type": "string"
-        }
-      },
-      "required": ["enabled", "apiUrl", "wsUrl", "portalUrl"],
-      "additionalProperties": false,
-      "ref": "HolosConfig"
-    },
-    "enterprise": { "type": "object", "properties": { "url": { "type": "string" } }, "additionalProperties": false },
     "email": {
       "type": "object",
       "properties": {

@@ -22,7 +22,6 @@ Generated from the core and product CLI catalogs and explicit command contributi
 | `environment` | manage compute on an attached server; print JSON results |
 | `export` | export a session transcript or self-contained rollout ZIP |
 | `generate` | generate the OpenAPI contract |
-| `holos` | manage Holos identity and runtime |
 | `import` | import a session transcript or rollout ZIP |
 | `install` | install components, presets, plugins or applications |
 | `library` | manage library memory and learning |
@@ -166,14 +165,6 @@ create an object-backed Workspace without allocating compute
 | Option | Description |
 | --- | --- |
 | `--name` (string) | display name for this Workspace |
-
-## credentials
-
-show local Holos credential status
-
-| Option | Description |
-| --- | --- |
-| `--json` (boolean) | output as JSON |
 
 ## data
 
@@ -346,11 +337,6 @@ list files using ripgrep
 | `--glob` (string) |  |
 | `--limit` (number) |  |
 
-## holos
-
-manage Holos identity and runtime
-
-
 ## import <file>
 
 import a session transcript or rollout ZIP
@@ -434,15 +420,6 @@ list durable Workspaces and their current bindings
 list files in a directory
 
 
-## login
-
-bind to Holos platform
-
-| Option | Description |
-| --- | --- |
-| `--agent-id` (string) | optional expected Holos agent ID when importing a secret |
-| `--agent-secret` (string) | log in with an existing Holos agent secret |
-
 ## login [url]
 
 log in to a provider
@@ -450,7 +427,7 @@ log in to a provider
 
 ## logout
 
-clear Holos credentials and stop the runtime
+log out from a configured provider
 
 
 ## logout [name]
@@ -637,11 +614,6 @@ read file contents as JSON
 ## reconcile <environmentID>
 
 check the selected allocation without replaying commands
-
-
-## reconnect
-
-reload the Holos runtime connection
 
 
 ## recover <environmentID> <operationID>
@@ -871,7 +843,7 @@ start synergy background service
 
 | Option | Description |
 | --- | --- |
-| `--non-interactive` (boolean) | skip Holos login prompts before starting the background service |
+| `--non-interactive` (boolean) | skip initial configuration prompts before starting the background service |
 
 ## start [key]
 
@@ -996,11 +968,6 @@ validate definePlugin() source and generated artifacts
 | Option | Description |
 | --- | --- |
 | `--runtime-discovery` (boolean) | verify packaged runtime handlers |
-
-## verify
-
-verify stored Holos credentials
-
 
 ## web
 

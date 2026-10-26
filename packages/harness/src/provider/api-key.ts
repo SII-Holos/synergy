@@ -3,7 +3,7 @@ import { authLockDirectory, withFileLock } from "@ericsanchezok/synergy-util/fs-
 import { Global } from "../global"
 import fs from "fs/promises"
 import path from "path"
-import z from "zod"
+import { z } from "zod"
 import { ProviderAuthHealth } from "./auth-health"
 import { readFileWithRetry } from "@ericsanchezok/synergy-util/io-retry"
 
@@ -53,19 +53,10 @@ export namespace Auth {
     })
     .meta({ ref: "WellKnownAuth" })
 
-  export const Holos = z
-    .object({
-      type: z.literal("holos"),
-      agentId: z.string(),
-      agentSecret: z.string(),
-      metadata: z.record(z.string(), z.any()).optional(),
-    })
-    .meta({ ref: "HolosAuth" })
-
-  export const Info = z.discriminatedUnion("type", [Oauth, Api, WellKnown, Holos]).meta({ ref: "Auth" })
+  export const Info = z.discriminatedUnion("type", [Oauth, Api, WellKnown]).meta({ ref: "Auth" })
   export type Info = z.infer<typeof Info>
 
-  export const AuthKind = z.enum(["api_key", "oauth", "wellknown", "holos"])
+  export const AuthKind = z.enum(["api_key", "oauth", "wellknown"])
   export type AuthKind = z.infer<typeof AuthKind>
 
   export const Tokens = z
@@ -75,8 +66,6 @@ export namespace Auth {
       refreshToken: z.string().optional(),
       token: z.string().optional(),
       key: z.string().optional(),
-      agentId: z.string().optional(),
-      agentSecret: z.string().optional(),
     })
     .meta({ ref: "ProviderAuthTokens" })
   export type Tokens = z.infer<typeof Tokens>
@@ -127,7 +116,7 @@ export namespace Auth {
 
   const LegacyStoreEntry = z.object({
     providerID: z.string(),
-    authKind: z.enum(["api", "oauth", "wellknown", "holos"]).optional(),
+    authKind: z.enum(["api", "oauth", "wellknown"]).optional(),
     auth: Info,
     source: Source.optional(),
     updatedAt: z.number(),
@@ -178,11 +167,6 @@ export namespace Auth {
           key: info.key,
           token: info.token,
         }
-      case "holos":
-        return {
-          agentId: info.agentId,
-          agentSecret: info.agentSecret,
-        }
     }
   }
 
@@ -209,15 +193,6 @@ export namespace Auth {
           type: "wellknown",
           key: entry.tokens.key,
           token: entry.tokens.token,
-          metadata: entry.metadata,
-        }
-      }
-      case "holos": {
-        if (!entry.tokens.agentId || !entry.tokens.agentSecret) return undefined
-        return {
-          type: "holos",
-          agentId: entry.tokens.agentId,
-          agentSecret: entry.tokens.agentSecret,
           metadata: entry.metadata,
         }
       }

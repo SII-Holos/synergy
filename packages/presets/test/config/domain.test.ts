@@ -36,7 +36,6 @@ test("config domain filenames are stable and ordered", () =>
       "70-commands.jsonc",
       "80-permissions.jsonc",
       "90-channels.jsonc",
-      "100-holos.jsonc",
       "110-email.jsonc",
       "115-github.jsonc",
       "120-runtime.jsonc",

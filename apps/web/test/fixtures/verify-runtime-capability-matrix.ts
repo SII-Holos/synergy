@@ -44,7 +44,6 @@ const navigation = [
   ["Plugins", "plugin-host", "/plugins/marketplace"],
 ] as const
 const settings = [
-  ["Account", "holos"],
   ["Voice", "media"],
   ["GitHub", "github"],
   ["Learning", "library"],
@@ -71,7 +70,6 @@ const routeOwners: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/anima(?:\/|$)/, "anima"],
   [/^\/channel(?:\/|$)/, "channels"],
   [/^\/email(?:\/|$)/, "email"],
-  [/^\/holos(?:\/|$)/, "holos"],
   [/^\/(?:provider\/auth\/)?github(?:\/|$)/, "github"],
   [/^\/(?:plugin|api\/(?:plugins|registry))(?:\/|$)/, "plugin-host"],
   [/^\/mcp(?:\/|$)/, "mcp"],

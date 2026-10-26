@@ -1,4 +1,4 @@
-import type { ChannelStatus, HolosAccountMeta } from "@ericsanchezok/synergy-sdk/client"
+import type { ChannelStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { MessageDescriptor } from "@lingui/core"
 import type { ProviderGroup } from "./types"
 
@@ -12,9 +12,6 @@ export function channelAccountVariantKeys(modelRef: string, providers: ProviderG
   return provider?.models.find((item) => item.id === modelID)?.variantKeys ?? []
 }
 
-export function clarusAccountDisplayName(accountID: string, accounts: readonly HolosAccountMeta[]): string {
-  return accounts.find((account) => account.agentId === accountID)?.profile?.name?.trim() || "Holos Agent"
-}
 export type ChannelAccountAction = "refresh" | "diagnostics"
 
 export function channelAccountActionKey(action: ChannelAccountAction, accountKey: string): string {
@@ -69,8 +66,4 @@ export function channelRuntimeStatusLabel(status: ChannelStatus | undefined): Me
     case "failed":
       return runtimeStatusCopy.failed
   }
-}
-
-export function clarusDiagnosticsFilename(): string {
-  return "clarus-diagnostics.ndjson"
 }

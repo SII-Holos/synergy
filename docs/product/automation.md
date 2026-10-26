@@ -56,7 +56,7 @@ Normal execution builds a trigger-aware prompt, invokes the selected agent, obse
 
 `autoDone` is the exception used by one-shot watch-style delivery. It sends the item's prompt directly to the origin session instead of creating and invoking an Agenda session, then completes according to item state rules.
 
-`session_guidance` is a host-owned internal delivery mode for durable reminders attached to an existing Session. It does not create an Agenda execution Session or invoke a model on its own. When the trigger fires, Agenda writes the item's prompt to the origin Session as a deduplicated, hidden, system-authored `steer` inbox item and requests that Session's normal drive loop. This mode is not exposed by the Agenda agent tools; Native Clarus uses it for task-deadline guidance.
+`session_guidance` is a host-owned internal delivery mode for durable reminders attached to an existing Session. It does not create an Agenda execution Session or invoke a model on its own. When the trigger fires, Agenda writes the item's prompt to the origin Session as a deduplicated, hidden, system-authored `steer` inbox item and requests that Session's normal drive loop. This mode is not exposed by the Agenda agent tools..
 
 ## Delivery
 

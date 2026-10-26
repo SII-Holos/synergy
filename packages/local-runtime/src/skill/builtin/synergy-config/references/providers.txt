@@ -216,7 +216,6 @@ Format — v2 JSON object mapping provider IDs to credential entries:
 Auth entry types:
 - `authKind: "api_key"` with `tokens.apiKey` — standard API key (most common)
 - `authKind: "oauth"` with `tokens.accessToken`, `tokens.refreshToken`, and `expiresAt` — subscription/OAuth token
-- `authKind: "holos"` with `tokens.agentId` and `tokens.agentSecret` — Holos identity auth
 - `authKind: "wellknown"` with `tokens.key` and `tokens.token` — well-known remote config auth
 
 ## Environment variable references

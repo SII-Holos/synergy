@@ -88,7 +88,7 @@ Read the owning architecture document before changing these areas:
 - Cortex child sessions and task outputs: `cortex.md`
 - Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
 - Browser Desktop-native presentation, page collections and identity ownership: `browser-runtime.md`
-- Channels, managed Projects, provider lifecycle, and Native Clarus tasks: `channels.md`
+- Channels, managed Projects, provider lifecycle: `channels.md`
 
 Do not create compatibility paths that violate those contracts. In particular:
 
@@ -146,4 +146,4 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 
 ## Repository Skills
 
-`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-computer-runtime` (native Computer), `change-channel-runtime` (Channels, providers, Clarus), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `develop-benchmark` (evaluation infrastructure), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `report-bug` (issue drafting), `find-simplifications` (surface audits), `release-log-workflow` (notes).
+`development-standards` (route changes, capture rules), `architecture` (trace ownership), `develop-frontend`/`integrate-llm` (Web UI, model-backed), `change-server-api`/`change-persistence` (API, durable state), `change-execution-boundaries` (permissions, sandboxing), `change-browser-runtime` (Browser/Desktop presentation), `change-computer-runtime` (native Computer), `change-channel-runtime` (Channels and providers), `change-plugin-runtime` (Plugin API), `develop-synergy` (isolated instance), `testing-guide` (fixtures), `develop-benchmark` (evaluation infrastructure), `git-guide` (worktrees, PRs), `add-agent`/`add-cli-command`/`add-tool` (workflows), `find-logs`/`inspect-sessions` (diagnostics), `report-bug` (issue drafting), `find-simplifications` (surface audits), `release-log-workflow` (notes).

@@ -5,7 +5,6 @@ const surfaceSizingIcons = {
 
 export const SemanticIconToken = {
   // Product entities
-  "holos.main": "satellite",
   "mcp.main": "cable",
   "lsp.main": "code-xml",
   "cortex.main": "workflow",
@@ -89,7 +88,6 @@ export const SemanticIconToken = {
   // Product domains
   "blueprint.main": "clipboard-list",
   "dag.main": "git-graph",
-  "holos.branch": "git-merge",
   "notes.main": "notebook-text",
   "notes.create": "pen-line",
   "notes.search": "scan-search",

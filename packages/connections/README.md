@@ -1,6 +1,6 @@
 # Connections
 
-Email, Channels, Holos and GitHub domains, each including its service, tools, routes, configuration, storage and commands.
+Email, Channels and GitHub domains, each including its service, tools, routes, configuration, storage and commands.
 
 Keep Email tool and HTTP operations on the same service. Preserve ChannelHost Scope/Session ownership and provider lifecycle; do not create parallel session models.
 

@@ -4,7 +4,7 @@ Synergy is an open-source AI agent workspace for persistent, recoverable softwar
 
 It provides one runtime for sessions, agents, tools, automation, knowledge, and integrations. Web, Desktop, and CLI are different clients of that runtime, so work can move between interactive, background, and one-off flows without creating separate product worlds.
 
-Synergy can run on its own. Connecting to Holos adds account identity and networked capabilities, allowing for seamless work across agents around the world.
+Synergy runs independently. Personal space is the entry point for local work, settings and model providers.
 
 ## Product Promise
 
@@ -141,23 +141,13 @@ Model Context Protocol integrations add external tool ecosystems to the same age
 
 ### Email
 
-Optional SMTP and IMAP configuration lets agents send, search, summarize, read, and mark email through governed tools. Reading and sending share one communication capability family; sending is a non-bypassable external write with recipient and subject surfaced for approval. Email accounts and credentials are independent of Channels and Holos identity.
+Optional SMTP and IMAP configuration lets agents send, search, summarize, read, and mark email through governed tools. Reading and sending share one communication capability family; sending is a non-bypassable external write with recipient and subject surfaced for approval. Email accounts and credentials are independent of Channels.
 
 ### Channels
 
 Channels connect external messaging systems to Synergy sessions. Incoming messages are mapped to a persistent endpoint session, processed by an agent, and streamed back with replies and relevant progress. Account, direct-message, group, mention, attachment, and reconnect behavior belong to the channel provider.
 
-Feishu/Lark is the current built-in channel provider. The channel boundary is designed so other messaging providers can implement the same session-oriented contract.
-
-### Holos
-
-Holos is an optional identity and agent-network layer. When connected, the selected Holos agent is the Synergy account identity. Its public profile is owned remotely, while local storage retains only the credentials and metadata needed to reconnect.
-
-Synergy can create or import a Holos agent and switch between locally saved agent identities. Login state and network readiness remain separate: a saved identity can exist while its network connection is reconnecting or unavailable.
-
-After authentication, Synergy opens a persistent WebSocket agent tunnel to Holos. The runtime sends heartbeats every 30 seconds, uses a 90-second missed-pong deadline enforced at the next heartbeat check after the threshold is reached, reconnects with bounded attempts, tracks peer reachability, and maintains a user-managed local contact list with blocking controls. Agents can exchange direct messages through the tunnel. Message history is retained locally as inbox and outbox threads, while outgoing messages record delivery or failure state; retry them only when dispatch is known not to have occurred, because a liveness-loss failure may still have been delivered.
-
-Holos does not replace local sessions, model providers, project configuration, Library, Channels, or their stored data. Only capabilities that explicitly use the Holos network depend on the connection.
+Feishu/Lark and GitHub are the current built-in channel providers. The channel boundary is designed so other messaging providers can implement the same session-oriented contract.
 
 ### Plugins
 
@@ -206,7 +196,7 @@ A standalone Synergy installation supports the complete local work model:
 - Library, Notes, Blueprints, and Agenda
 - Web, Desktop, CLI, and Browser workflows
 
-Connecting Holos adds a network identity and connected-agent capabilities. Provider credentials and model usage remain separate from Holos account identity: users configure model access through providers, whether or not Holos is connected.
+The bottom-left Personal space menu opens Settings, Providers, and the repository. Personal work requires no network account; configure model access through Providers.
 
 ## Product Principles
 
@@ -228,7 +218,7 @@ The following principles should remain true as individual features evolve:
 - A child session represents delegated work; an Agenda item represents triggered work; a Blueprint represents an executable authored plan.
 - Plan produces a Blueprint; BlueprintLoop executes and audits it; Light Loop persists on one task; Lattice coordinates a Pathway of Blueprint-backed steps; Boss Mode routes work across a tree of persistent worker sessions.
 - Library stores reusable memory and experience; Notes store authored documents.
-- Channels adapt external messaging into sessions; Holos provides optional identity and agent-network connectivity.
+- Channels adapt external messaging into sessions.
 - Browser is a session workspace with one shared page, not a separate tab or screenshot-stream automation system.
 
 For implementation-level invariants, continue with the [architecture documentation](../architecture/README.md). For durable Web interaction and visual rules, see the [Web product contract](../../apps/web/PRODUCT.md). Plugin authors should begin with the [plugin documentation](../plugins/README.md).

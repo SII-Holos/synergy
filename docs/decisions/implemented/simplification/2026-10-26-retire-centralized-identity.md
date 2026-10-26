@@ -16,6 +16,10 @@ Historical migration receipts and Session records remain intact. Contact and mai
 
 Installation selection v3 removes the retired component roots from already upgraded homes while retaining previous selection files as evidence. Launcher upgrades use the existing generation transaction to remove explicit retired roots, retain third-party pins and plugin grants, and leave pinned old worker generations untouched.
 
+The shared Personal space control replaces account identity in desktop and mobile navigation. It exposes only Settings, Providers and Repository. Its desktop footer remains outside the collapsed panel so keyboard access survives sidebar collapse; menu actions restore focus before opening a nested settings dialog. No organization state or placeholder actions are introduced.
+
+The retired runtime packages, schemas, routes, CLI, tools, UI and packaged companion assets are removed together. Legacy Agenda owner detection remains to keep retired deadline jobs inert; history imports and migration receipts remain readable.
+
 ## Alternatives considered
 
 **Rely on schema parsing to drop unsupported credentials.** This can discard a mixed credential pool and leaves retired secrets on disk. A versioned raw-data migration makes the deletion precise and repeatable.

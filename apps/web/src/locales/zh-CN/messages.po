@@ -3086,186 +3086,6 @@ msgstr "工作区文件"
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr "符号链接"
 
-#. js-lingui-explicit-id
-msgid "app.holos.agentImported"
-msgstr "智能体已导入"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentImportedDesc"
-msgstr "已导入 {name}"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentLoggedOut"
-msgstr "智能体已登出"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentLoggedOutDesc"
-msgstr "已在本地移除活动 Holos 智能体。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentSwitched"
-msgstr "已切换智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentSwitchedDesc"
-msgstr "已切换到 {id}"
-
-#. js-lingui-explicit-id
-msgid "app.holos.cancel"
-msgstr "取消"
-
-#. js-lingui-explicit-id
-msgid "app.holos.connected"
-msgstr "Holos 已连接"
-
-#. js-lingui-explicit-id
-msgid "app.holos.connectedDesc"
-msgstr "你的智能体现已关联到 Holos。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.continue"
-msgstr "继续"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent"
-msgstr "创建智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent.description"
-msgstr "选择此智能体在 Holos 中的显示方式。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent.title"
-msgstr "创建智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.currentAgent"
-msgstr "当前 Holos 智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.agentSecret"
-msgstr "智能体密钥"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.agentSecretPlaceholder"
-msgstr "粘贴智能体密钥"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.avatarUrl"
-msgstr "头像 URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.avatarUrlPlaceholder"
-msgstr "可选图片 URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.description"
-msgstr "描述"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.descriptionPlaceholder"
-msgstr "可选描述"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.name"
-msgstr "名称"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.namePlaceholder"
-msgstr "智能体名称"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.nameRequired"
-msgstr "名称为必填项"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.secretRequired"
-msgstr "智能体密钥为必填项"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.urlInvalid"
-msgstr "请输入有效的 URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.import"
-msgstr "导入"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent"
-msgstr "导入智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent.description"
-msgstr "粘贴现有 Holos 智能体的密钥。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent.title"
-msgstr "导入智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importFailed"
-msgstr "导入失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importing"
-msgstr "正在导入…"
-
-#. js-lingui-explicit-id
-msgid "app.holos.loginFailed"
-msgstr "Holos 登录失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.logoutFailed"
-msgstr "登出失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.noLoginUrl"
-msgstr "未返回登录 URL。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.noSavedAgents"
-msgstr "没有已保存的智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.opening"
-msgstr "正在打开…"
-
-#. js-lingui-explicit-id
-msgid "app.holos.popupBlocked"
-msgstr "弹出窗口被拦截"
-
-#. js-lingui-explicit-id
-msgid "app.holos.popupBlockedDesc"
-msgstr "请允许此站点弹出窗口，以便登录 Holos。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.profileUnavailable"
-msgstr "个人资料不可用"
-
-#. js-lingui-explicit-id
-msgid "app.holos.reconnectFailed"
-msgstr "Holos 重新连接失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.savedAgent"
-msgstr "已保存在此设备"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switch"
-msgstr "切换"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchAgent.description"
-msgstr "选择 Synergy 要使用的已保存 Holos 智能体。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchAgent.title"
-msgstr "切换智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchFailed"
-msgstr "智能体切换失败"
-
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.home.start"
@@ -8871,10 +8691,6 @@ msgid "app.shell.window.restore"
 msgstr "还原"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.account.menu"
-msgstr "HOLOS 账号菜单"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.addProject"
 msgstr "添加项目"
 
@@ -8985,70 +8801,6 @@ msgstr "展开侧边栏"
 #. Flyout
 msgid "app.sidebar.flyout.projects"
 msgstr "项目"
-
-#. Connection status labels
-msgid "app.sidebar.holos.connected"
-msgstr "已连接"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connectedToHolos"
-msgstr "已连接到 Holos"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connecting"
-msgstr "正在连接…"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connection"
-msgstr "Holos 连接"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connectionFailed"
-msgstr "连接失败"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.disabled"
-msgstr "已关闭"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.disconnected"
-msgstr "未连接"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.loadingIdentity"
-msgstr "正在加载身份…"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.localWorkspace"
-msgstr "本地工作区"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.login"
-msgstr "登录"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.notAvailable"
-msgstr "不可用"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.notLoggedIn"
-msgstr "未登录"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.profileUnavailable"
-msgstr "个人资料不可用"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.savedOnDevice"
-msgstr "已保存在此设备"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.service"
-msgstr "服务"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.signIn"
-msgstr "登录"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.loading.projects"
@@ -9185,6 +8937,14 @@ msgstr "草稿"
 #. Session fallback
 msgid "app.sidebar.session.untitled"
 msgstr "未命名"
+
+#. js-lingui-explicit-id
+msgid "app.sidebar.space.current"
+msgstr "当前空间"
+
+#. js-lingui-explicit-id
+msgid "app.sidebar.space.personal"
+msgstr "个人空间"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -9921,94 +9681,6 @@ msgid "app.statusBar.details"
 msgstr "详情"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.agent"
-msgstr "智能体 {id}"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.connected"
-msgstr "Holos 已连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.connecting"
-msgstr "Holos 正在连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.disabled"
-msgstr "Holos 已禁用"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.disconnected"
-msgstr "Holos 已断开连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.failed"
-msgstr "Holos 失败"
-
-#. Holos labels
-msgid "app.statusBar.holos.loading"
-msgstr "Holos 正在加载"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.login"
-msgstr "登录"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.notLoggedIn"
-msgstr "未登录"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.reconnect"
-msgstr "重新连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.service"
-msgstr "服务"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.signedOut"
-msgstr "Holos 已登出"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.connected"
-msgstr "已连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.connecting"
-msgstr "连接中"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.disabled"
-msgstr "已关闭"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.disconnected"
-msgstr "未连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.failed"
-msgstr "失败"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.loading"
-msgstr "正在加载"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.signedOut"
-msgstr "已退出登录"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.unknown"
-msgstr "未知"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.title"
-msgstr "Holos"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.unknown"
-msgstr "Holos 未知"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.panel.connections"
 msgstr "连接"
 
@@ -10552,7 +10224,7 @@ msgstr "错误"
 msgid "brand.logo.alt"
 msgstr "Holos"
 
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
+#. js-lingui-explicit-id
 msgid "brand.workbench.synergy"
 msgstr "Synergy 工作台"
 
@@ -13181,14 +12853,6 @@ msgid "features.browser.name"
 msgstr "浏览器"
 
 #. js-lingui-explicit-id
-msgid "features.channel-clarus.description"
-msgstr "提供Clarus 渠道相关功能。"
-
-#. js-lingui-explicit-id
-msgid "features.channel-clarus.name"
-msgstr "Clarus 渠道"
-
-#. js-lingui-explicit-id
 msgid "features.channel-feishu.description"
 msgstr "提供飞书渠道相关功能。"
 
@@ -13275,14 +12939,6 @@ msgstr "提供GitHub相关功能。"
 #. js-lingui-explicit-id
 msgid "features.github.name"
 msgstr "GitHub"
-
-#. js-lingui-explicit-id
-msgid "features.holos.description"
-msgstr "提供Holos相关功能。"
-
-#. js-lingui-explicit-id
-msgid "features.holos.name"
-msgstr "Holos"
 
 #. js-lingui-explicit-id
 msgid "features.kanban.description"
@@ -19401,190 +19057,6 @@ msgid "session.worktree.title.refreshFailed"
 msgstr "无法刷新文件位置"
 
 #. js-lingui-explicit-id
-msgid "settings.account.actions.create"
-msgstr "创建智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.actions.import"
-msgstr "导入智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.actions.switch"
-msgstr "切换智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.agentPrefix"
-msgstr "智能体 {id}"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.connecting"
-msgstr "连接中"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.disabled"
-msgstr "连接已关闭"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.disconnected"
-msgstr "未连接"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.failed"
-msgstr "连接失败"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.unknown"
-msgstr "状态暂不可用"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile"
-msgstr "编辑资料"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.avatarUrl"
-msgstr "头像 URL"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.avatarUrlPlaceholder"
-msgstr "https://..."
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.cancel"
-msgstr "取消"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.description"
-msgstr "描述"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.descriptionPlaceholder"
-msgstr "此智能体代表什么"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.name"
-msgstr "名称"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.namePlaceholder"
-msgstr "智能体名称"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.saveChanges"
-msgstr "保存更改"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.saving"
-msgstr "正在保存…"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.agentId"
-msgstr "智能体 ID"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.copied"
-msgstr "已复制"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.copy"
-msgstr "复制"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.description"
-msgstr "管理当前设备上的连接状态和登录凭据。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.noActiveAgent"
-msgstr "没有活动智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.status"
-msgstr "状态"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.statusDescription"
-msgstr "当前 Holos 连接状态"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.title"
-msgstr "Holos 智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.invalidUrl"
-msgstr "请输入有效的 URL"
-
-#. js-lingui-explicit-id
-msgid "settings.account.loading"
-msgstr "正在加载"
-
-#. js-lingui-explicit-id
-msgid "settings.account.logout"
-msgstr "退出登录"
-
-#. js-lingui-explicit-id
-msgid "settings.account.nameRequired"
-msgstr "名称为必填项"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noAgent"
-msgstr "没有 Holos 智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noDescription"
-msgstr "暂无描述。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noHolosAgent"
-msgstr "创建或导入 Holos 智能体以使用身份功能。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.page.description"
-msgstr "管理 Synergy 当前使用的 Holos 智能体身份。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.page.title"
-msgstr "账号"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileLoadError"
-msgstr "Holos 无法加载此个人资料。请重试；如果持续失败，请重新导入智能体。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaved.description"
-msgstr "Holos 个人资料已更新。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaved.title"
-msgstr "个人资料已保存"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaveFailed.description"
-msgstr "无法更新 Holos 个人资料。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaveFailed.title"
-msgstr "保存个人资料失败"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileUnavailable"
-msgstr "个人资料不可用"
-
-#. js-lingui-explicit-id
-msgid "settings.account.retry"
-msgstr "重试"
-
-#. js-lingui-explicit-id
-msgid "settings.account.savedToHolos"
-msgstr "已直接保存到 Holos。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.signedOut"
-msgstr "已退出登录"
-
-#. js-lingui-explicit-id
 msgid "settings.accountToggle.account"
 msgstr "账号"
 
@@ -19875,18 +19347,6 @@ msgstr "应用内浏览器"
 #. js-lingui-explicit-id
 msgid "settings.browser.unavailable"
 msgstr "浏览器数据不可用，请重试。"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.description"
-msgstr "Holos 智能体身份和本地账号控制。"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.label"
-msgstr "账号"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.searchTerms"
-msgstr "用户 | 身份 | 登录 | Holos | 智能体"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.archivedSessions.description"
@@ -20315,66 +19775,6 @@ msgstr "工作树"
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.searchTerms"
 msgstr "工作树 | git | 工作区 | 分支 | 删除 | 项目"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.account"
-msgstr "前往账户"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.description"
-msgstr "允许每个 Holos Agent 账号接收并执行 Clarus 任务。"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.diagnostics"
-msgstr "下载诊断"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.diagnosticsFailed"
-msgstr "下载 Clarus 诊断失败"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.empty"
-msgstr "尚未配置 Clarus 账号。"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.enable"
-msgstr "Clarus 任务执行"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.enableAccount"
-msgstr "为 {accountName} 启用 Clarus 任务执行"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.maintenance"
-msgstr "账号维护"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.maintenanceAccount"
-msgstr "{accountName} 的账号维护"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.preparingDiagnostics"
-msgstr "正在准备诊断…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refresh"
-msgstr "刷新项目"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refreshFailed"
-msgstr "刷新 Clarus 项目失败"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refreshing"
-msgstr "正在刷新…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.setup"
-msgstr "在账户设置中登录 Holos。Synergy 会添加对应的 Clarus 账户，默认关闭；需要接收任务时，可在这里启用。"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.title"
-msgstr "Clarus"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.configure"
@@ -25628,14 +25028,6 @@ msgstr "项目工作树"
 msgid "settings.worktrees.source"
 msgstr "来源与关联任务"
 
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "sidebar.account.holos"
-msgstr "HOLOS 账号"
-
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "sidebar.account.signedOut"
-msgstr "未登录 · 本地工作台"
-
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.blueprint"
 msgstr "蓝图"
@@ -26539,14 +25931,6 @@ msgstr "只用表情回执"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "管理研究论点"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.clarus-extend-task"
-msgstr "延长 Clarus 任务"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.clarus-submit-task-result"
-msgstr "提交 Clarus 结果"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"

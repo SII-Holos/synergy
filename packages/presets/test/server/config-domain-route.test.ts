@@ -274,9 +274,9 @@ describe.serial("global Channels config route runtime reload", () => {
 
       const response = await patchChannels({
         channel: {
-          clarus: {
-            type: "clarus",
-            accounts: { agent: { enabled: true } },
+          github: {
+            type: "github",
+            accounts: { agent: { enabled: true, workspaceDir: "/tmp/channel-fixture" } },
           },
         },
       })
@@ -293,7 +293,7 @@ describe.serial("global Channels config route runtime reload", () => {
             changedFields: ["channel"],
             config: expect.objectContaining({
               channel: expect.objectContaining({
-                clarus: expect.objectContaining({ type: "clarus" }),
+                github: expect.objectContaining({ type: "github" }),
               }),
             }),
           }),

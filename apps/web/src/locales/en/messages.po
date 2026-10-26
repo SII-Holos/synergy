@@ -3086,186 +3086,6 @@ msgstr "Workspace files"
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr "Symbolic link"
 
-#. js-lingui-explicit-id
-msgid "app.holos.agentImported"
-msgstr "Agent imported"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentImportedDesc"
-msgstr "Imported {name}"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentLoggedOut"
-msgstr "Agent logged out"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentLoggedOutDesc"
-msgstr "The active Holos agent was removed locally."
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentSwitched"
-msgstr "Agent switched"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentSwitchedDesc"
-msgstr "Switched to {id}"
-
-#. js-lingui-explicit-id
-msgid "app.holos.cancel"
-msgstr "Cancel"
-
-#. js-lingui-explicit-id
-msgid "app.holos.connected"
-msgstr "Holos connected"
-
-#. js-lingui-explicit-id
-msgid "app.holos.connectedDesc"
-msgstr "Your agent is now linked to Holos."
-
-#. js-lingui-explicit-id
-msgid "app.holos.continue"
-msgstr "Continue"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent"
-msgstr "Create Agent"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent.description"
-msgstr "Choose how this agent should appear in Holos."
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent.title"
-msgstr "Create Agent"
-
-#. js-lingui-explicit-id
-msgid "app.holos.currentAgent"
-msgstr "Current Holos agent"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.agentSecret"
-msgstr "Agent Secret"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.agentSecretPlaceholder"
-msgstr "Paste agent secret"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.avatarUrl"
-msgstr "Avatar URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.avatarUrlPlaceholder"
-msgstr "Optional image URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.description"
-msgstr "Description"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.descriptionPlaceholder"
-msgstr "Optional description"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.name"
-msgstr "Name"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.namePlaceholder"
-msgstr "Agent name"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.nameRequired"
-msgstr "Name is required"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.secretRequired"
-msgstr "Agent secret is required"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.urlInvalid"
-msgstr "Enter a valid URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.import"
-msgstr "Import"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent"
-msgstr "Import Agent"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent.description"
-msgstr "Paste the secret for an existing Holos agent."
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent.title"
-msgstr "Import Agent"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importFailed"
-msgstr "Import failed"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importing"
-msgstr "Importing..."
-
-#. js-lingui-explicit-id
-msgid "app.holos.loginFailed"
-msgstr "Holos login failed"
-
-#. js-lingui-explicit-id
-msgid "app.holos.logoutFailed"
-msgstr "Logout failed"
-
-#. js-lingui-explicit-id
-msgid "app.holos.noLoginUrl"
-msgstr "No login URL returned."
-
-#. js-lingui-explicit-id
-msgid "app.holos.noSavedAgents"
-msgstr "No saved agents"
-
-#. js-lingui-explicit-id
-msgid "app.holos.opening"
-msgstr "Opening..."
-
-#. js-lingui-explicit-id
-msgid "app.holos.popupBlocked"
-msgstr "Popup blocked"
-
-#. js-lingui-explicit-id
-msgid "app.holos.popupBlockedDesc"
-msgstr "Allow popups for this site to sign in to Holos."
-
-#. js-lingui-explicit-id
-msgid "app.holos.profileUnavailable"
-msgstr "Profile unavailable"
-
-#. js-lingui-explicit-id
-msgid "app.holos.reconnectFailed"
-msgstr "Holos reconnect failed"
-
-#. js-lingui-explicit-id
-msgid "app.holos.savedAgent"
-msgstr "Saved on this device"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switch"
-msgstr "Switch"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchAgent.description"
-msgstr "Choose which saved Holos agent Synergy should use."
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchAgent.title"
-msgstr "Switch Agent"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchFailed"
-msgstr "Agent switch failed"
-
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.home.start"
@@ -8871,10 +8691,6 @@ msgid "app.shell.window.restore"
 msgstr "Restore"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.account.menu"
-msgstr "HOLOS account menu"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.addProject"
 msgstr "Add project"
 
@@ -8900,7 +8716,7 @@ msgstr "Working..."
 
 #. Brand / logo
 msgid "app.sidebar.brand.logo"
-msgstr "HOLOS"
+msgstr "Synergy"
 
 #. Channel account status
 msgid "app.sidebar.channel.account.connected"
@@ -8985,70 +8801,6 @@ msgstr "Expand sidebar"
 #. Flyout
 msgid "app.sidebar.flyout.projects"
 msgstr "Projects"
-
-#. Connection status labels
-msgid "app.sidebar.holos.connected"
-msgstr "Connected"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connectedToHolos"
-msgstr "Connected to Holos"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connecting"
-msgstr "Connecting…"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connection"
-msgstr "Holos Connection"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connectionFailed"
-msgstr "Connection failed"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.disabled"
-msgstr "Disabled"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.disconnected"
-msgstr "Disconnected"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.loadingIdentity"
-msgstr "Loading identity..."
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.localWorkspace"
-msgstr "Local workspace"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.login"
-msgstr "Login"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.notAvailable"
-msgstr "Not available"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.notLoggedIn"
-msgstr "Not logged in"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.profileUnavailable"
-msgstr "Profile unavailable"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.savedOnDevice"
-msgstr "Saved on this device"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.service"
-msgstr "Service"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.signIn"
-msgstr "Sign in"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.loading.projects"
@@ -9185,6 +8937,14 @@ msgstr "Draft"
 #. Session fallback
 msgid "app.sidebar.session.untitled"
 msgstr "Untitled"
+
+#. js-lingui-explicit-id
+msgid "app.sidebar.space.current"
+msgstr "Current space"
+
+#. js-lingui-explicit-id
+msgid "app.sidebar.space.personal"
+msgstr "Personal space"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -9921,94 +9681,6 @@ msgid "app.statusBar.details"
 msgstr "Details"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.agent"
-msgstr "Agent {id}"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.connected"
-msgstr "Holos connected"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.connecting"
-msgstr "Holos connecting"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.disabled"
-msgstr "Holos disabled"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.disconnected"
-msgstr "Holos disconnected"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.failed"
-msgstr "Holos failed"
-
-#. Holos labels
-msgid "app.statusBar.holos.loading"
-msgstr "Holos loading"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.login"
-msgstr "Login"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.notLoggedIn"
-msgstr "Not logged in"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.reconnect"
-msgstr "Reconnect"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.service"
-msgstr "Service"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.signedOut"
-msgstr "Holos signed out"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.connected"
-msgstr "Connected"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.connecting"
-msgstr "Connecting"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.disabled"
-msgstr "Disabled"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.disconnected"
-msgstr "Disconnected"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.failed"
-msgstr "Failed"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.loading"
-msgstr "Loading"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.signedOut"
-msgstr "Signed out"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.unknown"
-msgstr "Unknown"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.title"
-msgstr "Holos"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.unknown"
-msgstr "Holos unknown"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.panel.connections"
 msgstr "Connections"
 
@@ -10550,9 +10222,9 @@ msgstr "Error"
 
 #. js-lingui-explicit-id
 msgid "brand.logo.alt"
-msgstr "Holos"
+msgstr "Synergy"
 
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
+#. js-lingui-explicit-id
 msgid "brand.workbench.synergy"
 msgstr "Synergy workspace"
 
@@ -13181,14 +12853,6 @@ msgid "features.browser.name"
 msgstr "Browser"
 
 #. js-lingui-explicit-id
-msgid "features.channel-clarus.description"
-msgstr "Provide channel clarus capabilities."
-
-#. js-lingui-explicit-id
-msgid "features.channel-clarus.name"
-msgstr "Channel Clarus"
-
-#. js-lingui-explicit-id
 msgid "features.channel-feishu.description"
 msgstr "Provide channel feishu capabilities."
 
@@ -13275,14 +12939,6 @@ msgstr "Provide github capabilities."
 #. js-lingui-explicit-id
 msgid "features.github.name"
 msgstr "Github"
-
-#. js-lingui-explicit-id
-msgid "features.holos.description"
-msgstr "Provide holos capabilities."
-
-#. js-lingui-explicit-id
-msgid "features.holos.name"
-msgstr "Holos"
 
 #. js-lingui-explicit-id
 msgid "features.kanban.description"
@@ -19401,190 +19057,6 @@ msgid "session.worktree.title.refreshFailed"
 msgstr "Could not refresh file location"
 
 #. js-lingui-explicit-id
-msgid "settings.account.actions.create"
-msgstr "Create Agent"
-
-#. js-lingui-explicit-id
-msgid "settings.account.actions.import"
-msgstr "Import Agent"
-
-#. js-lingui-explicit-id
-msgid "settings.account.actions.switch"
-msgstr "Switch Agent"
-
-#. js-lingui-explicit-id
-msgid "settings.account.agentPrefix"
-msgstr "Agent {id}"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.connected"
-msgstr "Connected"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.connecting"
-msgstr "Connecting"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.disabled"
-msgstr "Connection disabled"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.disconnected"
-msgstr "Disconnected"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.failed"
-msgstr "Connection failed"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.unknown"
-msgstr "Status unavailable"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile"
-msgstr "Edit profile"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.avatarUrl"
-msgstr "Avatar URL"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.avatarUrlPlaceholder"
-msgstr "https://..."
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.cancel"
-msgstr "Cancel"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.description"
-msgstr "Description"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.descriptionPlaceholder"
-msgstr "What this agent represents"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.name"
-msgstr "Name"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.namePlaceholder"
-msgstr "Agent name"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.saveChanges"
-msgstr "Save changes"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.saving"
-msgstr "Saving..."
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.agentId"
-msgstr "Agent ID"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.copied"
-msgstr "Copied"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.copy"
-msgstr "Copy"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.description"
-msgstr "Connection and local credential actions for this installation."
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.noActiveAgent"
-msgstr "No active agent"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.status"
-msgstr "Status"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.statusDescription"
-msgstr "Current Holos connection state"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.title"
-msgstr "Holos agent"
-
-#. js-lingui-explicit-id
-msgid "settings.account.invalidUrl"
-msgstr "Enter a valid URL"
-
-#. js-lingui-explicit-id
-msgid "settings.account.loading"
-msgstr "Loading"
-
-#. js-lingui-explicit-id
-msgid "settings.account.logout"
-msgstr "Log out"
-
-#. js-lingui-explicit-id
-msgid "settings.account.nameRequired"
-msgstr "Name is required"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noAgent"
-msgstr "No Holos agent"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noDescription"
-msgstr "No description yet."
-
-#. js-lingui-explicit-id
-msgid "settings.account.noHolosAgent"
-msgstr "Create or import a Holos agent to use identity features."
-
-#. js-lingui-explicit-id
-msgid "settings.account.page.description"
-msgstr "Manage the Holos agent identity Synergy is currently using."
-
-#. js-lingui-explicit-id
-msgid "settings.account.page.title"
-msgstr "Account"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileLoadError"
-msgstr "Holos could not load this profile. Retry, or import the agent again if this keeps failing."
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaved.description"
-msgstr "Holos profile was updated."
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaved.title"
-msgstr "Profile saved"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaveFailed.description"
-msgstr "Unable to update Holos profile."
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaveFailed.title"
-msgstr "Profile save failed"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileUnavailable"
-msgstr "Profile unavailable"
-
-#. js-lingui-explicit-id
-msgid "settings.account.retry"
-msgstr "Retry"
-
-#. js-lingui-explicit-id
-msgid "settings.account.savedToHolos"
-msgstr "Saved directly to Holos."
-
-#. js-lingui-explicit-id
-msgid "settings.account.signedOut"
-msgstr "Signed out"
-
-#. js-lingui-explicit-id
 msgid "settings.accountToggle.account"
 msgstr "Account"
 
@@ -19875,18 +19347,6 @@ msgstr "In-app browser"
 #. js-lingui-explicit-id
 msgid "settings.browser.unavailable"
 msgstr "Browser data is unavailable. Retry."
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.description"
-msgstr "Holos agent identities and local account controls."
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.label"
-msgstr "Account"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.searchTerms"
-msgstr "user | identity | login | holos | agent"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.archivedSessions.description"
@@ -20315,66 +19775,6 @@ msgstr "Worktrees"
 #. js-lingui-explicit-id
 msgid "settings.catalog.worktrees.searchTerms"
 msgstr "worktree | git | checkout | branch | delete | project"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.account"
-msgstr "Go to Account"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.description"
-msgstr "Allow each Holos Agent account to receive and run Clarus tasks."
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.diagnostics"
-msgstr "Download diagnostics"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.diagnosticsFailed"
-msgstr "Failed to download Clarus diagnostics"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.empty"
-msgstr "No Clarus accounts configured yet."
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.enable"
-msgstr "Clarus task execution"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.enableAccount"
-msgstr "Enable Clarus task execution for {accountName}"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.maintenance"
-msgstr "Account maintenance"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.maintenanceAccount"
-msgstr "Account maintenance for {accountName}"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.preparingDiagnostics"
-msgstr "Preparing diagnostics…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refresh"
-msgstr "Refresh projects"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refreshFailed"
-msgstr "Failed to refresh Clarus projects"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refreshing"
-msgstr "Refreshing…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.setup"
-msgstr "Sign in to a Holos account in Account settings. Synergy adds the corresponding Clarus account in the disabled state; enable it here when you want to receive tasks."
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.title"
-msgstr "Clarus"
 
 #. js-lingui-explicit-id
 msgid "settings.channels.configure"
@@ -25628,14 +25028,6 @@ msgstr "Project worktrees"
 msgid "settings.worktrees.source"
 msgstr "Source and linked tasks"
 
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "sidebar.account.holos"
-msgstr "HOLOS account"
-
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "sidebar.account.signedOut"
-msgstr "Not signed in · local workspace"
-
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.blueprint"
 msgstr "Blueprint"
@@ -26539,14 +25931,6 @@ msgstr "Reply with reaction only"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "Manage research claims"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.clarus-extend-task"
-msgstr "Extend Clarus Task"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.clarus-submit-task-result"
-msgstr "Submit Clarus Result"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"

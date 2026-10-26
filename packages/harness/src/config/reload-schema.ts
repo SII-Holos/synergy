@@ -20,7 +20,6 @@ export namespace RuntimeSchema {
       "formatter",
       "watcher",
       "channel",
-      "holos",
       "command",
       "tool_registry",
       "all",

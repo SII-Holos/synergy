@@ -35,7 +35,7 @@ synergy logs --follow
 synergy stop
 ```
 
-`start` runs the first-time configuration wizard in an interactive terminal when no config exists. `--non-interactive` skips first-run and Holos prompts. Existing services report config drift; stop and start again to install changed network settings into the service definition.
+`start` runs the first-time configuration wizard in an interactive terminal when no config exists. `--non-interactive` skips the first-run configuration wizard. Existing services report config drift; stop and start again to install changed network settings into the service definition.
 
 The managed service defaults to `127.0.0.1:4096`. `--hostname`, `--port`, `--mdns`, and repeatable `--cors` override the corresponding `server` config for the installed service invocation. Each explicit `--cors` value authorizes both cross-origin HTTP requests and Browser viewer WebSocket handshakes from that exact HTTP(S) origin. Automatically detected LAN CORS origins and reverse-proxy forwarding headers do not authorize Browser viewer sockets, so pass the public Browser viewer Origin explicitly.
 
@@ -236,13 +236,12 @@ Use the data commands for supported relocation and merge workflows. Copying indi
 
 ## Connections
 
-| Command family                                                        | Purpose                                        |
-| --------------------------------------------------------------------- | ---------------------------------------------- |
-| `synergy channel add\|list\|start\|stop\|status`                      | Configure and control Channel accounts         |
-| `synergy holos login\|logout\|status\|verify\|reconnect\|credentials` | Manage Holos identity and connection readiness |
-| `synergy acp`                                                         | Run the Agent Client Protocol integration      |
+| Command family                                   | Purpose                                   |
+| ------------------------------------------------ | ----------------------------------------- |
+| `synergy channel add\|list\|start\|stop\|status` | Configure and control Channel accounts    |
+| `synergy acp`                                    | Run the Agent Client Protocol integration |
 
-Channel and Holos connection models are described in [Connections](../product/connections.md).
+Channel connection models are described in [Connections](../product/connections.md).
 
 ## Desktop Browser
 

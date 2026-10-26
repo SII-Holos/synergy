@@ -4,8 +4,6 @@ import { workspaceCopy } from "@/components/dialog/workspace-dialog-copy"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { useParams } from "@/context/session-route"
-import { useHolos } from "@/context/holos"
-import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
@@ -39,49 +37,6 @@ import {
 import { createSubsessionController } from "./subsession-controller"
 import { UpgradeStatus } from "./upgrade-status"
 
-function statusDotClass(status: "success" | "danger" | "muted" | "active") {
-  return {
-    "size-1 rounded-full ring-1 ring-inset ring-border-weaker-base": true,
-    "bg-icon-success-base text-icon-success-base animate-[statusbarDotPulse_3s_ease-in-out_infinite]":
-      status === "success",
-    "bg-icon-critical-base text-icon-critical-base animate-[statusbarDotPulse_1.5s_ease-in-out_infinite]":
-      status === "danger",
-    "bg-icon-base text-icon-base animate-[statusbarDotPulse_2s_ease-in-out_infinite]": status === "active",
-    "bg-border-strong-base text-border-strong-base": status === "muted",
-  }
-}
-
-function holosTooltipLabel(holos: ReturnType<typeof useHolos>, i18n: ReturnType<typeof useLocale>["i18n"]) {
-  if (!holos.loaded) return i18n._(copy.holosLoading)
-  if (!holos.state.identity.loggedIn) return i18n._(copy.holosSignedOut)
-  if (holos.state.connection.status === "connected") return i18n._(copy.holosConnected)
-  if (holos.state.connection.status === "connecting") return i18n._(copy.holosConnecting)
-  if (holos.state.connection.status === "failed") return i18n._(copy.holosFailed)
-  if (holos.state.connection.status === "disconnected") return i18n._(copy.holosDisconnected)
-  if (holos.state.connection.status === "disabled") return i18n._(copy.holosDisabled)
-  return i18n._(copy.holosUnknown)
-}
-
-function holosServiceStatus(holos: ReturnType<typeof useHolos>, i18n: ReturnType<typeof useLocale>["i18n"]) {
-  if (!holos.loaded) return i18n._(copy.holosStateLoading)
-  if (!holos.state.identity.loggedIn) return i18n._(copy.holosStateSignedOut)
-  if (holos.state.connection.status === "connected") return i18n._(copy.holosStateConnected)
-  if (holos.state.connection.status === "connecting") return i18n._(copy.holosStateConnecting)
-  if (holos.state.connection.status === "failed") return i18n._(copy.holosStateFailed)
-  if (holos.state.connection.status === "disconnected") return i18n._(copy.holosStateDisconnected)
-  if (holos.state.connection.status === "disabled") return i18n._(copy.holosStateDisabled)
-  return i18n._(copy.holosStateUnknown)
-}
-
-function holosTone(holos: ReturnType<typeof useHolos>) {
-  if (!holos.loaded || !holos.state.identity.loggedIn) return "muted" as const
-  if (holos.state.connection.status === "connected") return "success" as const
-  if (holos.state.connection.status === "connecting") return "active" as const
-  if (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
-    return "danger" as const
-  return "muted" as const
-}
-
 function decodeDirectory(value: string | undefined) {
   if (!value) return undefined
   try {
@@ -110,96 +65,6 @@ function iconButtonClass(tone?: "base" | "danger" | "success" | "paused") {
     "text-icon-success-base": tone === "success",
     "text-icon-warning-base": tone === "paused",
   }
-}
-
-// ─── Holos icon button ────────────────────────────────────────────
-
-function HolosIconButton() {
-  const globalSDK = useGlobalSDK()
-  const holos = useHolos()
-  const agentActions = useHolosAgentActions(globalSDK)
-  const { i18n } = useLocale()
-  const label = createMemo(() => holosTooltipLabel(holos, i18n))
-  const dot = createMemo(() => holosTone(holos))
-  const [open, setOpen] = createSignal(false)
-
-  const activeAgentShortID = () => holos.state.identity.agentId?.slice(0, 8)
-  const needReconnect = () =>
-    holos.state.identity.loggedIn &&
-    (holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected")
-
-  const handleReconnect = () => {
-    void agentActions.reconnect()
-  }
-
-  return (
-    <Popover
-      open={open()}
-      onOpenChange={setOpen}
-      placement="top"
-      gutter={8}
-      trigger={
-        <Tooltip placement="top" value={label()}>
-          <button type="button" aria-label={label()} classList={iconButtonClass()}>
-            <Icon name={getSemanticIcon("holos.main")} size="small" class="translate-y-px" />
-            <div
-              classList={{
-                ...statusDotClass(dot()),
-                "absolute bottom-1 right-1": true,
-              }}
-            />
-          </button>
-        </Tooltip>
-      }
-    >
-      <div class="w-56">
-        <div class="text-12-medium text-text-base border-b border-border-weaker-base/60 px-1 pb-2 mb-2">
-          {i18n._(copy.holosTitle)}
-        </div>
-        <div class="space-y-0.5 mb-2">
-          <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
-            <span class="text-text-weak w-14 shrink-0">{i18n._(copy.holosLoginLabel)}</span>
-            <span class={holos.state.identity.loggedIn ? "text-text-on-success-base" : "text-text-subtle"}>
-              {holos.state.identity.loggedIn
-                ? i18n._({ ...copy.holosAgent, values: { id: activeAgentShortID() } })
-                : i18n._(copy.notLoggedIn)}
-            </span>
-          </div>
-          <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
-            <span class="text-text-weak w-14 shrink-0">{i18n._(copy.holosServiceLabel)}</span>
-            <span
-              classList={{
-                "text-text-on-success-base": holos.state.connection.status === "connected",
-                "text-text-interactive-base": holos.state.connection.status === "connecting",
-                "text-text-on-critical-base":
-                  holos.state.connection.status === "failed" || holos.state.connection.status === "disconnected",
-                "text-text-subtle": !["connected", "connecting", "failed", "disconnected"].includes(
-                  holos.state.connection.status,
-                ),
-              }}
-            >
-              {holosServiceStatus(holos, i18n)}
-            </span>
-          </div>
-          <Show when={holos.state.connection.error}>
-            <div class="px-1 py-1 text-11-regular text-text-on-critical-base break-words">
-              {holos.state.connection.error}
-            </div>
-          </Show>
-        </div>
-        <Show when={needReconnect()}>
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-12-medium text-text-on-success-base transition-colors hover:bg-surface-raised-base-hover"
-            onClick={handleReconnect}
-          >
-            <Icon name={getSemanticIcon("action.refresh")} size="small" />
-            <span>{i18n._(copy.reconnect)}</span>
-          </button>
-        </Show>
-      </div>
-    </Popover>
-  )
 }
 
 // ─── Workspace icon button ────────────────────────────────────────
@@ -557,7 +422,6 @@ export function StatusBar() {
   const params = useParams()
   const navigateToSession = useNavigateToSession()
   const globalSync = useGlobalSync()
-  const holos = useHolos()
   const server = useServer()
   const sync = useSync()
   const view = useSessionDataView()
@@ -693,7 +557,6 @@ export function StatusBar() {
       </PanelSection>
 
       <PanelSection title={i18n._(copy.connections)}>
-        <PanelRow>{holosTooltipLabel(holos, i18n)}</PanelRow>
         <Show when={lspTotal() > 0}>
           <PanelRow>{i18n._({ ...copy.lspActive, values: { connected: lspConnected() } })}</PanelRow>
         </Show>
@@ -734,8 +597,6 @@ export function StatusBar() {
     <div class="session-status-bar flex flex-col items-center gap-1 min-w-0 w-full">
       <UpgradeStatus />
       <div class="statusbar-glass flex flex-wrap items-center justify-center gap-1.5 min-w-0 max-w-full px-2 py-1 rounded-lg">
-        <HolosIconButton />
-
         <Show when={params.dir}>
           <Show when={params.id}>
             <WorkspaceIconButton isWorktree={isWorktree()} workspaceName={workspaceName()} sessionID={params.id} />

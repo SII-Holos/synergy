@@ -62,7 +62,6 @@ Each selected component contributes resident services through `RuntimeServices`.
 - plugin discovery and runtime initialization
 - home-scope session recovery
 - configured Channels and outbound channel delivery
-- the optional Holos runtime
 - global file watching
 - MCP startup
 - plugin marketplace registry prefetch

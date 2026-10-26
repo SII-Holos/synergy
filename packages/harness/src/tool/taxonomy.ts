@@ -204,8 +204,6 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
-  clarus_submit_task_result: entry("platform.collaboration", { stateful: true, externalIO: true }),
-  clarus_extend_task: entry("platform.collaboration", { stateful: true, externalIO: true }),
   github_deliver_fix: entry("platform.collaboration", { stateful: true, externalIO: true }),
   openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
