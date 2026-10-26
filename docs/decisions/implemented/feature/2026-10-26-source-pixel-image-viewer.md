@@ -18,6 +18,8 @@ Operations capture their image and cancellation signal. A changed or inactive vi
 
 Source navigation shares that operation lifetime, including cancellation before closing its modal. Attachment SVG preview uses image decoding, while its text reader runs only in Source mode; a failed text request must not remove image retry or save controls. Files retains its existing sanitized SVG display and saves the original bytes.
 
+Keyboard context-menu keys use the same Kobalte menu and return focus to their invoking image control. Gallery navigation reveals the selected thumbnail without moving focus out of the image stage.
+
 ## Alternatives considered
 
 **Keep fit-relative percentages.** Rejected because 100% would still conceal source pixels and mean different things in differently sized surfaces.

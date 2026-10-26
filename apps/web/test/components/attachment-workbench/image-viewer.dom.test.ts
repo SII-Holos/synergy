@@ -107,6 +107,45 @@ test("context and overflow menus share actions and Escape closes only the menu",
   ).toBe(true)
 })
 
+test("keyboard context menus return focus to the image stage", async () => {
+  const stage = page.locator('[data-slot="image-viewer-stage"]')
+  for (const key of ["Shift+F10", "ContextMenu"]) {
+    await stage.focus()
+    await page.keyboard.press(key)
+    await page.getByRole("menuitem", { name: "Save image", exact: true }).waitFor({ timeout: 3000 })
+    await page.keyboard.press("Escape")
+    await page.locator('[data-component="image-viewer-menu"]').waitFor({ state: "detached" })
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("data-slot") === "image-viewer-stage",
+      undefined,
+      { timeout: 3000 },
+    )
+    expect(await page.getByRole("dialog").count()).toBe(1)
+  }
+})
+
+test("keyboard gallery navigation keeps the selected thumbnail in view", async () => {
+  await page.evaluate(() => {
+    const image = document.querySelector<HTMLImageElement>('[data-slot="image-viewer-image"]')!
+    const fixture = (window as unknown as { imageFixture: { setImages: (images: unknown[]) => void } }).imageFixture
+    fixture.setImages(
+      Array.from({ length: 24 }, (_, index) => ({
+        id: `image-${index}`,
+        src: image.src,
+        filename: `image-${index}.svg`,
+        mime: "image/svg+xml",
+      })),
+    )
+  })
+  await page.locator('[data-slot="image-viewer-stage"]').focus()
+  for (let index = 1; index < 24; index++) await page.keyboard.press("PageDown")
+  const strip = (await page.locator('[data-slot="image-viewer-thumbnails"]').boundingBox())!
+  const selected = (await page.getByRole("button", { name: "image-23.svg", exact: true }).boundingBox())!
+  expect(selected.x).toBeGreaterThanOrEqual(strip.x)
+  expect(selected.x + selected.width).toBeLessThanOrEqual(strip.x + strip.width)
+  expect(await page.locator('[data-slot="image-viewer-footer"]').innerText()).toContain("24 / 24")
+})
+
 test("failed images retry the same URL and recover", async () => {
   let failed = true
   await page.route("**/retry.svg", (route) =>

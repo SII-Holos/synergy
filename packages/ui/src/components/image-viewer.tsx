@@ -169,6 +169,13 @@ export function ImageViewer(props: ImageViewerProps) {
     }),
   )
   createEffect(() => props.onImageChange?.(current()))
+  createEffect(() => {
+    current()
+    if (!active() || !thumbnails()) return
+    root
+      .querySelector('[data-slot="image-viewer-thumbnails"] [aria-current="true"]')
+      ?.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" })
+  })
   createEffect(
     on(
       () => props.initialIndex,

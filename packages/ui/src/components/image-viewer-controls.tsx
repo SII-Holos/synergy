@@ -1,4 +1,4 @@
-import { ContextMenu } from "@kobalte/core/context-menu"
+import { ContextMenu, useContextMenuContext } from "@kobalte/core/context-menu"
 import { DropdownMenu } from "@kobalte/core/dropdown-menu"
 import { useMenuContext } from "@kobalte/core/menu"
 import { createEffect, For, Show, type JSX } from "solid-js"
@@ -19,12 +19,32 @@ export interface ImageViewerCommand {
   run: () => void
 }
 
-function ContextMenuLifetime(props: { open: boolean }) {
+function ImageViewerCanvas(props: { active: boolean; open: boolean; children: JSX.Element }) {
   const menu = useMenuContext()
+  const context = useContextMenuContext()
   createEffect(() => {
     if (!props.open) menu.close()
   })
-  return null
+  return (
+    <ContextMenu.Trigger
+      as="div"
+      disabled={!props.active}
+      data-slot="image-viewer-canvas"
+      onKeyDown={(event: KeyboardEvent) => {
+        if (!props.active || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return
+        event.preventDefault()
+        event.stopPropagation()
+        const target = event.target as HTMLElement
+        const rect = target.getBoundingClientRect()
+        context.setAnchorRect({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 })
+        menu.setTriggerRef(target)
+        menu.open(true)
+      }}
+    >
+      {props.children}
+    </ContextMenu.Trigger>
+  )
 }
 
 export function ImageViewerControls(props: {
@@ -109,10 +129,9 @@ export function ImageViewerControls(props: {
         </DropdownMenu>
       </div>
       <ContextMenu onOpenChange={props.onContextOpen} modal={false}>
-        <ContextMenuLifetime open={props.active && props.contextOpen} />
-        <ContextMenu.Trigger as="div" disabled={!props.active} data-slot="image-viewer-canvas">
+        <ImageViewerCanvas active={props.active} open={props.active && props.contextOpen}>
           {props.children}
-        </ContextMenu.Trigger>
+        </ImageViewerCanvas>
         <ContextMenu.Portal mount={props.portal}>
           <PortalStyleOwner>
             <ContextMenu.Content data-component="image-viewer-menu" aria-label={props.menuLabel} {...menuEvents}>
