@@ -69,7 +69,6 @@ export const S = {
 
   // prompt-dock.tsx
   dockBackToParent: { id: "session.dock.backToParent", message: "Back to parent" },
-  dockBack: { id: "session.dock.back", message: "Back" },
 
   // commands.tsx — command registrations are product UI
   cmdNewSession: { id: "session.cmd.newSession", message: "New session" },

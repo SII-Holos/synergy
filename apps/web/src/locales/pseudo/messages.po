@@ -17833,10 +17833,6 @@ msgstr ""
 msgid "session.decision.submitting"
 msgstr ""
 
-#. js-lingui-explicit-id
-msgid "session.dock.back"
-msgstr "⟦Back⟧"
-
 #. prompt-dock.tsx
 msgid "session.dock.backToParent"
 msgstr "⟦Back to parent⟧"

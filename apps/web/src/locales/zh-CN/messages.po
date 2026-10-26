@@ -17833,10 +17833,6 @@ msgstr "跳过本次提问"
 msgid "session.decision.submitting"
 msgstr "正在提交…"
 
-#. js-lingui-explicit-id
-msgid "session.dock.back"
-msgstr "后退"
-
 #. prompt-dock.tsx
 msgid "session.dock.backToParent"
 msgstr "返回父级"

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionMeta } from "@/composables/use-session-meta"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import { promptDockBackPath, promptDockBackToParentID } from "../../../src/components/session/prompt-dock-model"
+import { promptDockBackToParentID } from "../../../src/components/session/prompt-dock-model"
 import { selectPromptDockControl } from "../../../src/components/session/prompt-dock-control-model"
 import {
   SUBAGENT_FOOTER_MODEL_LABEL_CLASS,
@@ -32,11 +32,8 @@ describe("prompt dock navigation targets", () => {
     expect(promptDockBackToParentID({ showBackToParent: false, parentID: "ses_parent" })).toBeUndefined()
   })
 
-  test("hides browser back targets for subsessions", () => {
-    expect(promptDockBackPath({ ...baseMeta, isSubsession: false }, "/project/session/ses_previous")).toBe(
-      "/project/session/ses_previous",
-    )
-    expect(promptDockBackPath({ ...baseMeta, isSubsession: true }, "/project/session/ses_previous")).toBeUndefined()
+  test("ordinary sessions have no parent navigation", () => {
+    expect(promptDockBackToParentID(baseMeta)).toBeUndefined()
   })
 })
 

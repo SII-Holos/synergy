@@ -24,7 +24,7 @@ import { PendingComposerQueue } from "@/components/session/pending-composer-queu
 import { editPendingMessage, takePendingMessage } from "@/components/session/conversation-pending"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
-import { promptDockBackPath, promptDockBackToParentID } from "@/components/session/prompt-dock-model"
+import { promptDockBackToParentID } from "@/components/session/prompt-dock-model"
 import { S } from "@/components/session/session-i18n"
 import { forkHistoryIsComplete } from "@/components/session/dialog-fork-confirm-model"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
@@ -1349,11 +1349,6 @@ function SessionPageContent() {
     if (!current?.parentID) return undefined
     return dataView().sessionFor(current.parentID)
   })
-  const backPath = createMemo(() => {
-    if (parentSession()) return undefined
-    const from = (location.state as { from?: string } | undefined)?.from
-    return from ?? undefined
-  })
 
   createEffect(() => {
     if (!active()) return
@@ -2300,15 +2295,6 @@ function SessionPageContent() {
           title: parentSession()?.title || i18n._(S.dockParentSession),
           icon: "navigation.back",
           open: () => navigateToSession(parent, "return-to-parent"),
-        })
-      const back = promptDockBackPath(sessionMeta(), backPath())
-      if (back)
-        links.push({
-          id: "back",
-          label: i18n._(S.dockBack),
-          title: i18n._(S.dockBack),
-          icon: "navigation.back",
-          open: () => navigate(back),
         })
       return links
     },

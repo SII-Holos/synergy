@@ -14,7 +14,7 @@ Without an explicit title, `Session.fork` assigns `source title(1)`, `source tit
 
 The reply action and the whole-conversation command call the same dialog and submission handler. They retain their distinct history positions: inclusive `through` for a reply and `current` for the command. The dialog shows the source title, history summary and a shared single-selection control for working location. It defaults to the source binding. Main directory resolves the project's canonical main Workspace ID and generation; `current` means retain the source, not select main. New worktree uses the project's main folder as its existing worktree-creation source. The source worktree is a separate choice only when it differs from main. Non-Git, unavailable and unsupported destinations are not offered. No selection changes a binding or allocates a worktree before confirmation.
 
-Location reads are captured for the originating client and Scope. Failure shows Retry and prevents an implicit fallback. Pending creation blocks duplicate submission and dismissal. Dialog cleanup uses its own ID, and a late success cannot navigate an unrelated active session. Successful creation opens the regular session view. `forkedFrom` remains canonical provenance; the Composer has no persistent fork-source link.
+Location reads are captured for the originating client and Scope. Failure shows Retry and prevents an implicit fallback. Pending creation blocks duplicate submission and dismissal. Dialog cleanup uses its own ID, and a late success cannot navigate an unrelated active session. Successful creation opens the regular session view. `forkedFrom` remains canonical provenance; the Composer has neither a persistent fork-source link nor a generic Back button. The route's `from` state describes the entry page, not provenance, and stays available for browser history and parent-return navigation without creating ordinary Composer chrome. Back to parent remains tied to actual child ownership.
 
 This extends the [per-message entry decision](2026-08-19-per-message-fork-entry.md) without changing its inclusive-history guarantee or semantic icon. Its source lineage remains distinct from runtime child ownership.
 
@@ -28,7 +28,7 @@ This extends the [per-message entry decision](2026-08-19-per-message-fork-entry.
 
 **Make fork reproduce historical code.** Rejected because conversation provenance does not identify a complete code snapshot. The user independently selects files through the existing Workspace API.
 
-**Keep the source badge above the Composer.** Rejected because it is persistent navigation chrome unrelated to the next message; lineage metadata is retained without imposing that row on every fork.
+**Keep a source badge or generic Back button above the Composer.** Rejected because both are persistent navigation chrome unrelated to the next message; immediately after forking they lead to the same source page. Hiding Back only for forks or erasing route state would leave inconsistent ordinary-session presentation or damage history behavior. Lineage and route metadata remain intact without imposing that row.
 
 **Generate a title after the first new message, or infer automatic numbering from text alone.** Rejected because the new session needs its inherited name immediately and a parent's authored parentheses must not be stripped. The optional lineage marker keeps that distinction portable through export/import without maintaining a separate title system.
 
