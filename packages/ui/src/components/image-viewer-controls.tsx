@@ -60,24 +60,23 @@ export function ImageViewerControls(props: {
   children: JSX.Element
 }) {
   const entries = (kind: "context" | "dropdown") => {
-    const Item = kind === "context" ? ContextMenu.Item : DropdownMenu.Item
+    const Menu = kind === "context" ? ContextMenu : DropdownMenu
     return (
       <For each={props.commands}>
-        {(command) => (
-          <Show when={command.visible?.() ?? true}>
-            <Item
-              disabled={command.disabled?.()}
-              onSelect={command.run}
-              data-selected={command.pressed?.() || undefined}
-            >
-              <Icon name={getSemanticIcon(command.icon)} size="small" />
-              <span>{command.label()}</span>
-              <Show when={command.pressed?.()}>
-                <Icon name={getSemanticIcon("state.success")} size="small" />
-              </Show>
-            </Item>
-          </Show>
-        )}
+        {(command) => {
+          const Item = command.pressed ? Menu.CheckboxItem : Menu.Item
+          return (
+            <Show when={command.visible?.() ?? true}>
+              <Item checked={command.pressed?.()} closeOnSelect disabled={command.disabled?.()} onSelect={command.run}>
+                <Icon name={getSemanticIcon(command.icon)} size="small" />
+                <span>{command.label()}</span>
+                <Show when={command.pressed?.()}>
+                  <Icon name={getSemanticIcon("state.success")} size="small" />
+                </Show>
+              </Item>
+            </Show>
+          )
+        }}
       </For>
     )
   }
