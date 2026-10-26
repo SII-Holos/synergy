@@ -8,8 +8,16 @@ test("detached native supervisors receive only installation bootstrap variables"
     SYNERGY_INSTALLATION_ROOT: "/fixture/code",
     SYNERGY_INSTALLATION_PIN: "pin",
     SYNERGY_LAUNCHER_COMMAND: "command",
+    SYNERGY_LAUNCHER_CONTROL_VERSION: "1",
   }
-  expect(installedWorkerEnvironment({ ...env, SYNERGY_CONFIG_CONTENT: "private", API_KEY: "secret" })).toEqual(env)
+  expect(
+    installedWorkerEnvironment({
+      ...env,
+      SYNERGY_WORKER_CONTROL_VERSION: "1",
+      SYNERGY_CONFIG_CONTENT: "private",
+      API_KEY: "secret",
+    }),
+  ).toEqual(env)
   expect(installedWorkerEnvironment({ SYNERGY_HOME: undefined })).toEqual({})
 })
 

@@ -1,6 +1,6 @@
 import z from "zod"
 import { EOL } from "os"
-import { NamedError } from "./error"
+import { NamedError } from "./error.js"
 
 export namespace UI {
   export const CancelledError = NamedError.create("UICancelledError", z.void())

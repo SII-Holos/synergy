@@ -7,6 +7,7 @@ import { workspaces } from "../workspace-manifest"
 import { partitionSuite, suiteSeconds } from "./suites"
 import { estimateTask, timingProfile, validateTimings, type Timings } from "./timing"
 import type { SourceSnapshot } from "./revision"
+import releasedUpgrade from "../release/released-upgrade-artifacts.json"
 export { changedFiles } from "./selection"
 
 export const ROOT = path.resolve(import.meta.dir, "../..")
@@ -155,6 +156,14 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
         outputs: entry.scenarios.length ? ["junit"] : [],
       }),
     ),
+    task("installed-full-released-upgrade", "artifacts", 150, ["packages/cli", "packages/presets"], {
+      profile: "full",
+      variant: "released-upgrade",
+      prerequisites: ["sandbox"],
+      files: [releasedUpgrade.test],
+      scenarios: [releasedUpgrade.scenario],
+      outputs: ["junit"],
+    }),
     task(
       "web-integration",
       "web",
@@ -216,6 +225,22 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
         package: "packages/local-runtime",
       },
     ),
+    task("macos-signing", "desktop", 30, ["apps/desktop", "packages/plugin-host"], {
+      pool: "macos",
+      variant: "mac-signing",
+      files: [
+        "apps/desktop/test/mac-signing.test.ts",
+        "apps/desktop/test/runtime-seal.test.ts",
+        "apps/desktop/test/packaging.test.ts",
+      ],
+      scenarios: [
+        "native macOS signing seals the final module bytes before the app signature",
+        "signs config-only development apps without inventing a runtime",
+        "propagates real codesign errors from fail-child to the packager",
+        "propagates real codesign errors from fail-app to the packager",
+      ],
+      outputs: ["junit"],
+    }),
     ...[16, 17, 18].map((version) =>
       task(`postgres-${version}`, "postgres", 180, ["packages/harness"], {
         pool: "postgres",

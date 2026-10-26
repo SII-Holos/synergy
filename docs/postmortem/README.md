@@ -21,6 +21,8 @@
 
 - [0092](0092-cortex-notification-targeted-completed-root.md)
 
+- [0091](0091-emitted-error-predicate-lost-narrowing.md)
+
 - [0090](0090-provider-recovery-stream-lifetime.md)
 
 - [0089](0089-session-observation-hydrated-unrequested-history.md)
@@ -160,7 +162,5 @@
 | 0034 | [Composer uploads suppressed attachment content](0034-composer-upload-suppressed-content.md) | implemented | 2026-09-28 |
 
 - [0037: Mount identity](0037-mount-number-invalidated-directory.md)
-
-## History
 
 Only append corrections.

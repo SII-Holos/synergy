@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test"
+import { mkdir, mkdtemp, rm } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import { catalog } from "../../script/ci/catalog"
-import { createPlan } from "../../script/ci/plan"
+import { distributionPaths } from "../../script/ci/distributions"
+import { createPlan, type Task } from "../../script/ci/plan"
 import { commands } from "../../script/ci/run"
 import { collectTests } from "../../packages/testing/script/batches"
 
@@ -16,6 +20,19 @@ const plan = createPlan({
   headWorkspaces: [],
   tasks,
 })
+
+async function recipe(task: Task) {
+  if (task.variant !== "released-upgrade") return commands(task, plan)
+  const root = await mkdtemp(path.join(os.tmpdir(), "ci-matrix-distribution-"))
+  try {
+    const candidate = path.join(root, distributionPaths("full")[0]!)
+    await mkdir(candidate, { recursive: true })
+    await Bun.write(path.join(candidate, "package.json"), JSON.stringify({ version: "0.0.0-dev-matrix" }))
+    return await commands(task, plan, root)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
 
 test("full plan retains the native harness, database and long-stream outcome matrices", () => {
   expect(
@@ -35,7 +52,7 @@ test("full plan retains the native harness, database and long-stream outcome mat
 })
 
 test("every task has an executable recipe and type/package checks execute once", async () => {
-  const recipes = (await Promise.all(tasks.map((task) => commands(task, plan)))).flat()
+  const recipes = (await Promise.all(tasks.map(recipe))).flat()
   expect(recipes.filter((command) => command.name === "workspace-types")).toHaveLength(1)
   expect(recipes.filter((command) => command.name === "package:check")).toHaveLength(1)
   expect(recipes.every((command) => command.args.length > 0)).toBe(true)
@@ -51,7 +68,7 @@ test("root contracts cover each file once and leave native watcher tests with pr
   const rootRecipe = await commands(rootTests, plan)
   expect(rootRecipe.map((command) => command.args.at(-1))).toEqual(rootTests.files!)
   expect(rootRecipe.flatMap((command) => command.args)).not.toContain("test/script/watcher-native.test.ts")
-  const installedRecipes = (await Promise.all(installed.map((task) => commands(task, plan)))).flat()
+  const installedRecipes = (await Promise.all(installed.map(recipe))).flat()
   expect(installedRecipes.flatMap((command) => command.args)).toContain("test/script/watcher-native.test.ts")
 })
 

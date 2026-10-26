@@ -152,7 +152,24 @@ for (const completionFrame of [0, 1, 16]) {
         const fixture = window.__conversationProcess
         const settle = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
         const viewport = document.querySelector<HTMLElement>("[data-scroller]")!
+        const sample = () => {
+          const bounds = viewport.getBoundingClientRect()
+          return {
+            rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
+              const rect = row.getBoundingClientRect()
+              return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
+            }).length,
+            gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+            hydrated: viewport.dataset.hydrated,
+            pending: viewport.querySelectorAll("[data-content-pending], [data-markdown-pending]").length,
+            moving: viewport.querySelectorAll("[data-motion-changing]").length,
+            scrollTop: viewport.scrollTop,
+            scrollHeight: viewport.scrollHeight,
+            clientHeight: viewport.clientHeight,
+          }
+        }
         const before = fixture.contentStats()
+        const departure = sample()
         fixture.select("peer")
         await settle()
         fixture.backlog(24, false)
@@ -160,30 +177,64 @@ for (const completionFrame of [0, 1, 16]) {
         const hidden = fixture.contentStats()
         fixture.select("session")
         const samples = []
-        for (let frame = 0; frame < 96; frame++) {
-          if (frame === completionFrame) fixture.background(true, false)
-          await settle()
-          const bounds = viewport.getBoundingClientRect()
-          samples.push({
-            rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")].filter((row) => {
-              const rect = row.getBoundingClientRect()
-              return row.checkVisibility() && rect.height > 0 && rect.bottom > bounds.top && rect.top < bounds.bottom
-            }).length,
-            gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
-          })
+        const firstRender: Array<ReturnType<typeof sample> & { channel: string; time: number }> = []
+        const probe = document.createElement("div")
+        probe.style.cssText = "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
+        document.body.append(probe)
+        let sampling = false
+        const observer = new ResizeObserver(() => {
+          if (!sampling) return
+          firstRender.push({ channel: "resize", time: performance.now(), ...sample() })
+          observer.disconnect()
+        })
+        observer.observe(probe)
+        try {
+          for (let frame = 0; frame < 96; frame++) {
+            if (frame === completionFrame) fixture.background(true, false)
+            if (frame === 0) {
+              await new Promise<void>((resolve) =>
+                requestAnimationFrame(() => {
+                  sampling = true
+                  probe.style.width = "2px"
+                  setTimeout(resolve, 0)
+                }),
+              )
+            } else await settle()
+            const current = sample()
+            samples.push(current)
+            if (frame === 0) firstRender.push({ channel: "timer", time: performance.now(), ...current })
+          }
+        } finally {
+          observer.disconnect()
+          probe.remove()
         }
-        return { before, hidden, samples, answer: viewport.textContent?.includes("Background answer.") }
+        return {
+          before,
+          departure,
+          hidden,
+          firstRender,
+          samples,
+          answer: viewport.textContent?.includes("Background answer."),
+        }
       }, completionFrame)
       expect(result.hidden).toEqual(result.before)
       expect(
         result.samples.every((sample) => sample.rows > 0),
-        JSON.stringify(result.samples.slice(0, 24)),
+        JSON.stringify({
+          departure: result.departure,
+          firstRender: result.firstRender,
+          samples: result.samples.slice(0, 24),
+        }),
       ).toBe(true)
       expect(
         result.samples.every((sample) => Math.abs(sample.gap) <= 2),
-        JSON.stringify(
-          result.samples.map((sample, frame) => ({ ...sample, frame })).filter((sample) => Math.abs(sample.gap) > 2),
-        ),
+        JSON.stringify({
+          departure: result.departure,
+          firstRender: result.firstRender,
+          samples: result.samples
+            .map((sample, frame) => ({ ...sample, frame }))
+            .filter((sample) => Math.abs(sample.gap) > 2),
+        }),
       ).toBe(true)
       expect(result.answer).toBe(true)
       expect(errors).toEqual([])

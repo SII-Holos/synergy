@@ -19,6 +19,7 @@
     "perf:playwright": "bun script/performance-playwright.ts",
     "perf:tools:test": "bun test --config /dev/null test/script/performance-tools.test.ts",
     "release:test": "bun test --config /dev/null test/script/release test/script/install.test.ts",
+    "release:verify-upgrade": "bun script/release/verify-released-upgrade.ts",
     "format": "./script/format.ts",
     "format:check": "prettier --ignore-unknown --cache --cache-strategy content --check . \"!.artifacts/**\"",
     "lint": "oxlint -c oxlintrc.json --deny-warnings",
@@ -211,6 +212,7 @@
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "eventsource-parser": "3.1.0",
+    "isbinaryfile": "5.0.7",
     "prosemirror-model": "1.25.10",
     "prosemirror-transform": "1.12.0",
     "prosemirror-view": "1.42.0"

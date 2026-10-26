@@ -1,4 +1,9 @@
-import { installedWorkerCommand } from "@ericsanchezok/synergy-util/installed-launcher"
+import {
+  installedWorkerCommand,
+  InstallationPin,
+  InstalledWorkerReady,
+  INSTALLED_WORKER_CONTROL_VERSION,
+} from "@ericsanchezok/synergy-util/installed-launcher"
 import fs from "fs"
 import { fileURLToPath } from "url"
 import type { PluginLogEntry } from "./logs.js"
@@ -25,6 +30,8 @@ export interface SpawnPluginProcessOptions {
   entryPath: string
   pluginDir: string
   activation: RuntimeActivationData
+  onStart?(phase: "bootstrap" | "activation"): boolean | void
+  onError?(error: Error): void
   onReady(message: Extract<PluginToHost, { type: "ready" }>): void
   onHostRequest(message: Extract<PluginToHost, { type: "hostRequest" }>): Promise<unknown>
   onHeartbeat(message: Extract<PluginToHost, { type: "heartbeat" }>): void
@@ -81,8 +88,8 @@ export function createPendingRequestMap() {
   }
 }
 
-export function resolvePluginProcessRunnerCommand(entryPath: string): string[] {
-  const installed = installedWorkerCommand(process.env, "__plugin-runtime-runner", [entryPath])
+export function resolvePluginProcessRunnerCommand(entryPath: string, env = process.env): string[] {
+  const installed = installedWorkerCommand(env, "__plugin-runtime-runner", [entryPath])
   if (installed) return installed
   if (fs.existsSync(runnerPath)) return [process.execPath, "run", runnerPath, entryPath]
   return [process.execPath, "__plugin-runtime-runner", entryPath]
@@ -90,13 +97,58 @@ export function resolvePluginProcessRunnerCommand(entryPath: string): string[] {
 
 export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginProcessHost {
   const pending = createPendingRequestMap()
+  const env = { ...process.env }
+  const command = resolvePluginProcessRunnerCommand(options.entryPath, env)
+  const bootstrapPin =
+    env.SYNERGY_INSTALLATION_PIN && env.SYNERGY_LAUNCHER_CONTROL_VERSION === String(INSTALLED_WORKER_CONTROL_VERSION)
+      ? InstallationPin.parse(JSON.parse(env.SYNERGY_INSTALLATION_PIN))
+      : undefined
+  env.SYNERGY_WORKER_CONTROL_VERSION = bootstrapPin ? String(INSTALLED_WORKER_CONTROL_VERSION) : undefined
+  let activated = false
+  let closed = false
+  let stopping: Promise<void> | undefined
+  if (options.onStart?.(bootstrapPin ? "bootstrap" : "activation") === false)
+    throw new Error("Plugin runtime stopped before spawn")
   const processHandle = Bun.spawn({
-    cmd: resolvePluginProcessRunnerCommand(options.entryPath),
+    cmd: command,
     cwd: options.pluginDir,
+    env,
     ipc(message) {
-      const parsed = (typeof message === "string" ? JSON.parse(message) : message) as PluginToHost
-      if (parsed.type === "ready") options.onReady(parsed)
-      else if (parsed.type === "heartbeat") options.onHeartbeat(parsed)
+      if (closed) return
+      let value: unknown
+      try {
+        value = typeof message === "string" ? JSON.parse(message) : message
+      } catch {
+        fail(new Error("Malformed plugin launcher message"))
+        return
+      }
+      if (value && typeof value === "object" && "synergyLauncher" in value) {
+        const frame = InstalledWorkerReady.safeParse(value)
+        if (
+          !bootstrapPin ||
+          !frame.success ||
+          frame.data.pin.id !== bootstrapPin.id ||
+          frame.data.pin.sha256 !== bootstrapPin.sha256
+        ) {
+          fail(new Error("Invalid plugin launcher bootstrap frame"))
+          return
+        }
+        if (activated) return
+        if (options.onStart?.("activation") === false) return
+        activated = true
+        if (!send({ type: "activate", input: options.activation }))
+          fail(new Error("Plugin runtime connection is closed"))
+        return
+      }
+      if (!value || typeof value !== "object" || !("type" in value)) {
+        fail(new Error("Malformed plugin launcher message"))
+        return
+      }
+      const parsed = value as PluginToHost
+      if (parsed.type === "ready") {
+        if (!activated) fail(new Error("Plugin runtime ready before activation"))
+        else options.onReady(parsed)
+      } else if (parsed.type === "heartbeat") options.onHeartbeat(parsed)
       else if (parsed.type === "log") {
         options.onLog({
           timestamp: Date.now(),
@@ -123,6 +175,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
     stdout: "ignore",
     stderr: "ignore",
     onExit(_process, exitCode, signalCode) {
+      closed = true
       const error = new Error(`Plugin runtime exited (${exitCode ?? signalCode ?? "unknown"})`)
       pending.rejectAll(error)
       options.onExit(exitCode, signalCode?.toString() ?? null)
@@ -130,7 +183,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
   })
 
   function send(message: HostToPlugin) {
-    if (processHandle.exitCode !== null) return false
+    if (processHandle.exitCode !== null || (closed && message.type !== "shutdown")) return false
     try {
       processHandle.send(message)
       return true
@@ -140,7 +193,18 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
     }
   }
 
-  send({ type: "activate", input: options.activation })
+  function fail(error: Error) {
+    if (closed) return
+    closed = true
+    pending.rejectAll(error)
+    if (options.onError) options.onError(error)
+    else processHandle.kill("SIGKILL")
+  }
+
+  if (!bootstrapPin) {
+    activated = true
+    if (!send({ type: "activate", input: options.activation })) fail(new Error("Plugin runtime connection is closed"))
+  }
   return {
     process: processHandle,
     send,
@@ -153,17 +217,28 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
       return pending.reject(requestId, error)
     },
     async stop(graceMs) {
-      if (processHandle.exitCode !== null) return
-      try {
-        send({ type: "shutdown" })
-      } catch {
-        return
-      }
-      const exited = await Promise.race([
-        processHandle.exited.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), graceMs)),
-      ])
-      if (!exited) processHandle.kill()
+      if (stopping) return stopping
+      closed = true
+      pending.rejectAll(new Error("Plugin runtime stopped"))
+      stopping = (async () => {
+        if (processHandle.exitCode === null) {
+          send({ type: "shutdown" })
+          let timeout: ReturnType<typeof setTimeout> | undefined
+          try {
+            const exited = await Promise.race([
+              processHandle.exited.then(() => true),
+              new Promise<boolean>((resolve) => {
+                timeout = setTimeout(() => resolve(false), graceMs)
+              }),
+            ])
+            if (!exited) processHandle.kill("SIGKILL")
+          } finally {
+            clearTimeout(timeout)
+          }
+        }
+        await processHandle.exited
+      })()
+      return stopping
     },
   }
 }

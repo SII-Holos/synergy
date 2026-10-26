@@ -70,6 +70,8 @@ Resources belong to installed packages inside `runtime/node_modules`: Library ca
 
 `script/release/shared/runtime-layout.cjs` defines required paths for release and Desktop packaging. `runtime-assets.txt` carries that contract to the shell installer. `runtime-manifest.sha256` seals every payload file, including module resources whose filenames contain spaces. The root npm `package.json` is outside that inventory because publication adds registry metadata; every module manifest remains sealed. Release and Desktop validation reject unlisted files, links, unsafe paths, missing resources and checksum mismatches. CLI upgrade verification checks the same inventory and rejects unlisted module files. Historical archives retain a named legacy required-file contract.
 
+On macOS, `mac.sign` delegates to the upstream signer with the configured identity, entitlements and hardened-runtime policy. After all child signatures, but before the top-level app signature, it refreshes `runtime/generation.json` and then `runtime-manifest.sha256` from the signed bytes. Only files actually selected by the signer may change; inventory membership, generation identity, unsigned resources and metadata remain strict. `desktop-package.json` is included in the outer inventory. Final app signing and notarization follow sealing; no `afterSign` rewrite or recursive re-signing is permitted. See the [signing decision](../decisions/implemented/bug-fix/2026-10-25-seal-runtime-between-child-and-app-signatures.md).
+
 The curl installer downloads the CLI checksum asset beside the selected archive and verifies that archive before extraction. Manifest-backed releases fail closed when the published checksum is unavailable, malformed, duplicated, or mismatched; historical archives without a runtime manifest remain installable through the legacy required-file contract. The installer uses a private temporary directory, rejects absolute paths, drive-letter paths, parent-directory traversal, backslash paths, and archive symbolic or hard links before extraction, then rejects any extracted symbolic link. It validates the runtime manifest and required-file contract before touching the current installation, backs up the complete managed runtime, verifies the installed copy, and restores the backup if any apply or post-install verification step fails. A successful restore removes the backup; if restoration itself fails, the recovery backup is preserved and its path is reported for manual recovery.
 
 musl Linux archives (`synergy-linux-*-musl`) intentionally exclude the glibc-only ast-grep and sqlite-vec platform packages because no musl-compatible release assets exist for them; their module seeds omit those packages. Every Linux target, glibc or musl, ships its matching watcher binding through a distinct native package. glibc Linux, macOS, and Windows archives require all native helpers and fail packaging when any of them is missing.
@@ -154,12 +156,31 @@ Registry read-after-write checks use cache-busted, no-store requests. A successf
 - If notarization or code signing fails, verify the affected platform's signing secrets and rerun only that platform matrix job before finalize. For Windows, confirm that `WINDOWS_CERTIFICATE` is a base64-encoded PKCS#12 certificate, its password matches, and the packaged executable reports a valid Authenticode signature.
 - If finalize fails because desktop assets are missing, do not publish the draft release manually; restore the missing assets first, then rerun `stable_finalize`.
 
+## Released-upgrade acceptance
+
+`script/release/verify-released-upgrade.ts` verifies the pinned 3.0.22 archive digest before extraction and runs its actual executable against a built candidate outside the checkout. It fails when the candidate version differs, the scenario is missing or skipped, or its behavioral assertions fail. The supported acceptance hosts are Linux x64 and macOS arm64; other release platforms retain their native packaging and installation checks.
+
+```bash
+SYNERGY_VERSION=3.1.0 bun packages/presets/script/build.ts --single
+bun script/release/verify-released-upgrade.ts \
+  --candidate packages/presets/dist/synergy-darwin-arm64 \
+  --version 3.1.0
+```
+
+Use `synergy-linux-x64` on Linux. `--archive` accepts a local copy of the pinned release archive and still verifies its digest. `--evidence` retains private fixture data and logs; never publish a real user's Home or credentials. For Desktop acceptance, supply the final signed app's `Contents/Resources/synergy` directory instead of the pre-sign build. Do not modify that app between verification and distribution.
+
+The scenario creates history and a completed tool effect with 3.0.22, approves a process plugin through the real review API, uploads an image and saves locale configuration. The candidate must retain message identities, text, completed tool records, image bytes, configuration and executable plugin behavior; continue the old task exactly once; survive restart; and execute new work. Recovery boots 3.0.22 against the restored pre-upgrade Home and continues the old task without replaying completed work. Model responses are deterministic fixtures, not live-provider acceptance. This does not replace UI, native OS permissions, Developer ID signing, notarization or the complete platform matrix.
+
+User-facing backup and rollback requirements are in [Upgrading from 3.0.22 to 3.1.0](../migrations/upgrading-to-3.1.0.md). Product release workflows publish candidates and are not a no-publication preflight entry point.
+
 ## Validation Checklist
 
 - `bun run release:test`
 - `bun run --cwd apps/desktop desktop:test`
 - `bun run --cwd apps/desktop desktop:build`
 - `bun run --cwd apps/desktop test:runtime`
+- Run `bun test test/mac-signing.test.ts test/runtime-seal.test.ts test/packaging.test.ts` from `apps/desktop` on macOS; non-macOS skips do not establish native signing acceptance.
+- Run released-upgrade acceptance with the expected candidate version, then repeat against the final macOS app runtime; verify `codesign --verify --deep --strict`, the installation seed and the outer runtime inventory without modifying signed bytes.
 - `cd apps/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
 - Confirm every packaged Desktop runtime contains `app/index.html`, `schema/config.schema.json`, and a valid `runtime-manifest.sha256`, and that its managed server returns HTML from `/` after `/global/health` becomes healthy.
