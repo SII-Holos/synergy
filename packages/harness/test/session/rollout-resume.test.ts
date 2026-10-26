@@ -1,9 +1,10 @@
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { RolloutLedger } from "../../src/session/rollout/ledger"
 import { RolloutRecordingError } from "../../src/session/rollout/error"
+import { Storage } from "../../src/storage/storage"
 
 function invocation() {
   const id = crypto.randomUUID()
@@ -115,3 +116,72 @@ describe("RolloutLedger.resumeRun", () => {
 })
 
 afterRuntimeTests(() => runtime.close())
+
+describe("RolloutLedger.continueRun", () => {
+  test("admits another segment without rewriting completed evidence or replaying admission", () =>
+    runtime.run(async () => {
+      const input = invocation()
+      const segment = await RolloutLedger.beginSegment({ owner: input.owner, runID: input.runID, input: { task: "x" } })
+      await RolloutLedger.finishSegment(segment, "completed")
+      const before = await RolloutLedger.finishRun(input.owner, input.runID, "completed")
+      const segments = await RolloutLedger.segments(input.owner, input.runID)
+      await expect(RolloutLedger.beginCall(input)).rejects.toThrow("terminal rollout")
+      let admissions = 0
+      const admit = async () => {
+        admissions++
+      }
+      const continued = await RolloutLedger.continueRun(input.owner, input.runID, admit)
+      expect(continued).toMatchObject({
+        status: "running",
+        recording: "partial",
+        started: before.started,
+        input: before.input,
+      })
+      expect(continued?.ended).toBeUndefined()
+      expect(continued?.execution).toBeUndefined()
+      expect(await RolloutLedger.continueRun(input.owner, input.runID, admit)).toEqual(continued)
+      expect(admissions).toBe(1)
+      expect(await RolloutLedger.segments(input.owner, input.runID)).toEqual(segments)
+      const next = await RolloutLedger.beginSegment({
+        owner: input.owner,
+        runID: input.runID,
+        input: { task: "continuation" },
+      })
+      expect(next.status).toBe("running")
+      expect(next.id).not.toBe(segment.id)
+      expect((await RolloutLedger.getRun(input.owner, input.runID)).input).toEqual(before.input)
+    }))
+
+  for (const status of ["cancelled", "failed"] as const)
+    test(`does not automatically reopen ${status} work`, () =>
+      runtime.run(async () => {
+        const input = invocation()
+        const segment = await RolloutLedger.beginSegment({ owner: input.owner, runID: input.runID, input: {} })
+        if (status === "cancelled") await RolloutLedger.requestCancel(input.owner, input.runID)
+        await RolloutLedger.finishSegment(segment, status)
+        const before = await RolloutLedger.finishRun(input.owner, input.runID, status)
+        expect(await RolloutLedger.continueRun(input.owner, input.runID)).toEqual(before)
+        await expect(RolloutLedger.beginCall(input)).rejects.toThrow()
+        expect(await RolloutLedger.getRun(input.owner, input.runID)).toEqual(before)
+      }))
+
+  for (const persisted of [true, false])
+    test(`keeps admission closed after a ${persisted ? "persisted" : "memory-only"} recording failure`, () =>
+      runtime.run(async () => {
+        const input = invocation()
+        const segment = await RolloutLedger.beginSegment({ owner: input.owner, runID: input.runID, input: {} })
+        await RolloutLedger.finishSegment(segment, "completed")
+        await RolloutLedger.finishRun(input.owner, input.runID, "completed")
+        const failure = new RolloutRecordingError({ message: "Fixture recording failure" })
+        if (persisted) await RolloutLedger.failRecording(input.owner, input.runID, failure)
+        else {
+          using write = spyOn(Storage, "write").mockRejectedValue(new Error("Fixture disk failure"))
+          await RolloutLedger.failRecording(input.owner, input.runID, failure)
+        }
+        const before = await RolloutLedger.getRun(input.owner, input.runID)
+        if (persisted) expect(await RolloutLedger.continueRun(input.owner, input.runID)).toEqual(before)
+        else await expect(RolloutLedger.continueRun(input.owner, input.runID)).rejects.toBe(failure)
+        await expect(RolloutLedger.beginCall(input)).rejects.toMatchObject({ name: "RolloutRecordingError" })
+        expect(await RolloutLedger.getRun(input.owner, input.runID)).toEqual(before)
+      }))
+})

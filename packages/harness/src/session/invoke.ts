@@ -763,6 +763,8 @@ export namespace SessionInvoke {
                   }
                   processedRootID = R.id
                   if (!segment) {
+                    if (SessionProgress.findTerminalReply(msgs, R.id))
+                      await RolloutLedger.continueRun(RolloutLifecycle.owner(session), R.id)
                     SessionManager.setActivity(
                       sessionID,
                       { phase: "preparing_files" },

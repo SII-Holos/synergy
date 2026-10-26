@@ -52,6 +52,8 @@ For root `R`, each inner iteration follows two inbox gates:
 
 After the inner task loop ends, the outer loop takes the next `task` item and materializes it as a new root. If no task remains but a runnable steer exists for a prior root, the loop re-enters that root.
 
+After steer materialization, an unanswered input following that root's terminal reply permits [completed-root continuation](session-and-messages.md#tool-execution-evidence) before the loop opens a new execution segment. Admission uses canonical history, so a previously materialized notice has the same behavior as a newly drained one. The Session pause and rollback gates retain ownership of whether the loop may run.
+
 This order is the scheduling contract. Delivery sources must choose the correct inbox mode rather than encoding scheduling through metadata.
 
 ## Per-Step Flow
