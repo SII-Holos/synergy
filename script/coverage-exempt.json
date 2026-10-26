@@ -1023,6 +1023,10 @@
           "reason": "types-only declarations, no runtime logic"
         },
         {
+          "glob": "src/hooks/use-image-actions.ts",
+          "reason": "The platform and Lingui adapter runs in test/components/attachment-workbench/content.dom.test.ts and message.dom.test.ts, including original-byte downloads and source navigation. Vite/Chromium execution does not contribute Bun coverage; image-actions.ts and the shared clipboard core retain direct behavioral coverage."
+        },
+        {
           "glob": "src/hooks/use-providers.ts",
           "reason": "hooks require a component runtime"
         },
@@ -2246,6 +2250,18 @@
         {
           "glob": "src/components/image-preview.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/image-viewer-actions.ts",
+          "reason": "Types-only host action declarations contain no runtime logic; consumer typechecks validate the contract."
+        },
+        {
+          "glob": "src/components/image-viewer-controls.tsx",
+          "reason": "The real themed toolbar, pointer/keyboard context menu, fullscreen portals and focus return run in apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts. Vite/Chromium execution does not contribute Bun source coverage."
+        },
+        {
+          "glob": "src/components/image-viewer.tsx",
+          "reason": "Rendered source-pixel transforms, pointer capture, pinch, loading/retry, stale actions, fullscreen focus and gallery navigation run in apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts. Vite/Chromium execution does not contribute Bun coverage; image-viewer-model.ts retains direct behavioral coverage."
         },
         {
           "glob": "src/components/list.tsx",

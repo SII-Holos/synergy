@@ -148,11 +148,23 @@ function FileImagePreview(props: { path: string; mime: string; src: string }) {
   const file = useFile()
   const sdk = useSDK()
   const actions = useImageActions(() => sdk.url)
-  const images = createMemo(() => [{
-    id: props.path, src: props.src, filename: props.path.split("/").at(-1) ?? props.path, mime: props.mime,
-    downloadUrl: buildWorkspaceFileBrowserUrl(sdk.url, props.path, { scopeID: sdk.scopeID, ...file.reference() }),
-  }])
-  return <ImageViewer images={images()} initialScaleMode={file.view.imageScaleMode(props.path)} onScaleModeChange={(mode) => file.view.setImageScaleMode(props.path, mode)} actions={actions} />
+  const images = createMemo(() => [
+    {
+      id: props.path,
+      src: props.src,
+      filename: props.path.split("/").at(-1) ?? props.path,
+      mime: props.mime,
+      downloadUrl: buildWorkspaceFileBrowserUrl(sdk.url, props.path, { scopeID: sdk.scopeID, ...file.reference() }),
+    },
+  ])
+  return (
+    <ImageViewer
+      images={images()}
+      initialScaleMode={file.view.imageScaleMode(props.path)}
+      onScaleModeChange={(mode) => file.view.setImageScaleMode(props.path, mode)}
+      actions={actions}
+    />
+  )
 }
 
 function FilePdfPreview(props: {
@@ -705,7 +717,11 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
             </Match>
             <Match when={imageContent()}>
               {(value) => (
-                <FileImagePreview path={path()} mime={value().mimeType} src={`data:${value().mimeType};base64,${value().content}`} />
+                <FileImagePreview
+                  path={path()}
+                  mime={value().mimeType}
+                  src={`data:${value().mimeType};base64,${value().content}`}
+                />
               )}
             </Match>
             <Match when={capability().kind === "pdf"}>

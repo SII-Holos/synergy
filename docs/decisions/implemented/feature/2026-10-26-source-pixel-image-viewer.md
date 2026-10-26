@@ -14,7 +14,7 @@ Rotation is in quarter turns. Pan is clamped against the displayed rotated bound
 
 `ImageViewer` is the single viewport for the modal, Files and Attachment Workspace. The shells retain their resource routing and SVG safety boundaries. Typed host actions keep App services out of shared UI; `apps/web/src/utils/image-actions.ts` owns byte reads, PNG clipboard conversion and original-byte saving. It reuses the existing native file-action bridge without creating a Browser page or another IPC path. The toolbar and themed Kobalte menus consume the same commands. Fullscreen portals remain inside the fullscreen root.
 
-Operations capture their image and cancellation signal. A changed or inactive view aborts pending reads and ignores late results. Native save completion and cancellation are reported separately; a Web anchor dispatch reports only that a download started. A failed read is not replaced by opening an unverified URL. Clipboard admission starts within the user gesture, with PNG decoding supplied as a promise.
+Operations capture their image and cancellation signal. A changed or inactive view aborts pending reads and ignores late results. Native save completion and cancellation are reported separately; a Web anchor dispatch reports only that a download started. A failed read is not replaced by opening an unverified URL. Web clipboard writes use the shared `clipboard-core` boundary: admission starts within the user gesture, with PNG decoding supplied as a promise. Unavailable image writing never falls back to copying text, and admission failure still observes a later conversion rejection.
 
 Source navigation shares that operation lifetime, including cancellation before closing its modal. Attachment SVG preview uses image decoding, while its text reader runs only in Source mode; a failed text request must not remove image retry or save controls. Files retains its existing sanitized SVG display and saves the original bytes.
 
@@ -33,3 +33,11 @@ Desktop grants HTML fullscreen only to the current application window's main fra
 ## Consequences
 
 The geometry is independently testable without a browser, but browser tests remain necessary for pointer capture, image loading, focus, menus, and actual rendered dimensions. Fit is the minimum useful scale; zoom can reach eight times source size. This limits meaningless empty-canvas zooming without preventing inspection of large images.
+
+## Verification
+
+The shared viewport and controls run through the production Vite pipeline in `apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts`; the adjacent content and message suites exercise host integration. Bun cannot attribute Chromium execution to these source modules. Exact-file coverage entries identify those suites and the thin platform hook; the action interface is types-only. Geometry, byte operations, clipboard admission and Desktop permission decisions remain directly measured without lowering package thresholds.
+
+The existing file-workbench HTML preview development suite also guards the SDK import boundary. Image actions import the browser client entry, not the root SDK export that loads Node server helpers; production tree-shaking alone did not expose that regression.
+
+Isolated Desktop acceptance covers message-gallery navigation, Files and Attachment viewing, source-sized native clipboard images, both themes, a 640 × 420 window, real 200% page zoom, extreme image aspect ratios and HTML fullscreen focus. HTML fullscreen fills the application renderer; the minimal Electron probe does not establish a native macOS window-mode transition. Native save-sheet cancellation and on-disk completion remain unverified because the available native observation channel cannot inspect that sheet. Touch interactions have browser regression coverage, not physical touch-device acceptance.

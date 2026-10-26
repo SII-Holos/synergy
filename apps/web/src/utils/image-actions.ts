@@ -1,6 +1,6 @@
-import { createSynergyClient } from "@ericsanchezok/synergy-sdk"
+import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
 import { AssetReference } from "@ericsanchezok/synergy-util/asset-reference"
-import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard-core"
+import { copyImageToClipboard, copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard-core"
 import type { ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import type { ImageViewerActions } from "@ericsanchezok/synergy-ui/image-viewer"
 import type { BrowserNativeViewBridge } from "@/context/platform"
@@ -121,15 +121,17 @@ export function createImageActions(options: {
     async copy(image, signal) {
       signal.throwIfAborted()
       if (options.fileAction) return native("copyImage", image, await png(image, signal), signal)
-      if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined")
-        throw new Error(
-          _({
-            id: "app.imageActions.clipboardUnavailable",
-            message: "Image copying is unavailable here. Save the image instead.",
-          }),
+      const result = await copyImageToClipboard(() => png(image, signal))
+      if (!result.ok)
+        throw (
+          result.error ??
+          new Error(
+            _({
+              id: "app.imageActions.clipboardUnavailable",
+              message: "Image copying is unavailable here. Save the image instead.",
+            }),
+          )
         )
-      // Start clipboard admission in the click task; decoding must not consume user activation.
-      await navigator.clipboard.write([new ClipboardItem({ "image/png": png(image, signal) })])
       return "completed"
     },
     async copyLink(image, signal) {

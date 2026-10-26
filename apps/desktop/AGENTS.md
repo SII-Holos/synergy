@@ -1,6 +1,6 @@
 # Desktop Package Rules
 
-These rules apply to the Electron shell. Root `AGENTS.md` and the Web/runtime package rules still apply to code reached through Desktop.
+Root `AGENTS.md` and Web/runtime rules also apply to code reached through this Electron shell.
 
 Load `change-browser-runtime` for native Browser pages, profiles or popup work and `develop-synergy` for manual Desktop verification. Read [Desktop release](../../docs/operations/desktop-release.md) before packaging, signing, updating, or changing release assets.
 
@@ -9,7 +9,7 @@ Load `change-browser-runtime` for native Browser pages, profiles or popup work a
 - Desktop owns Electron lifecycle, the managed/local server process, preload IPC, native dialogs/clipboard/shell, window state/chrome, updates, native Browser presentation, and the private native Computer driver. It does not own a parallel session, permission, or Browser page model.
 - Keep `contextIsolation: true`, `nodeIntegration: false`, and renderer sandboxing. Expose narrow typed preload methods; validate every IPC payload in the main process and keep privileged Electron objects out of the renderer.
 - Preserve production URL/navigation, permission, external-link, download, and window-creation policy. Do not replace blocked navigation with a permissive fallback.
-- HTML fullscreen is granted only to the current application window's main frame at its trusted app URL; other windows and subframes remain denied.
+- HTML fullscreen requires the current trusted App main-frame document.
 - Keep external-server development mode and packaged managed-server mode distinct. Never stop or reuse the runtime carrying the current task.
 - Native Browser creates one real `WebContentsView` per page and adopts native popups with their opener. Profile resources are shared by reference count; page commands never change human tab selection. The broker requires a local server.
 - Browser content sessions may grant Chromium local-network and loopback-network permissions, but unrelated media, device, location, and filesystem permissions remain denied. Do not duplicate Chromium network policy in Electron or the server gateway.
