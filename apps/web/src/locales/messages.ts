@@ -391,6 +391,7 @@ export const fileExplorer = {
   showHidden: { id: "app.fileExplorer.action.showHidden", message: "Show hidden and ignored files" },
   refresh: { id: "app.fileExplorer.action.refresh", message: "Refresh files" },
   collapseAll: { id: "app.fileExplorer.action.collapseAll", message: "Collapse all folders" },
+  expandAll: { id: "app.fileExplorer.action.expandAll", message: "Expand all folders" },
   closeTree: { id: "app.fileExplorer.action.closeTree", message: "Close file tree" },
   resize: { id: "app.fileExplorer.resize", message: "Resize file explorer" },
   searchPlaceholder: { id: "app.fileExplorer.search.placeholder", message: "Search files" },

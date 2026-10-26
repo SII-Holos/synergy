@@ -3023,6 +3023,10 @@ msgid "app.fileExplorer.action.collapseAll"
 msgstr "⟦Collapse all folders⟧"
 
 #. js-lingui-explicit-id
+msgid "app.fileExplorer.action.expandAll"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
 msgstr "⟦Refresh files⟧"
 

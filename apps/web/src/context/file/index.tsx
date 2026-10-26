@@ -264,6 +264,12 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     nodes: Record<string, WorkspaceFileNode>
     directories: Record<string, ExplorerDirectoryState>
   }>({ documents: {}, pdfs: {}, nodes: {}, directories: {} })
+  const [expandingAll, setExpandingAll] = createSignal(false)
+  let expansionGeneration = 0
+  const cancelExpansion = () => {
+    expansionGeneration++
+    setExpandingAll(false)
+  }
 
   const viewCache = new Map<string, ViewCacheEntry>()
   const documentAccess = new Map<string, number>()
@@ -920,10 +926,62 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
 
   const isExpanded = (path: string) => scope.expanded.includes(path)
   const setExpanded = (path: string, expanded: boolean) => {
+    cancelExpansion()
     setScope("expanded", (items) =>
       expanded ? (items.includes(path) ? items : [...items, path]) : items.filter((item) => item !== path),
     )
     if (expanded) void loadChildren(path)
+  }
+  const expandAll = async (signal?: AbortSignal) => {
+    if (disposed || !workspace || signal?.aborted) return
+    const generation = ++expansionGeneration
+    const cancelled = () => disposed || signal?.aborted || generation !== expansionGeneration
+    const abort = () => {
+      if (generation === expansionGeneration) cancelExpansion()
+    }
+    signal?.addEventListener("abort", abort, { once: true })
+    setExpandingAll(true)
+    const queue = [""]
+    const visited = new Set(queue)
+    const expanded = new Set(scope.expanded)
+    try {
+      for (let index = 0; index < queue.length && !cancelled();) {
+        const paths = queue.slice(index, index + MAX_DIRECTORY_CONCURRENCY)
+        index += paths.length
+        await Promise.all(
+          paths.map(async (path) => {
+            if (cancelled()) return
+            await loadChildren(path)
+            while (!cancelled()) {
+              const directory = store.directories[path]
+              const cursor = directory?.nextCursor
+              if (!cursor || directory.error) break
+              await loadChildren(path)
+              if (store.directories[path]?.nextCursor === cursor) break
+            }
+            if (cancelled()) return
+            const children = (store.directories[path]?.items ?? []).filter((child) => {
+              const node = store.nodes[child]
+              return node?.type === "directory" && !node.symlink && !visited.has(child)
+            })
+            setScope(
+              produce((draft) => {
+                for (const child of children) {
+                  visited.add(child)
+                  queue.push(child)
+                  if (expanded.has(child)) continue
+                  expanded.add(child)
+                  draft.expanded.push(child)
+                }
+              }),
+            )
+          }),
+        )
+      }
+    } finally {
+      signal?.removeEventListener("abort", abort)
+      if (generation === expansionGeneration) setExpandingAll(false)
+    }
   }
   const reveal = async (input: string) => {
     const path = normalize(input)
@@ -1099,6 +1157,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
   window.addEventListener("focus", handleFocus)
   onCleanup(() => {
     disposed = true
+    cancelExpansion()
     status.dispose()
     for (const waiter of [...documentWaiters.splice(0), ...directoryWaiters.splice(0)]) waiter()
     stop()
@@ -1262,6 +1321,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       setWidth: (width: number) => view().setExplorerWidth(Math.max(220, Math.min(420, width))),
       showHidden: () => scope.showHidden,
       setShowHidden: (show: boolean) => {
+        cancelExpansion()
         setScope("showHidden", show)
         setStore(
           produce((draft) => {
@@ -1274,9 +1334,14 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
         void loadChildren("", { reset: true, force: true })
       },
       expanded: () => scope.expanded,
+      expandingAll,
       isExpanded,
       setExpanded,
-      collapseAll: () => setScope("expanded", []),
+      expandAll,
+      collapseAll: () => {
+        cancelExpansion()
+        setScope("expanded", [])
+      },
       node: (path: string) => store.nodes[path],
       directory: (path: string) => store.directories[path],
       loadChildren,

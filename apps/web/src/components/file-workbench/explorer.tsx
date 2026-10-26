@@ -4,9 +4,11 @@ import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount }
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useViewActivity } from "@ericsanchezok/synergy-ui/context/view-activity"
 import { VList, type VListHandle } from "virtua/solid"
 import { useFile, useProjectFiles, FileWorkspaceProvider } from "@/context/file"
 import { fileExplorer as X, fileEntries as A } from "@/locales/messages"
@@ -66,6 +68,7 @@ function SingleFileExplorer(props: {
   const project = useProjectFiles()
   const lingui = useLingui()
   const dialog = useDialog()
+  const active = useViewActivity()
   const [query, setQuery] = createSignal("")
   const [searching, setSearching] = createSignal(false)
   const [searchError, setSearchError] = createSignal<string>()
@@ -73,6 +76,8 @@ function SingleFileExplorer(props: {
     Array<{ path: string; name: string; workspace: FileWorkspace }>
   >([])
   const [focusedPath, setFocusedPath] = createSignal<string>()
+  let expansionController = new AbortController()
+  const canCollapseAll = () => file.explorer.expandingAll() || file.explorer.expanded().length > 0
   let searchController: AbortController | undefined
   let debounce: number | undefined
   let listHandle: VListHandle | undefined
@@ -113,6 +118,12 @@ function SingleFileExplorer(props: {
   })
 
   createEffect(() => {
+    if (active()) return
+    expansionController.abort()
+    expansionController = new AbortController()
+  })
+
+  createEffect(() => {
     const value = query().trim()
     window.clearTimeout(debounce)
     searchController?.abort()
@@ -142,6 +153,7 @@ function SingleFileExplorer(props: {
   })
 
   onCleanup(() => {
+    expansionController.abort()
     window.clearTimeout(debounce)
     searchController?.abort()
   })
@@ -249,10 +261,14 @@ function SingleFileExplorer(props: {
             onClick={file.explorer.refresh}
           />
           <IconButton
-            icon={getSemanticIcon("navigation.collapse")}
+            icon={getSemanticIcon(canCollapseAll() ? "review.fold" : "review.unfold")}
             variant="ghost"
-            aria-label={lingui._({ id: X.collapseAll.id, message: X.collapseAll.message })}
-            onClick={file.explorer.collapseAll}
+            aria-label={lingui._(canCollapseAll() ? X.collapseAll : X.expandAll)}
+            aria-busy={file.explorer.expandingAll()}
+            onClick={() => {
+              if (canCollapseAll()) file.explorer.collapseAll()
+              else void file.explorer.expandAll(expansionController.signal)
+            }}
           />
           <IconButton
             icon={getSemanticIcon("action.close")}
@@ -263,14 +279,14 @@ function SingleFileExplorer(props: {
         </div>
       </div>
       <Show when={(props.folders?.length ?? 0) > 1}>
-        <select
-          class="file-explorer-folder"
-          aria-label={lingui._({ id: "project.entry.folders", message: "Folders" })}
-          value={file.workspace?.id}
-          onChange={(event) => props.onFolderChange?.(event.currentTarget.value)}
-        >
-          <For each={props.folders}>{(folder) => <option value={folder.id}>{fileWorkspaceLabel(folder)}</option>}</For>
-        </select>
+        <div class="file-explorer-folder">
+          <MenuField
+            ariaLabel={lingui._({ id: "project.entry.folders", message: "Folders" })}
+            value={file.workspace?.id ?? ""}
+            options={(props.folders ?? []).map((folder) => ({ value: folder.id, label: fileWorkspaceLabel(folder) }))}
+            onChange={(value) => props.onFolderChange?.(value)}
+          />
+        </div>
       </Show>
       <div class="file-explorer-search">
         <Icon name={getSemanticIcon("action.search")} size="small" />

@@ -4,6 +4,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
 
 let server: ViteDevServer
 let browser: Browser
@@ -43,6 +44,10 @@ beforeAll(async () => {
     import {FileEntryDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
     import {FileCloseDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/close-dialog.tsx`)}
     import {actions} from "./stubs"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"app.fileEntries.title":"文件操作","app.fileEntries.operation":"操作","app.fileEntries.move":"移动或重命名","app.fileEntries.remove":"永久删除","app.fileEntries.apply":"执行","app.fileEntries.cancel":"取消"}}})
     window.fixture.locale=()=>i18n.activate("zh-CN")
     window.fixture.closeResults=[]
@@ -61,10 +66,11 @@ beforeAll(async () => {
       }
       return <>
         <button id="open" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} operation="move" dirty={true}/>)}>Open</button>
+        <button id="create" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace"/>)}>Create entry</button>
         <button id="leave" onClick={leave}>Leave file</button>
       </>
     }
-    render(()=><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><MetaProvider><Font/><ThemeProvider><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider></ThemeProvider></MetaProvider>,document.getElementById("root"))
 
   `,
   )
@@ -75,7 +81,7 @@ beforeAll(async () => {
     configFile: false,
     root: fixture,
     cacheDir: path.join(fixture, ".vite"),
-    plugins: [solid()],
+    plugins: [solid(), tailwind()],
     resolve: { alias: { "@": appSrc } },
     optimizeDeps: {
       include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
@@ -129,7 +135,8 @@ test("entry actions retain captured versions, errors and entered paths until suc
 test("delete is explicit, localized and preserves the selected filesystem identity", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByLabel("Operation", { exact: true }).selectOption("remove")
+  await page.getByRole("button", { name: "Operation: Move or rename", exact: true }).click()
+  await page.getByRole("option", { name: "Delete permanently", exact: true }).click()
   await page.evaluate(() => (window as any).fixture.locale())
   await page.getByRole("dialog", { name: "文件操作" }).waitFor()
   expect(await page.getByText("folder/source.txt", { exact: false }).count()).toBeGreaterThan(0)
@@ -137,6 +144,62 @@ test("delete is explicit, localized and preserves the selected filesystem identi
   await page.getByRole("dialog").waitFor({ state: "hidden" })
   expect(await page.evaluate(() => (window as any).fixture.calls)).toEqual([
     { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
+  ])
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("operation menu stays in its dialog, dismisses before the dialog and disables source-only actions", async () => {
+  errors.length = 0
+  await page.goto(base)
+  await page.locator("#create").click()
+  const dialog = page.getByRole("dialog", { name: "File actions", exact: true })
+  await page.waitForFunction((element) => element?.contains(document.activeElement), await dialog.elementHandle())
+  const trigger = page.getByRole("button", { name: "Operation: New file", exact: true })
+  await trigger.press("ArrowDown")
+  const listbox = page.getByRole("listbox", { name: "Operation", exact: true })
+  await listbox.waitFor()
+  expect(await listbox.getByRole("option").count()).toBe(5)
+  for (const name of ["Move or rename", "Copy", "Delete permanently"]) {
+    expect(await listbox.getByRole("option", { name, exact: true }).getAttribute("aria-disabled")).toBe("true")
+  }
+  const colors: string[] = []
+  await page.locator(".menu-field-surface").evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+    await document.fonts.ready
+  })
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme })
+    await page.waitForFunction((scheme) => document.documentElement.dataset.colorScheme === scheme, colorScheme)
+    const appearance = await page.locator(".menu-field-surface").evaluate((element) => {
+      const bounds = element.getBoundingClientRect()
+      return {
+        background: getComputedStyle(element).backgroundColor,
+        fits: bounds.x >= 0 && bounds.right <= innerWidth && bounds.y >= 0 && bounds.bottom <= innerHeight,
+      }
+    })
+    expect(appearance.fits).toBe(true)
+    colors.push(appearance.background)
+  }
+  expect(colors[0]).not.toBe(colors[1])
+  await page.waitForFunction(
+    (element) => document.activeElement === element,
+    await listbox.getByRole("option", { name: "New file", exact: true }).elementHandle(),
+  )
+  await page.keyboard.press("ArrowDown")
+  expect(await listbox.getByRole("option", { name: "New folder", exact: true }).getAttribute("data-highlighted")).toBe(
+    "",
+  )
+  await page.keyboard.press("Escape")
+  await listbox.waitFor({ state: "hidden" })
+  expect(await dialog.isVisible()).toBe(true)
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Operation: New file")
+  await trigger.click()
+  await listbox.getByRole("option", { name: "New folder", exact: true }).click()
+  await page.getByLabel("Path within Workspace").fill("created-folder")
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click()
+  await dialog.waitFor({ state: "hidden" })
+  expect(await page.evaluate(() => (window as { fixture?: { calls: unknown[] } }).fixture?.calls)).toEqual([
+    { kind: "createDirectory", path: "created-folder" },
   ])
   expect(errors).toEqual([])
 }, 30_000)

@@ -24,6 +24,7 @@ beforeAll(async () => {
     export const b = { ...a, id: "wsp_b", path: "/b" }
     const [state, setState] = createStore({ session: { id: "session", workspace: { ...a } }, tabs: [], active: undefined, visible: true, secondVisible: false })
     const statuses = []; const pendingStatuses = []
+    const childPages = {}; const childRequests = []; const heldDirectories = []; const pendingDirectories = []; const childFailures = []
     const requests = []; const writes = []; const entries = []; const disk = {}; const pending = []; const listeners = new Set(); const writeState = { mode: "conflict", finish: undefined }
     const result = (query) => ({ data: { kind: "text", path: query.path, content: disk[query.workspaceID]?.content ?? query.workspaceID ?? "wsp_a",
       contentVersion: disk[query.workspaceID]?.version ?? "sha256:" + "a".repeat(64),
@@ -42,7 +43,12 @@ beforeAll(async () => {
         move: async (query) => { entries.push(query); return { data: { path: query.workspaceFileMoveInput.to, node: {} } } },
         remove: async (query) => { entries.push(query); return { data: { removed: true, path: query.workspaceFileDeleteInput.path } } },
         status(query) { statuses.push(query); return new Promise(resolve => pendingStatuses.push(() => resolve({ data: { files: [] } }))) },
-        children: async () => ({ data: { children: [], truncated: false } }) } } },
+        async children(query) {
+          childRequests.push(query)
+          if (heldDirectories.includes(query.path)) await new Promise(resolve => pendingDirectories.push(resolve))
+          if (childFailures.includes(query.path)) throw new Error("Folder is unreadable")
+          return { data: childPages[query.path + (query.cursor ? "|" + query.cursor : "")] ?? { children: [], truncated: false } }
+        } } } },
       event: { listen(cb) { listeners.add(cb); return () => listeners.delete(cb) } } })
     export const useSync = () => ({ data: { workspaces: [{id:"wsp_objects",scopeID:"scope",type:"objects",binding:{state:"bound",path:null,generation:1},backend:{provider:"objects"},metadata:{name:"Research"},lifecycle:"active"}], path: { directory: "/a", workspace: a } }, session: { get: () => state.session } })
     export const useParams = () => ({ id: "session" })
@@ -54,6 +60,7 @@ beforeAll(async () => {
     export const Persist = { workspace: (owner, key) => ({ storage: "fixture:" + owner, key }), scopeKey: (...args) => args.join(":"), scoped: () => ({}) }
     export const persisted = (_key, store) => [...store, undefined, () => true]
     window.fixture = { select(ws) { setState("session", "workspace", ws) }, a, b, requests, writes, entries, disk, state, writeState, statuses,
+      childPages, childRequests, heldDirectories, childFailures, flushDirectories() { pendingDirectories.splice(0).forEach(resolve => resolve()) },
       visible(value) { setState("visible", value) },
       switchConsumer() { setState("visible", false); setState("secondVisible", true) },
       flushStatuses() { pendingStatuses.splice(0).forEach(resolve => resolve()) },
@@ -530,5 +537,198 @@ test("retained Session providers share a Workspace status request across a visib
   await page.evaluate(() => (window as any).fixture.flushStatuses())
   await page.waitForTimeout(600)
   expect(await page.evaluate(() => (window as any).fixture.statuses.length)).toBe(2)
+  expect(errors).toEqual([])
+})
+
+type ExplorerFixtureWindow = Window & {
+  fixture: {
+    file: {
+      explorer: {
+        expandAll: (signal?: AbortSignal) => Promise<void>
+        collapseAll: () => void
+        expandingAll: () => boolean
+        expanded: () => string[]
+        directory: (path: string) => { error?: string }
+      }
+    }
+    childPages: Record<
+      string,
+      {
+        children: Array<{ path: string; name: string; type: "directory" | "file"; symlink?: boolean }>
+        truncated: boolean
+        nextCursor?: string
+      }
+    >
+    childRequests: Array<{
+      path: string
+      cursor?: string
+      workspaceID: string
+      workspaceGeneration: number
+      showHidden: string
+      showIgnored: string
+    }>
+    heldDirectories: string[]
+    childFailures: string[]
+    requests: unknown[]
+    flushDirectories: () => void
+    cancelExpansion: () => void
+    expansionDone: boolean
+  }
+}
+
+declare const window: ExplorerFixtureWindow
+
+test("expand all loads every directory page and nested folder without following symbolic links or reading files", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(async () => {
+    const h = (window as ExplorerFixtureWindow).fixture
+    const directory = (path: string) => ({ path, name: path.split("/").at(-1)!, type: "directory" as const })
+    h.childPages[""] = {
+      children: [directory("docs"), { ...directory("link"), symlink: true }],
+      truncated: true,
+      nextCursor: "root-2",
+    }
+    h.childPages["|root-2"] = { children: [directory("packages")], truncated: false }
+    h.childPages.docs = { children: [directory("docs/nested")], truncated: true, nextCursor: "docs-2" }
+    h.childPages["docs|docs-2"] = { children: [directory("docs/empty")], truncated: false }
+    h.childPages["docs/nested"] = {
+      children: [{ path: "docs/nested/deep.txt", name: "deep.txt", type: "file" }],
+      truncated: false,
+    }
+    await h.file.explorer.expandAll()
+  })
+  const result = await page.evaluate(() => {
+    const h = (window as ExplorerFixtureWindow).fixture
+    return {
+      expanded: h.file.explorer.expanded().toSorted(),
+      requests: h.childRequests,
+      reads: h.requests.length,
+      expanding: h.file.explorer.expandingAll(),
+    }
+  })
+  expect(result.expanded).toEqual(["docs", "docs/empty", "docs/nested", "packages"])
+  expect(result.requests.map(({ path, cursor }) => [path, cursor ?? null]).sort()).toEqual(
+    [
+      ["", null],
+      ["", "root-2"],
+      ["docs", null],
+      ["docs", "docs-2"],
+      ["docs/empty", null],
+      ["docs/nested", null],
+      ["packages", null],
+    ].sort(),
+  )
+  expect(
+    result.requests.every(
+      (item) =>
+        item.workspaceID === "wsp_a" &&
+        item.workspaceGeneration === 1 &&
+        item.showHidden === "false" &&
+        item.showIgnored === "false",
+    ),
+  ).toBe(true)
+  expect(result.reads).toBe(0)
+  expect(result.expanding).toBe(false)
+  expect(errors).toEqual([])
+})
+
+for (const cancel of ["collapse", "abort"] as const) {
+  test(`${cancel} stops expansion before late folder replies can reopen descendants`, async () => {
+    await page.goto(base)
+    await page.waitForSelector("output")
+    expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expanded())).toEqual([])
+    await page.evaluate((cancel) => {
+      const h = (window as ExplorerFixtureWindow).fixture
+      h.childPages[""] = { children: [{ path: "docs", name: "docs", type: "directory" }], truncated: false }
+      h.childPages.docs = { children: [{ path: "docs/nested", name: "nested", type: "directory" }], truncated: false }
+      h.heldDirectories.push("docs")
+      const controller = new AbortController()
+      h.cancelExpansion = () => (cancel === "collapse" ? h.file.explorer.collapseAll() : controller.abort())
+      h.expansionDone = false
+      void h.file.explorer.expandAll(controller.signal).then(() => {
+        h.expansionDone = true
+      })
+    }, cancel)
+    await page.waitForFunction(() =>
+      (window as ExplorerFixtureWindow).fixture.childRequests.some((query) => query.path === "docs"),
+    )
+    expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expandingAll())).toBe(true)
+    await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.cancelExpansion())
+    expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expandingAll())).toBe(
+      false,
+    )
+    await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.flushDirectories())
+    await page.waitForFunction(() => (window as ExplorerFixtureWindow).fixture.expansionDone)
+    expect(
+      await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.childRequests.map((query) => query.path)),
+    ).toEqual(["", "docs"])
+    expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expanded())).toEqual(
+      cancel === "collapse" ? [] : ["docs"],
+    )
+    await page.evaluate(async () => {
+      const h = (window as ExplorerFixtureWindow).fixture
+      h.heldDirectories.length = 0
+      await h.file.explorer.expandAll()
+    })
+    expect(
+      await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expanded().toSorted()),
+    ).toEqual(["docs", "docs/nested"])
+    expect(errors).toEqual([])
+  }, 30_000)
+}
+
+test("expand all leaves unreadable-folder errors visible while expanding other branches", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(async () => {
+    const h = (window as ExplorerFixtureWindow).fixture
+    h.childPages[""] = {
+      children: ["blocked", "readable"].map((path) => ({ path, name: path, type: "directory" })),
+      truncated: false,
+    }
+    h.childPages.readable = {
+      children: [{ path: "readable/nested", name: "nested", type: "directory" }],
+      truncated: false,
+    }
+    h.childFailures.push("blocked")
+    await h.file.explorer.expandAll()
+  })
+  expect(
+    await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expanded().toSorted()),
+  ).toEqual(["blocked", "readable", "readable/nested"])
+  expect(
+    await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.directory("blocked").error),
+  ).toBe("Folder is unreadable")
+  expect(errors).toEqual([])
+})
+
+test("bulk expansion admits only the existing directory concurrency and stops queued branches on collapse", async () => {
+  await page.goto(base)
+  await page.waitForSelector("output")
+  await page.evaluate(() => {
+    const h = (window as ExplorerFixtureWindow).fixture
+    const folders = Array.from({ length: 30 }, (_, index) => ({
+      path: `folder-${index}`,
+      name: `folder-${index}`,
+      type: "directory" as const,
+    }))
+    h.childPages[""] = { children: folders, truncated: false }
+    h.heldDirectories.push(...folders.map(({ path }) => path))
+    h.expansionDone = false
+    void h.file.explorer.expandAll().then(() => {
+      h.expansionDone = true
+    })
+  })
+  await page.waitForFunction(() => (window as ExplorerFixtureWindow).fixture.childRequests.length >= 7)
+  expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.childRequests.length)).toBe(7)
+  await page.evaluate(() => {
+    const h = (window as ExplorerFixtureWindow).fixture
+    h.file.explorer.collapseAll()
+    h.flushDirectories()
+  })
+  await page.waitForFunction(() => (window as ExplorerFixtureWindow).fixture.expansionDone)
+  expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.childRequests.length)).toBe(7)
+  expect(await page.evaluate(() => (window as ExplorerFixtureWindow).fixture.file.explorer.expanded())).toEqual([])
   expect(errors).toEqual([])
 })

@@ -3023,6 +3023,10 @@ msgid "app.fileExplorer.action.collapseAll"
 msgstr "折叠所有文件夹"
 
 #. js-lingui-explicit-id
+msgid "app.fileExplorer.action.expandAll"
+msgstr "展开所有文件夹"
+
+#. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
 msgstr "刷新文件"
 

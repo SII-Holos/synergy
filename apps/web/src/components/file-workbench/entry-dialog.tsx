@@ -3,6 +3,7 @@ import { useLingui } from "@lingui/solid"
 import type { WorkspaceFileNode } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { useFile } from "@/context/file"
@@ -83,30 +84,24 @@ export function FileEntryDialog(props: {
       >
         <div class="flex flex-col gap-2 text-12-medium">
           <label for={operationID}>{_(M.operation)}</label>
-          <select
+          <MenuField<FileEntryOperation>
             id={operationID}
-            class="rounded-md border border-border-base bg-surface-base text-text-base p-2"
+            ariaLabel={_(M.operation)}
             value={operation()}
+            options={[
+              { value: "createFile", label: _(M.createFile) },
+              { value: "createDirectory", label: _(M.createDirectory) },
+              { value: "move", label: _(M.move), disabled: !source?.entryVersion },
+              { value: "copy", label: _(M.copy), disabled: !source?.entryVersion },
+              { value: "remove", label: _(M.remove), disabled: !source?.entryVersion },
+            ]}
             disabled={pending()}
-            onChange={(event) => {
-              const value = event.currentTarget.value as FileEntryOperation
+            onChange={(value) => {
               setOperation(value)
               setDestination(initialPath(value))
               setError(undefined)
             }}
-          >
-            <option value="createFile">{_(M.createFile)}</option>
-            <option value="createDirectory">{_(M.createDirectory)}</option>
-            <option value="move" disabled={!source?.entryVersion}>
-              {_(M.move)}
-            </option>
-            <option value="copy" disabled={!source?.entryVersion}>
-              {_(M.copy)}
-            </option>
-            <option value="remove" disabled={!source?.entryVersion}>
-              {_(M.remove)}
-            </option>
-          </select>
+          />
         </div>
         <Show when={source && ["move", "copy", "remove"].includes(operation())}>
           <p class="break-all text-12-regular text-text-weak">{source?.path}</p>

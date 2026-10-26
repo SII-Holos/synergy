@@ -10,6 +10,8 @@ Agenda Scope filters, Kanban dimensions and declarative plugin enums use browser
 
 Feature-page dropdown choices reuse the existing [MenuField](../../../../packages/ui/src/components/menu-field.tsx). It composes Kobalte Popover and Listbox, retains the overlay layer and portal style owner, and provides a native button trigger. Optional icon and ID props support board controls and label association without introducing product state into shared UI. The [product specification](../../../../apps/web/PRODUCT.md#feature-pages) owns visual sizes and interaction rules.
 
+The file Explorer's Workspace-folder selector and the file-entry dialog's operation selector use the same component. Folder labels preserve complete paths in the menu while the trigger truncates within its panel. The operation form keeps source-dependent actions disabled and retains its captured file identity; choosing an operation does not execute it. Nested menu Escape closes only the menu before returning focus to its trigger.
+
 Single selection reports changes once and closes; multiple selection remains open. A reserved trailing check distinguishes selection from hover without moving option labels or counts. The list aligns with its trigger and retains its width in form fields; viewport padding constrains the popup without shifting its anchor alignment. Keyboard browsing does not commit a choice. Listbox Escape explicitly closes its popup, preserves selection and stops propagation to an enclosing Dialog. The existing controlled page state continues to own Scope, grid dimensions, draft agent, permissions, workflow and plugin settings.
 
 ## Alternatives considered
