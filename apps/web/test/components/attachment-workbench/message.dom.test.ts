@@ -346,7 +346,9 @@ test("failed thumbnails try the original and the remaining attachment button ope
   await page.evaluate("window.fixture.broken()")
   await page.locator("[data-image-failed]").waitFor()
   await page.getByRole("button", { name: "Open portrait.svg", exact: true }).click()
-  await page.getByText("Unable to preview this attachment.", { exact: true }).waitFor()
+  await page.getByText("Image failed to load", { exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Save image", exact: true }).count()).toBe(1)
+  expect(await page.getByRole("button", { name: "Save image", exact: true }).isEnabled()).toBe(true)
   fail = false
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.locator("[data-slot=image-viewer-image]").waitFor()

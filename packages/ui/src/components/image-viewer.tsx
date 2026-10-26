@@ -50,7 +50,7 @@ export interface ImageViewerProps {
   onScaleModeChange?: (mode: "fit" | "actual") => void
   onImageChange?: (image: ImagePreviewImage | undefined) => void
   actions?: ImageViewerActions
-  onOpenSource?: (image: ImagePreviewImage) => Promise<void> | void
+  onOpenSource?: (image: ImagePreviewImage, signal: AbortSignal) => Promise<void> | void
 }
 
 const copy = {
@@ -236,9 +236,9 @@ export function ImageViewer(props: ImageViewerProps) {
       y: ((event.clientY - rect.y) * stage.clientHeight) / rect.height,
     }
   }
-  async function perform(name: keyof ImageViewerActions) {
+  async function perform(name: keyof ImageViewerActions | "source") {
     const image = current(),
-      run = props.actions?.[name]
+      run = name === "source" ? props.onOpenSource : props.actions?.[name]
     if (!image || !run || busy()) return
     const request = new AbortController()
     action?.abort()
@@ -248,6 +248,10 @@ export function ImageViewer(props: ImageViewerProps) {
     try {
       const result = await run({ ...image }, request.signal)
       if (request.signal.aborted) return
+      if (name === "source") {
+        setNotice(undefined)
+        return
+      }
       const message =
         result === "cancelled"
           ? copy.cancelled
@@ -265,7 +269,10 @@ export function ImageViewer(props: ImageViewerProps) {
       if (!request.signal.aborted)
         setNotice({ text: error instanceof Error ? error.message : _(copy.actionFailed), error: true })
     } finally {
-      if (action === request) setBusy(false)
+      if (action === request) {
+        action = undefined
+        setBusy(false)
+      }
     }
   }
   async function toggleFullscreen() {
@@ -375,6 +382,7 @@ export function ImageViewer(props: ImageViewerProps) {
       label: () => _(copy.openExternal),
       icon: "action.external",
       visible: () => !!props.actions?.openExternal && /^https?:/i.test(current()?.externalUrl ?? current()?.src ?? ""),
+      disabled: busy,
       run: () => void perform("openExternal"),
     },
     {
@@ -382,13 +390,8 @@ export function ImageViewer(props: ImageViewerProps) {
       label: () => _(copy.source),
       icon: "workspace.files",
       visible: () => !!props.onOpenSource && !!current()?.sourcePath,
-      run: () => {
-        const image = current()
-        if (image)
-          void Promise.resolve(props.onOpenSource?.(image)).catch((error) =>
-            setNotice({ text: error instanceof Error ? error.message : _(copy.actionFailed), error: true }),
-          )
-      },
+      disabled: busy,
+      run: () => void perform("source"),
     },
   ]
   function keyboard(event: KeyboardEvent) {

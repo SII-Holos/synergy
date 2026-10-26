@@ -67,10 +67,14 @@ export function AttachmentWorkbenchContent(props: WorkbenchPanelContentProps) {
   const sourceFileAction = createMemo(() => {
     const path = attachmentSourcePath(attachment() ?? { mime: "" })
     return path && resources
-      ? () => {
-          void resources.open(
+      ? async (signal?: AbortSignal) => {
+          await resources.open(
             { kind: "workspace-file", path },
-            { context: attachmentReferenceContext(attachment()!, resource()?.referenceContext), prefer: "workspace" },
+            {
+              context: attachmentReferenceContext(attachment()!, resource()?.referenceContext),
+              prefer: "workspace",
+              signal,
+            },
           )
         }
       : undefined

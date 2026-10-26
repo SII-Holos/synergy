@@ -16,12 +16,14 @@ export function ImagePreview(props: ImagePreviewProps) {
   const resourceOpen = useResourceOpen()
   const [current, setCurrent] = createSignal<ImagePreviewImage>()
   const title = () => current()?.filename ?? _({ id: "ui.imagePreview.noImageSelected", message: "No image selected" })
-  async function openSource(image: ImagePreviewImage) {
+  async function openSource(image: ImagePreviewImage, signal: AbortSignal) {
     if (!image.sourcePath || !resourceOpen) return
     const result = await resourceOpen.open(
       { kind: "workspace-file", path: image.sourcePath },
-      { context: image.referenceContext ?? { state: "unresolved" } },
+      { context: image.referenceContext ?? { state: "unresolved" }, signal },
     )
+    if (signal.aborted) return
+    if (result.status === "blocked" || result.status === "unavailable") throw new Error(result.reason)
     if (result.status === "opened") dialog.close()
   }
   return (

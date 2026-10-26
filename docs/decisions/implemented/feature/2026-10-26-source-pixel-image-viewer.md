@@ -16,6 +16,8 @@ Rotation is in quarter turns. Pan is clamped against the displayed rotated bound
 
 Operations capture their image and cancellation signal. A changed or inactive view aborts pending reads and ignores late results. Native save completion and cancellation are reported separately; a Web anchor dispatch reports only that a download started. A failed read is not replaced by opening an unverified URL. Clipboard admission starts within the user gesture, with PNG decoding supplied as a promise.
 
+Source navigation shares that operation lifetime, including cancellation before closing its modal. Attachment SVG preview uses image decoding, while its text reader runs only in Source mode; a failed text request must not remove image retry or save controls. Files retains its existing sanitized SVG display and saves the original bytes.
+
 ## Alternatives considered
 
 **Keep fit-relative percentages.** Rejected because 100% would still conceal source pixels and mean different things in differently sized surfaces.

@@ -217,3 +217,77 @@ test("fullscreen Tab and Shift+Tab wrap within visible viewer controls", async (
   await page.getByRole("button", { name: "Exit fullscreen", exact: true }).click()
   await page.waitForFunction(() => !document.fullscreenElement)
 })
+
+test("a late source result does not close a gallery after changing images", async () => {
+  await page.evaluate("window.imageFixture.holdSource()")
+  await page.getByRole("button", { name: "Image actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "View source in Files", exact: true }).click()
+  await page.getByRole("button", { name: "Next image", exact: true }).click()
+  await page.evaluate("window.imageFixture.finishSource()")
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  expect(await page.locator('[data-slot="image-preview-title"]').innerText()).toBe("same-source.svg")
+})
+
+test("source failures are local, visible and leave the viewer usable", async () => {
+  await page.evaluate("window.imageFixture.failSource()")
+  await page.getByRole("button", { name: "Image actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "View source in Files", exact: true }).click()
+  await page.getByText("Source is unavailable", { exact: true }).waitFor()
+  expect(await page.getByRole("button", { name: "Save image", exact: true }).isEnabled()).toBe(true)
+})
+
+test("late copy completion cannot overwrite the next image feedback", async () => {
+  await page.evaluate("window.imageFixture.holdCopy()")
+  await page.getByRole("button", { name: "Copy image", exact: true }).click()
+  await page.getByText("Working…", { exact: true }).waitFor()
+  await page.getByRole("button", { name: "Next image", exact: true }).click()
+  await page.evaluate("window.imageFixture.finishCopy()")
+  expect(await page.getByText("Image copied", { exact: true }).count()).toBe(0)
+  expect(await page.getByRole("button", { name: "Save image", exact: true }).isEnabled()).toBe(true)
+})
+
+test("inactive viewers close their menu without losing the accepted transform", async () => {
+  await page.goto(`${server.url}viewer.html?inline`)
+  await page.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
+  await page.waitForFunction(
+    () => document.querySelector('[data-slot="image-viewer-stage"]')?.getAttribute("aria-busy") === "false",
+  )
+  await page.getByRole("button", { name: "Actual size (1:1)", exact: true }).click()
+  await page.locator('[data-slot="image-viewer-stage"]').click({ button: "right" })
+  await page.getByRole("menu").waitFor()
+  await page.evaluate("window.imageFixture.setActive(false)")
+  await page.locator('[data-component="image-viewer-menu"]').waitFor({ state: "detached" })
+  await page.evaluate("window.imageFixture.setActive(true)")
+  expect((await page.locator('[data-slot="image-viewer-image"]').boundingBox())!.width).toBeCloseTo(4000, 0)
+})
+
+test("two-finger touch zoom and cancellation preserve a usable viewport", async () => {
+  const stage = page.locator('[data-slot="image-viewer-stage"]')
+  const box = (await stage.boundingBox())!
+  const image = page.locator('[data-slot="image-viewer-image"]')
+  const before = (await image.boundingBox())!
+  const session = await page.context().newCDPSession(page)
+  const y = box.y + box.height / 2
+  const x = box.x + box.width / 2
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [
+      { x: x - 40, y, id: 1 },
+      { x: x + 40, y, id: 2 },
+    ],
+  })
+  await session.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [
+      { x: x - 100, y, id: 1 },
+      { x: x + 100, y, id: 2 },
+    ],
+  })
+  await session.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] })
+  expect((await image.boundingBox())!.width).toBeGreaterThan(before.width * 2)
+  expect(await stage.getAttribute("data-dragging")).toBeNull()
+  await stage.focus()
+  await page.keyboard.press("0")
+  expect((await image.boundingBox())!.width).toBeCloseTo(before.width, 0)
+  await session.detach()
+})

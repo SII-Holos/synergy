@@ -55,7 +55,7 @@ export interface AttachmentPreviewProps {
   referenceContext?: ResourceReference.Context
   location?: ResourceReference.Location
   navigation?: number
-  onOpenSource?: () => void
+  onOpenSource?: (signal?: AbortSignal) => Promise<void> | void
   onOpenBrowser?: (url: string) => void
   onOpenExternal?: (url: string) => void
 }
@@ -84,11 +84,18 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
     },
   ])
   const sourcePath = () => props.onOpenSource
+  const displayMode = createMemo(() => {
+    const preview = capability()
+    if (!preview) return "preview"
+    if (!preview.dual) return preview.defaultMode
+    return mode()
+  })
+  const imageMode = () => isImage() && displayMode() === "preview"
   const previewRequest = createMemo(() => {
     const value = props.file
     const preview = capability()
     const href = url()
-    if (!value || !preview?.maxBytes || !href) return undefined
+    if (!value || !preview?.maxBytes || !href || imageMode()) return undefined
     const size = attachmentBytes(value)
     if (size !== undefined && size > preview.maxBytes) {
       return { href, maxBytes: preview.maxBytes, tooLarge: true as const }
@@ -120,13 +127,6 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
     return cause ? ("failed" as const) : undefined
   })
 
-  const displayMode = createMemo(() => {
-    const preview = capability()
-    if (!preview) return "preview"
-    if (!preview.dual) return preview.defaultMode
-    return mode()
-  })
-
   return (
     <div class="attachment-workbench">
       <div class="attachment-workbench-toolbar">
@@ -150,7 +150,7 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               </button>
             </div>
           </Show>
-          <Show when={!isImage() || displayMode() === "source"}>
+          <Show when={!imageMode()}>
             <Show when={sourcePath()}>
               {(path) => (
                 <Tooltip value={lingui._(A.viewSourceFile)} placement="top">
@@ -218,6 +218,13 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
       </div>
       <main class="attachment-workbench-viewer">
         <Switch>
+          <Match when={imageMode() && url()}>
+            <ImageViewer
+              images={images()}
+              actions={props.imageActions}
+              onOpenSource={(_, signal) => props.onOpenSource?.(signal)}
+            />
+          </Match>
           <Match when={previewError() === "too-large"}>
             <AttachmentState kind="warning" title={lingui._(A.tooLarge)} />
           </Match>
@@ -259,9 +266,6 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               </Suspense>
             )}
           </Match>
-          <Match when={capability()?.kind === "image" && url()}>
-            {(href) => <ImageViewer images={images()} actions={props.imageActions} onOpenSource={props.onOpenSource} />}
-          </Match>
           <Match when={capability()?.kind === "pdf" ? safePayload() : undefined}>
             {(bytes) => (
               <AttachmentPdfPreview bytes={bytes()} location={props.location} navigation={props.navigation} />
@@ -292,9 +296,6 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
                 <RenderHtml html={sanitizeAttachmentHtml(content())} />
               </div>
             )}
-          </Match>
-          <Match when={capability()?.kind === "svg" && url()}>
-            {(href) => <ImageViewer images={images()} actions={props.imageActions} onOpenSource={props.onOpenSource} />}
           </Match>
           <Match when={capability()?.kind === "source" ? text() : undefined}>
             {(content) => (
