@@ -40,6 +40,8 @@ When an embedded domain must freeze editable state before generation, register `
 
 Use `SessionInvoke` when the caller already owns the target session: direct user/API input, Channel or Agenda execution, workflow continuation, or an in-place loop operation such as compaction.
 
+For continuation changes, distinguish the child's launch root from the parent's latest root at delivery. Exercise a real Cortex completion after a newer root has finished, preserving child lineage, prior tool effects and notification acknowledgement. Establish unanswered input from canonical history under the admission lock, including already materialized notices; a nonempty drain count alone cannot support recovery. Keep generic terminal Rollout writes closed and verify cancellation and recording-failure guards alongside explicit Continue. See [completed-root continuation](../../../../docs/decisions/implemented/bug-fix/2026-10-26-continue-completed-roots-for-steering.md).
+
 When an internal operation selects a different model and reuses a root envelope only for attribution, strip root-owned execution settings from that transient envelope, not the persisted root. The external-agent adapter’s dedicated compaction path clears both `variant` and `thinking`; `small: true` sessionless calls ignore them. Native local compaction preserves the original agent/model/user settings and prepared request. Keep small-call bypass tests for valid and invalid source selections.
 
 Use `Cortex.launch()` for new child-agent work. Cortex owns:

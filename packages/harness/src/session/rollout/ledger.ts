@@ -122,6 +122,28 @@ export namespace RolloutLedger {
     return reopened
   }
 
+  /** The caller must establish an unanswered continuation on this root under its admission lock. */
+  export async function continueRun(owner: Owner, runID: string, commit?: () => Promise<void>) {
+    using lock = await writeLock(owner, runID)
+    const failure = runtimeState().recordingFailures.get(lockKey(owner, runID))
+    if (failure) throw failure
+    const run = await getRun(owner, runID).catch((error) => {
+      if (error instanceof Storage.NotFoundError) return undefined
+      throw error
+    })
+    if (run?.status !== "completed" || run.recording === "failed" || run.cancelRequestedAt) return run
+    const continued = RolloutSchema.RunRecord.parse({
+      ...run,
+      ended: undefined,
+      status: "running",
+      recording: "partial",
+      execution: undefined,
+    })
+    await record(() => RolloutJournal.write(owner, [...root(owner, runID), "info"], continued, commit))
+    await SessionActivityEvent.execution(owner, runID)
+    return continued
+  }
+
   /**
    * Reopen a run so an explicit user continue can append to it.
    *

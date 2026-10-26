@@ -11,13 +11,15 @@
 `NNNN-kebab-case-title.md`:
 
 - **Executive summary** — failure, cause, lesson.
-- **Summary** — details.
+- **Summary**.
 - **Timeline** — observations.
 - **Root cause** — missing safeguards.
 - **Guardrails** — tests, docs, gates.
 - **Lessons** — takeaways.
 
 ## Index
+
+- [0092](0092-cortex-notification-targeted-completed-root.md)
 
 - [0090](0090-provider-recovery-stream-lifetime.md)
 

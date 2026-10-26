@@ -114,8 +114,12 @@ export namespace SessionResume {
       Storage.afterCommit(() => SessionManager.scheduleWake(session.id, "user-continue"))
       admitted = true
     }
-    if (resumeRoot) await RolloutLedger.resumeRun(RolloutLifecycle.owner(session), resumeRoot.id, commit)
-    else await Storage.transaction(commit)
+    if (resumeRoot) {
+      const owner = RolloutLifecycle.owner(session)
+      if (pending && SessionProgress.findTerminalReply(messages, resumeRoot.id))
+        await RolloutLedger.continueRun(owner, resumeRoot.id, commit)
+      if (!admitted) await RolloutLedger.resumeRun(owner, resumeRoot.id, commit)
+    } else await Storage.transaction(commit)
     if (!admitted) return result(session.id, "blocked", "The task is completed or its execution evidence needs repair.")
     return result(session.id, "accepted")
   }
