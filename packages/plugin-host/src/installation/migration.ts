@@ -2,7 +2,11 @@ import type { Migration } from "@ericsanchezok/synergy-harness/migration"
 import { Global } from "@ericsanchezok/synergy-harness/global"
 import { MigrationRegistry } from "@ericsanchezok/synergy-harness/migration/registry"
 import { InstallationGenerations } from "./generations"
-import { initializeInstallationSelection, upgradeInstallationSelection } from "./selection"
+import {
+  initializeInstallationSelection,
+  upgradeInstallationSelection,
+  upgradeInstallationSelectionV2,
+} from "./selection"
 import { upgradeInstallationRoots } from "./upgrade"
 
 const migrations: Migration[] = [
@@ -25,11 +29,22 @@ const migrations: Migration[] = [
     dependsOn: ["20260926-installation-selection-v1"],
     async up(progress) {
       const current = await InstallationGenerations.current(Global.Path.root)
-      await upgradeInstallationSelection(
+      await upgradeInstallationSelectionV2(
         Global.Path.root,
         Object.keys(current?.roots ?? {}),
         current ? Object.keys(upgradeInstallationRoots(current, current.hostVersion)) : undefined,
       )
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20261026-installation-selection-v3",
+    description: "Remove retired identity components from saved installation selections",
+    scope: "global",
+    execution: "startup",
+    dependsOn: ["20261012-installation-selection-v2"],
+    async up(progress) {
+      await upgradeInstallationSelection(Global.Path.root)
       progress(1, 1)
     },
   },

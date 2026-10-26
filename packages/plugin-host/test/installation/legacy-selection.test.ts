@@ -62,7 +62,12 @@ for (const aggregate of ["@ericsanchezok/synergy-workflows", "@ericsanchezok/syn
       const pluginID = "retained-plugin"
       await using initial = await prepareInstallation(root, {
         hostVersion: "local",
-        sources: [await archive(aggregate, "workflows"), await archive(pluginID, pluginID, true)],
+        sources: [
+          await archive(aggregate, "workflows"),
+          await archive(pluginID, pluginID, true),
+          await archive("@ericsanchezok/synergy-holos", "holos"),
+          await archive("@ericsanchezok/synergy-channel-clarus", "channel-clarus"),
+        ],
       })
       await preparePluginActivation(initial, async () => true)
       const first = await initial.commit({ trustHostCode: true })
@@ -72,20 +77,28 @@ for (const aggregate of ["@ericsanchezok/synergy-workflows", "@ericsanchezok/syn
       const roots = upgradeInstallationRoots(first, "local")
       expect(roots[pluginID]).toBe(first.roots[pluginID])
       expect(roots[aggregate]).toBeUndefined()
+      expect(roots["@ericsanchezok/synergy-holos"]).toBeUndefined()
+      expect(roots["@ericsanchezok/synergy-channel-clarus"]).toBeUndefined()
       const sources = await Promise.all(
-        legacyComponentSelections[aggregate].map((name) => archive(name, name.split("synergy-")[1])),
+        legacyComponentSelections[aggregate]
+          .filter((name) => name in roots)
+          .map((name) => archive(name, name.split("synergy-")[1])),
       )
       {
         await using interrupted = await prepareInstallation(root, {
           hostVersion: "local",
           sources,
-          remove: [aggregate],
+          remove: [aggregate, "@ericsanchezok/synergy-holos", "@ericsanchezok/synergy-channel-clarus"],
         })
         await preservePluginActivation(interrupted, "local")
         expect((await InstallationGenerations.current(root))?.id).toBe(first.id)
         expect(await getApproval(pluginID)).toEqual(approval)
       }
-      await using retry = await prepareInstallation(root, { hostVersion: "local", sources, remove: [aggregate] })
+      await using retry = await prepareInstallation(root, {
+        hostVersion: "local",
+        sources,
+        remove: [aggregate, "@ericsanchezok/synergy-holos", "@ericsanchezok/synergy-channel-clarus"],
+      })
       await preservePluginActivation(retry, "local")
       const upgraded = await retry.commit({ trustHostCode: true })
       await activateInstalledPlugins(upgraded)

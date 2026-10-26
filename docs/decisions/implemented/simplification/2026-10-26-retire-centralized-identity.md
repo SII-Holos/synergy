@@ -14,6 +14,8 @@ Configuration retirement removes the former identity domain, its legacy fields a
 
 Historical migration receipts and Session records remain intact. Contact and mailbox records stay stored without active readers. Repository identities, product domains and Desktop application identifiers retain their existing values.
 
+Installation selection v3 removes the retired component roots from already upgraded homes while retaining previous selection files as evidence. Launcher upgrades use the existing generation transaction to remove explicit retired roots, retain third-party pins and plugin grants, and leave pinned old worker generations untouched.
+
 ## Alternatives considered
 
 **Rely on schema parsing to drop unsupported credentials.** This can discard a mixed credential pool and leaves retired secrets on disk. A versioned raw-data migration makes the deletion precise and repeatable.
