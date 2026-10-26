@@ -1,7 +1,7 @@
 import { RuntimeContext } from "../lifecycle/context"
 import { Storage } from "../storage/storage"
 import { MessageV2 } from "./message-v2"
-import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
+import { selectModelWorkingSet, modelWorkingSetProjection } from "./model-working-set"
 import { LLMTurnMemory } from "./llm-memory"
 // Loop-scoped in-memory model working-set cache (issue #350 D2).
 //
@@ -54,7 +54,8 @@ export namespace SessionMessageCache {
   }
   /** Cached model working set, or undefined when closed or unpopulated. */
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
-    return read(sessionID, true)
+    const messages = read(sessionID, true)
+    return messages ? projectModelWorkingSet(messages) : undefined
   }
   function read(sessionID: string, countStats: boolean): MessageV2.WithParts[] | undefined {
     if (Storage.inTransaction() || !state().active.has(sessionID)) return undefined
@@ -134,7 +135,10 @@ export namespace SessionMessageCache {
       drop(sessionID)
       return
     }
-    state().cache.set(sessionID, workingSet)
+    state().cache.set(
+      sessionID,
+      workingSet.slice().sort((a, b) => MessageV2.compareStorageOrder(a.info, b.info)),
+    )
     setSize(sessionID, size)
     touch(sessionID)
     evict(sessionID)
@@ -203,7 +207,10 @@ export namespace SessionMessageCache {
   }
   function replaceProjected(sessionID: string, messages: MessageV2.WithParts[]) {
     const workingSet = projectModelWorkingSet(messages)
-    state().cache.set(sessionID, workingSet)
+    state().cache.set(
+      sessionID,
+      workingSet.slice().sort((a, b) => MessageV2.compareStorageOrder(a.info, b.info)),
+    )
     setSize(sessionID, estimateList(workingSet))
     touch(sessionID)
     evict(sessionID)
@@ -213,7 +220,7 @@ export namespace SessionMessageCache {
     if (!projection) return messages
     const boundary = messages[projection.boundaryIndex]
     if (!boundary.parts.some((part) => part.type === "compaction")) return messages
-    return applyModelWorkingSetProjection(
+    return selectModelWorkingSet(
       messages,
       projection,
       (message) => message.info,

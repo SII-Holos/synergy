@@ -4,6 +4,8 @@ import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
+import { SessionMessageCache } from "../../src/session/message-cache"
+import { modelWorkingSetForPrompt } from "../../src/session/model-working-set"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionInbox } from "../../src/session/inbox"
 import { tmpdir } from "../support/fixture"
@@ -34,10 +36,12 @@ async function writeAssistant(
   sessionID: string,
   parentID: string,
   text: string,
-  options: { summary?: boolean; rootID?: string } = {},
+  options: { summary?: boolean; rootID?: string; compaction?: MessageV2.Assistant["compaction"] } = {},
 ): Promise<MessageV2.Assistant> {
+  const id = Identifier.ascending("message")
+  const created = Date.now()
   const info = (await Session.updateMessage({
-    id: Identifier.ascending("message"),
+    id,
     role: "assistant",
     sessionID,
     parentID,
@@ -49,9 +53,10 @@ async function writeAssistant(
     path: { cwd: "/tmp", root: "/tmp" },
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-    time: { created: Date.now(), completed: Date.now() },
+    time: { created, completed: created },
     finish: "stop",
     summary: options.summary || undefined,
+    ...(options.summary ? { compaction: options.compaction ?? { coveredThrough: { created, messageID: id } } } : {}),
   })) as MessageV2.Assistant
   await Session.updatePart({
     id: Identifier.ascending("part"),
@@ -81,6 +86,125 @@ async function modelMessages(input: { sessionID: string; onLoadParts?: (messageI
 }
 
 describe("SessionHistory.modelMessages", () => {
+  test("keeps partial-compaction tails across cache eviction and fork while ordering only the model prompt", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const root = await writeUser(session.id, "current task")
+          const covered = await writeAssistant(session.id, root.id, "earlier facts")
+          const tail = await writeUser(session.id, "unprocessed constraint")
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: root.id,
+            sessionID: session.id,
+            type: "compaction",
+            auto: true,
+          })
+          SessionMessageCache.enable(session.id)
+          try {
+            await SessionHistory.modelMessages({ sessionID: session.id })
+            const summary = await writeAssistant(session.id, root.id, "summary of earlier facts", {
+              summary: true,
+              compaction: { coveredThrough: { created: covered.time.created, messageID: covered.id } },
+            })
+            await Session.mergeMessageMetadata({
+              sessionID: session.id,
+              messageID: summary.id,
+              metadata: {
+                remoteCompaction: {
+                  version: 3,
+                  provider: "openai-responses-compaction",
+                  implementation: "responses_compaction_v2",
+                  providerID: "test-provider",
+                  modelID: "test-model",
+                  modelKey: "test-provider/test-model",
+                  coveredThrough: summary.compaction!.coveredThrough,
+                  summaryText: "summary of earlier facts",
+                  replacementHistory: [{ type: "compaction", encrypted_content: "opaque" }],
+                },
+              },
+            })
+            const hot = await modelMessages({ sessionID: session.id })
+            expect(hot.map((message) => message.info.id)).toEqual([root.id, tail.id, summary.id])
+            const prompt = await MessageV2.projectModelMessages(modelWorkingSetForPrompt(hot))
+            expect(prompt.messageSources).toEqual([root.id, summary.id, tail.id])
+            const fullHistory = await MessageV2.projectModelMessages(await Session.messages({ sessionID: session.id }))
+            expect(fullHistory.messageSources).toContain(covered.id)
+            SessionMessageCache.invalidate(session.id)
+            const loaded: string[] = []
+            expect(await modelMessages({ sessionID: session.id, onLoadParts: (id) => loaded.push(id) })).toEqual(hot)
+            expect(loaded).not.toContain(covered.id)
+            const fork = await Session.fork({ sessionID: session.id })
+            const copied = await Session.messages({ sessionID: fork.id })
+            const copiedCovered = copied.find((message) =>
+              message.parts.some((part) => part.type === "text" && part.text === "earlier facts"),
+            )!
+            const copiedSummary = copied.find((message) => message.info.role === "assistant" && message.info.summary)!
+            expect(
+              copiedSummary.info.role === "assistant" && copiedSummary.info.compaction?.coveredThrough.messageID,
+            ).toBe(copiedCovered.info.id)
+            expect(copiedSummary.info.metadata?.remoteCompaction.coveredThrough.messageID).toBe(copiedCovered.info.id)
+            const forkWorkingSet = await modelMessages({ sessionID: fork.id })
+            expect(forkWorkingSet.some((message) => message.info.id === copiedCovered.info.id)).toBe(false)
+            expect(
+              forkWorkingSet.some((message) =>
+                message.parts.some((part) => part.type === "text" && part.text === "unprocessed constraint"),
+              ),
+            ).toBe(true)
+          } finally {
+            SessionMessageCache.disable(session.id)
+          }
+        },
+      })
+    }))
+
+  test("reloads an explicit partial boundary after reopening the runtime", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let sessionID = ""
+    let expected: string[] = []
+    const first = await testRuntime({ home: tmp.path })
+    try {
+      await first.run(async () =>
+        ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            sessionID = session.id
+            const root = await writeUser(session.id, "task")
+            const covered = await writeAssistant(session.id, root.id, "covered")
+            const tail = await writeUser(session.id, "retained after restart")
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: root.id,
+              sessionID: session.id,
+              type: "compaction",
+              auto: true,
+            })
+            const summary = await writeAssistant(session.id, root.id, "summary", {
+              summary: true,
+              compaction: { coveredThrough: { created: covered.time.created, messageID: covered.id } },
+            })
+            expected = [root.id, tail.id, summary.id]
+          },
+        }),
+      )
+    } finally {
+      await first.close()
+    }
+    await using second = await testRuntime({ home: tmp.path })
+    await second.run(async () =>
+      ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          expect((await modelMessages({ sessionID })).map((message) => message.info.id)).toEqual(expected)
+        },
+      }),
+    )
+  })
+
   test("loads only the effective compacted working-set parts", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -290,6 +414,7 @@ describe("SessionHistory.modelMessages", () => {
 
           const summary = await writeAssistant(session.id, root.id, "summary", { summary: true, rootID: root.id })
           summary.time = { created: 200, completed: 200 }
+          summary.compaction = { coveredThrough: { created: 200, messageID: summary.id } }
           await Session.updateMessage(summary)
 
           const delayedRoot = await Session.updateMessage({

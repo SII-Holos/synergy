@@ -118,6 +118,7 @@ test.each([false, true])(
             role: "assistant",
             parentID: boundary.id,
             summary: true,
+            compaction: { coveredThrough: { created: root.time.created, messageID: root.id } },
             finish: "stop",
             time: { created: 3, completed: 4 },
             agent: "general",

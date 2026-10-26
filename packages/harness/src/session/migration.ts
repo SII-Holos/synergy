@@ -36,6 +36,7 @@ import { Dag } from "./dag"
 import { SessionRootVariant } from "./root-variant"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { migrateLoopGuardNotices } from "./loop-guard-migration"
+import { migrateCompactionCoverage, upgradeCompactionCoverage } from "./compaction-migration"
 
 import { MigrationRegistry } from "../migration/registry"
 import { work } from "../util/queue"
@@ -1538,6 +1539,21 @@ async function migrateAttachmentDisplay(
 }
 
 export const migrations: Migration[] = [
+  {
+    id: "20261026-session-compaction-coverage",
+    scope: "session",
+    execution: "session",
+    domain: "session",
+    dependsOn: ["20260705-message-v2-semantics-derive"],
+    description: "Persist explicit coverage for committed compaction summaries",
+    upgradeRecord: upgradeCompactionCoverage,
+    upSession: migrateCompactionCoverage,
+    async up(progress) {
+      for (const scopeID of await SessionMigrationTarget.scopes())
+        for (const sessionID of await SessionMigrationTarget.sessions(scopeID))
+          await migrateCompactionCoverage({ scopeID, sessionID }, progress)
+    },
+  },
   {
     id: "20261023-session-execution-facts",
     scope: "session",

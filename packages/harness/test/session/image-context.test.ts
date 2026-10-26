@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { Token } from "../../src/util/token"
-import { SessionCompaction } from "../../src/session/compaction"
+import { PromptBudgeter } from "../../src/session/prompt-budgeter"
+import { testRuntime } from "../support/runtime"
 import { MessageV2 } from "../../src/session/message-v2"
 import type { ModelMessage } from "ai"
 
@@ -131,11 +131,6 @@ function collectImagePlaceholders(modelMessages: ModelMessage[]): string[] {
     }
   }
   return result
-}
-
-/** Build a simple ModelMessage for trimMessagesForContext tests. */
-function modelMsg(role: "user" | "assistant", content: ModelMessage["content"]): ModelMessage {
-  return { role, content } as ModelMessage
 }
 
 // ---------------------------------------------------------------------------
@@ -314,114 +309,39 @@ describe("session.message-v2.toModelMessage image dedup", () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// C. trimMessagesForContext base64 sanitization
-// ---------------------------------------------------------------------------
-
-describe("session.compaction.trimMessagesForContext sanitization", () => {
-  test("base64 image data inflates token estimate (current behavior problem)", () => {
-    // Construct a message with large base64 image content (~50KB).
-    // Token.estimateJSON serializes the whole array to JSON, so the base64
-    // payload (~67K chars) gets counted as ~16.7K tokens.
-    const largeURL = largeImageDataUrl("x".repeat(50_000))
-
-    const msgs: ModelMessage[] = [
-      modelMsg("user", [{ type: "text", text: "hello world" }] as ModelMessage["content"]),
-      modelMsg("assistant", [{ type: "text", text: "ok" }] as ModelMessage["content"]),
-      modelMsg("user", [
-        { type: "text", text: "check this" },
-        { type: "file", data: largeURL, mediaType: "image/png", filename: "screenshot.png" },
-      ] as ModelMessage["content"]),
-    ]
-
-    const inflatedEstimate = Token.estimateJSON(msgs)
-
-    // Sanitized version: replace file data with a short text placeholder,
-    // then add 500 tokens per image (matching PromptBudgeter.IMAGE_TOKEN_ESTIMATE).
-    const sanitized: ModelMessage[] = [
-      modelMsg("user", [{ type: "text", text: "hello world" }] as ModelMessage["content"]),
-      modelMsg("assistant", [{ type: "text", text: "ok" }] as ModelMessage["content"]),
-      modelMsg("user", [
-        { type: "text", text: "check this" },
-        { type: "text", text: "[Image: screenshot.png — previously shared]" },
-      ] as ModelMessage["content"]),
-    ]
-
-    const sanitizedTextEstimate = Token.estimateJSON(sanitized)
-    const IMAGE_TOKEN_BUDGET = 500
-    const correctEstimate = sanitizedTextEstimate + IMAGE_TOKEN_BUDGET
-
-    // The inflated estimate should be massively larger than the correct one.
-    // ~16,700 tokens vs ~508 tokens (8 chars text + 500 image budget).
-    expect(inflatedEstimate).toBeGreaterThan(correctEstimate * 10)
-    // Sanity: correct estimate should be reasonable (text + 500 per image)
-    expect(correctEstimate).toBeGreaterThan(IMAGE_TOKEN_BUDGET)
-    expect(correctEstimate).toBeLessThan(IMAGE_TOKEN_BUDGET + 100)
-  })
-
-  test("trimMessagesForContext strips base64 before estimating so trimming is not inflated", async () => {
-    // Create messages where one has a large base64 image.
-    // Without sanitization, the inflated estimate (~16.7K tokens per image
-    // message) would cause the trimmer to drop messages that should fit.
-    // With sanitization (text estimate + 500 per image), the budget of 1000
-    // tokens should fit all 4 messages comfortably.
-    const largeURL = largeImageDataUrl("x".repeat(50_000))
-
-    const msgs: ModelMessage[] = [
-      modelMsg("user", [{ type: "text", text: "msg 1" }] as ModelMessage["content"]),
-      modelMsg("assistant", [{ type: "text", text: "resp 1" }] as ModelMessage["content"]),
-      modelMsg("user", [
-        { type: "text", text: "check this image" },
-        { type: "file", data: largeURL, mediaType: "image/png", filename: "test.png" },
-      ] as ModelMessage["content"]),
-      modelMsg("assistant", [{ type: "text", text: "seen" }] as ModelMessage["content"]),
-    ]
-
-    // Current inflated estimate (proves the problem exists)
-    const inflatedEstimate = Token.estimateJSON(msgs)
-    const budget = 1000
-
-    // Without sanitization: estimate exceeds budget → trimming would occur
-    expect(inflatedEstimate).toBeGreaterThan(budget)
-
-    // With sanitization: text tokens (~12 chars = 3 tokens) + 500 = ~503
-    // tokens. The budget of 1000 should comfortably fit all 4 messages.
-    const sanitized: ModelMessage[] = [
-      modelMsg("user", [{ type: "text", text: "msg 1" }] as ModelMessage["content"]),
-      modelMsg("assistant", [{ type: "text", text: "resp 1" }] as ModelMessage["content"]),
-      modelMsg("user", [
-        { type: "text", text: "check this image" },
-        { type: "text", text: "[Image: test.png — previously shared]" },
-      ] as ModelMessage["content"]),
-      modelMsg("assistant", [{ type: "text", text: "seen" }] as ModelMessage["content"]),
-    ]
-
-    const IMAGE_TOKEN_BUDGET = 500
-    const sanitizedTextEstimate = Token.estimateJSON(sanitized)
-    const correctEstimate = sanitizedTextEstimate + IMAGE_TOKEN_BUDGET
-
-    expect(correctEstimate).toBeLessThan(budget)
-
-    // Call trimMessagesForContext via `as any` cast — it is currently
-    // a private function and will be undefined, causing a runtime error.
-    // After the implementation exports it, this test will exercise the
-    // actual sanitization + estimation + truncation logic.
-    const trimmed = await ((SessionCompaction as any).trimMessagesForContext(msgs, budget) as Promise<ModelMessage[]>)
-
-    // With sanitization: all messages should fit within the budget
-    // (no over-trimming due to base64 inflation)
-    expect(trimmed.length).toBeGreaterThanOrEqual(msgs.length)
-
-    // Verify the image file data is preserved in the output
-    // (sanitization is only for estimation, not for the returned content)
-    const imageMsg = trimmed.find(
-      (m: ModelMessage) =>
-        m.role === "user" &&
-        Array.isArray(m.content) &&
-        m.content.some((p: any) => p.type === "file" && p.data === largeURL),
-    )
-    expect(imageMsg).toBeDefined()
-  })
+describe("PromptBudgeter image payload measurement", () => {
+  test.each(["file", "image"] as const)(
+    "%s payload size cannot inflate the history budget or mutate image data",
+    async (kind) => {
+      await using runtime = await testRuntime()
+      await runtime.run(async () => {
+        const totals: number[] = []
+        for (const size of [32, 50_000]) {
+          const data = largeImageDataUrl("x".repeat(size))
+          const messages: ModelMessage[] = [
+            { role: "user", content: "Retain the earlier user restriction." },
+            { role: "assistant", content: "Observed evidence." },
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "Check this image." },
+                kind === "file"
+                  ? { type: "file", data, mediaType: "image/png", filename: "test.png" }
+                  : { type: "image", image: data, mediaType: "image/png" },
+              ],
+            },
+          ]
+          const snapshot = structuredClone(messages)
+          const measured = await PromptBudgeter.measure({ system: [], messages, toolDefinitions: [] }, "fixture")
+          totals.push(measured.total)
+          expect(measured.total).toBeLessThan(1000)
+          expect(messages).toEqual(snapshot)
+        }
+        expect(totals[0]).toBeGreaterThan(0)
+        expect(totals[0]).toBe(totals[1])
+      })
+    },
+  )
 })
 
 // ---------------------------------------------------------------------------

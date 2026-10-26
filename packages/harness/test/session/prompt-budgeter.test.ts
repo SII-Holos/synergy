@@ -542,4 +542,54 @@ describe("prompt-budgeter decision", () => {
     }))
 })
 
+describe("prompt-budgeter source mapping", () => {
+  for (const provider of ["anthropic", "mistral"] as const) {
+    test(`keeps provider-created fragments with their canonical ${provider} source`, () =>
+      runtime.run(async () => {
+        const model = createModel()
+        model.providerID = provider
+        model.api = {
+          ...model.api,
+          id: provider,
+          npm: provider === "anthropic" ? "@ai-sdk/anthropic" : "@ai-sdk/mistral",
+        }
+        const plan = await PromptBudgeter.buildPlan({
+          sessionID: "ses_sources",
+          agent: "test",
+          model,
+          system: [],
+          messages: [
+            {
+              role: "assistant",
+              content: [
+                { type: "tool-call", toolCallId: "call", toolName: "read", input: {} },
+                { type: "text", text: "explanation" },
+              ],
+            },
+            {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result",
+                  toolCallId: "call",
+                  toolName: "read",
+                  output: { type: "text", value: "evidence" },
+                },
+              ],
+            },
+            { role: "user", content: "current request" },
+          ],
+          messageSources: ["assistant", "result", "root"],
+          toolDefinitions: [],
+        })
+        expect(plan.messageSources).toEqual(
+          provider === "anthropic"
+            ? ["assistant", "assistant", "result", "root"]
+            : ["assistant", "result", "result", "root"],
+        )
+        expect(plan.messages.every((message) => Object.getOwnPropertySymbols(message).length === 0)).toBe(true)
+      }))
+  }
+})
+
 afterRuntimeTests(() => runtime.close())

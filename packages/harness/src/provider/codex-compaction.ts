@@ -82,7 +82,8 @@ export type CodexRemoteCompactionUsage = {
 }
 
 export type CodexRemoteCompactionMetadata = {
-  version: 2
+  version: 3
+  coveredThrough: { created: number; messageID: string }
   provider: "openai-responses-compaction"
   implementation: "responses_compaction_v2"
   modelKey: string
@@ -100,6 +101,7 @@ export type CodexRemoteCompactionMetadata = {
 
 /** Replay plan handed to the codex fetch layer for one turn. */
 export type CodexReplayPlan = {
+  coveredThrough: { created: number; messageID: string }
   /** Replacement history: retained user messages + opaque compaction item. */
   replacementHistory: CodexResponseItem[]
   /** Exact summary text stored at compaction, used to locate the region to replace. */
@@ -463,12 +465,21 @@ export function extractRemoteCompactionMetadata(value: unknown): CodexRemoteComp
   if (!isRecord(value)) return undefined
   const remote = isRecord(value.remoteCompaction) ? value.remoteCompaction : value
   if (!isRecord(remote)) return undefined
-  if (remote.version !== 2 || remote.provider !== "openai-responses-compaction") return undefined
+  if (remote.version !== 3 || remote.provider !== "openai-responses-compaction") return undefined
+  if (
+    !isRecord(remote.coveredThrough) ||
+    typeof remote.coveredThrough.created !== "number" ||
+    !Number.isFinite(remote.coveredThrough.created) ||
+    typeof remote.coveredThrough.messageID !== "string" ||
+    !remote.coveredThrough.messageID
+  )
+    return undefined
   if (!Array.isArray(remote.replacementHistory)) return undefined
   const replacementHistory = remote.replacementHistory.filter(isCodexResponseItem)
   if (replacementHistory.length === 0) return undefined
   return {
-    version: 2,
+    version: 3,
+    coveredThrough: { created: remote.coveredThrough.created, messageID: remote.coveredThrough.messageID },
     provider: "openai-responses-compaction",
     implementation: "responses_compaction_v2",
     modelKey: typeof remote.modelKey === "string" ? remote.modelKey : "",
@@ -504,11 +515,9 @@ function summaryTextMatches(candidate: string, summaryText: string): boolean {
 }
 
 /**
- * Locate the summary window inside a serialized request body: the maximal run
- * of consecutive assistant message items whose joined output text matches the
- * stored summary text (exact first, whitespace-tolerant as a fallback for
- * storage/part-boundary differences). Returns `undefined` when no such window
- * exists.
+ * Locate consecutive assistant items whose joined output matches the stored
+ * summary. Stop at that boundary: an adjacent assistant item can belong to the
+ * uncovered tail. Whitespace differences from part serialization are tolerated.
  */
 export function findSummaryWindow(
   items: CodexResponseItem[],
@@ -521,14 +530,14 @@ export function findSummaryWindow(
     if (firstText === undefined) continue
     let end = index + 1
     let joined = firstText
-    while (end < items.length) {
+    for (;;) {
+      if (summaryTextMatches(joined, summaryText)) return { start: index, end }
+      if (end >= items.length) break
       const nextText = assistantOutputText(items[end])
       if (nextText === undefined) break
       joined += nextText
       end++
     }
-    if (summaryTextMatches(joined, summaryText)) return { start: index, end }
-    // A longer run cannot contain the summary starting later inside itself.
     index = end - 1
   }
   return undefined
@@ -721,7 +730,11 @@ export function applyReplaySplice(
   if (!compaction || !("type" in compaction) || compaction.type !== "compaction") return undefined
 
   const next: Record<string, unknown> = { ...body }
-  next.input = [...items.slice(0, prefixEnd), ...replacement.map((item) => cloneItem(item)), ...items.slice(window.end)]
+  next.input = [
+    ...items.slice(0, boundaryStart),
+    ...replacement.map((item) => cloneItem(item)),
+    ...items.slice(window.end),
+  ]
   return next
 }
 

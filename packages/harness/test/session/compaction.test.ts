@@ -54,10 +54,12 @@ describe("Codex remote compaction replay identity", () => {
           providerID: "codex-work",
           modelID: "alias",
           summary: true,
+          compaction: { coveredThrough: { created: 1, messageID: "msg_covered" } },
           finish: "stop",
           metadata: {
             remoteCompaction: {
-              version: 2,
+              version: 3,
+              coveredThrough: { created: 1, messageID: "msg_covered" },
               provider: "openai-responses-compaction",
               implementation: "responses_compaction_v2",
               modelKey: "codex-work/alias",
@@ -521,44 +523,6 @@ describe("util.token.estimateJSON", () => {
     }))
 })
 
-describe("session.compaction.trimMessagesForContext", () => {
-  test("does not retain a tool result after trimming away its assistant tool call", () =>
-    runtime.run(async () => {
-      const assistantToolCall = {
-        role: "assistant",
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "call_1",
-            toolName: "read",
-            input: { payload: "x".repeat(4_000) },
-          },
-        ],
-      } satisfies ModelMessage
-      const toolResult = {
-        role: "tool",
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: "call_1",
-            toolName: "read",
-            output: { type: "text", value: "result" },
-          },
-        ],
-      } satisfies ModelMessage
-      const latestUser = {
-        role: "user",
-        content: [{ type: "text", text: "continue" }],
-      } satisfies ModelMessage
-      const messages = [assistantToolCall, toolResult, latestUser]
-      const budget = Token.estimateJSON(toolResult) + Token.estimateJSON(latestUser) + 10
-
-      const trimmed = await SessionCompaction.trimMessagesForContext(messages, budget)
-
-      expect(trimmed.map((message) => message.role)).toEqual(["system", "user"])
-    }))
-})
-
 // ---------------------------------------------------------------------------
 // SessionCompaction.isContextExceeded
 // ---------------------------------------------------------------------------
@@ -599,9 +563,13 @@ describe("session.compaction.isContextExceeded", () => {
       ).toBe(true)
     }))
 
-  test("detects max_tokens keyword", () =>
+  test("does not treat an output token limit as a context overflow", () =>
     runtime.run(() => {
-      expect(SessionCompaction.isContextExceeded(apiError("max_tokens: limit reached for this request"))).toBe(true)
+      expect(SessionCompaction.isContextExceeded(apiError("max_tokens: limit reached for this request"))).toBe(false)
+      expect(SessionCompaction.isContextExceeded(apiError("max_tokens exceeds the model output limit"))).toBe(false)
+      expect(
+        SessionCompaction.isContextExceeded(apiError("This request's max_tokens exceeds the output token limit")),
+      ).toBe(false)
     }))
 
   test("detects context exceeded in responseBody when message is generic", () =>

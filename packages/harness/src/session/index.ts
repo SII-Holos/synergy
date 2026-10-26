@@ -33,6 +33,7 @@ import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import { Lock } from "../util/lock"
 import { MessageV2 } from "./message-v2"
+import { extractRemoteCompactionMetadata } from "../provider/codex-compaction"
 import { ScopeContext } from "../scope/context"
 import { Scope } from "../scope"
 import { fn } from "../util/fn"
@@ -831,19 +832,48 @@ export namespace Session {
           hashes: selected.flatMap((msg) => msg.parts.flatMap(SnapshotRecords.partRoots)),
         })
         const messageMap = new Map(selected.map((msg) => [msg.info.id, Identifier.ascending("message")]))
-        const prepared: MessageV2.WithParts[] = selected.map((msg) => ({
-          info: {
-            ...SnapshotEvidence.portable(msg.info),
-            ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
-            sessionID,
-            id: messageMap.get(msg.info.id)!,
-            ...(msg.info.rootID ? { rootID: messageMap.get(msg.info.rootID) ?? msg.info.rootID } : {}),
-            ...("parentID" in msg.info && typeof msg.info.parentID === "string"
-              ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
-              : {}),
-          },
-          parts: [],
-        }))
+        const prepared: MessageV2.WithParts[] = selected.map((msg) => {
+          const remote = msg.info.role === "assistant" ? extractRemoteCompactionMetadata(msg.info.metadata) : undefined
+          return {
+            info: {
+              ...SnapshotEvidence.portable(msg.info),
+              ...(msg.info.role === "assistant" ? { accounting: MessageV2.copyAccounting(msg.info, "inherited") } : {}),
+              sessionID,
+              id: messageMap.get(msg.info.id)!,
+              ...(remote
+                ? {
+                    metadata: {
+                      ...msg.info.metadata,
+                      remoteCompaction: {
+                        ...remote,
+                        coveredThrough: {
+                          ...remote.coveredThrough,
+                          messageID: messageMap.get(remote.coveredThrough.messageID) ?? remote.coveredThrough.messageID,
+                        },
+                      },
+                    },
+                  }
+                : {}),
+              ...(msg.info.role === "assistant" && msg.info.compaction
+                ? {
+                    compaction: {
+                      coveredThrough: {
+                        ...msg.info.compaction.coveredThrough,
+                        messageID:
+                          messageMap.get(msg.info.compaction.coveredThrough.messageID) ??
+                          msg.info.compaction.coveredThrough.messageID,
+                      },
+                    },
+                  }
+                : {}),
+              ...(msg.info.rootID ? { rootID: messageMap.get(msg.info.rootID) ?? msg.info.rootID } : {}),
+              ...("parentID" in msg.info && typeof msg.info.parentID === "string"
+                ? { parentID: messageMap.get(msg.info.parentID) ?? msg.info.parentID }
+                : {}),
+            },
+            parts: [],
+          }
+        })
         const jobs = selected.flatMap((msg, messageIndex) =>
           msg.parts.map((part) => ({ part, messageIndex, id: Identifier.ascending("part") })),
         )
