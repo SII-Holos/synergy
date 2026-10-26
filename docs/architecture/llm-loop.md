@@ -145,7 +145,7 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 
 | Layer                       | Content                                                                          |
 | --------------------------- | -------------------------------------------------------------------------------- |
-| Agent base                  | Agent prompt or provider fallback prompt, always first.                          |
+| Agent base                  | Agent prompt or minimal fallback prompt, always first.                           |
 | Static project instructions | Discovered instruction files and explicit instruction additions.                 |
 | Permission context          | Effective control profile, sandbox/workspace boundaries, and execution guidance. |
 | Cortex context              | Parent task and delegated execution context.                                     |
@@ -153,6 +153,10 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 | Recall                      | Loop-stable Library memory and experience context.                               |
 | Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.         |
 | Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, and elapsed time. |
+
+`SystemPrompt.fallback()` supplies the minimal Agent identity when the native request has no Agent prompt; it is not provider failure recovery. Shared task-progress guidance is selected by `withProgressUpdates()` in `agent/prompt/progress.ts` when the resolved model is available. Native request preparation and external-agent instructions use this same selector; primary builders contain no copy. The exclusion list contains the DeepSeek family, identified from model ID, API model ID or family rather than connection/provider name. Unlisted models receive the unchanged shared section unless the supplied prompt already contains a progress heading. Custom instructions are preserved, and final native budgeting measures the prepared system messages without reinjecting the section. See [model-selected progress guidance](../decisions/implemented/bug-fix/2026-10-26-select-progress-guidance-by-model.md).
+
+External instructions use the Session model metadata only after a successfully applied adapter override; otherwise the adapter's configured model determines progress guidance. Unknown adapter defaults retain the shared section. Native authentication or an ignored override cannot make an unused Session model suppress guidance for the model actually configured to run.
 
 The host identity source `synergy-runtime` is the first advisory source: tool intent and attachment guidance are frozen policy and live in the cached system prefix, ahead of recall and Session environment facts. It reports the Runtime carrying the conversation: launch entry and lifecycle owner, distribution, version/channel, Home/data root, immutable instance identity/start time, source checkout/revision captured at host creation, and the actual HTTP listener after binding. It does not infer the host from the Session Workspace, selected Environment, default ports, Desktop channel, or an attached client. Host snapshots never include arbitrary environment variables, raw argv, authentication or registration secrets. An absent listener is explicit. Runtime restart changes the instance identity; unchanged identity produces no duplicate Codex observation. See [runtime identity](../decisions/implemented/feature/2026-10-13-inject-runtime-launch-identity.md).
 
