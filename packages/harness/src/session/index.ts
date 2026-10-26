@@ -804,6 +804,7 @@ export namespace Session {
           message: "The fork point message is no longer part of the effective session history.",
         })
       }
+      if (input.title === undefined) await SessionNav.readNavIndex(source.scope.id)
       const sessionID = Identifier.descending("session")
       const createInput = {
         id: sessionID,
@@ -811,13 +812,7 @@ export namespace Session {
         workspace: source.workspace,
         workspaceID: source.workspaceID,
         environmentID: source.environmentID,
-        title: input.title,
         controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
-        forkedFrom: {
-          sessionID: source.id,
-          messageID: forkPoint,
-          title: source.title,
-        },
       }
       const selected = forkPoint
         ? msgs.slice(0, msgs.findIndex((msg) => msg.info.id === forkPoint) + (includeForkPoint ? 1 : 0))
@@ -919,7 +914,29 @@ export namespace Session {
         })
         for (const [index, part] of parts.entries()) prepared[jobs[index].messageIndex].parts.push(part)
         session = await Storage.transaction(async () => {
-          const created = await create(createInput)
+          const currentSource = await SessionManager.requireSession(source.id)
+          let title = input.title
+          if (title === undefined) {
+            const index = await SessionNav.readNavIndex(source.scope.id)
+            const titles = new Set(index.entries.map((entry) => entry.title))
+            const base =
+              currentSource.forkedFrom?.generatedTitle === currentSource.title
+                ? currentSource.title.replace(/\([1-9]\d*\)$/, "")
+                : currentSource.title
+            let suffix = 1
+            while (titles.has(`${base}(${suffix})`)) suffix++
+            title = `${base}(${suffix})`
+          }
+          const created = await create({
+            ...createInput,
+            title,
+            forkedFrom: {
+              sessionID: source.id,
+              messageID: forkPoint,
+              title: currentSource.title,
+              generatedTitle: input.title === undefined ? title : undefined,
+            },
+          })
           const modelSelection = forkPoint
             ? ModelSelection.legacy(
                 undefined,
@@ -1385,6 +1402,7 @@ export namespace Session {
       const before = structuredClone(session)
       const result = structuredClone(session)
       editor(result)
+      if (result.title !== before.title && result.forkedFrom) delete result.forkedFrom.generatedTitle
       if (!options?.environmentChange && result.environmentID !== before.environmentID)
         throw new Error("Environment bindings cannot be changed through Session.update")
       if (

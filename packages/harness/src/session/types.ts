@@ -272,6 +272,7 @@ const BaseInfo = BaseInfoInput.pipe(
         sessionID: Identifier.schema("session"),
         messageID: Identifier.schema("message").optional(),
         title: z.string().optional(),
+        generatedTitle: z.string().optional(),
       })
       .optional(),
     category: z.enum(["project", "home", "channel", "background", "github"]).optional(),

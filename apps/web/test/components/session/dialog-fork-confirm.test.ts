@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test"
+import type { ProjectDirectories, SessionWorkspace } from "@ericsanchezok/synergy-sdk"
 import {
   computeForkCounts,
   copiedSummaryKind,
   forkReplyPreview,
+  forkWorkspaceChoices,
 } from "../../../src/components/session/dialog-fork-confirm-model"
 
 const timeline = [
@@ -32,6 +34,57 @@ describe("fork confirm counts", () => {
 
   test("returns zero counts when the target message is not in the timeline", () => {
     expect(computeForkCounts([...timeline], "missing")).toEqual({ userMessages: 0, assistantReplies: 0 })
+  })
+
+  test("counts the entire conversation when no message boundary is selected", () => {
+    expect(computeForkCounts([...timeline])).toEqual({ userMessages: 2, assistantReplies: 3 })
+  })
+})
+
+describe("fork working locations", () => {
+  const main: SessionWorkspace = { id: "main", generation: 3, type: "directory", path: "/project", scopeID: "project" }
+  const tree: SessionWorkspace = { id: "tree", generation: 2, type: "git_worktree", path: "/tree", scopeID: "project" }
+  const directories: ProjectDirectories = {
+    version: 1,
+    scopeID: "project",
+    revision: 1,
+    mainWorkspaceID: "main",
+    additionalWorkspaceIDs: [],
+    folders: [{ workspaceID: "main", generation: 3, path: "/project", available: true, git: true }],
+  }
+
+  test("main-directory forks offer main and new worktree without a duplicate current option", () => {
+    expect(forkWorkspaceChoices(main, directories).map((choice) => choice.id)).toEqual(["main", "create"])
+  })
+
+  test("worktree forks distinguish main, a new worktree, and the same worktree", () => {
+    const choices = forkWorkspaceChoices(tree, directories)
+    expect(choices.map((choice) => choice.id)).toEqual(["main", "create", "current"])
+    expect(choices[0]?.workspace).toEqual({ mode: "workspace", workspaceID: "main", workspaceGeneration: 3 })
+    expect(choices[1]?.workspace).toEqual({ mode: "create", sourceWorkspaceID: "main" })
+    expect(choices[2]?.workspace).toEqual({ mode: "current" })
+    expect(choices[2]?.kind).toBe("worktree")
+  })
+
+  test("non-Git projects cannot request a new worktree", () => {
+    expect(
+      forkWorkspaceChoices(main, { ...directories, folders: [{ ...directories.folders[0]!, git: false }] }).map(
+        (choice) => choice.id,
+      ),
+    ).toEqual(["main"])
+  })
+
+  test("unavailable main directories are not offered as destinations or worktree sources", () => {
+    expect(
+      forkWorkspaceChoices(tree, { ...directories, folders: [{ ...directories.folders[0]!, available: false }] }).map(
+        (choice) => choice.id,
+      ),
+    ).toEqual(["current"])
+  })
+
+  test("without local directory capability the source binding is preserved, including no workspace", () => {
+    expect(forkWorkspaceChoices(tree)[0]?.workspace).toEqual({ mode: "current" })
+    expect(forkWorkspaceChoices(null)[0]?.workspace).toEqual({ mode: "none" })
   })
 })
 

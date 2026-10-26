@@ -43,6 +43,7 @@ beforeAll(async () => {
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { DialogForkConfirm } from ${JSON.stringify(`/@fs/${componentPath}`)}
+        import "@ericsanchezok/synergy-ui/styles"
 
         const params = new URLSearchParams(location.search)
         const completeHistory = params.get("complete") !== "false"
@@ -58,16 +59,33 @@ beforeAll(async () => {
 
         function Harness() {
           const dialog = useDialog()
+          let reads = 0
           onMount(() => {
-            dialog.push(() =>
+            const id = dialog.push(() =>
               createComponent(DialogForkConfirm, {
-                message: { id: "a2", time: { created: 1, completed: 2 } },
+                source: {
+                  title: "Discuss architecture",
+                  workspace: { id: params.get("main") ? "main" : "tree", type: params.get("main") ? "directory" : "git_worktree", path: "/project/tree", scopeID: "project" },
+                },
+                message: params.get("current") ? undefined : { id: "a2", time: { created: 1, completed: 2 } },
                 allMessages: timeline,
                 hasCompleteHistory: completeHistory,
                 preview: "Reply text",
+                loadDirectories: async () => {
+                  if (params.get("loading")) await new Promise(() => {})
+                  if (params.get("error") && reads++ === 0) throw new Error("Offline")
+                  return {
+                    version: 1, scopeID: "project", revision: 1, mainWorkspaceID: "main", additionalWorkspaceIDs: [],
+                    folders: [{ workspaceID: "main", generation: 3, path: "/project", available: true, git: !params.get("nonGit") }],
+                  }
+                },
+                onClose: () => dialog.close(id),
                 onConfirm: pendingConfirm
                   ? () => new Promise<boolean>(() => {})
-                  : async () => true,
+                  : async (workspace) => {
+                    document.body.dataset.destination = JSON.stringify(workspace)
+                    return true
+                  },
               }),
             )
           })
@@ -176,5 +194,64 @@ describe("fork confirm dialog", () => {
 
     await page.getByRole("button", { name: "Fork session" }).click()
     await expect(dialog.count()).resolves.toBe(0)
+    expect(await page.locator("body").getAttribute("data-destination")).toBe('{"mode":"current"}')
+  })
+
+  test("selects main explicitly instead of keeping the source worktree", async () => {
+    await page.goto(baseUrl)
+    await page.getByText("Main directory", { exact: true }).click()
+    expect(await page.getByRole("radio", { name: "Main directory", exact: true }).isChecked()).toBe(true)
+    await page.getByRole("button", { name: "Fork session", exact: true }).click()
+    expect(await page.locator("body").getAttribute("data-destination")).toBe(
+      '{"mode":"workspace","workspaceID":"main","workspaceGeneration":3}',
+    )
+    expect(await page.getByRole("dialog").count()).toBe(0)
+  })
+
+  test("stages new worktree choice and cancellation does not create anything", async () => {
+    await page.goto(baseUrl)
+    await page.getByText("New worktree", { exact: true }).click()
+    expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
+    expect(await page.getByRole("dialog").count()).toBe(0)
+  })
+
+  test("the whole-conversation fork uses the same destination chooser", async () => {
+    await page.goto(`${baseUrl}?current=true`)
+    await page.getByRole("radio", { name: "Same worktree", exact: true }).focus()
+    await page.keyboard.press("ArrowUp")
+    expect(await page.getByRole("radio", { name: "New worktree", exact: true }).isChecked()).toBe(true)
+    expect(
+      await page.getByRole("dialog").getByText("Copy the conversation into a new session.", { exact: true }).count(),
+    ).toBe(1)
+    await page.getByRole("button", { name: "Fork session", exact: true }).click()
+    expect(await page.locator("body").getAttribute("data-destination")).toBe(
+      '{"mode":"create","sourceWorkspaceID":"main"}',
+    )
+  })
+
+  test("non-Git main projects omit worktree choices and duplicate current location", async () => {
+    await page.goto(`${baseUrl}?main=true&nonGit=true`)
+    await page.getByRole("radio", { name: "Main directory", exact: true }).waitFor()
+    expect(await page.getByRole("radio").count()).toBe(1)
+    expect(await page.getByRole("radio", { name: "Main directory", exact: true }).isChecked()).toBe(true)
+  })
+
+  test("loading keeps cancel reachable and does not permit an implicit fallback", async () => {
+    await page.goto(`${baseUrl}?loading=true`)
+    expect(await page.getByRole("button", { name: "Fork session", exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "Cancel", exact: true }).click()
+    expect(await page.getByRole("dialog").count()).toBe(0)
+  })
+
+  test("location failure is visible and retry restores choices without submitting", async () => {
+    await page.goto(`${baseUrl}?error=true`)
+    await page.getByRole("alert").waitFor()
+    expect(await page.getByRole("button", { name: "Fork session", exact: true }).isDisabled()).toBe(true)
+    await page.getByRole("button", { name: "Retry", exact: true }).click()
+    await page.getByRole("radio", { name: "Same worktree", exact: true }).waitFor()
+    expect(await page.getByRole("button", { name: "Fork session", exact: true }).isEnabled()).toBe(true)
+    expect(await page.locator("body").getAttribute("data-destination")).toBeNull()
   })
 })

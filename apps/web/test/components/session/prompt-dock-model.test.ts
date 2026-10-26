@@ -1,11 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { SessionMeta } from "@/composables/use-session-meta"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import {
-  promptDockBackPath,
-  promptDockBackToParentID,
-  promptDockForkSourceID,
-} from "../../../src/components/session/prompt-dock-model"
+import { promptDockBackPath, promptDockBackToParentID } from "../../../src/components/session/prompt-dock-model"
 import { selectPromptDockControl } from "../../../src/components/session/prompt-dock-control-model"
 import {
   SUBAGENT_FOOTER_MODEL_LABEL_CLASS,
@@ -36,10 +32,7 @@ describe("prompt dock navigation targets", () => {
     expect(promptDockBackToParentID({ showBackToParent: false, parentID: "ses_parent" })).toBeUndefined()
   })
 
-  test("hides fork and browser back targets for subsessions", () => {
-    expect(promptDockForkSourceID({ ...baseMeta, isSubsession: false }, "ses_source")).toBe("ses_source")
-    expect(promptDockForkSourceID({ ...baseMeta, isSubsession: true }, "ses_source")).toBeUndefined()
-
+  test("hides browser back targets for subsessions", () => {
     expect(promptDockBackPath({ ...baseMeta, isSubsession: false }, "/project/session/ses_previous")).toBe(
       "/project/session/ses_previous",
     )

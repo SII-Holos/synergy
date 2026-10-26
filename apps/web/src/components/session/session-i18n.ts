@@ -69,8 +69,6 @@ export const S = {
 
   // prompt-dock.tsx
   dockBackToParent: { id: "session.dock.backToParent", message: "Back to parent" },
-  dockForkedFrom: { id: "session.dock.forkedFrom", message: "Forked from" },
-  dockForkSource: { id: "session.dock.forkSource", message: "Fork source" },
   dockBack: { id: "session.dock.back", message: "Back" },
 
   // commands.tsx — command registrations are product UI
@@ -87,7 +85,6 @@ export const S = {
   // prompt-dock.tsx — remaining hardcoded
   dockLoadingPrompt: { id: "session.dock.loadingPrompt", message: "Loading prompt\u2026" },
   dockParentSession: { id: "session.dock.parentSession", message: "Parent session" },
-  dockForkSourceTooltip: { id: "session.dock.forkSourceTooltip", message: "Fork source" },
   cmdNewSessionDesc: { id: "session.cmd.newSessionDesc", message: "Start a fresh conversation" },
   cmdOpenFile: { id: "session.cmd.openFile", message: "Open file" },
   cmdOpenFileDesc: { id: "session.cmd.openFileDesc", message: "Search and open a file" },
@@ -229,7 +226,11 @@ export const S = {
   rewindRequestFailed: { id: "session.rewind.requestFailed", message: "Request failed" },
 
   // dialog-fork-confirm.tsx
-  forkConfirmTitle: { id: "session.fork.confirm.title", message: "Fork session from this message" },
+  forkConfirmTitle: { id: "session.fork.confirm.title", message: "Fork session" },
+  forkConfirmDescriptionCurrent: {
+    id: "session.fork.confirm.description.current",
+    message: "Copy the conversation into a new session.",
+  },
   forkConfirmDescription: {
     id: "session.fork.confirm.description",
     message: "Copy the conversation through this reply into a new session.",
@@ -253,6 +254,15 @@ export const S = {
   forkConfirmClose: { id: "session.fork.confirm.close", message: "Close dialog" },
   forkConfirmFailed: { id: "session.fork.confirm.failed", message: "Fork failed" },
   forkConfirmRequestFailed: { id: "session.fork.confirm.requestFailed", message: "Request failed" },
+  forkLocationTitle: { id: "session.fork.location.title", message: "Working location" },
+  forkLocationMain: { id: "session.fork.location.main", message: "Main directory" },
+  forkLocationCreate: { id: "session.fork.location.create", message: "New worktree" },
+  forkLocationWorktree: { id: "session.fork.location.worktree", message: "Same worktree" },
+  forkLocationCurrent: { id: "session.fork.location.current", message: "Same workspace" },
+  forkLocationNone: { id: "session.fork.location.none", message: "No workspace" },
+  forkLocationLoading: { id: "session.fork.location.loading", message: "Loading working locations…" },
+  forkLocationFailed: { id: "session.fork.location.failed", message: "Couldn’t load working locations. Try again." },
+  forkLocationRetry: { id: "session.fork.location.retry", message: "Retry" },
 
   // session-progress summary labels
   progressEnded: { id: "session.progress.ended", message: "Ended" },

@@ -53238,6 +53238,9 @@
               },
               "title": {
                 "type": "string"
+              },
+              "generatedTitle": {
+                "type": "string"
               }
             },
             "required": ["sessionID"]
