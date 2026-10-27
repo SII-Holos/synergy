@@ -24,6 +24,7 @@ beforeEach(async () => {
   await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto(`${server.url}viewer.html`)
   await page.getByRole("button", { name: "Open images", exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('[role="dialog"]')?.contains(document.activeElement))
   await page.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
   await page.waitForFunction(
     () => document.querySelector('[data-slot="image-viewer-stage"]')?.getAttribute("aria-busy") === "false",
@@ -57,6 +58,68 @@ test("same-source gallery entries load and restore their own transform", async (
   await page.getByRole("button", { name: "Previous image", exact: true }).click()
   await page.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
   expect((await page.locator('[data-slot="image-viewer-image"]').boundingBox())!.width).toBeCloseTo(4000, 0)
+})
+
+test("a cached viewer opens fitted before its first resize notification", async () => {
+  await page.getByRole("button", { name: "Close image preview", exact: true }).click()
+  const opening = await page.evaluate(async () => {
+    const trigger = [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "Open images",
+    )!
+    trigger.click()
+    await Promise.resolve()
+    const stage = document.querySelector<HTMLElement>('[data-slot="image-viewer-stage"]')!
+    const image = document.querySelector<HTMLImageElement>('[data-slot="image-viewer-image"]')!
+    return {
+      busy: stage.getAttribute("aria-busy"),
+      image: { width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height },
+      stage: { width: stage.clientWidth, height: stage.clientHeight },
+    }
+  })
+  expect(opening.busy).toBe("false")
+  expect(opening.image.width).toBeGreaterThan(0)
+  expect(opening.image.width).toBeLessThanOrEqual(opening.stage.width)
+  expect(opening.image.height).toBeLessThanOrEqual(opening.stage.height)
+})
+
+test("cached gallery switches keep the toolbar ready before the next load event", async () => {
+  const switches = await page.evaluate(async () => {
+    await Promise.all(
+      [...document.querySelectorAll<HTMLImageElement>('[data-slot="image-viewer-thumbnails"] img')].map((image) =>
+        image.decode(),
+      ),
+    )
+    const commands = [...document.querySelectorAll<HTMLButtonElement>("[data-viewer-command]")]
+    const results = []
+    for (const side of ["next", "next", "previous", "previous"]) {
+      document.querySelector<HTMLButtonElement>(`[data-slot="image-viewer-nav"][data-side="${side}"]`)!.click()
+      await Promise.resolve()
+      const image = document.querySelector<HTMLImageElement>('[data-slot="image-viewer-image"]')!
+      results.push({
+        filename: image.alt,
+        busy: document.querySelector('[data-slot="image-viewer-stage"]')!.getAttribute("aria-busy"),
+        disabled: commands.filter((button) => button.disabled).map((button) => button.dataset.viewerCommand),
+        sameControls: commands.every((button) => button.isConnected),
+        visible: getComputedStyle(image).visibility,
+        width: image.style.width,
+        naturalWidth: image.naturalWidth,
+      })
+    }
+    return results
+  })
+  expect(switches.map((state) => state.filename)).toEqual([
+    "same-source.svg",
+    "small.svg",
+    "same-source.svg",
+    "large.svg",
+  ])
+  for (const state of switches) {
+    expect(state.busy).toBe("false")
+    expect(state.disabled).toEqual(["zoomOut"])
+    expect(state.sameControls).toBe(true)
+    expect(state.visible).toBe("visible")
+    expect(state.width).toBe(`${state.naturalWidth}px`)
+  }
 })
 
 const navigationAppearance = (button: Locator) =>
@@ -180,13 +243,29 @@ test("wheel anchors source pixels and captured dragging remains bounded", async 
   expect((anchor.x - before.x) / before.width).toBeCloseTo((anchor.x - after.x) / after.width, 3)
   expect((anchor.y - before.y) / before.height).toBeCloseTo((anchor.y - after.y) / after.height, 3)
   await page.getByRole("button", { name: "Actual size (1:1)", exact: true }).click()
+  await stage.click({ button: "right", position: { x: 20, y: 20 } })
+  await page.getByRole("menu").waitFor()
+  await page.waitForFunction(() => document.querySelector('[role="menu"]')?.contains(document.activeElement))
+  const beforeDrag = (await image.boundingBox())!
+  expect(
+    await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-slot"), {
+      x: box.x + box.width / 2,
+      y: box.y + box.height / 2,
+    }),
+  ).toBe("image-viewer-stage")
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
-  await page.mouse.move(1198, 798, { steps: 3 })
-  await page.mouse.up()
+  try {
+    await page.getByRole("menu").waitFor({ state: "detached", timeout: 2000 })
+    await page.mouse.move(1198, 798, { steps: 3 })
+  } finally {
+    await page.mouse.up()
+  }
   const dragged = (await image.boundingBox())!
+  expect(dragged.x).toBeGreaterThan(beforeDrag.x)
   expect(dragged.x).toBeLessThanOrEqual(box.x)
   expect(dragged.y).toBeLessThanOrEqual(box.y)
+  expect(await stage.getAttribute("data-dragging")).toBeNull()
   await page.getByRole("button", { name: "Fit image", exact: true }).click()
   const fit = (await image.boundingBox())!
   expect(fit.x + fit.width / 2).toBeCloseTo(box.x + box.width / 2, 1)
@@ -244,6 +323,108 @@ test("keyboard context menus return focus to the image stage", async () => {
   }
 })
 
+for (const mode of ["dialog", "inline", "fullscreen"] as const) {
+  test(`context menu dismisses on canvas and image clicks without leaving ${mode}`, async () => {
+    if (mode === "inline") await page.goto(`${server.url}viewer.html?inline`)
+    if (mode === "fullscreen") {
+      await page.getByRole("button", { name: "Enter fullscreen", exact: true }).click()
+      await page.waitForFunction(() => !!document.fullscreenElement)
+    }
+    await page.getByRole("button", { name: "small.svg", exact: true }).click()
+    const stage = page.locator('[data-slot="image-viewer-stage"]')
+    const image = page.locator('[data-slot="image-viewer-image"]')
+    await image.evaluate((element: HTMLImageElement) => element.decode())
+    const box = (await stage.boundingBox())!
+    for (const target of ["canvas", "image"] as const) {
+      await stage.click({ button: "right", position: { x: 20, y: 20 } })
+      await page.getByRole("menu").waitFor()
+      if (mode === "fullscreen") {
+        expect(await page.getByRole("menu").evaluate((element) => document.fullscreenElement?.contains(element))).toBe(
+          true,
+        )
+      }
+      await stage.click({
+        position:
+          target === "canvas" ? { x: box.width - 20, y: box.height - 20 } : { x: box.width / 2, y: box.height / 2 },
+      })
+      await page.getByRole("menu").waitFor({ state: "detached", timeout: 2000 })
+      expect(await page.getByRole("dialog").count()).toBe(mode === "inline" ? 0 : 1)
+      expect(await page.evaluate(() => !!document.fullscreenElement)).toBe(mode === "fullscreen")
+      expect(await stage.evaluate((element) => element === document.activeElement)).toBe(true)
+    }
+    const width = (await image.boundingBox())!.width
+    await page.keyboard.press("+")
+    expect((await image.boundingBox())!.width).toBeGreaterThan(width)
+    if (mode === "fullscreen") {
+      await page.getByRole("button", { name: "Exit fullscreen", exact: true }).click()
+      await page.waitForFunction(() => !document.fullscreenElement)
+    }
+  })
+}
+
+test("context menu retains internal clicks and reopens across mouse and keyboard triggers", async () => {
+  const stage = page.locator('[data-slot="image-viewer-stage"]')
+  const box = (await stage.boundingBox())!
+  await stage.click({ button: "right", position: { x: 20, y: 20 } })
+  const menu = page.getByRole("menu")
+  await menu.waitFor()
+  const first = (await menu.boundingBox())!
+  const disabled = page.getByRole("menuitem", { name: "Zoom out", exact: true })
+  expect(await disabled.getAttribute("aria-disabled")).toBe("true")
+  const item = (await disabled.boundingBox())!
+  await page.mouse.click(item.x + item.width / 2, item.y + item.height / 2)
+  expect(await menu.count()).toBe(1)
+  await menu.click({ position: { x: 2, y: 2 } })
+  expect(await menu.count()).toBe(1)
+  await stage.click({ button: "right", position: { x: box.width - 100, y: box.height - 100 } })
+  expect((await menu.boundingBox())!.x).toBeGreaterThan(first.x)
+  await stage.click({ position: { x: 20, y: 20 } })
+  await menu.waitFor({ state: "detached", timeout: 2000 })
+  const next = page.getByRole("button", { name: "Next image", exact: true })
+  await next.focus()
+  await page.keyboard.press("Shift+F10")
+  await menu.waitFor()
+  await page.keyboard.press("Escape")
+  await menu.waitFor({ state: "detached" })
+  expect(await next.evaluate((element) => element === document.activeElement)).toBe(true)
+  await stage.click({ button: "right", position: { x: 20, y: 20 } })
+  await menu.waitFor()
+  await stage.click({ position: { x: box.width - 20, y: box.height - 20 } })
+  await menu.waitFor({ state: "detached", timeout: 2000 })
+  expect(await stage.evaluate((element) => element === document.activeElement)).toBe(true)
+})
+
+test("a touch long-press menu dismisses on an outside tap without reopening", async () => {
+  const touch = await browser.newPage({ viewport: { width: 1200, height: 800 }, hasTouch: true })
+  const session = await touch.context().newCDPSession(touch)
+  try {
+    await touch.goto(`${server.url}viewer.html`)
+    await touch.getByRole("button", { name: "Open images", exact: true }).tap()
+    await touch.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
+    const stage = touch.locator('[data-slot="image-viewer-stage"]')
+    const box = (await stage.boundingBox())!
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: box.x + 20, y: box.y + 20, id: 1 }],
+    })
+    try {
+      await touch.getByRole("menu").waitFor({ timeout: 3000 })
+    } finally {
+      await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] })
+    }
+    await touch.touchscreen.tap(box.x + box.width - 20, box.y + box.height - 20)
+    await touch.getByRole("menu").waitFor({ state: "detached", timeout: 2000 })
+    expect(await touch.getByRole("dialog").count()).toBe(1)
+    expect(await stage.getAttribute("data-dragging")).toBeNull()
+    await touch.getByRole("button", { name: "Next image", exact: true }).tap()
+    expect(await touch.locator('[data-slot="image-preview-title"]').innerText()).toBe("same-source.svg")
+    expect(await touch.getByRole("menu").count()).toBe(0)
+  } finally {
+    await session.detach()
+    await touch.close()
+  }
+})
+
 test("keyboard gallery navigation keeps the selected thumbnail in view", async () => {
   await page.evaluate(() => {
     const image = document.querySelector<HTMLImageElement>('[data-slot="image-viewer-image"]')!
@@ -266,6 +447,52 @@ test("keyboard gallery navigation keeps the selected thumbnail in view", async (
   expect(await page.locator('[data-slot="image-viewer-footer"]').innerText()).toContain("24 / 24")
 })
 
+test("uncached images stay loading and a late load cannot replace the current image", async () => {
+  const release = Promise.withResolvers<void>()
+  await page.route("**/slow.svg", async (route) => {
+    await release.promise
+    await route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="777" height="111"/>',
+    })
+  })
+  try {
+    await page.evaluate(() => {
+      const image = document.querySelector<HTMLImageElement>('[data-slot="image-viewer-image"]')!
+      const fixture = (window as unknown as { imageFixture: { setImages: (images: unknown[]) => void } }).imageFixture
+      fixture.setImages([
+        { id: "first", src: image.src, filename: "large.svg", mime: "image/svg+xml" },
+        { id: "slow", src: `${location.origin}/slow.svg`, filename: "slow.svg", mime: "image/svg+xml" },
+      ])
+    })
+    await page.getByRole("button", { name: "Next image", exact: true }).click()
+    const stage = page.locator('[data-slot="image-viewer-stage"]')
+    expect(await stage.getAttribute("aria-busy")).toBe("true")
+    expect(await page.getByRole("button", { name: "Zoom in", exact: true }).isDisabled()).toBe(true)
+    await stage.click({ button: "right", position: { x: 20, y: 20 } })
+    await page.getByRole("menu").waitFor()
+    const box = (await stage.boundingBox())!
+    await stage.click({ position: { x: box.width - 20, y: box.height - 20 } })
+    await page.getByRole("menu").waitFor({ state: "detached", timeout: 2000 })
+    await page.getByRole("button", { name: "Previous image", exact: true }).click()
+    const response = page.waitForResponse("**/slow.svg")
+    release.resolve()
+    await (await response).finished()
+    const image = page.locator('[data-slot="image-viewer-image"]')
+    await image.evaluate((element: HTMLImageElement) => element.decode())
+    expect(await image.getAttribute("alt")).toBe("large.svg")
+    expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(4000)
+    expect(await stage.getAttribute("aria-busy")).toBe("false")
+    await page.getByRole("button", { name: "Next image", exact: true }).click()
+    await image.evaluate((element: HTMLImageElement) => element.decode())
+    expect(await image.evaluate((element: HTMLImageElement) => element.naturalWidth)).toBe(777)
+    expect(await page.getByRole("button", { name: "Zoom in", exact: true }).isEnabled()).toBe(true)
+  } finally {
+    release.resolve()
+    await page.unrouteAll({ behavior: "wait" })
+  }
+})
+
 test("failed images retry the same URL and recover", async () => {
   let failed = true
   await page.route("**/retry.svg", (route) =>
@@ -283,6 +510,12 @@ test("failed images retry the same URL and recover", async () => {
   })
   await page.getByRole("button", { name: "Retry", exact: true }).waitFor()
   expect(await page.getByRole("button", { name: "Zoom in", exact: true }).isDisabled()).toBe(true)
+  const stage = page.locator('[data-slot="image-viewer-stage"]')
+  const box = (await stage.boundingBox())!
+  await stage.click({ button: "right", position: { x: 20, y: 20 } })
+  await page.getByRole("menu").waitFor()
+  await stage.click({ position: { x: box.width - 20, y: box.height - 20 } })
+  await page.getByRole("menu").waitFor({ state: "detached", timeout: 2000 })
   failed = false
   await page.getByRole("button", { name: "Retry", exact: true }).click()
   await page.waitForFunction(

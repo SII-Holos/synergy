@@ -86,6 +86,8 @@ export function ImageViewerControls(props: {
       if (!props.active) event.preventDefault()
     },
   }
+  // Kobalte 0.13.14 forwards this layer option; the canvas is not a toggle trigger to exclude from outside clicks.
+  const contextDismissBoundary = { excludedElements: [] }
   return (
     <>
       <div data-slot="image-viewer-toolbar" role="group" aria-label={props.menuLabel}>
@@ -133,7 +135,12 @@ export function ImageViewerControls(props: {
         </ImageViewerCanvas>
         <ContextMenu.Portal mount={props.portal}>
           <PortalStyleOwner>
-            <ContextMenu.Content data-component="image-viewer-menu" aria-label={props.menuLabel} {...menuEvents}>
+            <ContextMenu.Content
+              data-component="image-viewer-menu"
+              aria-label={props.menuLabel}
+              {...contextDismissBoundary}
+              {...menuEvents}
+            >
               {entries("context")}
             </ContextMenu.Content>
           </PortalStyleOwner>

@@ -206,10 +206,12 @@ export function ImageViewer(props: ImageViewerProps) {
   })
   onMount(() => {
     setPortal(root)
-    const observer = new ResizeObserver(() => {
+    const resize = () => {
       if (stage.clientWidth > 0 && stage.clientHeight > 0)
         setView((state) => resizeImageViewer(state, { width: stage.clientWidth, height: stage.clientHeight }))
-    })
+    }
+    resize()
+    const observer = new ResizeObserver(resize)
     observer.observe(stage)
     const changed = () => setFullscreen(document.fullscreenElement === root)
     document.addEventListener("fullscreenchange", changed)
@@ -508,9 +510,21 @@ export function ImageViewer(props: ImageViewerProps) {
                 const image = current(),
                   identity = token
                 const valid = () => identity === `${key()}\u0000${attempt()}`
+                let element: HTMLImageElement | undefined
+                const loaded = (image: HTMLImageElement) => {
+                  if (!valid()) return
+                  setView((state) =>
+                    setImageViewerImage(state, { width: image.naturalWidth, height: image.naturalHeight }),
+                  )
+                  setStatus("ready")
+                }
+                onMount(() => {
+                  if (element?.complete && element.naturalWidth > 0) loaded(element)
+                })
                 return (
                   <Show when={image} fallback={<div data-slot="image-viewer-state">{_(copy.empty)}</div>}>
                     <img
+                      ref={element}
                       data-slot="image-viewer-image"
                       src={image?.src}
                       alt={image?.alt ?? image?.filename}
@@ -521,17 +535,7 @@ export function ImageViewer(props: ImageViewerProps) {
                         visibility: ready() ? "visible" : "hidden",
                         transform: `translate(-50%, -50%) translate(${view().offset.x}px, ${view().offset.y}px) rotate(${view().rotation}deg) scale(${view().scale})`,
                       }}
-                      onLoad={(event) => {
-                        if (valid()) {
-                          setView((state) =>
-                            setImageViewerImage(state, {
-                              width: event.currentTarget.naturalWidth,
-                              height: event.currentTarget.naturalHeight,
-                            }),
-                          )
-                          setStatus("ready")
-                        }
-                      }}
+                      onLoad={(event) => loaded(event.currentTarget)}
                       onError={() => {
                         if (valid()) setStatus("error")
                       }}
