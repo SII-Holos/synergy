@@ -64,6 +64,10 @@ beforeAll(async () => {
           "docs/nested": [{ path: "docs/nested/deep.txt", name: "deep.txt", type: "file" }],
         }
         if(new URLSearchParams(location.search).has("many")) tree[""] = Array.from({length:80}, (_,i) => ({path:"root-file-"+i+".txt",name:"root-file-"+i+".txt",type:"file"}))
+        h.removeFromDisk = path => {
+          const parent = path.split("/").slice(0,-1).join("/")
+          tree[parent] = tree[parent].filter(item => item.path !== path)
+        }
 
         function directory(path) {
           return store.directories[path]
@@ -105,6 +109,10 @@ beforeAll(async () => {
             h.lastSignal = signal
             if(h.hold) await new Promise(resolve => { h.release = resolve })
             if(h.fail) throw { data: { message: "Workspace is busy" } }
+            const destination = input.to ?? input.path
+            const parent = destination.split("/").slice(0,-1).join("/")
+            if(kind !== "remove" && tree[parent]?.some(item => item.path === destination))
+              throw { data: { message: "Destination already exists" } }
             if(kind === "createFile" || kind === "createDirectory") {
               const parent = input.path.split("/").slice(0,-1).join("/")
               tree[parent] ??= []
@@ -116,6 +124,15 @@ beforeAll(async () => {
               tree[parent] ??= []
               tree[parent].push({ ...store.nodes[input.from], path: input.to, name: input.to.split("/").at(-1) })
               await load(parent)
+            }
+            if(kind === "move") {
+              const previous = input.from.split("/").slice(0,-1).join("/")
+              const source = tree[previous].find(item => item.path === input.from)
+              tree[previous] = tree[previous].filter(item => item.path !== input.from)
+              tree[parent] ??= []
+              tree[parent].push({ ...source, path: destination, name: destination.split("/").at(-1) })
+              await load(previous)
+              if(parent !== previous) await load(parent)
             }
             return { path: input.to ?? input.path }
           }
@@ -160,7 +177,7 @@ beforeAll(async () => {
             directory,
             loadChildren: load,
             reveal: async () => {},
-            refresh: async () => {},
+            refresh: async () => { for(const path of Object.keys(store.directories)) await load(path) },
           },
           searchFiles: async () => ({ items: [] }),
         }}
@@ -342,17 +359,24 @@ describe("file explorer expanded-state restore", () => {
     await page.getByRole("alert").waitFor()
     expect(await page.getByRole("dialog").count()).toBe(0)
     expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([])
-    await name.fill("new-file.md")
+    await name.fill("api.md")
     await name.press("Enter")
-    await page.locator('[data-path="docs/new-file.md"]').waitFor()
+    await page.getByRole("alert").filter({ hasText: "Destination already exists" }).waitFor()
+    expect(await name.inputValue()).toBe("api.md")
+    await page.evaluate(() => Reflect.get(window, "fixture").removeFromDisk("docs/api.md"))
+    await page.getByRole("button", { name: "Refresh files", exact: true }).click()
+    await page.locator('[data-path="docs/api.md"]').waitFor({ state: "hidden" })
+    await name.fill("api.md")
+    await name.press("Enter")
+    await page.locator('[data-path="docs/api.md"]').waitFor()
     const calls = await page.evaluate(() => Reflect.get(window, "fixture").calls)
     expect(calls).toContainEqual({
       kind: "createFile",
-      path: "docs/new-file.md",
+      path: "docs/api.md",
       workspaceID: "wsp_primary",
       generation: 1,
     })
-    expect(calls).toContainEqual({ kind: "open", path: "docs/new-file.md" })
+    expect(calls).toContainEqual({ kind: "open", path: "docs/api.md" })
   }, 30000)
 
   test("F2 renames in place and retains the observed version and typed name after a write conflict", async () => {
@@ -401,6 +425,15 @@ describe("file explorer expanded-state restore", () => {
         generation: 1,
       },
     ])
+    await page.getByRole("tree").press("F2")
+    expect(await name.inputValue()).toBe("renamed.md")
+    await name.press("Escape")
+    await page.getByRole("tree").press("Delete")
+    const confirmation = page.getByRole("dialog", { name: "Delete permanently", exact: true })
+    await confirmation.waitFor()
+    expect(await confirmation.getByText("docs/renamed.md", { exact: true }).isVisible()).toBe(true)
+    await confirmation.getByRole("button", { name: "Cancel", exact: true }).click()
+    await confirmation.waitFor({ state: "hidden" })
   }, 30000)
 
   test("context actions and keyboard cut/paste use captured entries and Escape dismisses only the menu", async () => {

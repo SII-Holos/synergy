@@ -31,7 +31,7 @@ const childPath = (parent: string, name: string) => (parent ? `${parent}/${name}
 export function createFileEntryActions(props: {
   selected: () => WorkspaceFileNode | undefined
   prepare: () => void
-  focusTree: () => void
+  focusTree: (path?: string) => void
   onOpenResource?: () => void
 }) {
   const file = useFile()
@@ -112,10 +112,6 @@ export function createFileEntryActions(props: {
       cancel()
       return
     }
-    if (file.explorer.node(destination)) {
-      setError(_(M.alreadyExists))
-      return
-    }
     const complete = await run(async (signal) => {
       if (entry.kind === "createDirectory") await file.entries.createDirectory(destination, signal)
       else if (entry.kind === "createFile") await file.entries.createFile(destination, signal)
@@ -136,7 +132,7 @@ export function createFileEntryActions(props: {
     })
     if (!complete || edit() !== entry) return
     setEdit(undefined)
-    props.focusTree()
+    props.focusTree(destination)
   }
   const capture = (operation: "move" | "copy", input = props.selected()) => {
     if (!available() || !input?.entryVersion || !file.workspace) return

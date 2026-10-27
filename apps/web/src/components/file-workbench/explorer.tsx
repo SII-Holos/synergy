@@ -44,8 +44,14 @@ export function FileExplorer(props: { onClose: () => void; onOpenResource?: () =
   let listHandle: VListHandle | undefined
   let treeElement: HTMLDivElement | undefined
   const treeID = createUniqueId()
-  const focusTree = () => {
-    if (active() && treeElement?.isConnected) treeElement.focus({ preventScroll: true })
+  const focusTree = (path?: string) => {
+    if (!active() || !treeElement?.isConnected) return
+    if (path) {
+      setFocusedPath(path)
+      const index = rows().findIndex((row) => row.kind === "node" && row.path === path)
+      if (index >= 0) listHandle?.scrollToIndex(index, { align: "nearest" })
+    }
+    treeElement.focus({ preventScroll: true })
   }
   const entryActions = createFileEntryActions({
     selected: () => {
