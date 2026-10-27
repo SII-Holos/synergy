@@ -86,8 +86,8 @@ test("personal space exposes exactly three working actions and restores keyboard
   }
 }, 30_000)
 
-test("collapsed space retains its accessible name and follows live locale changes", async () => {
-  const page = await browser.newPage()
+test("collapsed space keeps its menu on screen and follows live locale changes", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 480 } })
   try {
     page.setDefaultTimeout(10_000)
     await page.goto(url)
@@ -107,7 +107,10 @@ test("collapsed space retains its accessible name and follows live locale change
     const triggerBox = (await trigger.boundingBox())!
     const menuBox = (await page.getByRole("menu").boundingBox())!
     expect(menuBox.x).toBeGreaterThan(triggerBox.x + triggerBox.width)
-    expect(Math.abs(menuBox.y + menuBox.height - triggerBox.y - triggerBox.height)).toBeLessThan(1)
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(320)
+    expect(menuBox.y).toBeGreaterThanOrEqual(0)
+    expect(menuBox.y + menuBox.height).toBeGreaterThan(triggerBox.y)
+    expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(triggerBox.y + triggerBox.height)
     await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]'))
     await page.keyboard.press("Escape")
     await page.waitForFunction(() => document.activeElement?.matches(".space-switcher-trigger"))
