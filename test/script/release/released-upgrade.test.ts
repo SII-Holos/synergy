@@ -364,6 +364,7 @@ test.skipIf(!previous || !candidate)(
       }
       passed = true
     } finally {
+      if (!passed) console.error("Released upgrade provider requests:", JSON.stringify(provider.requests))
       const evidence = process.env.SYNERGY_UPGRADE_EVIDENCE
       if (evidence) {
         await fs.mkdir(evidence, { recursive: true })

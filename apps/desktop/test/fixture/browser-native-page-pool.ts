@@ -39,6 +39,7 @@ async function run() {
       emit(event: BrowserHostPageEvent) {
         if (event.type === "host.status" && event.status === "ready") hostReady = true
         if (event.type === "dialog.opened") onDialog?.(event)
+        if (event.type === "page.error") console.error("Native geometry: page error", event.message)
       },
     }
     const first = await pool.create(input)
@@ -156,10 +157,15 @@ async function run() {
       2_000,
       "natural attached viewport",
     )
-    await first.execute({ type: "setViewport", mode: "fixed", width: 600, height: 400 })
+    await observe("attached fixed viewport", () =>
+      first.execute({ type: "setViewport", mode: "fixed", width: 600, height: 400 }),
+    )
     assert.deepEqual(view.getBounds(), nativeBounds, "Fixed viewport must not resize native presentation")
     assert.deepEqual(await viewportSize(), { width: 600, height: 400 })
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    assert.equal(
+      (await observe("attached fixed screenshot", () => first.execute({ type: "screenshot", fullPage: true }))).type,
+      "screenshot",
+    )
     firstManager.resize(input.ownerKey, input.page.id, { x: 256, y: 40, width: 560, height: 360 })
     const resizedBounds = { x: 320, y: 50, width: 700, height: 450 }
     assert.deepEqual(view.getBounds(), resizedBounds)
@@ -168,7 +174,9 @@ async function run() {
       { width: 600, height: 400 },
       "Manager resize cannot clear explicit fixed metrics",
     )
-    await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
+    await observe("attached fit viewport", () =>
+      first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 }),
+    )
     assert.deepEqual(view.getBounds(), resizedBounds, "Fit ignores supplied dimensions for native bounds")
     await waitFor(
       async () => {
@@ -191,14 +199,20 @@ async function run() {
     const contentId = view.webContents.id
     firstManager.detach(input.ownerKey, input.page.id)
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit retains the last native size")
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    assert.equal(
+      (await observe("detached fit screenshot", () => first.execute({ type: "screenshot", fullPage: true }))).type,
+      "screenshot",
+    )
     await first.execute({ type: "setViewport", width: 500, height: 300 })
     await firstManager.attach({ ...firstRequest, bounds: { x: 256, y: 40, width: 512, height: 320 } })
     assert.equal(view.webContents.id, contentId, "Attachment must preserve the browsing context")
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Attachment preserves explicit Agent viewport")
     firstManager.detach(input.ownerKey, input.page.id)
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Detach preserves explicit Agent viewport")
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    assert.equal(
+      (await observe("detached fixed screenshot", () => first.execute({ type: "screenshot", fullPage: true }))).type,
+      "screenshot",
+    )
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit restores the last native size")
     await firstManager.attach({ ...firstRequest, bounds: { x: 256, y: 40, width: 512, height: 320 } })
@@ -400,17 +414,36 @@ async function run() {
     await second.destroy()
     window.destroy()
     await pool.destroy()
+  } catch (error) {
+    console.error("Native geometry: failed before cleanup", error)
+    throw error
   } finally {
+    console.log("Native geometry: cleanup begin")
     await fs.rm(directory, { recursive: true, force: true })
+    console.log("Native geometry: cleanup end")
     app.quit()
   }
 }
 
 async function waitFor(read: () => boolean | Promise<boolean>, timeoutMs: number, label: string): Promise<void> {
+  console.log("Native geometry: wait begin", label)
   const deadline = Date.now() + timeoutMs
   while (Date.now() <= deadline) {
-    if (await read()) return
+    if (await read()) {
+      console.log("Native geometry: wait end", label)
+      return
+    }
     await new Promise((resolve) => setTimeout(resolve, 20))
   }
   throw new Error(`${label} timed out after ${timeoutMs}ms`)
+}
+
+async function observe<T>(label: string, operation: () => Promise<T>): Promise<T> {
+  const started = Date.now()
+  console.log("Native geometry: operation begin", label)
+  try {
+    return await operation()
+  } finally {
+    console.log("Native geometry: operation end", label, `${Date.now() - started}ms`)
+  }
 }
