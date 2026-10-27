@@ -99,10 +99,11 @@ function client(plan: Plan) {
 
 async function allJobs(get: ReturnType<typeof client>["get"]) {
   const jobs: WorkflowJob[] = []
+  const perPage = 50
   for (let page = 1; ; page++) {
-    const data = await get<{ jobs: WorkflowJob[] }>(`/jobs?filter=all&per_page=100&page=${page}`)
+    const data = await get<{ jobs: WorkflowJob[] }>(`/jobs?filter=all&per_page=${perPage}&page=${page}`)
     jobs.push(...data.jobs)
-    if (data.jobs.length < 100) return jobs
+    if (data.jobs.length < perPage) return jobs
   }
 }
 

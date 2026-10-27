@@ -138,3 +138,46 @@ test("the final gate waits for completed metadata of the latest actual execution
     await server.stop(true)
   }
 })
+
+test("workflow evidence reads every page of a large rerun history before admitting a result", async () => {
+  const previous = { ...process.env }
+  const original = {
+    ...job,
+    created_at: "2026-09-30T00:00:00Z",
+    started_at: "2026-09-30T00:00:01Z",
+    completed_at: "2026-09-30T00:01:00Z",
+  }
+  const history = [
+    original,
+    ...Array.from({ length: 130 }, () => ({
+      ...original,
+      run_attempt: 4,
+      created_at: "2026-09-30T00:04:00Z",
+    })),
+    { ...job, run_attempt: 2, conclusion: "failure" },
+  ]
+  const pages: number[] = []
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url)
+      const size = Number(url.searchParams.get("per_page"))
+      if (size > 50) return new Response("Server Error", { status: 502 })
+      const page = Number(url.searchParams.get("page"))
+      pages.push(page)
+      return Response.json({ total_count: history.length, jobs: history.slice((page - 1) * size, page * size) })
+    },
+  })
+  try {
+    process.env.GITHUB_REPOSITORY = "fixture/repository"
+    process.env.GH_TOKEN = "fixture-token"
+    process.env.GITHUB_API_URL = server.url.origin
+    expect(await workflowExecutions(plan, { timeoutMs: 1000, pollMs: 0 })).toEqual([
+      { unit: "case", attempt: "2", status: "completed", conclusion: "failure" },
+    ])
+    expect(pages).toEqual([1, 2, 3])
+  } finally {
+    process.env = previous
+    await server.stop(true)
+  }
+})
