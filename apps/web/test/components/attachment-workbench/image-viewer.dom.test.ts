@@ -139,7 +139,78 @@ const navigationAppearance = (button: Locator) =>
     }
   })
 
+async function previewChrome(close: Locator) {
+  const dialog = page.getByRole("dialog")
+  await dialog.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+  })
+  const surface = await dialog.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return {
+      radius: [
+        style.borderTopLeftRadius,
+        style.borderTopRightRadius,
+        style.borderBottomRightRadius,
+        style.borderBottomLeftRadius,
+      ],
+      background: style.backgroundColor,
+      border: [style.borderTopWidth, style.borderTopStyle, style.borderTopColor],
+      shadow: style.boxShadow,
+    }
+  })
+  await close.evaluate((element: HTMLElement) => element.blur())
+  await page.mouse.move(0, 0)
+  const appearance = () =>
+    close.evaluate(async (element) => {
+      await Promise.all(element.getAnimations().map((animation) => animation.finished))
+      const style = getComputedStyle(element)
+      const box = element.getBoundingClientRect()
+      const surface = element.closest('[role="dialog"]')!.getBoundingClientRect()
+      return {
+        width: box.width,
+        height: box.height,
+        top: box.top - surface.top,
+        right: surface.right - box.right,
+        radius: style.borderRadius,
+        background: style.backgroundColor,
+        border: style.borderWidth,
+        shadow: style.boxShadow,
+        icon: getComputedStyle(element.querySelector('[data-slot="icon-svg"]')!).color,
+      }
+    })
+  const resting = await appearance()
+  await close.hover()
+  const hovered = await appearance()
+  await page.mouse.down()
+  const pressed = await appearance()
+  await page.mouse.move(0, 0)
+  await page.mouse.up()
+  await close.focus()
+  await close.press("Tab")
+  await page.keyboard.press("Shift+Tab")
+  expect(await close.evaluate((element) => element.matches(":focus-visible"))).toBe(true)
+  const focused = await appearance()
+  return { surface, resting, hovered, pressed, focused }
+}
+
 for (const theme of ["light", "dark"] as const) {
+  test(`preview shell and close control match Settings in ${theme} mode`, async () => {
+    await page.evaluate((theme) => {
+      const fixture = (window as unknown as { imageFixture: { theme: (theme: "light" | "dark") => void } }).imageFixture
+      fixture.theme(theme)
+    }, theme)
+    await page.waitForFunction((theme) => document.documentElement.dataset.colorScheme === theme, theme)
+    const close = page.getByRole("button", { name: "Close image preview", exact: true })
+    const preview = await previewChrome(close)
+    expect(await close.evaluate((element) => getComputedStyle(element).backgroundImage)).not.toBe("none")
+    await close.click()
+    await page.getByRole("dialog").waitFor({ state: "hidden" })
+    await page.waitForFunction(() => document.activeElement?.textContent === "Open images")
+    await page.getByRole("button", { name: "Open reference settings", exact: true }).click()
+    const reference = await previewChrome(page.getByRole("button", { name: "Close reference settings", exact: true }))
+    expect(preview).toEqual(reference)
+  })
+
   test(`gallery arrows distinguish hover and press without moving their center in ${theme} mode`, async () => {
     await page.evaluate((theme) => {
       const fixture = (window as unknown as { imageFixture: { theme: (theme: "light" | "dark") => void } }).imageFixture
@@ -221,6 +292,12 @@ test("touch gallery arrows keep their hit area and do not retain hover after a t
     await next.tap()
     expect(await touch.locator('[data-slot="image-preview-title"]').innerText()).toBe("same-source.svg")
     expect(await navigationAppearance(next)).toEqual(resting)
+    const close = touch.getByRole("button", { name: "Close image preview", exact: true })
+    const closeBounds = (await close.boundingBox())!
+    expect(closeBounds.width).toBeGreaterThanOrEqual(44)
+    expect(closeBounds.height).toBeGreaterThanOrEqual(44)
+    await close.tap()
+    await touch.getByRole("dialog").waitFor({ state: "hidden" })
   } finally {
     await touch.close()
   }
@@ -384,8 +461,16 @@ test("context menu retains internal clicks and reopens across mouse and keyboard
   await next.focus()
   await page.keyboard.press("Shift+F10")
   await menu.waitFor()
+  await page.waitForFunction(
+    () => document.querySelector('[data-component="image-viewer-menu"]')?.contains(document.activeElement),
+    undefined,
+    { timeout: 3000 },
+  )
   await page.keyboard.press("Escape")
   await menu.waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Next image", undefined, {
+    timeout: 3000,
+  })
   expect(await next.evaluate((element) => element === document.activeElement)).toBe(true)
   await stage.click({ button: "right", position: { x: 20, y: 20 } })
   await menu.waitFor()

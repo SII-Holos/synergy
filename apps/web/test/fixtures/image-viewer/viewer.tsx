@@ -8,8 +8,12 @@ import { ViewActivityProvider } from "@ericsanchezok/synergy-ui/context/view-act
 import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme/context"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import { ImageViewer } from "@ericsanchezok/synergy-ui/image-viewer"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { SettingsDialogFrame } from "../../../src/components/settings/settings-dialog-frame"
 import { createImageActions } from "../../../src/utils/image-actions"
 import "@ericsanchezok/synergy-ui/styles"
+import "../../../src/components/settings/settings-panel.css"
 
 const svg = (width: number, height: number) =>
   `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="gray"/></svg>`)}`
@@ -68,7 +72,30 @@ function Fixture() {
       </div>
     )
   return (
-    <button onClick={() => dialog.show(() => <ImagePreview images={images()} actions={actions} />)}>Open images</button>
+    <>
+      <button onClick={() => dialog.show(() => <ImagePreview images={images()} actions={actions} />)}>
+        Open images
+      </button>
+      <button
+        onClick={() =>
+          dialog.show(() => (
+            <SettingsDialogFrame ariaLabel="Reference settings">
+              <div class="settings-panel-frame">
+                <button
+                  class="settings-panel-close"
+                  aria-label="Close reference settings"
+                  onClick={() => dialog.close()}
+                >
+                  <Icon name={getSemanticIcon("action.close")} size="small" />
+                </button>
+              </div>
+            </SettingsDialogFrame>
+          ))
+        }
+      >
+        Open reference settings
+      </button>
+    </>
   )
 }
 const i18n = setupI18n({ locale: "en", messages: {} })

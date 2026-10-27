@@ -41,7 +41,6 @@ export function ImagePreview(props: ImagePreviewProps) {
             </Kobalte.Title>
             <Kobalte.CloseButton
               data-component="icon-button"
-              data-variant="ghost"
               aria-label={_({ id: "ui.imagePreview.close", message: "Close image preview" })}
             >
               <Icon name={getSemanticIcon("action.close")} size="small" />
