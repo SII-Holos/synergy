@@ -20,6 +20,8 @@ Source navigation shares that operation lifetime, including cancellation before 
 
 Keyboard context-menu keys use the same Kobalte menu and return focus to their invoking image control. Stateful commands use Kobalte checked items driven by the existing command state, keeping visible marks, keyboard activation and accessibility state aligned. Controls retain the shared focus treatment, while the canvas keeps its resting surface. Gallery navigation reveals the selected thumbnail without moving focus out of the image stage.
 
+Gallery arrows use existing neutral surface tokens for distinct hover and pressed states, with the shared fast transition and a centered press scale. Hover applies only to hover-capable fine pointers, disabled arrows remain static, and reduced motion retains color feedback without scaling or transitions. The resting fill sets only the background color so it does not erase the shared keyboard-focus treatment; no component-local focus perimeter or palette is introduced.
+
 Desktop grants HTML fullscreen only to the current application window's main frame, with the requesting URL matched against that window and the trusted app origin. Subframes, other windows, recovery documents and other permissions retain their existing restrictions. A minimal Electron 44.9.0 probe reproduced a pending fullscreen promise under the previous blanket denial; the fix stays at the session permission owner rather than introducing a second fullscreen implementation. The request identity fields follow Electron's [PermissionRequest contract](https://www.electronjs.org/docs/latest/api/structures/permission-request).
 
 ## Alternatives considered
@@ -37,6 +39,8 @@ The geometry is independently testable without a browser, but browser tests rema
 ## Verification
 
 The shared viewport and controls run through the production Vite pipeline in `apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts`; the adjacent content and message suites exercise host integration. Bun cannot attribute Chromium execution to these source modules. Exact-file coverage entries identify those suites and the thin platform hook; the action interface is types-only. Geometry, byte operations, clipboard admission and Desktop permission decisions remain directly measured without lowering package thresholds.
+
+The existing viewer browser fixture also covers both gallery arrows in light and dark themes: resting, hover, press, first/last disabled states, stable centers and actual image changes. Reduced-motion keyboard activation retains a visible focus surface and press feedback without motion; narrow touch interaction retains the existing target size without sticky hover. These checks complement rather than duplicate the existing geometry and gallery-navigation tests.
 
 The existing file-workbench HTML preview development suite also guards the SDK import boundary. Image actions import the browser client entry, not the root SDK export that loads Node server helpers; production tree-shaking alone did not expose that regression.
 

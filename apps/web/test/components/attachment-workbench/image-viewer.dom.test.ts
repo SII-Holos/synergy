@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, type Browser, type Locator, type Page } from "playwright"
 import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser, page: Page, server: BrowserFixture
@@ -21,6 +21,7 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await page.setViewportSize({ width: 1200, height: 800 })
+  await page.emulateMedia({ reducedMotion: "no-preference" })
   await page.goto(`${server.url}viewer.html`)
   await page.getByRole("button", { name: "Open images", exact: true }).click()
   await page.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
@@ -56,6 +57,110 @@ test("same-source gallery entries load and restore their own transform", async (
   await page.getByRole("button", { name: "Previous image", exact: true }).click()
   await page.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
   expect((await page.locator('[data-slot="image-viewer-image"]').boundingBox())!.width).toBeCloseTo(4000, 0)
+})
+
+const navigationAppearance = (button: Locator) =>
+  button.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((animation) => animation.finished))
+    const style = getComputedStyle(element)
+    const box = element.getBoundingClientRect()
+    return {
+      background: style.backgroundColor,
+      focus: style.backgroundImage,
+      transform: style.transform,
+      cursor: style.cursor,
+      width: box.width,
+      height: box.height,
+      centerX: box.x + box.width / 2,
+      centerY: box.y + box.height / 2,
+    }
+  })
+
+for (const theme of ["light", "dark"] as const) {
+  test(`gallery arrows distinguish hover and press without moving their center in ${theme} mode`, async () => {
+    await page.evaluate((theme) => {
+      const fixture = (window as unknown as { imageFixture: { theme: (theme: "light" | "dark") => void } }).imageFixture
+      fixture.theme(theme)
+    }, theme)
+    await page.waitForFunction((theme) => document.documentElement.dataset.colorScheme === theme, theme)
+    for (const [name, filename] of [
+      ["Previous image", "large.svg"],
+      ["Next image", "small.svg"],
+    ] as const) {
+      await page.getByRole("button", { name: "same-source.svg", exact: true }).click()
+      await page.locator('[data-slot="image-viewer-stage"]').focus()
+      await page.mouse.move(0, 0)
+      const button = page.getByRole("button", { name, exact: true })
+      const resting = await navigationAppearance(button)
+      await button.hover()
+      const hovering = await navigationAppearance(button)
+      expect(hovering.background).not.toBe(resting.background)
+      expect(hovering.cursor).toBe("pointer")
+      expect(hovering.transform).toBe(resting.transform)
+      await page.mouse.down()
+      try {
+        const pressed = await navigationAppearance(button)
+        expect(pressed.background).not.toBe(hovering.background)
+        expect(pressed.width).toBeLessThan(resting.width)
+        expect(pressed.centerX).toBeCloseTo(resting.centerX, 1)
+        expect(pressed.centerY).toBeCloseTo(resting.centerY, 1)
+      } finally {
+        await page.mouse.up()
+      }
+      expect(await page.locator('[data-slot="image-preview-title"]').innerText()).toBe(filename)
+
+      await page.locator('[data-slot="image-viewer-stage"]').focus()
+      await page.mouse.move(0, 0)
+      expect(await button.isDisabled()).toBe(true)
+      const disabled = await navigationAppearance(button)
+      await button.hover()
+      await page.mouse.down()
+      try {
+        expect(await navigationAppearance(button)).toEqual(disabled)
+      } finally {
+        await page.mouse.up()
+      }
+      expect(await page.locator('[data-slot="image-preview-title"]').innerText()).toBe(filename)
+    }
+  })
+}
+
+test("reduced-motion gallery arrows retain keyboard press feedback without scaling", async () => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.mouse.move(0, 0)
+  await page.locator('[data-slot="image-viewer-stage"]').focus()
+  await page.keyboard.press("Tab")
+  const next = page.getByRole("button", { name: "Next image", exact: true })
+  expect(await next.evaluate((element) => element === document.activeElement)).toBe(true)
+  const resting = await navigationAppearance(next)
+  expect(resting.focus).not.toBe("none")
+  await page.keyboard.down("Space")
+  try {
+    const pressed = await navigationAppearance(next)
+    expect(pressed.background).not.toBe(resting.background)
+    expect(pressed.transform).toBe(resting.transform)
+    expect(await next.evaluate((element) => element.getAnimations().length)).toBe(0)
+  } finally {
+    await page.keyboard.up("Space")
+  }
+  expect(await page.locator('[data-slot="image-preview-title"]').innerText()).toBe("same-source.svg")
+})
+
+test("touch gallery arrows keep their hit area and do not retain hover after a tap", async () => {
+  const touch = await browser.newPage({ viewport: { width: 375, height: 320 }, hasTouch: true })
+  try {
+    await touch.goto(`${server.url}viewer.html`)
+    await touch.getByRole("button", { name: "Open images", exact: true }).tap()
+    const next = touch.getByRole("button", { name: "Next image", exact: true })
+    const resting = await navigationAppearance(next)
+    expect(resting.width).toBeGreaterThanOrEqual(44)
+    expect(resting.height).toBeGreaterThanOrEqual(44)
+    await next.tap()
+    expect(await touch.locator('[data-slot="image-preview-title"]').innerText()).toBe("same-source.svg")
+    expect(await navigationAppearance(next)).toEqual(resting)
+  } finally {
+    await touch.close()
+  }
 })
 
 test("wheel anchors source pixels and captured dragging remains bounded", async () => {
