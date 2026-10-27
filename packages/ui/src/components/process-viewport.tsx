@@ -259,7 +259,7 @@ export function ProcessViewport(
     notifyReading(true)
   }
   // Provenance: https://github.com/SII-Holos/synergy/commit/7ee64f5a6fcb57ceaa06cafa4629edbe934043d5
-  // Local adaptation: Movement owns its next scroll delivery; following resizes commit before paint.
+  // Local adaptation: Movement owns its sequence until scrollend; following resizes commit before paint.
   const beginMovement = () => {
     pause()
     movementPending = true
@@ -509,10 +509,7 @@ export function ProcessViewport(
           props.onScroll?.()
           const compensated = restoredOffset !== undefined && Math.abs(viewport.scrollTop - restoredOffset) < 1
           restoredOffset = undefined
-          if (movementPending && !compensated && viewport.scrollTop !== capturedOffset) {
-            cancelPreserve()
-            movementPending = false
-          }
+          if (movementPending && !compensated && viewport.scrollTop !== capturedOffset) cancelPreserve()
           if (!restoring && !disclosureAnchor && !compensated && !layoutPending) refreshAnchor()
           if (
             resumeRequested &&
@@ -523,6 +520,9 @@ export function ProcessViewport(
           )
             latest()
           previousOffset = viewport.scrollTop
+        }}
+        onScrollEnd={() => {
+          movementPending = false
         }}
       >
         <div ref={content} data-slot="process-viewport-content">

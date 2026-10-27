@@ -639,8 +639,14 @@ describe("createAutoScroll", () => {
     },
   )
 
-  for (const native of [false, true])
-    test(`scroll delivery before resize ${native ? "accepts native reading movement" : "preserves the pre-layout reading offset"}`, async () => {
+  for (const { native, resizeFirst } of [
+    { native: undefined, resizeFirst: false },
+    { native: undefined, resizeFirst: true },
+    { native: "before", resizeFirst: false },
+    { native: "before", resizeFirst: true },
+    { native: "after", resizeFirst: true },
+  ])
+    test(`scroll delivery ${resizeFirst ? "after" : "before"} resize ${native ? `accepts native movement ${native} resize` : "preserves the pre-layout reading offset"}`, async () => {
       const harness = createScrollHarness()
       let dispose = () => {}
       try {
@@ -669,9 +675,11 @@ describe("createAutoScroll", () => {
         await harness.tick()
         element.scrollTop = 200
         autoScroll.handleInteraction()
-        if (native) element.dispatchEvent(harness.key())
+        if (native === "before") element.dispatchEvent(harness.key())
         element.scrollHeight = 1540
         documentTop = 1140
+        if (resizeFirst) harness.lastObserver()!.fire(element)
+        if (native === "after") element.dispatchEvent(harness.key())
         element.scrollTop = 800
         autoScroll.handleScroll()
         expect(element.scrollTop).toBe(native ? 800 : 740)
@@ -686,6 +694,61 @@ describe("createAutoScroll", () => {
         harness.restore()
       }
     })
+
+  test.each(["touchstart", "pointerdown", "wheel", "keydown"])(
+    "one %s gesture retains subsequent movement across resize until scrollend",
+    async (intent) => {
+      const harness = createScrollHarness()
+      let dispose = () => {}
+      try {
+        const element = harness.makeScroller()
+        let documentTop = 600
+        let autoScroll!: ReturnType<typeof createAutoScroll>
+        createRoot((cleanup) => {
+          dispose = cleanup
+          autoScroll = createAutoScroll({
+            working: () => false,
+            captureReadingAnchor: () => {
+              const offset = documentTop - element.scrollTop
+              return {
+                owner: element,
+                restore: () => {
+                  element.scrollTop = documentTop - offset
+                },
+              }
+            },
+          })
+          autoScroll.scrollRef(element)
+          autoScroll.contentRef(element)
+        })
+        await harness.tick()
+        element.scrollTop = 200
+        autoScroll.handleInteraction()
+        const input = intent === "keydown" ? harness.key() : new Event(intent)
+        if (intent === "wheel") Object.defineProperty(input, "deltaY", { value: 80 })
+        element.dispatchEvent(input)
+        element.scrollTop = 240
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(240)
+        element.scrollHeight += 100
+        harness.lastObserver()!.fire(element)
+        element.scrollTop = 280
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(280)
+        element.dispatchEvent(new Event("scrollend"))
+        documentTop += 100
+        element.scrollHeight += 100
+        harness.lastObserver()!.fire(element)
+        expect(element.scrollTop).toBe(380)
+        element.scrollTop = 440
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(380)
+      } finally {
+        dispose()
+        harness.restore()
+      }
+    },
+  )
 
   test("a resize accepts an already compensated reading offset without adopting a newly visible owner", async () => {
     const harness = createScrollHarness()
