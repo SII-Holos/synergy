@@ -1,4 +1,16 @@
-export function installedProvider() {
+export interface InstalledProviderDecision {
+  sequence: number
+  requestHash: string
+  stream: boolean
+  roles: string[]
+  userIndex: number
+  toolCount: number
+  outputCount: number
+  emitsToolCall: boolean
+}
+
+export function installedProvider(observe?: (decision: InstalledProviderDecision) => void) {
+  let sequence = 0
   return Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -43,6 +55,16 @@ export function installedProvider() {
             ],
           }
         : { role: "assistant", content }
+      observe?.({
+        sequence: ++sequence,
+        requestHash: new Bun.CryptoHasher("sha256").update(JSON.stringify(input)).digest("hex"),
+        stream: input.stream ?? false,
+        roles: input.messages.map((message) => message.role),
+        userIndex,
+        toolCount: input.tools?.length ?? 0,
+        outputCount: output.length,
+        emitsToolCall: Boolean(input.stream && call),
+      })
       if (!input.stream)
         return Response.json({
           id: "fixture",
