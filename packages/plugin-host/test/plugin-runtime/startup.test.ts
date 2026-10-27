@@ -192,7 +192,7 @@ test("fast installed bootstrap does not extend slow plugin activation", () =>
 
 test("generation tampering fails before a plugin entry side effect or activation", () =>
   runtime.run(async () => {
-    await using scope = await fixture()
+    await using scope = await fixture({ bootstrapTimeoutMs: 2000 })
     using gate = gates()
     const installed = await startupInstallation(scope.home, gate.bootstrapURL, gate.activationURL)
     await installed.tamper()
