@@ -283,8 +283,13 @@ test.skipIf(!previous || !candidate)(
               .find((part) => part.type === "attachment" && part.filename === "upgrade.png")?.id,
           )
         expect(await Bun.file(path.join(workspace, "old-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("x")
-        expect(before.some((message) => message.parts.some((part) => part.type === "tool"))).toBe(true)
+        expect({
+          effects: await Bun.file(path.join(workspace, "effects.txt")).text(),
+          toolStates: before
+            .flatMap((message) => message.parts)
+            .filter((part) => part.type === "tool")
+            .map((part) => z.object({ state: z.object({ status: z.string() }) }).parse(part).state.status),
+        }).toEqual({ effects: "x", toolStates: ["completed"] })
         await retainedExtras(old)
       }
       await fs.cp(home, path.join(root, "pre-upgrade-backup"), { recursive: true })
