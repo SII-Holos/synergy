@@ -82,11 +82,22 @@ for (const ended of [false, true]) {
         await settle()
         const hidden = fixture.contentStats()
         fixture.select("session")
-        const samples = []
-        for (let frame = 0; frame < 64; frame++) {
-          if (frame >= 16 && frame < 40) fixture.backlogPage(frame - 16)
-          if (frame === 48) fixture.execution()
-          await settle()
+        const samples: {
+          open: number
+          rows: number
+          latest: boolean
+          gap: number
+          moving: number
+          placeholders: number
+        }[] = []
+        const probe = document.createElement("div")
+        probe.style.cssText = "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
+        document.body.append(probe)
+        let onLayout: (() => void) | undefined
+        const observer = new ResizeObserver(() => {
+          const ready = onLayout
+          onLayout = undefined
+          if (!ready) return
           const open = viewport.querySelectorAll('[data-slot="activity-batch-trigger"][aria-expanded="true"]')
           const latest = viewport.querySelector<HTMLElement>(
             '[data-slot="activity-step"][data-part-id="backlog-23-tool-3"]',
@@ -104,6 +115,24 @@ for (const ended of [false, true]) {
               .filter((element) => element.dataset.messageId?.startsWith("backlog-"))
               .reduce((height, element) => height + element.getBoundingClientRect().height, 0),
           })
+          // Read this rendering update before later tasks can change the DOM, then let it paint.
+          setTimeout(ready, 0)
+        })
+        observer.observe(probe)
+        try {
+          for (let frame = 0; frame < 64; frame++) {
+            if (frame >= 16 && frame < 40) fixture.backlogPage(frame - 16)
+            if (frame === 48) fixture.execution()
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => {
+                onLayout = resolve
+                probe.style.width = `${2 - (frame % 2)}px`
+              }),
+            )
+          }
+        } finally {
+          observer.disconnect()
+          probe.remove()
         }
         return {
           before,
@@ -122,12 +151,20 @@ for (const ended of [false, true]) {
       ).toEqual(Array(64).fill(ended ? 0 : 1))
       expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
       expect(result.samples.every((sample) => sample.rows > 0)).toBe(true)
-      expect(result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
+      expect(
+        result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2),
+        JSON.stringify(result.samples.filter((sample) => sample.moving !== 0 || Math.abs(sample.gap) > 2)),
+      ).toBe(true)
       if (ended) {
         expect(result.answer).toBe(true)
         expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-"))).toEqual([])
       } else {
-        expect(result.samples.slice(8).every((sample) => sample.latest)).toBe(true)
+        expect(
+          result.samples.slice(8).every((sample) => sample.latest),
+          JSON.stringify(
+            result.samples.map((sample, frame) => ({ ...sample, frame })).filter((sample) => !sample.latest),
+          ),
+        ).toBe(true)
         expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-")).length).toBeLessThan(40)
       }
       expect(errors).toEqual([])
@@ -176,33 +213,31 @@ for (const completionFrame of [0, 1, 16]) {
         await settle()
         const hidden = fixture.contentStats()
         fixture.select("session")
-        const samples = []
+        const samples: ReturnType<typeof sample>[] = []
         const firstRender: Array<ReturnType<typeof sample> & { channel: string; time: number }> = []
         const probe = document.createElement("div")
         probe.style.cssText = "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
         document.body.append(probe)
-        let sampling = false
+        let onLayout: (() => void) | undefined
         const observer = new ResizeObserver(() => {
-          if (!sampling) return
-          firstRender.push({ channel: "resize", time: performance.now(), ...sample() })
-          observer.disconnect()
+          const ready = onLayout
+          onLayout = undefined
+          if (!ready) return
+          const current = sample()
+          if (samples.length === 0) firstRender.push({ channel: "resize", time: performance.now(), ...current })
+          samples.push(current)
+          setTimeout(ready, 0)
         })
         observer.observe(probe)
         try {
           for (let frame = 0; frame < 96; frame++) {
             if (frame === completionFrame) fixture.background(true, false)
-            if (frame === 0) {
-              await new Promise<void>((resolve) =>
-                requestAnimationFrame(() => {
-                  sampling = true
-                  probe.style.width = "2px"
-                  setTimeout(resolve, 0)
-                }),
-              )
-            } else await settle()
-            const current = sample()
-            samples.push(current)
-            if (frame === 0) firstRender.push({ channel: "timer", time: performance.now(), ...current })
+            await new Promise<void>((resolve) =>
+              requestAnimationFrame(() => {
+                onLayout = resolve
+                probe.style.width = `${2 - (frame % 2)}px`
+              }),
+            )
           }
         } finally {
           observer.disconnect()
