@@ -603,16 +603,6 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
               </button>
             </div>
           </Show>
-          <IconButton
-            icon={getSemanticIcon("review.wrap")}
-            variant="ghost"
-            class="file-wrap-toggle"
-            aria-label={lingui._({ id: "fileWorkbench.wordWrap", message: "Word wrap" })}
-            aria-keyshortcuts="Alt+Z"
-            aria-pressed={wordWrap()}
-            disabled={!canWrap()}
-            onClick={toggleWrap}
-          />
           <Show when={canEdit()}>
             <Show
               when={!editing()}
@@ -660,6 +650,16 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
               </button>
             </Show>
           </Show>
+          <IconButton
+            icon={getSemanticIcon("review.wrap")}
+            variant="ghost"
+            class="file-wrap-toggle"
+            aria-label={lingui._({ id: "fileWorkbench.wordWrap", message: "Word wrap" })}
+            aria-keyshortcuts="Alt+Z"
+            aria-pressed={wordWrap()}
+            disabled={!canWrap()}
+            onClick={toggleWrap}
+          />
           <Show when={path()}>
             <Popover
               open={moreOpen()}

@@ -686,6 +686,7 @@ describe("file toolbar ownership and layout", () => {
       const modes = owner.locator(".file-view-toggle button")
       expect(await modes.allTextContents()).toEqual([source, preview])
       await modes.first().click()
+      const wrapInsets = new Map<number, number>()
       for (const phase of ["reading", "editing", "saving"]) {
         if (phase === "editing") {
           await owner.getByRole("button", { name: "Edit", exact: true }).click()
@@ -718,6 +719,7 @@ describe("file toolbar ownership and layout", () => {
               })
             return {
               height: toolbar.height,
+              wrapInset: toolbar.right - element.querySelector(".file-wrap-toggle")!.getBoundingClientRect().right,
               delta:
                 Math.max(...controls.map((control) => control.center)) -
                 Math.min(...controls.map((control) => control.center)),
@@ -726,6 +728,9 @@ describe("file toolbar ownership and layout", () => {
           })
           expect(geometry.height, `${phase} at ${width}`).toBeLessThanOrEqual(49)
           expect(geometry.delta, `${phase} at ${width}`).toBeLessThanOrEqual(1)
+          expect(geometry.controls.slice(-2).map((control) => control.label)).toEqual(["Word wrap", "File options"])
+          if (phase === "reading") wrapInsets.set(width, geometry.wrapInset)
+          else expect(Math.abs(geometry.wrapInset - wrapInsets.get(width)!)).toBeLessThanOrEqual(1)
           if (origin && width >= 375) {
             if (width <= 420)
               expect(await owner.locator('.file-origin-picker > [data-component="icon"]:first-child').isVisible()).toBe(
@@ -747,6 +752,16 @@ describe("file toolbar ownership and layout", () => {
           }
         }
       }
+      const wrap = owner.getByRole("button", { name: "Word wrap", exact: true })
+      await wrap.focus()
+      await page.keyboard.press("Tab")
+      expect(
+        await owner
+          .getByRole("button", { name: "File options", exact: true })
+          .evaluate((element) => element === document.activeElement),
+      ).toBe(true)
+      await page.keyboard.press("Shift+Tab")
+      expect(await wrap.evaluate((element) => element === document.activeElement)).toBe(true)
       await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.finishSaves())
       await owner.getByRole("button", { name: "Edit", exact: true }).waitFor()
       expect(await owner.getByRole("textbox").inputValue()).toBe("Retain this draft through compact layout changes")

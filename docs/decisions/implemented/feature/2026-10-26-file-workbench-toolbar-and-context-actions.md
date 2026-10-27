@@ -8,7 +8,9 @@ The file workbench repeated the resource name and exposed navigation and editing
 
 ## Decision
 
-The workbench uses the selected B layout: one main toolbar with Files disclosure, compact captured Workspace origin, optional parent-directory navigation, Source/Preview, source wrapping and explicit editing controls. The outer resource tab owns the filename. The origin picker retains full path options and binding generations; selecting an origin opens a directory resource through the existing close policy rather than changing a document's owner. The shared Workspace navigator owns resizing and narrow drawers.
+The workbench uses the selected B layout: one main toolbar with Files disclosure, compact captured Workspace origin, optional parent-directory navigation, Source/Preview, explicit editing controls, source wrapping and File options. The outer resource tab owns the filename. The origin picker retains full path options and binding generations; selecting an origin opens a directory resource through the existing close policy rather than changing a document's owner. The shared Workspace navigator owns resizing and narrow drawers.
+
+Wrap is a persistent reading control at the trailing edge; only the optional File options trigger follows it. Edit, Save and Discard expand to its left rather than moving its right inset. The DOM uses that order so native keyboard traversal matches the visible controls; CSS reordering would preserve the original, inconsistent focus order.
 
 The toolbar uses a single nonwrapping row. Origin text receives the remaining width instead of reserving a fixed flex basis before actions are placed. Compact container rules reduce gaps, decorative origin imagery and edit labels; parent-directory links depend on the location area's actual available width. Source/Preview can shorten their displayed labels while retaining complete accessible names and minimum hit areas. This keeps 375px reading and editing at the same toolbar height and avoids a second row during pending saves, including with long origins and expanded translations.
 
