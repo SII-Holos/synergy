@@ -10,7 +10,7 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
 import { WorkspaceBinding, WorkspaceCatalog } from "@ericsanchezok/synergy-harness/workspace"
-import { runMigrations } from "@ericsanchezok/synergy-harness/migration"
+import { completeDeferredMigrations, runMigrations } from "@ericsanchezok/synergy-harness/migration"
 import { createSynergyClient, type ProjectDirectories } from "@ericsanchezok/synergy-sdk"
 import { PresetRuntimeHandle } from "../../src/server/runtime-handle"
 
@@ -130,7 +130,16 @@ for (const version of ["2.0.0", "2.4.4", "3.0.21", "3.0.22"])
               },
             })
           }
-          expect(await runMigrations({ output: "silent" })).toMatchObject({ completed: 0, failed: 0 })
+          await completeDeferredMigrations()
+          const started: string[] = []
+          const summary = await runMigrations({
+            output: "silent",
+            reporter: {
+              started: ({ domain, migration }) => started.push(`${domain}/${migration.id}`),
+              summary() {},
+            },
+          })
+          expect(summary, JSON.stringify({ restart, started })).toMatchObject({ completed: 0, failed: 0 })
           if (!restart)
             await ScopeContext.provide({
               scope: Scope.home(),
