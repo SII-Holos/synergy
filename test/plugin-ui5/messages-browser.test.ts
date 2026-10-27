@@ -43,10 +43,44 @@ describe("production conversation history", () => {
     const phase = (name: string) =>
       console.info(`[conversation history] ${name}: ${Math.round(performance.now() - started)}ms`)
     const browser = await chromium.launch({ headless: true })
+    const readState = () => ({ started: 0, finished: 0, failed: 0, statuses: {} as Record<string, number> })
+    const reads = {
+      timeline: readState(),
+      summaries: readState(),
+      body: readState(),
+      latestBody: readState(),
+      execution: readState(),
+      other: readState(),
+    }
+    const readKinds = (url: string): Array<keyof typeof reads> => {
+      const pathname = new URL(url).pathname
+      const sessionPath = `/session/${conversation.id}`
+      if (!pathname.endsWith(sessionPath) && !pathname.includes(`${sessionPath}/`)) return []
+      if (pathname.endsWith("/timeline/page")) return ["timeline"]
+      if (pathname.endsWith("/part/pages") || pathname.endsWith("/part/page")) return ["summaries"]
+      if (pathname.endsWith("/turn-execution")) return ["execution"]
+      if (pathname.endsWith("/content") && pathname.includes("/part/"))
+        return pathname.includes(`/message/${conversation.messages.at(-1)!.info.id}/`)
+          ? ["body", "latestBody"]
+          : ["body"]
+      return ["other"]
+    }
+    const countRead = (request: { url(): string }, state: "started" | "finished" | "failed") => {
+      for (const kind of readKinds(request.url())) reads[kind][state]++
+    }
     let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
     try {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
       const page = await context.newPage()
+      page.on("request", (request: { url(): string }) => countRead(request, "started"))
+      page.on("requestfinished", (request: { url(): string }) => countRead(request, "finished"))
+      page.on("requestfailed", (request: { url(): string }) => countRead(request, "failed"))
+      page.on("response", (response: { url(): string; status(): number }) => {
+        for (const kind of readKinds(response.url())) {
+          const status = String(response.status())
+          reads[kind].statuses[status] = (reads[kind].statuses[status] ?? 0) + 1
+        }
+      })
       const cdp = await context.newCDPSession(page)
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
       page.setDefaultTimeout(20000)
@@ -204,25 +238,54 @@ describe("production conversation history", () => {
       if (page && !page.isClosed())
         console.info(
           "[conversation history] failure viewport:",
-          await page
-            .evaluate(() => {
-              const viewport = document.querySelector<HTMLElement>("[data-conversation-viewport]")
-              if (!viewport) return { mounted: false }
-              const bounds = viewport.getBoundingClientRect()
-              return {
-                top: viewport.scrollTop,
-                height: viewport.scrollHeight,
-                client: viewport.clientHeight,
-                rows: [...viewport.querySelectorAll<HTMLElement>('[data-display-row][data-message-role="user"]')]
-                  .map((row) => ({
-                    text: row.textContent?.slice(0, 80),
+          JSON.stringify({
+            elapsedMs: Math.round(performance.now() - started),
+            reads,
+            ...(await page
+              .evaluate((sessionID: string) => {
+                const resident = document.querySelector<HTMLElement>("[data-session-resident]:not([hidden])")
+                const targetResident = resident?.dataset.sessionResident?.includes(sessionID) ?? false
+                const viewport = targetResident
+                  ? resident?.querySelector<HTMLElement>("[data-conversation-viewport]")
+                  : undefined
+                if (!viewport) return { mounted: false, targetResident }
+                const bounds = viewport.getBoundingClientRect()
+                const style = getComputedStyle(viewport)
+                const rows = [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")]
+                return {
+                  mounted: true,
+                  targetResident,
+                  ready: viewport.dataset.ready === "true",
+                  visibility: style.visibility,
+                  opacity: Number(style.opacity),
+                  expectedAnswerInDOM: viewport.textContent?.includes("Answer 360") ?? false,
+                  pendingMarkdown: viewport.querySelectorAll("[data-markdown-pending]").length,
+                  pendingContent: viewport.querySelectorAll("[data-content-pending]").length,
+                  fontStatus: document.fonts.status,
+                  top: viewport.scrollTop,
+                  height: viewport.scrollHeight,
+                  client: viewport.clientHeight,
+                  rowCount: rows.length,
+                  rows: rows.map((row) => ({
+                    role:
+                      row.dataset.messageRole === "user"
+                        ? "user"
+                        : row.dataset.messageRole === "assistant"
+                          ? "assistant"
+                          : "other",
+                    hasText: !!row.textContent?.trim(),
+                    expectedAnswer: row.textContent?.includes("Answer 360") ?? false,
+                    visibility: getComputedStyle(row).visibility,
+                    kind: ["body", "footer", "process", "load", "validation"].includes(row.dataset.rowKind ?? "")
+                      ? row.dataset.rowKind
+                      : "other",
                     top: row.getBoundingClientRect().top - bounds.top,
                     height: row.getBoundingClientRect().height,
-                  }))
-                  .slice(0, 30),
-              }
-            })
-            .catch((captureError) => ({ captureError: String(captureError) })),
+                  })),
+                }
+              }, conversation.id)
+              .catch(() => ({ captureFailed: true }))),
+          }),
         )
       throw new AggregateError([error, ...(diagnostics?.errors ?? [])], "Conversation real-host acceptance failed")
     } finally {
