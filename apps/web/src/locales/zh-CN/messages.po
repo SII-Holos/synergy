@@ -8714,10 +8714,6 @@ msgstr "无智能体"
 msgid "app.sidebar.attention.busy"
 msgstr "正在工作…"
 
-#. Brand / logo
-msgid "app.sidebar.brand.logo"
-msgstr "HOLOS"
-
 #. Channel account status
 msgid "app.sidebar.channel.account.connected"
 msgstr "已连接"
@@ -10219,14 +10215,6 @@ msgstr "检测到冲突标记"
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.diagnostic-error"
 msgstr "错误"
-
-#. js-lingui-explicit-id
-msgid "brand.logo.alt"
-msgstr "Holos"
-
-#. js-lingui-explicit-id
-msgid "brand.workbench.synergy"
-msgstr "Synergy 工作台"
 
 #. js-lingui-explicit-id
 msgid "browser.capture.add"

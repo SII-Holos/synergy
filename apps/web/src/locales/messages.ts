@@ -732,8 +732,6 @@ export const sidebar = {
   // Session fallback
   untitled: { id: "app.sidebar.session.untitled", message: "Untitled" },
   draftBadge: { id: "app.sidebar.session.draftBadge", message: "Draft" },
-  // Brand / logo
-  logoAlt: { id: "app.sidebar.brand.logo", message: "Synergy" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
   channelGithub: { id: "app.sidebar.channel.github", message: "GitHub" },
   addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },

@@ -23,6 +23,7 @@ beforeAll(async () => {
     import { createSignal } from "solid-js"
     import { setupI18n } from "@lingui/core"
     import { I18nProvider } from "@lingui/solid"
+    import "@ericsanchezok/synergy-ui/styles"
     import { SpaceSwitcher } from ${JSON.stringify(`/@fs/${source}/components/sidebar/space-switcher.tsx`)}
     const i18n = setupI18n({ locale: "en", messages: { en: {}, "zh-CN": {
       "app.sidebar.space.current": "当前空间", "app.sidebar.space.personal": "个人空间",
@@ -30,13 +31,14 @@ beforeAll(async () => {
     } } })
     const [expanded, setExpanded] = createSignal(true)
     window.fixture = { setExpanded, locale: value => i18n.activate(value), actions: [] }
-    render(() => <I18nProvider i18n={i18n}><div style="width:260px;margin-top:200px">
+    render(() => <I18nProvider i18n={i18n}><div style={{position:"fixed",bottom:0,left:0,width:expanded()?"260px":"48px"}}>
       <SpaceSwitcher expanded={expanded()} onSettings={value => window.fixture.actions.push(value)} onRepository={() => window.fixture.actions.push("repository")} />
     </div></I18nProvider>, document.getElementById("root"))
   `,
   )
   server = await createBrowserFixture({
     root: directory,
+    styled: true,
     aliases: [{ find: "@", replacement: source }],
   })
   url = server.url
@@ -60,6 +62,11 @@ test("personal space exposes exactly three working actions and restores keyboard
     await trigger.focus()
     await page.keyboard.press("Enter")
     await page.getByRole("menu").waitFor()
+    const triggerBox = (await trigger.boundingBox())!
+    const menuBox = (await page.getByRole("menu").boundingBox())!
+    expect(Math.abs(menuBox.x - triggerBox.x)).toBeLessThan(1)
+    expect(Math.abs(menuBox.width - triggerBox.width)).toBeLessThan(1)
+    expect(menuBox.y + menuBox.height).toBeLessThan(triggerBox.y)
     expect(await page.getByRole("menuitem").allTextContents()).toEqual(["Settings", "Providers", "Repository"])
     await page.keyboard.press("Escape")
     await page.waitForFunction(() => document.activeElement?.matches(".space-switcher-trigger"))
@@ -97,6 +104,10 @@ test("collapsed space retains its accessible name and follows live locale change
     expect(await trigger.locator("img").count()).toBe(1)
     await trigger.click()
     expect(await page.getByRole("menuitem").count()).toBe(3)
+    const triggerBox = (await trigger.boundingBox())!
+    const menuBox = (await page.getByRole("menu").boundingBox())!
+    expect(menuBox.x).toBeGreaterThan(triggerBox.x + triggerBox.width)
+    expect(Math.abs(menuBox.y + menuBox.height - triggerBox.y - triggerBox.height)).toBeLessThan(1)
     await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]'))
     await page.keyboard.press("Escape")
     await page.waitForFunction(() => document.activeElement?.matches(".space-switcher-trigger"))

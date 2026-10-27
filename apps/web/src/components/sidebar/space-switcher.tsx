@@ -4,7 +4,6 @@ import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import "@ericsanchezok/synergy-ui/menu-field"
 import { useOverlayLayer } from "@ericsanchezok/synergy-ui/context/overlay-layer"
 import { PortalStyleOwner } from "@ericsanchezok/synergy-ui/context/ui-style"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
@@ -31,8 +30,15 @@ export function SpaceSwitcher(props: {
   const [open, setOpen] = createSignal(false)
   const label = () => _({ id: "app.sidebar.space.current", message: "Current space" })
   return (
-    <div class="space-switcher">
-      <DropdownMenu open={open()} onOpenChange={setOpen} modal={false} placement="top-start" gutter={8}>
+    <div class="space-switcher" classList={{ "space-switcher--collapsed": !props.expanded }}>
+      <DropdownMenu
+        open={open()}
+        onOpenChange={setOpen}
+        modal={false}
+        placement={props.expanded ? "top-start" : "right-end"}
+        sameWidth={props.expanded}
+        gutter={props.expanded ? 12 : 15}
+      >
         <Tooltip value={label()} placement="right" inactive={props.expanded}>
           <DropdownMenu.Trigger
             ref={trigger}
@@ -43,14 +49,15 @@ export function SpaceSwitcher(props: {
             <img src={currentSpace().icon} alt="" class="space-switcher-icon" />
             <Show when={props.expanded}>
               <span class="space-switcher-name">{translateDescriptor(currentSpace().name, { _ })}</span>
-              <Icon name={getSemanticIcon(open() ? "navigation.collapse" : "navigation.expand")} size="small" />
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="space-switcher-chevron" />
             </Show>
           </DropdownMenu.Trigger>
         </Tooltip>
         <DropdownMenu.Portal mount={overlayLayer()}>
           <PortalStyleOwner>
             <DropdownMenu.Content
-              class="menu-field-surface space-switcher-menu"
+              class="space-switcher-menu"
+              classList={{ "space-switcher-menu--collapsed": !props.expanded }}
               aria-label={label()}
               onEscapeKeyDown={(event) => event.stopPropagation()}
               onCloseAutoFocus={(event) => {
@@ -63,7 +70,7 @@ export function SpaceSwitcher(props: {
               }}
             >
               <DropdownMenu.Item
-                class="menu-field-item"
+                class="space-switcher-menu-item"
                 onSelect={() => {
                   pendingAction = () => props.onSettings("general")
                 }}
@@ -72,7 +79,7 @@ export function SpaceSwitcher(props: {
                 <span>{_(sidebar.settings)}</span>
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                class="menu-field-item"
+                class="space-switcher-menu-item"
                 onSelect={() => {
                   pendingAction = () => props.onSettings("providers")
                 }}
@@ -81,13 +88,14 @@ export function SpaceSwitcher(props: {
                 <span>{_(sidebar.providers)}</span>
               </DropdownMenu.Item>
               <DropdownMenu.Item
-                class="menu-field-item"
+                class="space-switcher-menu-item"
                 onSelect={() => {
                   pendingAction = props.onRepository
                 }}
               >
                 <Icon name={getSemanticIcon("github.main")} size="small" />
                 <span>{_(sidebar.repository)}</span>
+                <Icon name={getSemanticIcon("action.open")} size="small" class="space-switcher-menu-trailing" />
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </PortalStyleOwner>

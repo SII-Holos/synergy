@@ -444,6 +444,9 @@ describe("mobile drawer localization", () => {
     await withFixture(async (page) => {
       const account = page.locator(".space-switcher-trigger")
       await account.waitFor()
+      const header = page.locator(".mobile-drawer-header")
+      expect(await header.locator("img").count()).toBe(0)
+      expect(await header.innerText()).toBe("")
       expect(await account.innerText()).toContain("Personal space")
       expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
 

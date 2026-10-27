@@ -27,7 +27,6 @@ import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
 import { MobileDrawerAddProjectButton, MobileDrawerRecent, type MobileDrawerRecentVisual } from "./mobile-drawer-root"
 import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
-import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { useNewTaskNavigation } from "@/components/session/welcome/context"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
 import { SpaceSwitcher } from "@/components/sidebar/space-switcher"
@@ -71,19 +70,6 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
       onClosed={() => setDrilldown(null)}
     >
       <div class="mobile-drawer-header safe-top">
-        <A href="/" class="mobile-drawer-brand" onClick={close}>
-          <img
-            src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)}
-            alt={_({ id: "brand.logo.alt", message: "Synergy" })}
-            class="size-5 shrink-0"
-          />
-          <div class="flex flex-col">
-            <span class="mobile-drawer-label text-text-strong">{_(sidebar.logoAlt)}</span>
-            <span class="text-10-regular text-text-weak">
-              {_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}
-            </span>
-          </div>
-        </A>
         <button
           type="button"
           data-action="search"

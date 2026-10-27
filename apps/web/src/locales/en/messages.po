@@ -8714,10 +8714,6 @@ msgstr "No agent"
 msgid "app.sidebar.attention.busy"
 msgstr "Working..."
 
-#. Brand / logo
-msgid "app.sidebar.brand.logo"
-msgstr "Synergy"
-
 #. Channel account status
 msgid "app.sidebar.channel.account.connected"
 msgstr "Connected"
@@ -10219,14 +10215,6 @@ msgstr "Conflict markers detected"
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.diagnostic-error"
 msgstr "Error"
-
-#. js-lingui-explicit-id
-msgid "brand.logo.alt"
-msgstr "Synergy"
-
-#. js-lingui-explicit-id
-msgid "brand.workbench.synergy"
-msgstr "Synergy workspace"
 
 #. js-lingui-explicit-id
 msgid "browser.capture.add"

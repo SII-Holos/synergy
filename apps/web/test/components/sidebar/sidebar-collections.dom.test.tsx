@@ -123,7 +123,7 @@ beforeAll(async () => {
     const i18n=setupI18n({locale,messages:{en,"zh-CN":zh}})
     window.sidebarI18n=i18n
     const selector = new URLSearchParams(location.search).get("selector")
-    render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar onSearchOpen={()=>{}} onCreateProject={createProject}/>{selector&&<ProjectTaskButton label="No project" disabled={selector==="disabled"} uploading={selector==="uploading"}/>} {creating()&&<div role="dialog" aria-label="New project">Project creation</div>}</div>}/></Router></I18nProvider>,document.getElementById("root"))
+    render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar integrated={new URLSearchParams(location.search).has("integrated")} onSearchOpen={()=>{}} onCreateProject={createProject}/>{selector&&<ProjectTaskButton label="No project" disabled={selector==="disabled"} uploading={selector==="uploading"}/>} {creating()&&<div role="dialog" aria-label="New project">Project creation</div>}</div>}/></Router></I18nProvider>,document.getElementById("root"))
   `,
   )
   // Keep the real registry and built-in ordering without loading page implementations.
@@ -552,6 +552,25 @@ test("personal-space menus retain local settings in core and full compositions",
     }
     expect(await menu.getByRole("menuitem", { name: "Create Agent", exact: true }).count()).toBe(0)
     expect(await menu.getByRole("menuitem", { name: "Import Agent", exact: true }).count()).toBe(0)
+    expect(errors).toEqual([])
+  }
+})
+
+test("sidebar headers retain only navigation controls in standalone and integrated layouts", async () => {
+  for (const integrated of [false, true]) {
+    await open("?locale=en" + (integrated ? "&integrated=1" : ""))
+    const header = page.locator(integrated ? ".sb-navigation" : ".sb-header")
+    expect(await header.locator("img").count()).toBe(0)
+    expect(await header.innerText()).toBe("")
+    const collapse = header.getByRole("button", { name: "Collapse sidebar", exact: true })
+    const search = header.getByRole("button", { name: "Search sessions", exact: true })
+    expect((await collapse.boundingBox())!.x).toBeLessThan((await search.boundingBox())!.x)
+    await collapse.click()
+    expect(await header.getByRole("button", { name: "Expand sidebar", exact: true }).isVisible()).toBe(true)
+    expect(await header.locator("img").count()).toBe(0)
+    await page.getByRole("button", { name: "Current space", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
+    await page.getByRole("menu").waitFor({ state: "hidden" })
     expect(errors).toEqual([])
   }
 })

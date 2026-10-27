@@ -9,7 +9,7 @@ import { createSessionTagFilter, type TagFilterState } from "./session-tag-filte
 import { FlipList } from "./flip-list"
 import { shouldOpenProjectDisclosure } from "./project-disclosure"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
-import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
+import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
 import type { NavRequestState } from "@/context/layout/nav-request"
 import { useGlobalSync } from "@/context/global-sync"
@@ -24,7 +24,6 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { translateDescriptor } from "@/locales/translate"
 import { sessionTags, sidebar } from "@/locales/messages"
-import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
 import { DialogScopeEdit } from "@/components/dialog/dialog-scope-edit"
@@ -469,63 +468,23 @@ export function Sidebar(props: SidebarProps) {
         fallback={
           <>
             <div class="sb-header">
-              <Show
-                when={isExpanded()}
-                fallback={
-                  <Tooltip value={_(sidebar.expand)} placement="right">
-                    <button
-                      type="button"
-                      class="sb-collapsed-toggle"
-                      aria-label={_(sidebar.expand)}
-                      onClick={() => layout.sidebar.toggle()}
-                    >
-                      <img
-                        src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)}
-                        alt={_(sidebar.logoAlt)}
-                        class="sb-collapsed-logo"
-                        draggable={false}
-                      />
-                      <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" class="sb-collapsed-toggle-icon" />
-                    </button>
-                  </Tooltip>
-                }
-              >
-                <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-                  <img
-                    src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)}
-                    alt={_(sidebar.logoAlt)}
-                    class="sb-logo-img"
-                    draggable={false}
-                  />
-                  <div class="sb-logo-caption">
-                    <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
-                    <span class="sb-product-label">
-                      {_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}
-                    </span>
-                  </div>
-                </A>
-                <div class="sb-header-actions">
-                  <Tooltip value={_(sidebar.search)} placement="right">
-                    <button
-                      type="button"
-                      class="sb-icon-btn"
-                      aria-label={_(sidebar.search)}
-                      onClick={props.onSearchOpen}
-                    >
-                      <Icon name={getSemanticIcon("action.search")} size="normal" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip value={_(sidebar.collapse)} placement="right">
-                    <button
-                      type="button"
-                      class="sb-icon-btn"
-                      aria-label={_(sidebar.collapse)}
-                      onClick={() => layout.sidebar.toggle()}
-                    >
-                      <Icon name={getSemanticIcon("app.sidebar.close")} size="normal" />
-                    </button>
-                  </Tooltip>
-                </div>
+              <Tooltip value={isExpanded() ? _(sidebar.collapse) : _(sidebar.expand)} placement="right">
+                <button
+                  type="button"
+                  class="sb-icon-btn"
+                  aria-label={isExpanded() ? _(sidebar.collapse) : _(sidebar.expand)}
+                  aria-expanded={isExpanded()}
+                  onClick={() => layout.sidebar.toggle()}
+                >
+                  <Icon name={getSemanticIcon("app.sidebar")} size="normal" />
+                </button>
+              </Tooltip>
+              <Show when={isExpanded()}>
+                <Tooltip value={_(sidebar.search)} placement="right">
+                  <button type="button" class="sb-icon-btn" aria-label={_(sidebar.search)} onClick={props.onSearchOpen}>
+                    <Icon name={getSemanticIcon("action.search")} size="normal" />
+                  </button>
+                </Tooltip>
               </Show>
             </div>
 
@@ -554,20 +513,7 @@ export function Sidebar(props: SidebarProps) {
           onSearch={props.onSearchOpen}
           onNew={handleNewSession}
           notice={attention() ? translateDescriptor(attention()!.title, { _ }) : undefined}
-        >
-          <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img
-              src={brandAssetPath(BRAND_ASSETS.synergy.productIcon)}
-              alt={_(sidebar.logoAlt)}
-              class="sb-logo-img"
-              draggable={false}
-            />
-            <div class="sb-logo-caption">
-              <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
-              <span class="sb-product-label">{_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}</span>
-            </div>
-          </A>
-        </SidebarNavigation>
+        />
       </Show>
       <div
         ref={panel}
