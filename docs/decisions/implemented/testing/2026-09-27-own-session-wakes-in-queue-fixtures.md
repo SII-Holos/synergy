@@ -12,6 +12,8 @@ The fixture acquires a real Session loop lease before accepting callbacks, prese
 
 Boss assignment fixtures use the same lease and cleanup boundary for their worker queues. The cache-reset fixture closes dispatch admission while inspecting persisted work, removes its pending items, then reopens admission. This preserves the intended storage assertions without allowing a scheduled model loop to consume their input.
 
+Boss service and integration suites share a single-worker disposable queue holder. Each worker is acquired separately so cleanup still runs for earlier holders if a later acquisition fails. Assignment, report and manual-materialization fixtures keep the real wake enabled. Cancellation of another task is checked against an actual held lease, including its un-aborted signal and retained busy ownership. The service suite drains and verifies that no execution owner remains before closing its Runtime.
+
 ## Alternatives considered
 
 **Increase the cleanup timeout.** Additional time does not establish which test owns the queued execution or keep a wake from consuming the item before its assertions.
@@ -23,3 +25,5 @@ Boss assignment fixtures use the same lease and cleanup boundary for their worke
 The existing callback, deduplication and payload assertions remain intact. Forcing the real wake without the lease fails with `ProviderModelUnavailableError` for the fixture model, proving that the original fixture could start an unintended Session execution. Both wake orderings pass with the lease and queue cleanup. The observed CI failure was a Runtime cleanup timeout after all seven test bodies passed; its logs do not identify the exact cleanup await that stalled. Validation covers the file and its original thirteen-file coverage batch on macOS and native Linux ARM64; the Linux x64 CI run remains the platform acceptance check.
 
 The Boss integration failure was independently reproduced by forcing the real wake and draining scheduled execution before the pending-item assertion: the original fixture observed an empty queue. Holding the actual worker leases preserves the three queued tasks, reports and tree assertions under that same ordering.
+
+The service assignment fixture independently fails with `ProviderModelUnavailableError` when the real wake precedes its original queue assertions; the lease makes that ordering deterministic without providing an unrelated model. Its CI failure occurred in the cleanup hook after all nineteen test bodies passed. The recorded timeout does not identify the blocked internal await, so queue ownership is established by the controlled regression, not claimed as a reconstruction of that exact cleanup stack. Runtime cancellation, deadlines and coverage policy are unchanged.

@@ -10,31 +10,13 @@ import { BossService } from "../../src/boss/boss"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { holdWorkerQueue } from "../support/worker-queues"
 const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
   const scope = (await Scope.fromDirectory(tmp.path)).scope
   return ScopeContext.provide({ scope, fn })
-}
-
-function holdWorkers(...ids: string[]) {
-  const leases = ids.map((id) => {
-    const lease = SessionManager.acquire(id)
-    if (!lease) throw new Error("Expected idle test worker")
-    return lease
-  })
-  return {
-    async [Symbol.asyncDispose]() {
-      for (const lease of leases) {
-        await SessionInbox.removeByModes(lease.sessionID, ["task", "steer", "context"])
-        await SessionManager.release(lease, { requestNextWork: false })
-        await SessionManager.wake(lease.sessionID)
-        SessionManager.unregisterRuntime(lease.sessionID)
-      }
-      await SessionManager.drain()
-    },
-  }
 }
 
 describe("Boss Mode end-to-end", () => {
@@ -50,7 +32,10 @@ describe("Boss Mode end-to-end", () => {
         const code = await BossService.spawn(boss.id, { role: "code" })
         const review = await BossService.spawn(boss.id, { role: "review", agent: PrimaryAgentIdentity.names.coding })
         const research = await BossService.spawn(boss.id, { role: "research" })
-        await using workers = holdWorkers(boss.id, code.id, review.id, research.id)
+        await using bossQueue = holdWorkerQueue(boss.id)
+        await using codeQueue = holdWorkerQueue(code.id)
+        await using reviewQueue = holdWorkerQueue(review.id)
+        await using researchQueue = holdWorkerQueue(research.id)
 
         // Boss assigns one task per worker.
         await BossService.assign(boss.id, { sessionID: code.id, taskID: "t-1", task: "Implement the widget" })
@@ -96,7 +81,8 @@ describe("Boss Mode end-to-end", () => {
         await WorkflowSessionService.enableBoss(boss.id)
         const code = await BossService.spawn(boss.id, { role: "code" })
         const sub = await BossService.spawn(code.id, { role: "lint" })
-        await using workers = holdWorkers(code.id, sub.id)
+        await using codeQueue = holdWorkerQueue(code.id)
+        await using subQueue = holdWorkerQueue(sub.id)
         await BossService.assign(code.id, { sessionID: sub.id, taskID: "s-1", task: "Lint the widget" })
         await SessionManager.wake(sub.id)
 
@@ -122,7 +108,7 @@ describe("Boss Mode end-to-end", () => {
         await WorkflowSessionService.enableBoss(boss.id)
         const worker = await BossService.spawn(boss.id, { role: "code" })
 
-        await using workers = holdWorkers(worker.id)
+        await using workerQueue = holdWorkerQueue(worker.id)
 
         const first = await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it" })
         const second = await BossService.assign(boss.id, { sessionID: worker.id, taskID: "t-1", task: "Do it again" })
