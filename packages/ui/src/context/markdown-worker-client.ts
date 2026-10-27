@@ -1,5 +1,5 @@
 import type { MarkdownDocument } from "./markdown-document"
-import { markdownMathMarker } from "./marked-math"
+import { markdownMathMarker } from "./markdown-math-source"
 
 type Request = {
   id: number

@@ -3,7 +3,7 @@ import { Dynamic } from "solid-js/web"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
+import { copyTextToClipboard, selectedMathText } from "@ericsanchezok/synergy-ui/clipboard"
 import { useLocale } from "@/context/locale"
 import {
   presentTextActions,
@@ -68,7 +68,8 @@ export function SelectionToolbar() {
     const range = selection.getRangeAt(0)
     const owner = selectionOwner(range.commonAncestorContainer)
     const rect = range.getBoundingClientRect()
-    textSelectionController.update(selection.toString(), {
+    const editable = !!owner?.closest('input, textarea, [contenteditable="true"]')
+    textSelectionController.update((editable ? undefined : selectedMathText(selection)) ?? selection.toString(), {
       excluded:
         !owner ||
         sensitiveSelection(selection.anchorNode) ||
@@ -76,11 +77,27 @@ export function SelectionToolbar() {
         !!range.cloneContents().querySelector(SENSITIVE_SELECTION_SELECTOR),
       source: "document",
       origin: selectionOrigin(owner, [selection.anchorNode, selection.focusNode]),
-      editable: !!owner?.closest('input, textarea, [contenteditable="true"]'),
+      editable,
       wholeContainer: !!owner && selection.toString().trim() === (owner.textContent ?? "").trim(),
       owner: owner ?? undefined,
       anchor: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
     })
+  }
+
+  const onCopy = (event: ClipboardEvent) => {
+    if (event.defaultPrevented || !event.clipboardData) return
+    if (document.activeElement?.closest('input, textarea, [contenteditable="true"]')) return
+    const selection = window.getSelection()
+    if (!selection || !selection.rangeCount) return
+    const range = selection.getRangeAt(0)
+    const owner = selectionOwner(range.commonAncestorContainer)
+    if (owner?.closest('input, textarea, [contenteditable="true"]')) return
+    if (sensitiveSelection(selection.anchorNode) || sensitiveSelection(selection.focusNode)) return
+    if (range.cloneContents().querySelector(SENSITIVE_SELECTION_SELECTOR)) return
+    const text = selectedMathText(selection)
+    if (text === undefined) return
+    event.clipboardData.setData("text/plain", text)
+    event.preventDefault()
   }
 
   const copy = async (snapshot: TextSelectionSnapshot) => {
@@ -193,6 +210,7 @@ export function SelectionToolbar() {
     }
     const dismiss = () => close()
     document.addEventListener("selectionchange", trackSelection)
+    document.addEventListener("copy", onCopy)
     document.addEventListener("contextmenu", onContextMenu)
     document.addEventListener("pointerdown", onPointerDown, true)
     document.addEventListener("keydown", onKeyDown, true)
@@ -204,6 +222,7 @@ export function SelectionToolbar() {
       settled()
       registry()
       document.removeEventListener("selectionchange", trackSelection)
+      document.removeEventListener("copy", onCopy)
       document.removeEventListener("contextmenu", onContextMenu)
       document.removeEventListener("pointerdown", onPointerDown, true)
       document.removeEventListener("keydown", onKeyDown, true)

@@ -1,4 +1,5 @@
 import { PrimaryAgentIdentity } from "../../src/agent/primary-identity"
+import { Asset } from "../../src/asset/asset"
 import { describe, expect, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
@@ -86,6 +87,82 @@ async function modelMessages(input: { sessionID: string; onLoadParts?: (messageI
 }
 
 describe("SessionHistory.modelMessages", () => {
+  for (const kind of ["attachment", "tool"] as const) {
+    test(`keeps cached ${kind} presentation defaults equal to reloaded history`, () =>
+      runtime.run(async () => {
+        await using tmp = await tmpdir({ git: true })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const session = await Session.create({})
+            SessionMessageCache.enable(session.id)
+            try {
+              await SessionHistory.modelMessages({ sessionID: session.id })
+              const root = await writeUser(session.id, "Inspect this image")
+              const asset = await Asset.write(Buffer.from("retained image bytes"), "image/png", "fixture.png")
+              const attachment: MessageV2.AttachmentPart = {
+                id: Identifier.ascending("part"),
+                sessionID: session.id,
+                messageID: root.id,
+                type: "attachment",
+                mime: "image/png",
+                url: `asset://${asset}`,
+                presentation: kind === "tool" ? { renderer: "image", size: "small" } : undefined,
+              }
+              await Session.updatePart(
+                kind === "attachment"
+                  ? attachment
+                  : {
+                      id: Identifier.ascending("part"),
+                      sessionID: session.id,
+                      messageID: root.id,
+                      type: "tool",
+                      tool: "view_image",
+                      callID: "fixture_call",
+                      state: {
+                        status: "completed",
+                        input: {},
+                        output: "An image",
+                        title: "Image",
+                        metadata: {},
+                        time: { start: 1, end: 2 },
+                        attachments: [
+                          attachment,
+                          { ...attachment, id: Identifier.ascending("part"), presentation: { purpose: "evidence" } },
+                        ],
+                      },
+                    },
+              )
+              await writeUser(session.id, "Continue the next task")
+              const hot = await SessionHistory.modelMessages({ sessionID: session.id })
+              const cold = await SessionHistory.detachedModelMessages({ sessionID: session.id })
+              expect(JSON.parse(JSON.stringify(hot))).toEqual(JSON.parse(JSON.stringify(cold)))
+              const attachments = cold
+                .flatMap((message) => message.parts)
+                .flatMap((part) =>
+                  part.type === "attachment"
+                    ? [part]
+                    : part.type === "tool" && part.state.status === "completed"
+                      ? (part.state.attachments ?? [])
+                      : [],
+                )
+              expect(attachments.map((part) => part.presentation?.purpose)).toEqual(
+                kind === "tool" ? ["deliverable", "evidence"] : ["deliverable"],
+              )
+              SessionMessageCache.invalidate(session.id)
+              expect(await SessionHistory.modelMessages({ sessionID: session.id })).toEqual(cold)
+              expect(attachment.presentation).toEqual(
+                kind === "tool" ? { renderer: "image", size: "small" } : undefined,
+              )
+              expect(await (await Asset.read(asset))?.text()).toBe("retained image bytes")
+            } finally {
+              SessionMessageCache.disable(session.id)
+            }
+          },
+        })
+      }))
+  }
+
   test("keeps partial-compaction tails across cache eviction and fork while ordering only the model prompt", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })

@@ -1,4 +1,5 @@
 export { SessionProcessor } from "../../src/session/processor"
+export { SessionMessageCache } from "../../src/session/message-cache"
 export { modelWorkingSetForPrompt } from "../../src/session/model-working-set"
 export { ToolResolver } from "../../src/session/tool-resolver"
 export { LLM } from "../../src/session/llm"

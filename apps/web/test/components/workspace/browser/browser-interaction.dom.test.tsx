@@ -186,6 +186,18 @@ test("navigation controls stay quiet while disabled and keep their bounds throug
     return trigger && getComputedStyle(trigger).backgroundColor !== "rgba(0, 0, 0, 0)"
   })
   expect(await menu.boundingBox()).toEqual(bounds)
+  for (const name of ["Back", "Forward", "Reload", "Open in default browser", "Browser options"]) {
+    const control = page.getByRole("button", { name, exact: true })
+    await control.hover({ force: true })
+    await page.waitForTimeout(500)
+    expect(await page.getByRole("tooltip").count()).toBe(0)
+    expect(await control.getAttribute("title")).toBeNull()
+    if (await control.isEnabled()) {
+      await control.focus()
+      await page.waitForTimeout(100)
+      expect(await page.getByRole("tooltip").count()).toBe(0)
+    }
+  }
   await menu.click()
   expect(await menu.boundingBox()).toEqual(bounds)
 })

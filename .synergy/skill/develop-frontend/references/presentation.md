@@ -42,6 +42,8 @@ Compile repeated Review acceptance fixtures before serving them, so development 
 
 ## Preserve Product Presentation
 
+For reading-surface copy and quote changes, exercise the real renderer with mixed prose, inline/display math, partial formula selections, tables and code indentation. Reuse trusted renderer source for semantic atoms instead of flattening visual and accessibility nodes together. Keep toolbar, native copy and quoted text consistent without mutating the live selection; verify editable and excluded selections keep their existing owners, including the shared clipboard's textarea fallback. Capture source annotations in a lightweight shared module so selection actions do not load the Markdown parser.
+
 Keep model configuration and recovery inside the existing model selector. Verify that provider changes preserve shell and Composer geometry, input focus and reading position; cover Home, project overrides, unresolved Scope snapshots and Settings recovery without adding polling.
 
 Do not introduce focus-triggered borders, outlines, rings, inset strokes or glows in any color, including `:focus-within`, Tailwind variants, composite-control proxies and embedded Synergy controls. Text inputs and their containers must retain their resting appearance through hover, pointer press and focus, with no background overlay; preserve the caret. Other controls use the shared neutral focus surface or text treatment. Run `bun run verify local --test apps/web/test/testing/focus-presentation.browser.test.ts` when changing focus presentation; extend its real control fixtures for new kinds of widgets. Keep pointer and keyboard activation, focus return, resting borders and error states intact.

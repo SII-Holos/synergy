@@ -77,6 +77,8 @@ test("attachment purpose upgrades historical tool evidence and refreshes only th
         )
         const before = await Storage.read<MessageV2.ToolPart>(key)
         if (before.state.status !== "completed") throw new Error("Expected completed tool")
+        for (const attachment of before.state.attachments ?? []) delete attachment.presentation?.purpose
+        await Storage.write(key, before)
         const stateKey = ["sessions", session.scope.id, session.id, "display_parts_state", messageID]
         const foreignKey = ["sessions", other.scope.id, other.id, "display_parts_state", messageID]
         const state = { ready: true, generation: 7, cursor: part.id, sourceGeneration: 7 }

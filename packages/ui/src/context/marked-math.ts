@@ -1,24 +1,14 @@
 import katex from "katex"
 import type { MarkedExtension, TokenizerAndRendererExtension } from "marked"
 import type { MarkedKatexOptions } from "marked-katex-extension"
-import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 import { markdownSourceOffsets } from "./markdown-source"
+import { markKatexHtml } from "./markdown-math-source"
 
-const generatedKatexAttribute = "data-synergy-katex-generated"
-let generatedKatexMarker = generateUUID()
-export const markdownMathMarker = () => generatedKatexMarker
-export const useMarkdownMathMarker = (marker: string) => {
-  generatedKatexMarker = marker
-}
 const blockLatexRule = /^[ \t]{0,3}(\\{1,2})\[([\s\S]*?)\1\][ \t]*(?:\n|$)/
 const blockLatexStartRule = /\n[ \t]{0,3}\\{1,2}\[/
 const inlineDisplayLatexRule = /^(\\{1,2})\[([^\n]*?)\1\]/
 const inlineLatexRule = /^(\\{1,2})\(([^\n]*?)\1\)/
 const inlineLatexStartRule = /\\{1,2}[[(]/
-const rawGeneratedKatexAttributeRule = new RegExp(
-  `\\s${generatedKatexAttribute}(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+))?`,
-  "gi",
-)
 const tableMathRule =
   /\\\\\[[^\n]*?\\\\\]|\\\[[^\n]*?\\\]|\\\\\([^\n]*?\\\\\)|\\\([^\n]*?\\\)|\$\$[^$\n]*\$\$|\$[^$\n]*\$/g
 const fenceStartRule = /^[ \t]{0,3}(`{3,}|~{3,})/
@@ -38,21 +28,6 @@ export function prepareMarkdownMathSource(markdown: string) {
   const original = markdownSourceOffsets(newlines)
   const source = markdownSourceOffsets(pipes)
   return { markdown: prepared, sourceOffset: (offset: number) => original(source(offset)) }
-}
-
-export function stripGeneratedKatexMarker(html: string) {
-  return html.replace(rawGeneratedKatexAttributeRule, "")
-}
-
-export function isGeneratedKatex(element: Element) {
-  return element.getAttribute(generatedKatexAttribute) === generatedKatexMarker
-}
-
-export function getGeneratedKatexSource(element: Element) {
-  if (!isGeneratedKatex(element)) return
-  const annotation = element.querySelector('annotation[encoding="application/x-tex"]')
-  const source = annotation?.textContent?.trim()
-  return source || undefined
 }
 
 export function markedLatex(options: MarkedKatexOptions): MarkedExtension {
@@ -176,10 +151,6 @@ function escapeTableMathPipes(text: string, replaced?: (start: number) => void) 
 
 function renderKatex(text: string, options: MarkedKatexOptions, displayMode: boolean) {
   return markKatexHtml(katex.renderToString(text, { ...options, displayMode }))
-}
-
-function markKatexHtml(html: string) {
-  return html.replace("<span ", `<span ${generatedKatexAttribute}="${generatedKatexMarker}" `)
 }
 
 function wrapKatexRenderer(item: TokenizerAndRendererExtension): TokenizerAndRendererExtension {

@@ -5,6 +5,8 @@ import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionProcessor } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { SessionMessageCache } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { PromptBudgeter } from "@ericsanchezok/synergy-harness/test/internal/session/prompt-budgeter"
 import { ToolResolver } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -249,6 +251,8 @@ async function runCompactionProcessCase(input: {
   beforeProcess?: () => void
   beforeAttemptWrite?: (message: MessageV2.Assistant) => Promise<void>
   beforeProviderLookup?: () => void
+  cachedHistory?: boolean
+  prepareHistory?: (user: MessageV2.User) => Promise<void>
 }) {
   await using tmp = await tmpdir({ git: true })
   const scope = await tmp.scope()
@@ -392,6 +396,15 @@ async function runCompactionProcessCase(input: {
       scope,
       fn: async () => {
         const session = await Session.create({})
+        using cache = {
+          [Symbol.dispose]() {
+            if (input.cachedHistory) SessionMessageCache.disable(session.id)
+          },
+        }
+        if (input.cachedHistory) {
+          SessionMessageCache.enable(session.id)
+          await SessionHistory.modelMessages({ sessionID: session.id })
+        }
         const user = await Session.updateMessage({
           id: Identifier.ascending("message"),
           role: "user",
@@ -445,7 +458,10 @@ async function runCompactionProcessCase(input: {
             text,
           })
         }
-        const before = await Session.messages({ sessionID: session.id })
+        await input.prepareHistory?.(user)
+        const before = input.cachedHistory
+          ? await SessionHistory.modelMessages({ sessionID: session.id })
+          : await Session.messages({ sessionID: session.id })
         let result: Awaited<ReturnType<typeof SessionCompaction.process>> | undefined
         let thrown: unknown
         input.beforeProcess?.()
@@ -744,6 +760,46 @@ describe.serial("SessionInvoke preflight compaction", () => {
           ),
         ).toBe(true)
       }
+    }))
+
+  test("commits unchanged cached attachment history from an earlier task", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({
+        native: true,
+        cachedHistory: true,
+        text: "The earlier task supplied an image. Continue the current task.",
+        prepareHistory: async (user) => {
+          const earlierID = Identifier.ascending("message")
+          const earlier = await Session.updateMessage({
+            ...user,
+            id: earlierID,
+            rootID: earlierID,
+            time: { created: user.time.created - 1 },
+          })
+          const asset = await Asset.write(Buffer.from("retained fixture image"), "image/png", "fixture.png")
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: user.sessionID,
+            messageID: earlier.id,
+            type: "attachment",
+            mime: "image/png",
+            url: `asset://${asset}`,
+            filename: "fixture.png",
+            presentation: { renderer: "image", size: "small" },
+            model: { mode: "summary", summary: "An image from the earlier task." },
+          })
+        },
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(observed.attempt.info).toMatchObject({
+        summary: true,
+        includeInContext: true,
+        metadata: { compactionAttempt: { state: "committed" } },
+      })
+      expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(true)
+      expect(
+        observed.messages.flatMap((message) => message.parts).find((part) => part.type === "attachment"),
+      ).toMatchObject({ filename: "fixture.png", presentation: { renderer: "image", size: "small" } })
     }))
 
   test("rejects a summary when its source changes before the commit", () =>

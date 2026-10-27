@@ -492,6 +492,10 @@ export namespace SessionImport {
     idMap: Map<string, string>,
     rollout = false,
   ): MessageV2.Part {
+    part = upgradeImportedRecord(
+      ["sessions", ScopeContext.current.scope.id, sessionID, "messages", messageID, "parts", part.id],
+      part,
+    ) as MessageV2.Part
     const next = {
       ...part,
       sessionID,

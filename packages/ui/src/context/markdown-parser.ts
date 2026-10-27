@@ -4,7 +4,8 @@ import { Marked, Tokenizer, type Renderer, type RendererObject } from "marked"
 import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
 import type { BundledLanguage, Highlighter } from "shiki"
-import { markGeneratedKatex, markedLatex, prepareMarkdownMath, stripGeneratedKatexMarker } from "./marked-math"
+import { markGeneratedKatex, markedLatex, prepareMarkdownMath } from "./marked-math"
+import { stripGeneratedKatexMarker } from "./markdown-math-source"
 import { synergyHighlightTheme } from "./highlight-theme"
 
 function escapeHtmlAttribute(value: string) {

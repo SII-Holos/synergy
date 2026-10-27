@@ -12,12 +12,14 @@
 
 - **Executive summary** — failure, cause, lesson.
 - **Summary**.
-- **Timeline** — observations.
+- **Timeline**.
 - **Root cause** — missing safeguards.
 - **Guardrails** — tests, docs, gates.
-- **Lessons** — takeaways.
+- **Lessons**.
 
 ## Index
+
+- [0093](0093-compaction-attachment-default-drift.md)
 
 - [0092](0092-cortex-notification-targeted-completed-root.md)
 

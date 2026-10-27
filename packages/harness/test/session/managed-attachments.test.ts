@@ -184,7 +184,7 @@ for (const source of ["asset", "data"] as const) {
             })
             const attachment = message.parts.find((part) => part.type === "attachment")
             expect(attachment?.model).toEqual(policy)
-            expect(attachment?.presentation).toEqual({ hidden: true })
+            expect(attachment?.presentation).toEqual({ hidden: true, purpose: "deliverable" })
             expect(attachment?.metadata?.caption).toBe("keep metadata")
             const projected = await MessageV2.toModelMessage([message])
             if (policy.mode === "none") expect(projected).toEqual([])

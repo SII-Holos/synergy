@@ -6,7 +6,7 @@ import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { CODE_COPY_DESC } from "./tool-title-descriptors"
 import { useMarked } from "../context/marked"
-import { getGeneratedKatexSource } from "../context/marked-math"
+import { getGeneratedKatexSource } from "../context/markdown-math-source"
 import {
   markdownFallbackHtml,
   isCurrentMarkdownRender,
