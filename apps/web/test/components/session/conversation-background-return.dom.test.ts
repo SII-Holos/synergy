@@ -176,33 +176,38 @@ for (const completionFrame of [0, 1, 16]) {
         await settle()
         const hidden = fixture.contentStats()
         fixture.select("session")
-        const samples = []
+        const samples: Array<ReturnType<typeof sample>> = []
         const firstRender: Array<ReturnType<typeof sample> & { channel: string; time: number }> = []
         const probe = document.createElement("div")
         probe.style.cssText = "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
         document.body.append(probe)
         let sampling = false
+        let rendered: ((current: ReturnType<typeof sample>) => void) | undefined
         const observer = new ResizeObserver(() => {
-          if (!sampling) return
-          firstRender.push({ channel: "resize", time: performance.now(), ...sample() })
-          observer.disconnect()
+          if (!sampling || !rendered) return
+          sampling = false
+          const resolve = rendered
+          rendered = undefined
+          const current = sample()
+          const first = samples.length === 0
+          if (first) firstRender.push({ channel: "resize", time: performance.now(), ...current })
+          setTimeout(() => {
+            if (first) firstRender.push({ channel: "timer", time: performance.now(), ...sample() })
+            resolve(current)
+          }, 0)
         })
         observer.observe(probe)
         try {
           for (let frame = 0; frame < 96; frame++) {
             if (frame === completionFrame) fixture.background(true, false)
-            if (frame === 0) {
-              await new Promise<void>((resolve) =>
-                requestAnimationFrame(() => {
-                  sampling = true
-                  probe.style.width = "2px"
-                  setTimeout(resolve, 0)
-                }),
-              )
-            } else await settle()
-            const current = sample()
+            const current = await new Promise<ReturnType<typeof sample>>((resolve) => {
+              rendered = resolve
+              requestAnimationFrame(() => {
+                sampling = true
+                probe.style.width = `${frame + 2}px`
+              })
+            })
             samples.push(current)
-            if (frame === 0) firstRender.push({ channel: "timer", time: performance.now(), ...current })
           }
         } finally {
           observer.disconnect()

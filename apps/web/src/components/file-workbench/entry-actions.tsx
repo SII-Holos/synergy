@@ -273,7 +273,7 @@ export function FileEntryName(props: { actions: FileEntryActions }) {
         aria-label={_(M.name)}
         aria-invalid={!!props.actions.error()}
         value={props.actions.name()}
-        disabled={props.actions.pending()}
+        readOnly={props.actions.pending()}
         onInput={(event) => props.actions.setName(event.currentTarget.value)}
         onKeyDown={(event) => {
           event.stopPropagation()
