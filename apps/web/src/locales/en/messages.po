@@ -2855,6 +2855,10 @@ msgid "app.file.empty.openAFile"
 msgstr "Open a file"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.error.sourceLoadFailedHint"
+msgstr "Retry, or reload this page if the source viewer still cannot load."
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.error.unableToOpen"
 msgstr "Unable to open file"
 

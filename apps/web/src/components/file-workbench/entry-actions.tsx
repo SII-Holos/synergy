@@ -281,7 +281,7 @@ export function FileEntryName(props: { actions: FileEntryActions }) {
         onInput={(event) => props.actions.setName(event.currentTarget.value)}
         onKeyDown={(event) => {
           event.stopPropagation()
-          if (event.key !== "Escape") return
+          if (event.isComposing || event.key !== "Escape") return
           event.preventDefault()
           props.actions.cancel()
         }}

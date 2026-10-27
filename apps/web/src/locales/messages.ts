@@ -306,6 +306,10 @@ export const fileWorkbench = {
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },
   loadingSourceViewer: { id: "app.file.loading.sourceViewer", message: "Loading source viewer…" },
+  sourceLoadFailedHint: {
+    id: "app.file.error.sourceLoadFailedHint",
+    message: "Retry, or reload this page if the source viewer still cannot load.",
+  },
   edit: { id: "app.file.toolbar.edit", message: "Edit" },
   save: { id: "app.file.toolbar.save", message: "Save" },
   saving: { id: "app.file.toolbar.saving", message: "Saving…" },

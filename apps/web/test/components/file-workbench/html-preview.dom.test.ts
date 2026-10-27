@@ -20,6 +20,7 @@ const appSrc = path.resolve(import.meta.dir, "../../../src")
 interface RetainedInputWindow extends Window {
   fixture: {
     setActive(active: boolean): void
+    setMessages(messages: Record<string, string>): void
     holdSaves(hold: boolean): void
     finishSaves(): void
     saves: { path: string; content: string }[]
@@ -225,7 +226,8 @@ beforeAll(async () => {
         const [active, setActive] = createSignal(true)
         const keys = []
         window.addEventListener("keydown", event => keys.push({ key: event.key, prevented: event.defaultPrevented }))
-        window.fixture = { setActive, saves, modes: modeChanges, holdSaves, finishSaves, keys, wraps, draftChanges, opens, setRoots }
+        window.fixture = { setActive, saves, modes: modeChanges, holdSaves, finishSaves, keys, wraps, draftChanges, opens, setRoots,
+          setMessages: messages => { i18n.load("en", messages); i18n.activate("en") } }
         const tab = path => ({ id: path, panelId: "file", title: path, resourceId: "wsp_demo@1/" + path,
           state: { workspace: capturedWorkspace } })
         render(() => <I18nProvider i18n={i18n}><DialogProvider>
@@ -563,6 +565,18 @@ describe("file toolbar ownership and layout", () => {
     await owner.getByRole("button", { name: "Edit", exact: true }).click()
     await owner.getByRole("textbox").fill("Narrow unsaved draft")
     const toolbar = owner.locator(".file-workbench-toolbar")
+    expect(await toolbar.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(49)
+    expect(
+      await toolbar.evaluate((element) => {
+        const centers = [...element.querySelectorAll("button")]
+          .filter((button) => button.getClientRects().length)
+          .map((button) => {
+            const bounds = button.getBoundingClientRect()
+            return bounds.top + bounds.height / 2
+          })
+        return Math.max(...centers) - Math.min(...centers)
+      }),
+    ).toBeLessThanOrEqual(1)
     expect(await toolbar.getByRole("button", { name: "Word wrap", exact: true }).count()).toBe(1)
     const bounds = await toolbar.evaluate((element) => {
       const toolbar = element.getBoundingClientRect()
@@ -648,6 +662,96 @@ describe("file toolbar ownership and layout", () => {
     expect(await owner.locator(".workspace-navigator-drawer").count()).toBe(0)
     expect(await toggle.getAttribute("aria-expanded")).toBe("true")
   })
+
+  test.each([
+    { label: "English short origin", source: "Source", preview: "Preview", origin: "project" },
+    { label: "English", source: "Source", preview: "Preview" },
+    { label: "Chinese", source: "源代码", preview: "预览" },
+    { label: "expanded labels", source: "Source (expanded label)", preview: "Preview (expanded label)" },
+  ])(
+    "one toolbar row survives narrow panes, long origins and pending saves: $label",
+    async ({ source, preview, origin }) => {
+      await page.goto(
+        `${baseUrl}?path=deeply/nested/test.html&name=${encodeURIComponent(origin ?? "非常长的工作区来源 Project collaboration and review")}`,
+      )
+      const owner = page.locator("[data-retained-owner]")
+      await page.evaluate(
+        ({ source, preview }) =>
+          (window as unknown as RetainedInputWindow).fixture.setMessages({
+            "app.file.mode.source": source,
+            "app.file.mode.preview": preview,
+          }),
+        { source, preview },
+      )
+      const modes = owner.locator(".file-view-toggle button")
+      expect(await modes.allTextContents()).toEqual([source, preview])
+      await modes.first().click()
+      for (const phase of ["reading", "editing", "saving"]) {
+        if (phase === "editing") {
+          await owner.getByRole("button", { name: "Edit", exact: true }).click()
+          await owner.getByRole("textbox").fill("Retain this draft through compact layout changes")
+        }
+        if (phase === "saving") {
+          await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.holdSaves(true))
+          await owner.getByRole("button", { name: "Save", exact: true }).click()
+          await owner.getByRole("button", { name: "Saving…", exact: true }).waitFor()
+        }
+        for (const width of [280, 320, 360, 375, 390, 430, 520, 600, 800]) {
+          await owner.evaluate((element: HTMLElement, width) => {
+            element.style.width = `${width}px`
+          }, width)
+          const geometry = await owner.locator(".file-workbench-toolbar").evaluate((element) => {
+            const toolbar = element.getBoundingClientRect()
+            const controls = [...element.querySelectorAll("button")]
+              .filter((button) => button.getClientRects().length)
+              .map((button) => {
+                const bounds = button.getBoundingClientRect()
+                const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
+                return {
+                  label: button.getAttribute("aria-label") ?? button.textContent,
+                  center: bounds.top + bounds.height / 2,
+                  width: bounds.width,
+                  height: bounds.height,
+                  contained: bounds.left >= toolbar.left && bounds.right <= toolbar.right,
+                  hit: hit === button || (!!hit && button.contains(hit)),
+                }
+              })
+            return {
+              height: toolbar.height,
+              delta:
+                Math.max(...controls.map((control) => control.center)) -
+                Math.min(...controls.map((control) => control.center)),
+              controls,
+            }
+          })
+          expect(geometry.height, `${phase} at ${width}`).toBeLessThanOrEqual(49)
+          expect(geometry.delta, `${phase} at ${width}`).toBeLessThanOrEqual(1)
+          if (origin && width >= 375) {
+            if (width <= 420)
+              expect(await owner.locator('.file-origin-picker > [data-component="icon"]:first-child').isVisible()).toBe(
+                false,
+              )
+            expect(await owner.locator(".file-origin-picker .menu-field-chevron").isVisible()).toBe(true)
+            expect(
+              await owner
+                .locator(".file-origin-picker .menu-field-value")
+                .evaluate((element) => element.scrollWidth <= element.clientWidth),
+              `${phase} at ${width}: short origin remains readable`,
+            ).toBe(true)
+          }
+          for (const control of geometry.controls) {
+            expect(control.contained, `${phase} at ${width}: ${control.label}`).toBe(true)
+            expect(control.hit, `${phase} at ${width}: ${control.label}`).toBe(true)
+            expect(control.width).toBeGreaterThanOrEqual(24)
+            expect(control.height).toBeGreaterThanOrEqual(24)
+          }
+        }
+      }
+      await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.finishSaves())
+      await owner.getByRole("button", { name: "Edit", exact: true }).waitFor()
+      expect(await owner.getByRole("textbox").inputValue()).toBe("Retain this draft through compact layout changes")
+    },
+  )
 })
 
 describe("retained panel keyboard ownership", () => {

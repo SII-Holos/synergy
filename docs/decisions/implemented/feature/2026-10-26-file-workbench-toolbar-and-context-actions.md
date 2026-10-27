@@ -10,11 +10,15 @@ The file workbench repeated the resource name and exposed navigation and editing
 
 The workbench uses the selected B layout: one main toolbar with Files disclosure, compact captured Workspace origin, optional parent-directory navigation, Source/Preview, source wrapping and explicit editing controls. The outer resource tab owns the filename. The origin picker retains full path options and binding generations; selecting an origin opens a directory resource through the existing close policy rather than changing a document's owner. The shared Workspace navigator owns resizing and narrow drawers.
 
-The Explorer adopts inline new-file/new-folder naming and F2 rename, contextual cut/copy/paste and relative-path copy, and a dedicated permanent-delete confirmation. Enter confirms inline names; Escape cancels. Naming rows are scrolled into the virtual range before focus. Context menus preserve the initiating node, including an explicit root target for empty-area commands, and do not intercept native button activation. File operations keep the captured entry version and generated SDK path. Local copy-name suggestions avoid known collisions; the server rejects concurrent or unobserved collisions without overwriting.
+The toolbar uses a single nonwrapping row. Origin text receives the remaining width instead of reserving a fixed flex basis before actions are placed. Compact container rules reduce gaps, decorative origin imagery and edit labels; parent-directory links depend on the location area's actual available width. Source/Preview can shorten their displayed labels while retaining complete accessible names and minimum hit areas. This keeps 375px reading and editing at the same toolbar height and avoids a second row during pending saves, including with long origins and expanded translations.
+
+The Explorer adopts inline new-file/new-folder naming and F2 rename, contextual cut/copy/paste and relative-path copy, and a dedicated permanent-delete confirmation. Enter confirms inline names; Escape outside IME composition cancels. Naming rows are scrolled into the virtual range before focus. Context menus preserve the initiating node, including an explicit root target for empty-area commands, and do not intercept native button activation. File operations keep the captured entry version and generated SDK path. Local copy-name suggestions avoid known collisions; the server rejects concurrent or unobserved collisions without overwriting.
 
 The existing FileProvider manager retains an in-memory clipboard across file-panel remounts. Paste requires the captured server, Scope, Workspace and binding generation. Successful cuts are consumed; copies remain reusable. Entry writes remain registered with the FileProvider so a successful move's resource-key remount cannot abort its response; caller cancellation and provider disposal still cancel the transport. The destination is expanded before that remount. Drafts remain at their original paths during entry changes. Source wrapping defaults on, uses the existing per-file session view state and changes only the current Monaco options, including through owner-scoped Alt+Z.
 
 The interaction reference is the VS Code Explorer; its source is cited beside `createFileEntryActions`. This adopts its naming and clipboard habits, not its filesystem authority, implicit editing model, OS trash or entire IDE layout.
+
+The source viewer owns one loading/failed/ready state and clears a rejected shared Monaco promise at its loader. Failed initialization shows the existing file error presentation, Retry and page-reload guidance; unmounted viewers ignore late settlement. Same-page retry recovers transient promise failures, but cannot invalidate a browser-cached module evaluation error. The native worker-import regression in `source-navigation.dom.test.ts` verifies the visible failure and recovery after reload rather than pretending the component bypasses that cache.
 
 ## Alternatives considered
 
@@ -25,6 +29,8 @@ The interaction reference is the VS Code Explorer; its source is cited beside `c
 **A generic operation form.** It requires users to choose an operation after selecting an entry and enter a full path for routine tasks. Inline names and contextual actions make the affected entry and destination explicit; destructive deletion still requires confirmation.
 
 **Another drawer, preference store or direct filesystem layer.** Existing navigation, persisted view state and Workspace SDK owners already cover these responsibilities. Parallel implementations would diverge in focus, draft recovery and version checks.
+
+**Wrapping toolbar groups or clipping their overflow.** Group wrapping consumes another toolbar row before origin metadata has used its shrink capacity; hidden overflow makes controls inaccessible. Available-space container queries and bounded text shortening preserve one row without changing the navigation or editing owners.
 
 ## Consequences
 

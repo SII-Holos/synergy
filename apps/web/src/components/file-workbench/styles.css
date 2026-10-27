@@ -21,17 +21,18 @@
 }
 
 .file-workbench-toolbar {
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px 12px;
   padding: 8px;
 }
 
 .file-toolbar-location {
   display: flex;
-  min-width: 0;
-  flex: 1 1 160px;
+  min-width: 60px;
+  flex: 1 1 0;
   align-items: center;
   gap: 6px;
+  container: file-location / inline-size;
 }
 
 .file-origin-picker {
@@ -111,8 +112,10 @@
 }
 
 .file-toolbar-actions {
+  min-width: 0;
   max-width: 100%;
-  flex-wrap: wrap;
+  flex-shrink: 1;
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 4px;
   margin-inline-start: auto;
@@ -132,8 +135,9 @@
 
 .file-view-toggle {
   display: flex;
+  min-width: 0;
   min-height: 30px;
-  flex-shrink: 0;
+  flex-shrink: 1;
   align-items: center;
   border: 1px solid var(--border-weak-base);
   border-radius: 6px;
@@ -142,7 +146,12 @@
 }
 
 .file-view-toggle button {
+  min-width: 24px;
   min-height: 24px;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border-radius: 4px;
   padding: 0 8px;
   color: var(--text-weak);
@@ -507,12 +516,24 @@
 }
 
 @container file-workbench (max-width: 600px) {
-  .file-breadcrumb {
-    display: none;
+  .file-workbench-toolbar,
+  .file-toolbar-location {
+    gap: 4px;
+  }
+
+  .file-toolbar-actions {
+    gap: 2px;
+  }
+
+  .file-view-toggle button {
+    padding-inline: 6px;
   }
 
   .file-origin-picker {
+    min-width: 28px;
     max-width: 220px;
+    gap: 4px;
+    padding-inline: 4px;
   }
 
   .file-edit-pill {
@@ -522,6 +543,18 @@
   }
 
   .file-edit-pill span {
+    display: none;
+  }
+}
+
+@container file-location (max-width: 360px) {
+  .file-breadcrumb {
+    display: none;
+  }
+}
+
+@container file-workbench (max-width: 420px) {
+  .file-origin-picker > [data-component="icon"]:first-child {
     display: none;
   }
 }

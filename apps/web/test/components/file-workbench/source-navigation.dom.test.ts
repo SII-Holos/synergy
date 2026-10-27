@@ -8,6 +8,9 @@ import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 
 type SourceFixture = {
   sourceEditor(): Promise<import("monaco-editor").editor.IStandaloneCodeEditor>
+  sourceLoadAttempts: number
+  finishSourceLoad(outcome: "resolve" | "reject"): void
+  setSourceMounted(value: boolean): void
   setWordWrap(value: boolean | undefined): void
   sourceDraft(): { content: string; baseContent: string } | undefined
   sourceDirtyChanges: boolean[]
@@ -21,6 +24,13 @@ type SourceFixture = {
 
 let browser: Browser, page: Page, server: ViteDevServer, directory: string, url: string
 const errors: string[] = []
+
+async function finishSourceLoad(outcome: "resolve" | "reject") {
+  await page.evaluate(async (value) => {
+    ;(window as unknown as SourceFixture).finishSourceLoad(value)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  }, outcome)
+}
 
 async function sourceSnapshot() {
   return page.evaluate(async () => {
@@ -74,6 +84,19 @@ beforeAll(async () => {
     const [navigation, setNavigation] = createSignal()
     export const [draft, setDraft] = createSignal()
     const parameters = new URLSearchParams(location.search)
+    const pendingLoads = []
+    window.sourceLoadAttempts = 0
+    window.loadSourceWorker = load => {
+      window.sourceLoadAttempts += 1
+      if (!parameters.has("loader")) return load()
+      return new Promise((resolve, reject) => pendingLoads.push({ load, resolve, reject }))
+    }
+    window.finishSourceLoad = outcome => {
+      const pending = pendingLoads.shift()
+      if (!pending) throw new Error("No source load is pending")
+      if (outcome === "reject") pending.reject(new Error("Injected transient source loader failure"))
+      else pending.resolve(pending.load())
+    }
     export const [wordWrap, setWordWrap] = createSignal(parameters.has("wrap") ? parameters.get("wrap") === "true" : undefined)
     export const editable = parameters.has("editable")
     export const dirtyChanges = []
@@ -98,31 +121,48 @@ beforeAll(async () => {
   )
   await Bun.write(
     path.join(directory, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "main.tsx"),
     `
+    import { createSignal, Show } from "solid-js"
     import { render } from "solid-js/web"
     import { start, setDraft, wordWrap, editable, dirtyChanges } from "./bridge"
     import { FileSourceView } from ${JSON.stringify(`/@fs/${source}/components/file-workbench/source-view.tsx`)}
+    import ${JSON.stringify(`/@fs/${source}/components/file-workbench/styles.css`)}
     const suffix = new URLSearchParams(location.search).has("long") ? "; // " + "wrap-segment ".repeat(18) : ""
     const content = Array.from({length: 200}, (_, i) => "const sample" + (i+1) + " = " + (i+1) + suffix).join("\\n")
-    if (editable) setDraft({ content, baseContent: content })
+    if (editable) setDraft({ content: new URLSearchParams(location.search).has("draft") ? content + "\\nexisting draft" : content, baseContent: content })
+    const [mounted, setMounted] = createSignal(true)
+    window.setSourceMounted = setMounted
     window.sourceEditor = async () => (await import("monaco-editor/editor/editor.api.js")).editor.getEditors()[0]
     window.editorSelection = async () => (await window.sourceEditor()).getSelection()
     render(() => <><button data-resource-reference="a.ts#L120" onClick={start}>First reference</button>
       <button data-resource-reference="b.ts#L2">Next reference</button><input aria-label="Composer" />
-      <style>{".file-source-view-editor { width: 700px; height: 420px }"}</style>
-      <FileSourceView path="a.ts" content={content} wordWrap={wordWrap()} editable={editable}
-        onDirtyChange={dirty => dirtyChanges.push(dirty)} /></>, document.getElementById("root"))
+      <style>{"* { box-sizing: border-box } .file-source-view { width: 700px; height: 420px } [data-component=spinner] { width: 20px; height: 20px } [data-component=file-icon] { width: 40px; height: 40px }"}</style>
+      <Show when={mounted()}><FileSourceView path="a.ts" content={content} wordWrap={wordWrap()} editable={editable}
+        onDirtyChange={dirty => dirtyChanges.push(dirty)} /></Show></>, document.getElementById("root"))
   `,
   )
   server = await createServer({
     configFile: false,
     root: directory,
     cacheDir: path.join(directory, ".vite"),
-    plugins: [solid()],
+    plugins: [
+      {
+        name: "source-loader-fault",
+        enforce: "pre",
+        transform(code, id) {
+          if (id !== path.join(source, "components/file-workbench/source-view.tsx")) return
+          return code.replace(
+            'import("monaco-editor/editor/editor.worker?worker")',
+            'window.loadSourceWorker(() => import("monaco-editor/editor/editor.worker?worker"))',
+          )
+        },
+      },
+      solid(),
+    ],
     resolve: {
       alias: [
         { find: "@/context/file", replacement: bridge },
@@ -132,7 +172,7 @@ beforeAll(async () => {
       ],
     },
     optimizeDeps: {
-      include: ["solid-js", "solid-js/web", "solid-js/store", "monaco-editor/esm/vs/editor/editor.api.js"],
+      include: ["solid-js", "solid-js/web", "solid-js/store", "monaco-editor/editor/editor.api.js"],
       noDiscovery: true,
     },
     server: {
@@ -152,6 +192,141 @@ afterAll(async () => {
   await server?.close()
   if (directory) await rm(directory, { recursive: true, force: true })
 })
+
+test.each(["retry", "remount"])(
+  "source loader failure recovers without losing drafts or focus: %s",
+  async (recovery) => {
+    errors.length = 0
+    await page.goto(`${url}?loader=1&editable=1&draft=1`)
+    await page.waitForFunction(() => (window as unknown as SourceFixture).sourceLoadAttempts === 1)
+    const composer = page.getByRole("textbox", { name: "Composer" })
+    await page.getByRole("button", { name: "First reference", exact: true }).click()
+    await page.evaluate(() => Reflect.get(window, "finishReference")())
+    await composer.fill("composer draft")
+    await composer.press("ArrowLeft")
+    const draft = await page.evaluate(() => (window as unknown as SourceFixture).sourceDraft())
+    if (!draft) throw new Error("The source fixture must start with an unsaved draft")
+    expect(await page.getByText("Loading source viewer…", { exact: true }).isVisible()).toBe(true)
+
+    await finishSourceLoad("reject")
+    const retry = page.getByRole("button", { name: "Retry", exact: true })
+    expect({
+      failed: await page.getByText("Unable to open file", { exact: true }).isVisible(),
+      retry: await retry.isVisible(),
+      spinner: await page.locator('[data-component="spinner"]').count(),
+      errors: [...errors],
+    }).toEqual({ failed: true, retry: true, spinner: 0, errors: [] })
+    expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(await page.evaluate(() => (window as unknown as SourceFixture).sourceDraft())).toEqual(draft)
+
+    if (recovery === "retry") {
+      await retry.focus()
+      await retry.press("Enter")
+    } else {
+      await page.evaluate(() => (window as unknown as SourceFixture).setSourceMounted(false))
+      await page.evaluate(() => (window as unknown as SourceFixture).setSourceMounted(true))
+    }
+    await page.waitForFunction(() => (window as unknown as SourceFixture).sourceLoadAttempts === 2)
+    expect(await retry.count()).toBe(0)
+    expect(await page.getByText("Loading source viewer…", { exact: true }).isVisible()).toBe(true)
+    await composer.focus()
+    await finishSourceLoad("resolve")
+    await page.locator(".monaco-editor .view-lines").waitFor()
+    await page.waitForFunction(() => !document.querySelector('[data-component="spinner"]'))
+    const recovered = await sourceSnapshot()
+    expect(recovered.state.content).toBe(draft.content)
+    expect(recovered.state.draft).toEqual(draft)
+    expect(recovered.state.dirtyChanges).toEqual([])
+    expect(recovered.state.composer).toEqual(["composer draft", 13, 13])
+    expect(recovered.state.editorFocused).toBe(false)
+    expect(recovered.state.selections?.[0]?.startLineNumber).toBe(120)
+    expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(await retry.count()).toBe(0)
+
+    await page.evaluate(async () => (await (window as unknown as SourceFixture).sourceEditor()).focus())
+    await page.keyboard.insertText("x")
+    expect((await sourceSnapshot()).state.draft?.content).not.toBe(draft.content)
+    await page.keyboard.press("ControlOrMeta+z")
+    expect((await sourceSnapshot()).state.content).toBe(draft.content)
+    expect((await sourceSnapshot()).state.canRedo).toBe(true)
+    expect(errors).toEqual([])
+  },
+  30_000,
+)
+
+test.each(["resolve", "reject"] as const)(
+  "disposed source views ignore late loader settlement: %s",
+  async (outcome) => {
+    errors.length = 0
+    await page.goto(`${url}?loader=1&editable=1&draft=1`)
+    await page.waitForFunction(() => (window as unknown as SourceFixture).sourceLoadAttempts === 1)
+    const composer = page.getByRole("textbox", { name: "Composer" })
+    await composer.fill("keep focus")
+    const draft = await page.evaluate(() => (window as unknown as SourceFixture).sourceDraft())
+    if (!draft) throw new Error("The source fixture must start with an unsaved draft")
+    await page.evaluate(() => (window as unknown as SourceFixture).setSourceMounted(false))
+    await finishSourceLoad(outcome)
+    await page.waitForLoadState("networkidle")
+    expect(await page.locator(".file-source-view, .monaco-editor").count()).toBe(0)
+    expect(await page.evaluate(async () => Boolean(await (window as unknown as SourceFixture).sourceEditor()))).toBe(
+      false,
+    )
+    expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(await page.evaluate(() => (window as unknown as SourceFixture).sourceDraft())).toEqual(draft)
+    expect(await page.evaluate(() => (window as unknown as SourceFixture).sourceDirtyChanges)).toEqual([])
+    expect(errors).toEqual([])
+
+    await page.evaluate(() => (window as unknown as SourceFixture).setSourceMounted(true))
+    if (outcome === "reject") {
+      await page.waitForFunction(() => (window as unknown as SourceFixture).sourceLoadAttempts === 2)
+      await finishSourceLoad("resolve")
+    }
+    await page.locator(".monaco-editor .view-lines").waitFor()
+    expect(await page.evaluate(() => (window as unknown as SourceFixture).sourceLoadAttempts)).toBe(
+      outcome === "reject" ? 2 : 1,
+    )
+    expect((await sourceSnapshot()).state.content).toBe(draft.content)
+    expect(await composer.evaluate((element) => element === document.activeElement)).toBe(true)
+    expect(errors).toEqual([])
+  },
+  30_000,
+)
+
+test("native worker module evaluation failure stays actionable until reload", async () => {
+  errors.length = 0
+  const workerModule = /editor\.worker[^?]*\?worker(?:&|$)/
+  let failures = 0
+  await page.route(workerModule, async (route) => {
+    failures += 1
+    await route.fulfill({
+      contentType: "application/javascript",
+      body: 'throw new Error("Injected worker import failure")',
+    })
+  })
+  try {
+    await page.goto(url)
+    await page.getByRole("button", { name: "Retry", exact: true }).waitFor()
+    expect(failures).toBe(1)
+    expect(
+      await page
+        .getByText("Retry, or reload this page if the source viewer still cannot load.", { exact: true })
+        .isVisible(),
+    ).toBe(true)
+    expect(await page.locator('[data-component="spinner"]').count()).toBe(0)
+    await page.unroute(workerModule)
+    await page.getByRole("button", { name: "Retry", exact: true }).press("Enter")
+    await page.waitForFunction(() => (window as unknown as SourceFixture).sourceLoadAttempts === 2)
+    await page.getByRole("button", { name: "Retry", exact: true }).waitFor()
+    expect(await page.getByText("Unable to open file", { exact: true }).isVisible()).toBe(true)
+    expect(await page.locator('.monaco-editor, [data-component="spinner"]').count()).toBe(0)
+    expect(errors).toEqual([])
+    await page.reload()
+    await page.locator(".monaco-editor .view-lines").waitFor()
+    expect(errors).toEqual([])
+  } finally {
+    await page.unroute(workerModule)
+  }
+}, 30_000)
 
 test.each(["Next reference", "Composer", "First reference"])(
   "late navigation preserves the current focus owner: %s",

@@ -2855,6 +2855,10 @@ msgid "app.file.empty.openAFile"
 msgstr "打开文件"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.error.sourceLoadFailedHint"
+msgstr "请先重试；若源码视图仍无法加载，请刷新页面。"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.error.unableToOpen"
 msgstr "无法打开文件"
 
