@@ -5,7 +5,7 @@
   min-width: 0;
   width: 100%;
   margin-top: auto;
-  padding: 6px 8px 8px;
+  padding: 6px 8px 4px;
 }
 
 .space-switcher-trigger {
@@ -36,7 +36,7 @@
 }
 
 .space-switcher--collapsed {
-  padding: 6px 7px 8px;
+  padding: 6px 7px 4px;
 }
 
 .space-switcher-trigger--collapsed {
