@@ -1334,10 +1334,3 @@ button.sb-session-group-header {
 .sb-space-footer {
   flex-shrink: 0;
 }
-
-.sb-integrated.sb-collapsed > .sb-space-footer {
-  position: absolute;
-  bottom: 4px;
-  left: 8px;
-  width: 48px;
-}
