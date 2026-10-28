@@ -8,13 +8,13 @@ The shared preamble guidance injected into every agent prompt instructed: "Befor
 
 ## Decision
 
-Rework the injected `## Preamble Messages` section in `packages/harness/src/agent/prompt/preamble.ts`:
+Keep the shared progress section in `packages/harness/src/agent/prompt/progress.ts` focused on key moments:
 
 - State that tool calls are already visible as they happen, so routine reads, searches, edits, and commands must not be narrated.
 - List the moments worth a short message: starting a multi-step task (one sentence on the plan), key decisions (what is being chosen and why), unexpected findings or risks (what differs from expectations), and completion (outcome and anything still uncertain).
 - Keep each message concise, concrete, and forward-looking — one sentence by default.
 
-The section heading is unchanged, so the idempotent `withPreambleSection` injection — applied to native LLM turns in `session/llm.ts` and external-agent instructions in `session/invoke.ts` — needs no code changes.
+The idempotent `withProgressUpdates` injection applies to native LLM turns in `session/llm.ts` and external-agent instructions in `session/invoke.ts`. Model eligibility follows [model-selected progress guidance](../bug-fix/2026-10-26-select-progress-guidance-by-model.md).
 
 ## Alternatives considered
 

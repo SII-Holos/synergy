@@ -44,7 +44,7 @@ import { SessionProcessor } from "./processor"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionMemoryIncident } from "./memory-incident"
 import { SessionExternalAgents } from "./external-agents"
-import { withPreambleSection } from "../agent/prompt/preamble"
+import { withProgressUpdates } from "../agent/prompt/progress"
 import { SessionManager } from "./manager"
 import { SessionDrive } from "./drive"
 import { SessionMessageCache } from "./message-cache"
@@ -885,9 +885,13 @@ export namespace SessionInvoke {
                   const override = codexNativeAuth
                     ? undefined
                     : await resolveExternalModelOverride(R.model, adapter.name)
-                  if (override && adapter.capabilities.modelSwitch) {
+                  const modelOverridden =
+                    override &&
+                    adapter.capabilities.modelSwitch &&
                     applyModelOverride(runConfig, adapter.name, override)
-                  }
+                  const progressModel = modelOverridden
+                    ? model
+                    : { id: typeof runConfig.model === "string" ? runConfig.model : undefined }
 
                   const env: Record<string, string> | undefined =
                     override?.apiKey && adapter.name === "codex"
@@ -921,7 +925,7 @@ export namespace SessionInvoke {
                   const context: SessionExternalAgents.TurnContext = {
                     sessionID,
                     prompt: MessageV2.extractText(RParts!),
-                    instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
+                    instructions: withProgressUpdates(instructions, progressModel),
                     taskContext: taskContext ?? undefined,
                   }
 
@@ -2604,18 +2608,22 @@ export namespace SessionInvoke {
     return config
   }
 
-  function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
+  function applyModelOverride(
+    config: Record<string, unknown>,
+    adapterName: string,
+    override: ExternalModelInfo,
+  ): boolean {
     switch (adapterName) {
       case "codex":
         // Codex external agent uses the native Codex/ChatGPT authentication path.
         // It should only be exposed after the openai-codex provider is authenticated,
         // and must not receive OpenAI-compatible baseURL/API-key overrides.
-        break
+        return false
       case "claude-code":
         config.model = override.model
-        break
+        return true
       default:
-        break
+        return false
     }
   }
 

@@ -184,8 +184,6 @@ Use relevant history to recover prior decisions. Keep user decisions, coordinati
 
 Tone: concise, direct, friendly. Match the user's language. Prefer actionable guidance over narration.
 
-{PROGRESS_UPDATES}
-
 Questions: do homework first. Ask when requirements are ambiguous with multiple valid paths, when the choice has hidden costs, or when the user owns the decision.
 
 Final response:
