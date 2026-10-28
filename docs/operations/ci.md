@@ -80,4 +80,4 @@ Task Home 成功路径合入 `jit-chat-completions-fixture-one`，验证两次�
 
 规划 job 仅安装 testing workspace 需要的依赖，不恢复整仓下载缓存。四组短协议/JIT 控制和 Task Home 控制使用两次真实工具调用验证首末阶段；完整文件修改循环继续由业务压缩控制和显式 120 轮诊断承担。
 
-计划及本地 `verify plan` 报告列出 `fullTriggers` 的具体文件与原因。只有既有 workspace package.json 的描述性字段变化可缩小为所属包及消费者完整 suite；依赖、版本、导出、脚本和未知字段保持全量。生成的 OpenAPI 契约显式归属 SDK 与 Server，保留二者及消费者验证。Skill 的 references Markdown 按文档选择，执行脚本仍属共享输入。
+计划及本地 `verify plan` 报告列出 `fullTriggers` 的具体文件与原因，workspace manifest 的选择边界见上文执行模式。生成的 OpenAPI 契约显式归属 SDK 与 Server，保留二者及消费者验证。Skill 的 references Markdown 按文档选择，执行脚本仍属共享输入。
