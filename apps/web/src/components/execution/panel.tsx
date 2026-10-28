@@ -23,7 +23,6 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { useExecution } from "@/context/execution"
-import { useViewActivity } from "@/context/view-residency"
 import { useSDK } from "@/context/sdk"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { ExecutionInspector } from "./inspector"
@@ -90,8 +89,7 @@ export function ExecutionPanelBody(
   const params = useParams()
   const sdk = useSDK()
   const execution = useExecution()
-  const viewActive = useViewActivity()
-  execution.retain({ demand: "trajectory" })
+  const active = execution.retain({ demand: "trajectory" })
   const { _, i18n } = useLingui()
   const initial = settings(props.tab.state)
   const runID = createMemo(() => props.runID)
@@ -129,7 +127,6 @@ export function ExecutionPanelBody(
         ?.focus({ preventScroll: true }),
     )
   })
-  const active = () => viewActive() && execution.available()
   const branchCount = createMemo(() => [...branches().values()].reduce((sum, branch) => sum + branch.rows.length, 0))
   const trajectory = createExecutionTrajectory({
     sdk,
@@ -437,7 +434,7 @@ export function ExecutionPanelBody(
   )
   createEffect(
     on(
-      [active, execution.connectionVersion, mode],
+      [active, execution.connectionVersion, mode, trajectory.recoveryVersion],
       (value, previous) => {
         for (const controller of branchAbort.values()) controller.abort()
         if (active())

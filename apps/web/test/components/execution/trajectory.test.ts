@@ -101,6 +101,106 @@ function summary(revision: number): ExecutionSummary {
 }
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+test("returning from an anchor shares the reactive latest read with the explicit navigation", async () => {
+  const requests: { request: Request; resolve: (response: Response) => void }[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.local",
+    fetch: Object.assign(
+      (request: RequestInfo | URL) =>
+        new Promise<Response>((resolve) => requests.push({ request: request as Request, resolve })),
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const [anchor, setAnchor] = createSignal("selected")
+  const setup = createRoot((dispose) => ({
+    dispose,
+    trajectory: createExecutionTrajectory({
+      sdk: { client, event: createGlobalEmitter<{ [key in Event["type"]]: Extract<Event, { type: key }> }>() },
+      sessionID: () => "root",
+      runID: () => "",
+      actor: () => "",
+      kind: () => "",
+      status: () => "",
+      query: () => "",
+      anchor,
+      connectionVersion: () => 0,
+    }),
+  }))
+  const page = () =>
+    Response.json({ sessionID: "root", revision: 1, total: 1, items: [row(1)], nextCursor: null, previousCursor: null })
+  try {
+    await tick()
+    requests[0].resolve(page())
+    await tick()
+    setAnchor("")
+    const loading = setup.trajectory.load(undefined, "latest")
+    await tick()
+    expect(requests).toHaveLength(2)
+    expect(requests[1].request.signal.aborted).toBe(false)
+    requests[1].resolve(page())
+    await loading
+    expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["1"])
+  } finally {
+    setup.dispose()
+  }
+})
+
+test("true reconnects supersede identical pending queries and reject old-connection pages", async () => {
+  const requests: { signal: AbortSignal; resolve: (response: Response) => void }[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.local",
+    fetch: Object.assign(
+      (request: RequestInfo | URL) =>
+        new Promise<Response>((resolve) => {
+          requests.push({ signal: (request as Request).signal, resolve })
+        }),
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const [connectionVersion, reconnect] = createSignal(0)
+  const setup = createRoot((dispose) => ({
+    dispose,
+    trajectory: createExecutionTrajectory({
+      sdk: { client, event: createGlobalEmitter<{ [key in Event["type"]]: Extract<Event, { type: key }> }>() },
+      sessionID: () => "root",
+      runID: () => "",
+      actor: () => "",
+      kind: () => "",
+      status: () => "",
+      query: () => "",
+      anchor: () => "",
+      connectionVersion,
+    }),
+  }))
+  try {
+    await tick()
+    reconnect(1)
+    await tick()
+    expect(requests).toHaveLength(2)
+    expect(requests[0].signal.aborted).toBe(true)
+    reconnect(2)
+    await tick()
+    expect(requests).toHaveLength(3)
+    expect(requests[1].signal.aborted).toBe(true)
+    for (const [index, request] of requests.entries())
+      request.resolve(
+        Response.json({
+          sessionID: "root",
+          revision: index + 1,
+          total: 1,
+          items: [row(index + 1)],
+          nextCursor: null,
+          previousCursor: null,
+        }),
+      )
+    await tick()
+    await tick()
+    expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3"])
+  } finally {
+    setup.dispose()
+  }
+})
+
 test("a live event during snapshot loading overlays the older response and retains history", async () => {
   const pending: ((value: Response) => void)[] = []
   const urls: URL[] = []
@@ -197,6 +297,59 @@ test("a live event during snapshot loading overlays the older response and retai
     dispose()
   }
 }, 5000)
+
+test("an inactive trajectory rejects a late aborted page", async () => {
+  const pending = Promise.withResolvers<Response>()
+  let signal: AbortSignal | undefined
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.local",
+    fetch: Object.assign(
+      (request: RequestInfo | URL) => {
+        signal = (request as Request).signal
+        return pending.promise
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  })
+  const [enabled, enable] = createSignal(true)
+  const setup = createRoot((dispose) => ({
+    dispose,
+    trajectory: createExecutionTrajectory({
+      sdk: { client, event: createGlobalEmitter<{ [key in Event["type"]]: Extract<Event, { type: key }> }>() },
+      sessionID: () => "root",
+      runID: () => "",
+      actor: () => "",
+      kind: () => "",
+      status: () => "",
+      query: () => "",
+      anchor: () => "",
+      connectionVersion: () => 0,
+      enabled,
+    }),
+  }))
+  try {
+    await tick()
+    enable(false)
+    expect(signal?.aborted).toBe(true)
+    pending.resolve(
+      Response.json({
+        sessionID: "root",
+        revision: 999,
+        total: 999,
+        items: [row(999)],
+        nextCursor: null,
+        previousCursor: null,
+      }),
+    )
+    await tick()
+    await tick()
+    expect(setup.trajectory.state.rows).toEqual([])
+    expect(setup.trajectory.state.revision).toBe(-1)
+    expect(setup.trajectory.state.loading).toBe(false)
+  } finally {
+    setup.dispose()
+  }
+})
 
 test("a gap in execution deltas restores a snapshot around the history anchor", async () => {
   let requests = 0
@@ -348,3 +501,64 @@ test("paging a long trajectory remains bounded and resumes without losing the re
     dispose()
   }
 }, 5000)
+
+test("a summary-only gap during a pending page recovers the window and notifies expanded branches", async () => {
+  const pending: ((response: Response) => void)[] = []
+  const event = createGlobalEmitter<{ [key in Event["type"]]: Extract<Event, { type: key }> }>()
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.local",
+    fetch: Object.assign(() => new Promise<Response>((resolve) => pending.push(resolve)), {
+      preconnect: fetch.preconnect,
+    }),
+  })
+  const setup = createRoot((dispose) => ({
+    dispose,
+    trajectory: createExecutionTrajectory({
+      sdk: { client, event },
+      sessionID: () => "root",
+      runID: () => "",
+      actor: () => "",
+      kind: () => "",
+      status: () => "",
+      query: () => "",
+      anchor: () => "",
+      connectionVersion: () => 0,
+    }),
+  }))
+  const page = (revision: number) =>
+    Response.json({
+      sessionID: "root",
+      revision,
+      total: 1,
+      items: [row(revision)],
+      nextCursor: null,
+      previousCursor: null,
+    })
+  try {
+    await tick()
+    event.emit("execution.updated", {
+      type: "execution.updated",
+      properties: {
+        sessionID: "root",
+        revision: 3,
+        previousRevision: 3,
+        summary: summary(3),
+        roundSummaries: [],
+        upserts: [],
+        removed: [],
+      },
+    })
+    pending[0](page(1))
+    await tick()
+    await tick()
+    expect(setup.trajectory.recoveryVersion()).toBe(1)
+    expect(pending).toHaveLength(2)
+    pending[1](page(3))
+    await tick()
+    await tick()
+    expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3"])
+    expect(setup.trajectory.state.loading).toBe(false)
+  } finally {
+    setup.dispose()
+  }
+})

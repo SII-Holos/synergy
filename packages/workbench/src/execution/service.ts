@@ -34,6 +34,14 @@ import { preview } from "./preview"
 export namespace ExecutionService {
   const log = Log.create({ service: "execution" })
   type Evidence = { owner: RolloutSchema.Owner; record: RolloutEvents.Record }
+  type TimingInput = Parameters<typeof RolloutExecution.summarize>[0]
+  type Derived = {
+    revision: number
+    nodes: ExecutionSchema.Node[]
+    activity?: ReturnType<typeof ExecutionActivity.project>
+    modes: Map<"process" | "records", ExecutionSchema.Node[]>
+    prepared?: { summary: ExecutionSchema.Summary; timings: Map<string, TimingInput> }
+  }
   type Data = {
     root: Session.Info
     sessions: Session.Info[]
@@ -64,6 +72,7 @@ export namespace ExecutionService {
     recordRows: Map<string, ExecutionSchema.Node>
     contextRows: Map<string, string>
     publishedRevision: number
+    derived: Map<string, Derived>
   }
   type Changes = {
     owners: Set<string>
@@ -125,6 +134,8 @@ export namespace ExecutionService {
     legacyClients: 0,
     pending: new Map<string, Loading>(),
     timers: new Map<string, ReturnType<typeof setTimeout>>(),
+    publishing: new Set<string>(),
+    refreshRequested: new Set<string>(),
     dirty: new Set<string>(),
     sequence: 0,
     schedule: undefined as ((sessionID: string) => void) | undefined,
@@ -154,6 +165,7 @@ export namespace ExecutionService {
         .filter(
           (entry) =>
             !cache.pending.has(entry.root.id) &&
+            !cache.publishing.has(entry.root.id) &&
             !entry.audit?.readers &&
             !entry.metadataLoading &&
             !entry.metadataListeners.size &&
@@ -167,6 +179,7 @@ export namespace ExecutionService {
       cache.entries.delete(oldest.root.id)
       cache.dirty.delete(oldest.root.id)
       cache.timers.delete(oldest.root.id)
+      cache.refreshRequested.delete(oldest.root.id)
     }
   }
   const nodeID = (sessionID: string, kind: string, id: string) =>
@@ -510,13 +523,57 @@ export namespace ExecutionService {
       recordRows: new Map<string, ExecutionSchema.Node>(),
       contextRows: new Map<string, string>(),
       publishedRevision: revision,
+      derived: new Map<string, Derived>(),
     } as Omit<Data, "summary">
     const value = { ...data, summary: summarize(data) }
     value.contextRows = new Map(contextSnapshots(value).map((context) => [context.nodeID, JSON.stringify(context)]))
     return value
   }
+  function derived(data: Omit<Data, "summary">, runID?: string) {
+    const key = runID ?? ""
+    const cached = data.derived.get(key)
+    if (cached?.revision === data.revision) return cached
+    for (const [id, value] of data.derived) if (value.revision !== data.revision) data.derived.delete(id)
+    const value: Derived = { revision: data.revision, nodes: selected(data as Data, runID), modes: new Map() }
+    data.derived.set(key, value)
+    while (data.derived.size > 5) data.derived.delete([...data.derived.keys()].find((id) => id !== "")!)
+    return value
+  }
+  function activityFor(data: Omit<Data, "summary">, runID?: string) {
+    const value = derived(data, runID)
+    return (value.activity ??= ExecutionActivity.project(value.nodes, data.root.id))
+  }
+  function processRows(data: Data, mode: "process" | "records", runID?: string) {
+    const value = derived(data, runID)
+    let rows = value.modes.get(mode)
+    if (!rows) {
+      rows = ExecutionProcess.project(value.nodes, mode, data.root.id)
+      value.modes.set(mode, rows)
+    }
+    return rows
+  }
   function summarize(data: Omit<Data, "summary">, runID?: string): ExecutionSchema.Summary {
-    const nodes = selected(data as Data, runID)
+    const cached = derived(data, runID)
+    const sample = RolloutExecution.clock()
+    if (cached.prepared) {
+      const { summary, timings } = cached.prepared
+      const timing = (key: string) => {
+        const value = RolloutExecution.summarize(timings.get(key)!, sample)
+        return { ...value, status: ExecutionSchema.Task.shape.status.parse(value.status) }
+      }
+      return {
+        ...summary,
+        computedAt: Date.now(),
+        clockID: sample.clockID,
+        sampledAt: sample.now,
+        ...timing("root"),
+        tasks: summary.tasks.map((task) => ({ ...task, ...timing("task:" + task.sessionID) })),
+        rounds: summary.rounds.map((round) =>
+          timings.has("round:" + round.id) ? { ...round, ...timing("round:" + round.id) } : round,
+        ),
+      }
+    }
+    const nodes = cached.nodes
     const identities = new Set(nodes.map((node) => node.sessionID + ":" + node.runID))
     const snapshots = data.snapshots.map((snapshot) => ({
       ...snapshot,
@@ -533,53 +590,55 @@ export namespace ExecutionService {
         identities.has((snapshot.owner.kind === "session" ? snapshot.owner.sessionID : "") + ":" + attempt.runID),
       ),
     }))
-    const sample = RolloutExecution.clock()
-    const projection = (scope: RolloutSnapshot.Info[], rootRuns = scope[0].runs, selectedRunID?: string) =>
-      RolloutExecution.summarize(
-        {
-          roots: rootRuns,
-          runs: scope.flatMap((snapshot) => snapshot.runs),
-          intervals: scope.flatMap((snapshot) => snapshot.intervals),
-          segments: scope.flatMap((snapshot) => snapshot.segments),
-          hasHistory: nodes.some(
-            (node) =>
-              scope.some(
-                (snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === node.sessionID,
-              ) &&
-              (!selectedRunID || node.rootRunID === selectedRunID || node.runID === selectedRunID) &&
-              ["output", "model", "tool"].includes(node.kind),
-          ),
-          paused: data.sessions.some((candidate) => {
-            if (!candidate.paused) return false
-            const selected = scope.find(
-              (snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id,
-            )
-            if (!selected) return false
-            if (!selectedRunID && !runID) return true
-            const latest = data.snapshots
-              .find((snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id)
-              ?.runs.filter((run) => !run.admissionOnly)
-              .toSorted((a, b) => b.started - a.started || b.id.localeCompare(a.id))[0]
-            return (
-              !!latest &&
-              ["running", "interrupted"].includes(latest.execution?.status ?? latest.status) &&
-              selected.runs.some((run) => run.id === latest.id)
-            )
-          }),
-          queued: data.sessions.some(
-            (candidate) =>
-              scope.some(
-                (snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id,
-              ) &&
-              ((!selectedRunID && candidate.cortex?.status === "queued") ||
-                (data.inboxes.get(candidate.id) ?? []).some(
-                  (item) =>
-                    item.mode === "task" && !item.status && (!selectedRunID || item.messageID === selectedRunID),
-                )),
-          ),
-        },
-        sample,
-      )
+    const timings = new Map<string, TimingInput>()
+    const projection = (
+      scope: RolloutSnapshot.Info[],
+      rootRuns = scope[0].runs,
+      selectedRunID?: string,
+      key = "root",
+    ) => {
+      const input: TimingInput = {
+        roots: rootRuns,
+        runs: scope.flatMap((snapshot) => snapshot.runs),
+        intervals: scope.flatMap((snapshot) => snapshot.intervals),
+        segments: scope.flatMap((snapshot) => snapshot.segments),
+        hasHistory: nodes.some(
+          (node) =>
+            scope.some(
+              (snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === node.sessionID,
+            ) &&
+            (!selectedRunID || node.rootRunID === selectedRunID || node.runID === selectedRunID) &&
+            ["output", "model", "tool"].includes(node.kind),
+        ),
+        paused: data.sessions.some((candidate) => {
+          if (!candidate.paused) return false
+          const selected = scope.find(
+            (snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id,
+          )
+          if (!selected) return false
+          if (!selectedRunID && !runID) return true
+          const latest = data.snapshots
+            .find((snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id)
+            ?.runs.filter((run) => !run.admissionOnly)
+            .toSorted((a, b) => b.started - a.started || b.id.localeCompare(a.id))[0]
+          return (
+            !!latest &&
+            ["running", "interrupted"].includes(latest.execution?.status ?? latest.status) &&
+            selected.runs.some((run) => run.id === latest.id)
+          )
+        }),
+        queued: data.sessions.some(
+          (candidate) =>
+            scope.some((snapshot) => snapshot.owner.kind === "session" && snapshot.owner.sessionID === candidate.id) &&
+            ((!selectedRunID && candidate.cortex?.status === "queued") ||
+              (data.inboxes.get(candidate.id) ?? []).some(
+                (item) => item.mode === "task" && !item.status && (!selectedRunID || item.messageID === selectedRunID),
+              )),
+        ),
+      }
+      timings.set(key, input)
+      return RolloutExecution.summarize(input, sample)
+    }
     const subtree = (sessionID: string) => {
       const ids = new Set([sessionID])
       for (let size = -1; size !== ids.size;) {
@@ -610,9 +669,9 @@ export namespace ExecutionService {
     const start = nodes.reduce((value, node) => Math.min(value, node.started), Date.now())
     const end = nodes.reduce((value, node) => Math.max(value, node.ended ?? node.started), start + 1)
     const distribution = context.context && data.contexts.get(context.context.callID)
-    const activity = ExecutionActivity.project(nodes, data.root.id)
+    const activity = activityFor(data, runID)
     const activities = activity.nodes
-    return ExecutionSchema.Summary.parse({
+    const summary = ExecutionSchema.Summary.parse({
       sessionID: data.root.id,
       revision: data.revision,
       runID,
@@ -643,7 +702,7 @@ export namespace ExecutionService {
           parentID: session.parentID ?? null,
           title: session.cortex?.description ?? session.title,
           nodeID: nodes.find((node) => node.kind === "subtask" && node.sessionID === session.id)?.id ?? null,
-          ...projection(subtree(session.id), snapshots[index + 1].runs),
+          ...projection(subtree(session.id), snapshots[index + 1].runs, undefined, "task:" + session.id),
           tokens: accounting[index + 1].tokens.total,
           runs: snapshots[index + 1].runs.map((run) => run.id),
           interaction: session.interaction,
@@ -685,6 +744,7 @@ export namespace ExecutionService {
                 })),
                 [run],
                 run.id,
+                "round:" + run.id,
               ),
             }
           }),
@@ -738,6 +798,8 @@ export namespace ExecutionService {
         })(),
       })),
     })
+    cached.prepared = { summary, timings }
+    return summary
   }
   async function requireRoot(sessionID: string) {
     const session = await Session.get(sessionID)
@@ -1041,6 +1103,7 @@ export namespace ExecutionService {
         if (!cache.legacyClients) {
           clearTimeout(cache.timers.get(sessionID))
           cache.timers.delete(sessionID)
+          if (!cache.publishing.has(sessionID)) cache.refreshRequested.delete(sessionID)
         }
       }
     }
@@ -1059,6 +1122,7 @@ export namespace ExecutionService {
           if (!cache.subscriptions.has(sessionID)) {
             clearTimeout(timer)
             cache.timers.delete(sessionID)
+            if (!cache.publishing.has(sessionID)) cache.refreshRequested.delete(sessionID)
           }
     }
   }
@@ -1072,21 +1136,26 @@ export namespace ExecutionService {
         if (!entry.changes.owners.has(sessionID)) continue
         cache.dirty.add(entry.root.id)
         if (!cache.subscriptions.has(entry.root.id) && !cache.legacyClients) continue
+        cache.refreshRequested.add(entry.root.id)
         if (
           (!cache.subscriptions.has(entry.root.id) && Date.now() - entry.touched > 600_000) ||
-          cache.timers.has(entry.root.id)
+          cache.timers.has(entry.root.id) ||
+          cache.publishing.has(entry.root.id)
         )
           continue
         const timer = setTimeout(async () => {
           cache.timers.delete(entry.root.id)
           if (!cache.subscriptions.has(entry.root.id) && !cache.legacyClients) return
+          cache.publishing.add(entry.root.id)
+          cache.refreshRequested.delete(entry.root.id)
           await ScopeContext.provide({
             scope: entry.root.scope,
             fn: async () => {
               const previousRevision = entry.publishedRevision
               const next = await data(entry.root.id, false)
+              const revision = next.revision
               const detail = owner.trajectoryReaders > 0 || cache.legacyClients > 0
-              const process = detail ? ExecutionProcess.project(next.nodes, "process", entry.root.id) : []
+              const process = detail ? processRows(next, "process") : []
               const processUpserts = process.filter(
                 (node) =>
                   JSON.stringify({ ...node, revision: 0 }) !==
@@ -1094,14 +1163,12 @@ export namespace ExecutionService {
               )
               const processIDs = new Set(process.map((node) => node.id))
               const processRemoved = [...entry.processRows.keys()].filter((id) => !processIDs.has(id))
-              next.processRows = new Map(process.map((node) => [node.id, node]))
-              const records = detail ? ExecutionProcess.project(next.nodes, "records", entry.root.id) : []
+              const records = detail ? processRows(next, "records") : []
               const upserts = records.filter(
                 (node) =>
                   JSON.stringify({ ...node, revision: 0 }) !==
                   JSON.stringify({ ...entry.recordRows.get(node.id), revision: 0 }),
               )
-              next.recordRows = new Map(records.map((node) => [node.id, node]))
               const ids = new Set(next.nodes.map((node) => node.id))
               const contexts = contextSnapshots(next).filter(
                 (context) =>
@@ -1110,36 +1177,46 @@ export namespace ExecutionService {
               )
               await Bus.publish(ExecutionSchema.Updated, {
                 sessionID: entry.root.id,
-                revision: next.revision,
+                revision,
                 previousRevision,
                 summary: next.summary,
                 roundSummaries: [...next.selections.values()].map((selection) => selection.summary),
                 contextUpserts: contexts,
-                upserts: upserts.map((node) => ({ ...node, revision: next.revision })),
-                processUpserts: processUpserts.map((node) => ({ ...node, revision: next.revision })),
+                upserts: upserts.map((node) => ({ ...node, revision })),
+                processUpserts: processUpserts.map((node) => ({ ...node, revision })),
                 processRemoved,
                 removed:
                   next === entry
                     ? [...next.removed]
                     : entry.nodes.filter((node) => !ids.has(node.id)).map((node) => node.id),
               })
+              next.processRows = new Map(process.map((node) => [node.id, node]))
+              next.recordRows = new Map(records.map((node) => [node.id, node]))
               for (const context of contexts) next.contextRows.set(context.nodeID, JSON.stringify(context))
               for (const id of next.contextRows.keys()) if (!ids.has(id)) next.contextRows.delete(id)
-              next.publishedRevision = next.revision
-              next.changed.clear()
-              next.removed.clear()
+              next.publishedRevision = revision
+              if (next.revision === revision) {
+                next.changed.clear()
+                next.removed.clear()
+              }
             },
-          }).catch((error) => {
-            if (error instanceof Storage.NotFoundError) {
-              cache.entries.delete(entry.root.id)
-              cache.dirty.delete(entry.root.id)
-              return
-            }
-            log.warn("execution snapshot update failed", { error })
-            const current = cache.entries.get(entry.root.id)?.tree
-            if (current) for (const owner of current.changes.owners) current.changes.repair.add(owner)
-            cache.dirty.add(entry.root.id)
           })
+            .catch((error) => {
+              if (error instanceof Storage.NotFoundError) {
+                cache.entries.delete(entry.root.id)
+                cache.dirty.delete(entry.root.id)
+                return
+              }
+              log.warn("execution snapshot update failed", { error })
+              const current = cache.entries.get(entry.root.id)?.tree
+              if (current) for (const owner of current.changes.owners) current.changes.repair.add(owner)
+              cache.dirty.add(entry.root.id)
+            })
+            .finally(() => {
+              cache.publishing.delete(entry.root.id)
+              if (cache.entries.get(entry.root.id) === owner && cache.refreshRequested.delete(entry.root.id))
+                schedule(entry.root.id)
+            })
         }, 750)
         timer.unref()
         cache.timers.set(entry.root.id, timer)
@@ -1242,6 +1319,7 @@ export namespace ExecutionService {
         cache.entries.delete(id)
         cache.dirty.delete(id)
         cache.timers.delete(id)
+        cache.refreshRequested.delete(id)
       }),
       Bus.subscribeGlobal(SessionEvent.Updated, (event) => {
         const info = event.properties.info
@@ -1275,6 +1353,7 @@ export namespace ExecutionService {
       for (const dispose of disposers) dispose()
       for (const timer of cache.timers.values()) clearTimeout(timer)
       cache.timers.clear()
+      cache.refreshRequested.clear()
       for (const loading of cache.pending.values()) loading.controller.abort()
       for (const entry of cache.entries.values()) {
         entry.metadataLoading?.controller.abort()
@@ -1692,14 +1771,14 @@ export namespace ExecutionService {
   }
   export async function summary(sessionID: string, runID?: string, signal?: AbortSignal) {
     const value = await data(sessionID, true, signal)
-    if (!runID) return summarize(value)
+    if (!runID) return structuredClone(summarize(value))
     if (!value.summary.rounds.some((round) => round.id === runID))
       throw new Storage.NotFoundError({ message: "Execution round was not found" })
     const summary = summarize(value, runID)
     value.selections.delete(runID)
     value.selections.set(runID, { summary, touched: Date.now() })
     if (value.selections.size > 4) value.selections.delete(value.selections.keys().next().value!)
-    return summary
+    return structuredClone(summary)
   }
   export async function verifyJournal(sessionID: string, signal?: AbortSignal): Promise<void> {
     const value = await data(sessionID, true, signal)
@@ -1763,10 +1842,10 @@ export namespace ExecutionService {
       ?.split(",")
       .filter(Boolean)
       .map((status) => queryValue(ExecutionSchema.Node.shape.status, status))
-    const actualActivities = ExecutionActivity.project(selected(value, input.runID), value.root.id).nodes
+    const actualActivities = activityFor(value, input.runID).nodes
     const activityNodes = new Map(actualActivities.map((node) => [node.id, node.activity]))
     const activityPositions = new Map(actualActivities.map((node, index) => [node.id, index]))
-    const rows = ExecutionProcess.project(selected(value, input.runID), input.mode, value.root.id)
+    const rows = processRows(value, input.mode, input.runID)
       .map((node) => ({ ...node, activity: activityNodes.get(node.id) }))
       .filter(
         (node) =>

@@ -9,6 +9,45 @@ import { ExecutionSchema } from "../../src/execution/schema"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+test("journal coverage publication links to the previously delivered trajectory revision", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const release = Promise.withResolvers<void>()
+      const initial = Promise.withResolvers<Extract<ExecutionSchema.Projection, { state: "ready" }>>()
+      const verified = Promise.withResolvers<Extract<ExecutionSchema.Projection, { state: "ready" }>>()
+      const verify = ExecutionService.verifyJournal
+      using audit = spyOn(ExecutionService, "verifyJournal").mockImplementation(async (id, signal) => {
+        await release.promise
+        return verify(id, signal)
+      })
+      let current: unknown
+      const lease = await ExecutionProjection.contribution().open(
+        { kind: "execution", scopeID: session.scope.id, sessionID: session.id, generation: 1, demands: ["trajectory"] },
+        (frame) => {
+          const properties = frame.payload.properties
+          current =
+            typeof properties.snapshot === "string"
+              ? ExecutionProjection.projectionCheckpoint(session.id, properties.snapshot)
+              : applyProjectionPatch(current, properties.patches as Parameters<typeof applyProjectionPatch>[1])
+          const value = ExecutionSchema.Projection.parse(current)
+          if (value.state !== "ready") return
+          if (value.summary.coverage.gaps === null) initial.resolve(value)
+          else verified.resolve(value)
+        },
+      )
+      try {
+        const first = await initial.promise
+        release.resolve()
+        const last = await verified.promise
+        expect(last.summary.revision).toBeGreaterThan(first.summary.revision)
+        expect(last.detailPreviousRevision).toBe(first.summary.revision)
+      } finally {
+        release.resolve()
+        lease.dispose()
+      }
+    }),
+  ))
+
 test("root demand opens without summary preparation", () =>
   runtime.run(() =>
     fixture(async ({ session }) => {
@@ -119,7 +158,7 @@ test("execution subscriptions send field changes, use scoped HTTP checkpoints fo
       }
       const value = {
         sessionID: session.id,
-        revision: 8,
+        revision: summary.revision + 1,
         summary: large,
         roundSummaries: [],
         contextUpserts: [],
@@ -127,7 +166,7 @@ test("execution subscriptions send field changes, use scoped HTTP checkpoints fo
         processUpserts: [],
         processRemoved: [],
         removed: [],
-        previousRevision: 7,
+        previousRevision: summary.revision,
       }
       subscription.project({ scopeID: session.scope.id, payload: { type: "execution.updated", properties: value } })
       const reset = frames.at(-1)!.payload.properties
@@ -140,7 +179,7 @@ test("execution subscriptions send field changes, use scoped HTTP checkpoints fo
           scopeID: session.scope.id,
           payload: {
             type: "execution.updated",
-            properties: { ...value, summary: { ...large, elapsedMs: i }, revision: 9 + i },
+            properties: { ...value, summary: { ...large, elapsedMs: i }, revision: value.revision + 1 + i },
           },
         })
         bytes += JSON.stringify(frames.at(-1)).length
