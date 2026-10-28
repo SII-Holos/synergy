@@ -11,7 +11,7 @@ import { BossService } from "../../src/boss/boss"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime(undefined, { traceClose: true })
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
   await using tmp = await tmpdir({ git: true })
