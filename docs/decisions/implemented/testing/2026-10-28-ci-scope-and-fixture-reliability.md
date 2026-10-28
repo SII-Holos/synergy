@@ -14,6 +14,10 @@ Distribute Web batches across the existing six ordinary Linux execution units. P
 
 Use static compiled browser fixtures with independent pages, scoped filesystem spies and owned worker-queue leases. Queue assertions observe state at the acknowledged receipt; subsequent diagnostic queries can flush unrelated observations. The shared resource helper drains in reverse acquisition order and aggregates named cleanup failures. The stability command repeats explicitly selected files or their original batch in fresh Homes with recorded order seeds, preserves all attempts and fails if any attempt fails. The test policy rejects focused tests and increases in retries or unisolated module replacements relative to the exact base; fixed sleeps and existing debt in edited tests remain review advisories.
 
+The file-explorer and source-navigation fixtures retain one prepared Vite server and Chromium process per file but give every case its own browser context and page. Viewport, theme, scroll position, clipboard stubs and page errors belong to that case. Their immutable files require neither watching nor HMR. Source navigation prepares the first editor load within its existing setup deadline using a disposable warm-up page; fault injection and editor state remain fresh in each test. The existing restoration, menu, mutation, source-loading and keyboard assertions retain their deadlines; isolating their state adds no duplicate scenarios.
+
+Library deletion waits for the complete dialog set to disappear within its existing five-second deadline. Both detail and confirmation dialogs legitimately remain mounted until deletion and refetch settle, so a strict single-element disappearance locator races that transition. The neighboring-item and empty-list focus assertions still run after both dialogs close.
+
 ## Alternatives considered
 
 **Increase global timeouts or rerun failed tests automatically.** This hides ordering and ownership defects while raising feedback cost; it does not demonstrate a repaired invariant.

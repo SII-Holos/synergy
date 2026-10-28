@@ -33,7 +33,7 @@ function inside(root: string, relative: string) {
   return filename
 }
 
-async function extractZip(archivePath: string, directory: string) {
+export async function extractApplicationZip(archivePath: string, directory: string) {
   const archive = await unzipper.Open.file(archivePath)
   const links: { filename: string; target: string }[] = []
   const seen = new Set<string>()
@@ -170,7 +170,7 @@ export async function prepareApplications(
       if ((await sha256File(archive)) !== artifact.sha256) throw new Error(`Application checksum mismatch: ${app.id}`)
       await fs.mkdir(destination, { recursive: true })
       const executable = inside(destination, artifact.executable)
-      if (artifact.format === "zip") await extractZip(archive, destination)
+      if (artifact.format === "zip") await extractApplicationZip(archive, destination)
       else {
         if (!artifact.target.startsWith("linux-")) throw new Error("AppImage requires Linux")
         await fs.mkdir(path.dirname(executable), { recursive: true })

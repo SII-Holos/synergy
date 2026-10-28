@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -178,15 +178,34 @@ beforeAll(async () => {
     server: {
       host: "127.0.0.1",
       port: await fixturePort(),
+      strictPort: true,
+      watch: null,
+      hmr: false,
       fs: { allow: [path.resolve(source, "../../.."), directory] },
     },
   })
   await server.listen()
   url = server.resolvedUrls!.local[0]!
   browser = await chromium.launch({ headless: true })
+  const warmup = await browser.newPage()
+  try {
+    await warmup.goto(url)
+    await warmup.locator(".monaco-editor .view-lines").waitFor()
+  } finally {
+    await warmup.close()
+  }
+}, 30_000)
+
+beforeEach(async () => {
+  errors.length = 0
   page = await browser.newPage()
   page.on("pageerror", (error) => errors.push(error.message))
-}, 30_000)
+})
+
+afterEach(async () => {
+  await page?.close()
+})
+
 afterAll(async () => {
   await browser?.close()
   await server?.close()

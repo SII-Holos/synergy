@@ -10,6 +10,7 @@ import {
   verifyPublishedDesktopChecksums,
 } from "../../../script/release/nodes/verify-desktop-assets"
 import type { ReleaseState } from "../../../script/release/shared/packages"
+import { DESKTOP_UPGRADE_RECEIPT } from "../../../script/release/shared/desktop-app-package"
 
 function checksum(contents: string) {
   return createHash("sha256").update(contents).digest("hex")
@@ -35,6 +36,12 @@ function releaseState(): ReleaseState {
 }
 
 describe("desktop release asset verification", () => {
+  test("a Desktop release cannot finalize without final-artifact upgrade evidence", () => {
+    const version = "3.1.0"
+    const names = new Set([...expectedDesktopChecksumAssetNames(version), desktopChecksumsName(version)])
+    expect(() => assertDesktopAssetNames(version, names)).toThrow("upgrade")
+  })
+
   test("requires Linux arm64 updater metadata in the draft", () => {
     const version = "1.2.3"
     const names = new Set([...expectedDesktopChecksumAssetNames(version), desktopChecksumsName(version)])
@@ -91,17 +98,36 @@ describe("desktop release asset verification", () => {
     const expectedNames = expectedDesktopChecksumAssetNames(state.version)
     const checksumName = desktopChecksumsName(state.version)
     const downloaded: string[] = []
+    let acceptedHash: string | undefined
     const manifest = `${expectedNames.map((name) => `${checksum(name)}  ${name}`).join("\n")}\n`
     const download = async (_tag: string, assetName: string, outputPath: string) => {
       downloaded.push(assetName)
-      await fs.writeFile(outputPath, assetName === checksumName ? manifest : assetName)
+      const artifact = `Synergy-darwin-arm64-${state.version}.zip`
+      const receipt = JSON.stringify({
+        version: state.version,
+        previousVersion: "3.0.22",
+        target: "darwin-arm64",
+        artifact,
+        sha256: acceptedHash ?? checksum(artifact),
+      })
+      await fs.writeFile(
+        outputPath,
+        assetName === checksumName ? manifest : assetName === DESKTOP_UPGRADE_RECEIPT ? receipt : assetName,
+      )
     }
 
-    await verifyPublishedDesktopChecksums(state, download, new Set([...expectedNames, checksumName]))
+    await verifyPublishedDesktopChecksums(
+      state,
+      download,
+      new Set([...expectedNames, checksumName, DESKTOP_UPGRADE_RECEIPT]),
+    )
 
     expect(downloaded).toContain(checksumName)
     expect(downloaded).toContain("latest-linux-arm64.yml")
-    expect(downloaded).toHaveLength(expectedNames.length + 1)
+    expect(downloaded).toContain(DESKTOP_UPGRADE_RECEIPT)
+    expect(downloaded).toHaveLength(expectedNames.length + 2)
     expect(downloaded.every((assetName) => path.basename(assetName) === assetName)).toBe(true)
+    acceptedHash = "b".repeat(64)
+    await expect(verifyPublishedDesktopChecksums(state, download)).rejects.toThrow("upgrade receipt")
   })
 })
