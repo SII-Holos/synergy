@@ -5,7 +5,7 @@ import { useViewActivity } from "../context/view-activity"
 import { PortalStyleOwner } from "../context/ui-style"
 import { Popover } from "@kobalte/core/popover"
 import { Listbox, Item, ItemLabel, ItemIndicator } from "@kobalte/core/listbox"
-import { createEffect, createSignal, Show, type JSX } from "solid-js"
+import { createEffect, createSignal, Show, untrack, type Component, type JSX } from "solid-js"
 import { Icon, type IconName } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import "./menu-field.css"
@@ -24,9 +24,14 @@ type MenuFieldBaseProps<T extends string> = {
   icon?: IconName
   ariaDescribedBy?: string
   disabled?: boolean
-  placement?: "bottom-start" | "bottom-end"
+  placement?: "top-start" | "top-end" | "bottom-start" | "bottom-end"
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Controlled owners can wait for a changed value to be accepted; unchanged picks still dismiss. */
+  closeOnChange?: boolean
   popoverLayer?: HTMLElement
   surfaceClass?: string
+  triggerAs?: Component<JSX.ButtonHTMLAttributes<HTMLButtonElement>>
   /** Overrides the trigger class when the host surface styles it (e.g. Library sort buttons). */
   triggerClass?: string
   /** Overrides the trigger label instead of deriving it from the current value. */
@@ -56,9 +61,15 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
   const row = useSettingRow()
   const parentLayer = useOverlayLayer()
   const active = useViewActivity()
-  const [open, setOpen] = createSignal(false)
+  const [localOpen, setLocalOpen] = createSignal(false)
+  const open = () => props.open ?? localOpen()
+  const setOpen = (requested: boolean) => {
+    const next = active() && requested
+    setLocalOpen(next)
+    props.onOpenChange?.(next)
+  }
   createEffect(() => {
-    if (!active()) setOpen(false)
+    if (!active() && open()) setOpen(false)
   })
   const multiple = () => props.multiple === true
   const selected = () =>
@@ -72,13 +83,15 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
       ;(props as MenuFieldMultipleProps<T>).onChange(values)
     } else {
       const value = values[0]
-      // Kobalte fires selection changes even when the same option is pressed
-      // again; only surface a change when the value actually differs.
-      if (value !== undefined && value !== (props as MenuFieldSingleProps<T>).value) {
+      if (value === (props as MenuFieldSingleProps<T>).value) {
+        setOpen(false)
+        return
+      }
+      if (value !== undefined) {
         ;(props as MenuFieldSingleProps<T>).onChange(value)
       }
     }
-    if (!multiple()) setOpen(false)
+    if (!multiple() && props.closeOnChange !== false) setOpen(false)
   }
 
   const content = () => (
@@ -92,18 +105,27 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
         onEscapeKeyDown={(event) => event.stopPropagation()}
         class={`menu-field-surface ${props.surfaceClass ?? ""}`}
         aria-label={props.ariaLabel}
-        onOpenAutoFocus={(event) => event.preventDefault()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          const selectedOption = surface?.querySelector<HTMLElement>(
+            '[role="option"][aria-selected="true"]:not([aria-disabled="true"])',
+          )
+          const firstOption = surface?.querySelector<HTMLElement>('[role="option"]:not([aria-disabled="true"])')
+          const target = selectedOption ?? firstOption ?? surface?.querySelector<HTMLElement>('[role="listbox"]')
+          // Synchronous focus handlers must not subscribe the popover's mounting effect to list state.
+          untrack(() => target?.focus({ preventScroll: true }))
+        }}
       >
         {props.leading?.(() => setOpen(false))}
         <Listbox
           class="menu-field-list"
           aria-label={props.ariaLabel}
-          autoFocus="first"
+          autoFocus={false}
           scrollRef={() => surface}
           options={props.options}
           optionValue={(option) => option.value}
           optionTextValue={(option) => option.label}
-          optionDisabled={(option) => option.disabled ?? false}
+          optionDisabled={(option) => props.disabled || option.disabled || false}
           shouldFocusOnHover
           selectionMode={multiple() ? "multiple" : "single"}
           disallowEmptySelection={!multiple()}
@@ -151,7 +173,7 @@ export function MenuField<T extends string>(props: MenuFieldProps<T>) {
       <Popover.Trigger
         ref={trigger}
         id={props.id}
-        as="button"
+        as={props.triggerAs ?? "button"}
         type="button"
         data-slot="popover-trigger"
         data-component="menu-field"

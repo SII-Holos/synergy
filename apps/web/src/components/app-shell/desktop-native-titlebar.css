@@ -36,9 +36,6 @@
 
 .app-shell--desktop-native-chrome:has([data-default-shell]) {
   --workbench-native-inset: var(--desktop-native-titlebar-traffic-width);
-  .sb-navigation-brand {
-    display: none;
-  }
   .stb-root {
     pointer-events: auto;
   }

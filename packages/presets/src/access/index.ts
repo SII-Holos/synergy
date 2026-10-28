@@ -1,7 +1,6 @@
 export namespace Access {
   export interface Descriptor {
     attachUrl: string
-    callbackUrl: string
   }
 
   export function normalizeUrl(value: string) {
@@ -12,7 +11,6 @@ export namespace Access {
     const attachUrl = normalizeUrl(serverUrl)
     return {
       attachUrl,
-      callbackUrl: `${attachUrl}/holos/callback`,
     }
   }
 
@@ -20,7 +18,6 @@ export namespace Access {
     const descriptor = fromServerUrl(serverUrl)
     return {
       VITE_SYNERGY_SERVER_URL: descriptor.attachUrl,
-      VITE_SYNERGY_CALLBACK_URL: descriptor.callbackUrl,
     }
   }
 }

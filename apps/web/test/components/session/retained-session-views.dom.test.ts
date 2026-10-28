@@ -27,7 +27,7 @@ beforeAll(async () => {
     function VirtualView() {
       let viewport
       return <div data-virtual ref={element=>viewport=element} style="height:200px;width:400px;overflow:auto">
-        <Virtualizer data={Array.from({length:200},(_,index)=>index)} scrollRef={viewport} itemSize={40}>
+        <Virtualizer data={Array.from({length:200},(_,index)=>index)} scrollRef={viewport} itemSize={40} onScroll={() => delete viewport.dataset.settled} onScrollEnd={() => viewport.dataset.settled="true"}>
           {index=><div data-virtual-row={index} style="height:40px">Row {index}</div>}
         </Virtualizer>
       </div>
@@ -131,7 +131,9 @@ test("scroll events delivered after hiding cannot replace the retained virtual w
   await viewport.evaluate((element) => {
     element.scrollTop = 6000
   })
-  await page.waitForFunction(() => document.querySelector('[data-virtual-row="150"]'))
+  await page.waitForFunction(() =>
+    document.querySelector('[data-virtual][data-settled="true"] [data-virtual-row="150"]'),
+  )
   const node = await viewport.elementHandle()
   const keys = await viewport
     .locator("[data-virtual-row]")

@@ -5,6 +5,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { reasoningItemKey } from "@ericsanchezok/synergy-util/reasoning-item"
 import { Storage } from "../../src/storage/storage"
 import { Token } from "../../src/util/token"
+import { ToolIntent } from "../../src/session/tool-intent"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -78,6 +79,25 @@ describe("prompt-budgeter budget", () => {
 })
 
 describe("prompt-budgeter decision", () => {
+  test("meters the model-facing intent envelope rather than the native tool schema", () =>
+    runtime.run(async () => {
+      const model = createModel()
+      const definition = {
+        id: "fixture",
+        description: "Inspect a value",
+        inputSchema: { type: "string" as const },
+      }
+      const original = structuredClone(definition)
+      const cost = await PromptBudgeter.measure({ system: [], messages: [], toolDefinitions: [definition] }, model.id)
+      const [idTokens, descriptionTokens, schemaTokens] = await Promise.all([
+        Token.estimateModel(model.id, definition.id),
+        Token.estimateModel(model.id, definition.description),
+        Token.estimateModelJSON(model.id, ToolIntent.snapshot(definition.inputSchema).schema),
+      ])
+      expect(cost.tools).toBe(60 + idTokens + descriptionTokens + schemaTokens)
+      expect(definition).toEqual(original)
+    }))
+
   test("does not compact when prompt stays below threshold", () =>
     runtime.run(async () => {
       const model = createModel({ context: 100_000, output: 8_192 })

@@ -113,23 +113,35 @@ const rootRuleContracts: CssRuleContract[] = [
 const fileWorkbenchRuleContracts: CssRuleContract[] = [
   {
     selector: ".file-workbench",
-    declarations: ["display:flex", "height:100%", "min-width:0", "flex-direction:column", "overflow:hidden"],
-  },
-  {
-    selector: ".file-workbench-main",
     declarations: [
-      "position:relative",
       "display:flex",
-      "min-height:0",
+      "height:100%",
       "min-width:0",
-      "flex:1",
+      "flex-direction:column",
       "overflow:hidden",
-      "container-type:inline-size",
+      "container:file-workbench/inline-size",
     ],
   },
   {
+    selector: ".file-workbench-main",
+    declarations: ["position:relative", "display:flex", "min-height:0", "min-width:0", "flex:1", "overflow:hidden"],
+  },
+  {
+    selector: ".file-toolbar-location",
+    declarations: ["display:flex", "min-width:60px", "container:file-location/inline-size"],
+  },
+  {
     selector: ".file-explorer",
-    declarations: ["position:relative", "display:flex", "min-width:220px", "flex-shrink:0", "flex-direction:column"],
+    declarations: [
+      "position:relative",
+      "display:flex",
+      "width:100%",
+      "height:100%",
+      "min-width:0",
+      "min-height:0",
+      "flex:1",
+      "flex-direction:column",
+    ],
   },
 ]
 
@@ -534,40 +546,64 @@ async function expectStatusbarSubsessionContentFillsBody(css: string) {
   }
 }
 
-async function expectFileWorkbenchExplorerResizeMatchesMode(css: string) {
+async function expectFileWorkbenchNavigationFitsMode(css: string) {
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
   try {
     const page = await browser.newPage({ viewport: { width: 1000, height: 600 } })
-    await page.setContent(`
-      <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
-      <div class="file-workbench" style="height: 480px;">
-        <div class="file-workbench-main">
-          <main class="file-viewer"></main>
-          <aside class="file-explorer" style="width: 296px;">
-            <div data-component="resize-handle" data-direction="horizontal" data-edge="start"></div>
-          </aside>
+    for (const width of [375, 800]) {
+      const drawer = width === 375
+      await page.setContent(`
+        <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
+        <div class="file-workbench" style="width: ${width}px; height: 480px;">
+          <div class="file-workbench-main">
+            <aside class="${drawer ? "workspace-navigator-drawer" : "workspace-navigator"}" data-workspace-navigation style="width: 296px;">
+              <div class="file-explorer"></div>
+              ${drawer ? "" : '<div data-component="resize-handle" data-direction="horizontal" data-edge="end"></div>'}
+            </aside>
+            <main class="file-viewer"></main>
+            ${drawer ? '<div class="workspace-navigator-overlay"></div>' : ""}
+          </div>
         </div>
-      </div>
-    `)
-
-    const measure = async (width: number) => {
-      await page.locator(".file-workbench").evaluate((element, value) => {
-        ;(element as HTMLElement).style.width = `${value}px`
-      }, width)
-      return page.evaluate(() => {
-        const explorer = document.querySelector<HTMLElement>(".file-explorer")
-        const handle = explorer?.querySelector<HTMLElement>('[data-component="resize-handle"]')
-        if (!explorer || !handle) throw new Error("Missing file explorer layout fixture")
+      `)
+      const layout = await page.evaluate(() => {
+        const main = document.querySelector<HTMLElement>(".file-workbench-main")!
+        const navigation = document.querySelector<HTMLElement>("[data-workspace-navigation]")!
+        const explorer = navigation.querySelector<HTMLElement>(".file-explorer")!
+        const viewer = document.querySelector<HTMLElement>(".file-viewer")!
+        const overlay = document.querySelector<HTMLElement>(".workspace-navigator-overlay")
+        const mainRect = main.getBoundingClientRect()
+        const navigationRect = navigation.getBoundingClientRect()
+        const explorerRect = explorer.getBoundingClientRect()
+        const overlayRect = overlay?.getBoundingClientRect()
         return {
+          navigationPosition: getComputedStyle(navigation).position,
           explorerPosition: getComputedStyle(explorer).position,
-          handleDisplay: getComputedStyle(handle).display,
+          navigationLeft: navigationRect.left - mainRect.left,
+          navigationTop: navigationRect.top - mainRect.top,
+          navigationBottom: navigationRect.bottom - mainRect.bottom,
+          explorerWidth: explorerRect.width,
+          navigationWidth: navigation.clientWidth,
+          explorerHeight: explorerRect.height,
+          navigationHeight: navigation.clientHeight,
+          viewerWidth: viewer.getBoundingClientRect().width,
+          mainWidth: mainRect.width,
+          overlayBounds: overlayRect
+            ? [overlayRect.left - mainRect.left, overlayRect.top - mainRect.top, overlayRect.width, overlayRect.height]
+            : undefined,
+          mainHeight: mainRect.height,
         }
       })
+      expect(layout.navigationPosition).toBe(drawer ? "absolute" : "relative")
+      expect(layout.explorerPosition).toBe("relative")
+      expect(layout.navigationLeft).toBe(0)
+      expect(layout.navigationTop).toBe(0)
+      expect(layout.navigationBottom).toBe(0)
+      expect(layout.explorerWidth).toBe(layout.navigationWidth)
+      expect(layout.explorerHeight).toBe(layout.navigationHeight)
+      expect(layout.viewerWidth).toBe(drawer ? layout.mainWidth : layout.mainWidth - 296)
+      if (drawer) expect(layout.overlayBounds).toEqual([0, 0, layout.mainWidth, layout.mainHeight])
     }
-
-    expect(await measure(640)).toEqual({ explorerPosition: "absolute", handleDisplay: "none" })
-    expect(await measure(800)).toEqual({ explorerPosition: "relative", handleDisplay: "block" })
   } finally {
     await browser.close()
   }
@@ -707,42 +743,42 @@ async function expectPromptDockActivityFlow(css: string) {
     expect(desktop.dockPaddingTop).toBe("0px")
     expect(desktop.dockBottom).toBe(400)
     expect(desktop.floatPaddingBottom).toBe("8px")
-    expect(desktop.dockHeight).toBe(144)
-    expect(desktop.composerBottom).toBe(384)
+    expect(desktop.dockHeight).toBe(136)
+    expect(desktop.composerBottom).toBe(392)
     expect(desktop.composerOffset).toBe(48)
-    expect(desktop.contentPaddingBottom).toBe("176px")
+    expect(desktop.contentPaddingBottom).toBe("168px")
 
     await page.setViewportSize({ width: 1200, height: 800 })
     const tallDesktop = await measure()
     expect(tallDesktop.dockBottom).toBe(800)
-    expect(tallDesktop.dockHeight).toBe(152)
-    expect(tallDesktop.composerBottom).toBe(776)
+    expect(tallDesktop.dockHeight).toBe(140)
+    expect(tallDesktop.composerBottom).toBe(788)
     expect(tallDesktop.composerOffset).toBe(48)
-    expect(tallDesktop.contentPaddingBottom).toBe("184px")
+    expect(tallDesktop.contentPaddingBottom).toBe("172px")
 
     await page.setViewportSize({ width: 390, height: 400 })
     const mobileBusy = await measure()
     expect(mobileBusy.dockPaddingTop).toBe("0px")
     expect(mobileBusy.dockBottom).toBe(400)
-    expect(mobileBusy.dockHeight).toBe(140)
-    expect(mobileBusy.composerBottom).toBe(388)
+    expect(mobileBusy.dockHeight).toBe(134)
+    expect(mobileBusy.composerBottom).toBe(394)
     expect(mobileBusy.composerOffset).toBe(48)
     expect(mobileBusy.contentPaddingBottom).toBe("24px")
 
     await page.evaluate(() => document.querySelector("[data-busy]")?.remove())
     const mobileIdle = await measure()
     expect(mobileIdle.dockBottom).toBe(400)
-    expect(mobileIdle.dockHeight).toBe(92)
+    expect(mobileIdle.dockHeight).toBe(86)
     expect(mobileIdle.floatPaddingBottom).toBe("0px")
-    expect(mobileIdle.composerBottom).toBe(388)
+    expect(mobileIdle.composerBottom).toBe(394)
     expect(mobileIdle.composerOffset).toBe(0)
     await page.setViewportSize({ width: 1200, height: 400 })
     const desktopIdle = await measure()
     expect(desktopIdle.dockBottom).toBe(400)
-    expect(desktopIdle.dockHeight).toBe(96)
-    expect(desktopIdle.composerBottom).toBe(384)
+    expect(desktopIdle.dockHeight).toBe(88)
+    expect(desktopIdle.composerBottom).toBe(392)
     expect(desktopIdle.composerOffset).toBe(0)
-    expect(desktopIdle.contentPaddingBottom).toBe("128px")
+    expect(desktopIdle.contentPaddingBottom).toBe("120px")
   } finally {
     await browser.close()
   }
@@ -953,7 +989,7 @@ describe("app production build contract", () => {
       await expectPromptDockKeepsReadableWidth(css)
       await expectPromptDockActivityFlow(css)
       await expectStatusbarSubsessionContentFillsBody(css)
-      await expectFileWorkbenchExplorerResizeMatchesMode(css)
+      await expectFileWorkbenchNavigationFitsMode(fileWorkbenchCss)
       await expectAttachmentToolbarFitsNarrowPanel(attachmentWorkbenchCss)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {

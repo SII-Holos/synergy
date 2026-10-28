@@ -195,6 +195,10 @@
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
+          "glob": "src/components/file-workbench/entry-actions.tsx",
+          "reason": "Inline naming, conflicts, captured entry versions, clipboard copy/move, resource remounts and Desktop path copying are exercised by test/components/file-workbench/explorer-restore.dom.test.ts in Vite/Chromium. Bun cannot attribute that renderer execution to the TSX source; package coverage thresholds remain unchanged."
+        },
+        {
           "glob": "src/components/file-workbench/explorer.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -233,10 +237,6 @@
         {
           "glob": "src/components/kanban/pane/pane.tsx",
           "reason": "UI component not rendered by the unit suite; exercised through the dev app board view"
-        },
-        {
-          "glob": "src/components/holos/agent-actions.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
         {
           "glob": "src/components/lattice/lattice-config-dialog.tsx",
@@ -531,10 +531,6 @@
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
-          "glob": "src/components/settings/components/BasicAccountToggleCard.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
-        },
-        {
           "glob": "src/components/settings/components/McpCard.tsx",
           "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
@@ -581,10 +577,6 @@
         {
           "glob": "src/components/settings/panels/SecretsPanel.tsx",
           "reason": "Settings JSX composes authenticated SDK lifecycle actions and locale/dialog providers; draft and policy behavior is covered by secrets-panel-model.test.ts"
-        },
-        {
-          "glob": "src/components/settings/panels/AccountPanel.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
           "glob": "src/components/settings/panels/ArchivedSessionsPanel.tsx",
@@ -947,10 +939,6 @@
           "reason": "global context requires full app bootstrap"
         },
         {
-          "glob": "src/context/holos.tsx",
-          "reason": "global context requires full app bootstrap"
-        },
-        {
           "glob": "src/context/input.tsx",
           "reason": "global context requires full app bootstrap"
         },
@@ -1021,6 +1009,10 @@
         {
           "glob": "src/env.d.ts",
           "reason": "types-only declarations, no runtime logic"
+        },
+        {
+          "glob": "src/hooks/use-image-actions.ts",
+          "reason": "The platform and Lingui adapter runs in test/components/attachment-workbench/content.dom.test.ts and message.dom.test.ts, including original-byte downloads and source navigation. Vite/Chromium execution does not contribute Bun coverage; image-actions.ts and the shared clipboard core retain direct behavioral coverage."
         },
         {
           "glob": "src/hooks/use-providers.ts",
@@ -1533,6 +1525,10 @@
         {
           "glob": "src/components/settings/panels/ExperimentsPanel.tsx",
           "reason": "apps/web/test/components/settings/settings-details.dom.test.tsx renders the real panel and controller in Chromium, covering unavailable choices, retained failed drafts, retry, restart status and empty catalogs. The controller remains measured directly; browser rendering does not contribute Bun source LCOV."
+        },
+        {
+          "glob": "src/components/sidebar/space-switcher.tsx",
+          "reason": "Rendered in Chromium by test/components/sidebar/space-switcher.dom.test.tsx and test/components/app-shell/mobile-drawer-drag-region.test.tsx, including keyboard focus, localized labels and nested settings; browser-bundled execution does not contribute Bun coverage."
         }
       ]
     },
@@ -1688,22 +1684,6 @@
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/compat/channel/provider/clarus/agent-tunnel-port.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/provider/clarus/assignment-runtime.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/provider/clarus/assignment-store.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/provider/clarus.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
           "glob": "src/compat/channel/provider/feishu/svg-raster-runtime.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
@@ -1725,10 +1705,6 @@
         },
         {
           "glob": "src/compat/channel/tools/channel-push.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/tools/clarus-submit-task-result.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
@@ -1769,34 +1745,6 @@
         },
         {
           "glob": "src/compat/github/routes.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/cli/holos.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/migration.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/routes/holos.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/runtime.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/security.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/util.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/script/holos-cli-assets.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
@@ -2246,6 +2194,18 @@
         {
           "glob": "src/components/image-preview.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
+        },
+        {
+          "glob": "src/components/image-viewer-actions.ts",
+          "reason": "Types-only host action declarations contain no runtime logic; consumer typechecks validate the contract."
+        },
+        {
+          "glob": "src/components/image-viewer-controls.tsx",
+          "reason": "The real themed toolbar, pointer/keyboard context menu, fullscreen portals and focus return run in apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts. Vite/Chromium execution does not contribute Bun source coverage."
+        },
+        {
+          "glob": "src/components/image-viewer.tsx",
+          "reason": "Rendered source-pixel transforms, pointer capture, pinch, loading/retry, stale actions, fullscreen focus and gallery navigation run in apps/web/test/components/attachment-workbench/image-viewer.dom.test.ts. Vite/Chromium execution does not contribute Bun coverage; image-viewer-model.ts retains direct behavioral coverage."
         },
         {
           "glob": "src/components/list.tsx",
@@ -3082,37 +3042,6 @@
           "reason": "channel providers require live external services"
         }
       ]
-    },
-    "packages/holos": {
-      "command": "bun run test:coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 75,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/holos/cli/holos.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/holos/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/holos/startup.ts",
-          "reason": "requires live Holos control plane"
-        }
-      ]
-    },
-    "packages/channel-clarus": {
-      "command": "bun run test:coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 75,
-        "functions": 75
-      },
-      "exempt": []
     },
     "packages/email": {
       "command": "bun run test:coverage",

@@ -5,6 +5,7 @@
   "license": "MIT",
   "exports": {
     "./*": "./src/components/*.tsx",
+    "./clipboard-core": "./src/components/clipboard-core.ts",
     "./tool-result-presentation": "./src/components/tool-result-presentation.ts",
     "./tool-registry-lazy": "./src/components/tool-registry-lazy.ts",
     "./plugin/*": "./src/plugin/*.ts",

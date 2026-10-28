@@ -2,6 +2,7 @@ import { SessionTransferState } from "./transfer-state"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { Workspace } from "./workspace-schema"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { Environment } from "../environment"
@@ -804,6 +805,7 @@ export namespace Session {
           message: "The fork point message is no longer part of the effective session history.",
         })
       }
+      if (input.title === undefined) await SessionNav.readNavIndex(source.scope.id)
       const sessionID = Identifier.descending("session")
       const createInput = {
         id: sessionID,
@@ -811,13 +813,7 @@ export namespace Session {
         workspace: source.workspace,
         workspaceID: source.workspaceID,
         environmentID: source.environmentID,
-        title: input.title,
         controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
-        forkedFrom: {
-          sessionID: source.id,
-          messageID: forkPoint,
-          title: source.title,
-        },
       }
       const selected = forkPoint
         ? msgs.slice(0, msgs.findIndex((msg) => msg.info.id === forkPoint) + (includeForkPoint ? 1 : 0))
@@ -877,6 +873,15 @@ export namespace Session {
         const jobs = selected.flatMap((msg, messageIndex) =>
           msg.parts.map((part) => ({ part, messageIndex, id: Identifier.ascending("part") })),
         )
+        const partMap = new Map(jobs.map(({ part, id }) => [part.id, id]))
+        for (const message of prepared) {
+          const noops = z.array(z.string()).safeParse(message.info.metadata?.compactionNoopRequests)
+          if (!noops.success) continue
+          message.info.metadata = {
+            ...message.info.metadata,
+            compactionNoopRequests: noops.data.flatMap((id) => (partMap.has(id) ? [partMap.get(id)!] : [])),
+          }
+        }
         const from = { kind: "session" as const, scopeID: source.scope.id, sessionID: source.id }
         const to = { ...from, sessionID }
         // One part queue bounds all artifact copies; workMap drains started writes before staging cleanup.
@@ -919,7 +924,29 @@ export namespace Session {
         })
         for (const [index, part] of parts.entries()) prepared[jobs[index].messageIndex].parts.push(part)
         session = await Storage.transaction(async () => {
-          const created = await create(createInput)
+          const currentSource = await SessionManager.requireSession(source.id)
+          let title = input.title
+          if (title === undefined) {
+            const index = await SessionNav.readNavIndex(source.scope.id)
+            const titles = new Set(index.entries.map((entry) => entry.title))
+            const base =
+              currentSource.forkedFrom?.generatedTitle === currentSource.title
+                ? currentSource.title.replace(/\([1-9]\d*\)$/, "")
+                : currentSource.title
+            let suffix = 1
+            while (titles.has(`${base}(${suffix})`)) suffix++
+            title = `${base}(${suffix})`
+          }
+          const created = await create({
+            ...createInput,
+            title,
+            forkedFrom: {
+              sessionID: source.id,
+              messageID: forkPoint,
+              title: currentSource.title,
+              generatedTitle: input.title === undefined ? title : undefined,
+            },
+          })
           const modelSelection = forkPoint
             ? ModelSelection.legacy(
                 undefined,
@@ -1385,6 +1412,7 @@ export namespace Session {
       const before = structuredClone(session)
       const result = structuredClone(session)
       editor(result)
+      if (result.title !== before.title && result.forkedFrom) delete result.forkedFrom.generatedTitle
       if (!options?.environmentChange && result.environmentID !== before.environmentID)
         throw new Error("Environment bindings cannot be changed through Session.update")
       if (
@@ -1936,25 +1964,27 @@ export namespace Session {
       part = { ...part, workBrief: await SecretMask.apply(part.workBrief) }
     }
     const scopeID = asScopeID(ownerScopeID ?? (await SessionManager.resolveScopeID(part.sessionID)))
-    const captureAttachmentContext = async (attachment: MessageV2.AttachmentPart) => {
-      const source = attachment.source
-      if (!source || source.type === "resource" || source.workspace) return attachment
+    const prepareAttachment = async (attachment: MessageV2.AttachmentPart) => {
+      const normalized: MessageV2.AttachmentPart = attachment.presentation?.purpose
+        ? attachment
+        : { ...attachment, presentation: { ...attachment.presentation, purpose: attachmentPurpose(attachment) } }
+      const source = normalized.source
+      if (!source || source.type === "resource" || source.workspace) return normalized
       const [message] = await Storage.readMany<MessageV2.Info>([
         StoragePath.messageInfo(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID)),
       ])
       const context = message?.referenceContext
       return context?.state === "bound" && ResourceReference.resolvePath(source.path, context) !== undefined
-        ? { ...attachment, source: { ...source, workspace: context.workspace } }
-        : attachment
+        ? { ...normalized, source: { ...source, workspace: context.workspace } }
+        : normalized
     }
     try {
       const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
-      if (part.type === "attachment")
-        part = await RolloutAttachment.capture(owner, await captureAttachmentContext(part))
+      if (part.type === "attachment") part = await RolloutAttachment.capture(owner, await prepareAttachment(part))
       if (part.type === "tool" && part.state.status === "completed" && part.state.attachments) {
         const attachments = []
         for (const attachment of part.state.attachments)
-          attachments.push(await RolloutAttachment.capture(owner, await captureAttachmentContext(attachment)))
+          attachments.push(await RolloutAttachment.capture(owner, await prepareAttachment(attachment)))
         part = { ...part, state: { ...part.state, attachments } }
       }
       if (part.type === "tool" && part.state.status === "completed" && !part.state.outputArtifact) {

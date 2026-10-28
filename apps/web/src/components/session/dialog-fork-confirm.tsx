@@ -1,8 +1,9 @@
-import { createMemo } from "solid-js"
+import { createMemo, createResource, createSignal, onCleanup, Show } from "solid-js"
+import type { ProjectDirectories, Session, SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk"
 import { createStore } from "solid-js/store"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
-import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -10,28 +11,60 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useLocale } from "@/context/locale"
 import "./dialog-fork-confirm.css"
 import { S } from "./session-i18n"
-import { computeForkCounts, copiedSummaryKind, type ForkConfirmMessage } from "./dialog-fork-confirm-model"
+import {
+  computeForkCounts,
+  copiedSummaryKind,
+  forkWorkspaceChoices,
+  type ForkConfirmMessage,
+  type ForkWorkspaceChoice,
+} from "./dialog-fork-confirm-model"
 export { forkReplyPreview } from "./dialog-fork-confirm-model"
 
 interface DialogForkConfirmProps {
-  message: ForkConfirmMessage
+  source: Pick<Session, "title" | "workspace">
+  message?: ForkConfirmMessage
   /** All user/assistant messages in canonical order */
   allMessages: { id: string; role: string }[]
   /** Whether the loaded window covers the complete effective history */
   hasCompleteHistory: boolean
   /** Short text preview of the target reply, when available */
   preview?: string
+  loadDirectories?: () => Promise<ProjectDirectories | undefined>
   /** Returns true when the fork succeeded and the dialog can close. */
-  onConfirm: () => Promise<boolean>
+  onConfirm: (workspace: SessionWorkspaceSelection) => Promise<boolean>
+  onClose: () => void
 }
 
 export function DialogForkConfirm(props: DialogForkConfirmProps) {
   const { i18n, fmt } = useLocale()
-  const dialog = useDialog()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const [state, setState] = createStore({ pending: false })
+  const [directories, { refetch }] = createResource(async () => {
+    try {
+      return { data: await props.loadDirectories?.(), failed: false }
+    } catch {
+      return { data: undefined, failed: true }
+    }
+  })
+  const [selected, setSelected] = createSignal<ForkWorkspaceChoice["id"]>()
+  const choices = createMemo(() => forkWorkspaceChoices(props.source.workspace, directories.latest?.data))
+  const selectedID = createMemo(
+    () => selected() ?? (choices().some((item) => item.id === "current") ? "current" : "main"),
+  )
+  const choice = createMemo(() => choices().find((item) => item.id === selectedID()))
+  const labels = createMemo(() => ({
+    main: _(S.forkLocationMain),
+    create: _(S.forkLocationCreate),
+    worktree: _(S.forkLocationWorktree),
+    workspace: _(S.forkLocationCurrent),
+    none: _(S.forkLocationNone),
+  }))
+  let disposed = false
+  onCleanup(() => {
+    disposed = true
+  })
 
-  const counts = createMemo(() => computeForkCounts(props.allMessages, props.message.id))
+  const counts = createMemo(() => computeForkCounts(props.allMessages, props.message?.id))
 
   const summaryText = createMemo(() => {
     const c = counts()
@@ -47,24 +80,28 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
   })
 
   const description = createMemo(() => {
+    if (!props.message) return _(S.forkConfirmDescriptionCurrent)
     const preview = props.preview?.trim()
     if (preview) return i18n._({ ...S.forkConfirmDescriptionPreview, values: { preview } })
     return _(S.forkConfirmDescription)
   })
 
   const forkedAt = createMemo(() => {
-    const time = props.message.time?.completed ?? props.message.time?.created
+    const time = props.message?.time?.completed ?? props.message?.time?.created
     return time ? fmt.time(time) : undefined
   })
 
   const handleConfirm = async () => {
-    if (state.pending) return
+    const destination = choice()
+    if (state.pending || directories.loading || directories.latest?.failed || !destination) return
     setState("pending", true)
     try {
-      const ok = await props.onConfirm()
-      if (ok) dialog.close()
+      const ok = await props.onConfirm(destination.workspace)
+      if (disposed) return
+      if (ok) props.onClose()
       else setState("pending", false)
     } catch (error) {
+      if (disposed) return
       showToast({
         type: "error",
         title: _(S.forkConfirmFailed),
@@ -90,7 +127,7 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
           aria-label={_(S.forkConfirmClose)}
           disabled={state.pending}
           onClick={() => {
-            if (!state.pending) dialog.close()
+            if (!state.pending) props.onClose()
           }}
         >
           <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -98,13 +135,54 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
       }
     >
       <div class="fork-confirm-impact">
-        <span class="fork-confirm-impact-value">{summaryText()}</span>
-        <span class="fork-confirm-impact-note">
-          {i18n._({ ...S.forkConfirmCopiedNote, values: { time: forkedAt() ?? "\u2014" } })}
-        </span>
+        <span class="fork-confirm-impact-value">{props.source.title}</span>
+        <span class="fork-confirm-impact-note">{summaryText()}</span>
+        <Show when={forkedAt()}>
+          <span class="fork-confirm-impact-note">
+            {i18n._({ ...S.forkConfirmCopiedNote, values: { time: forkedAt() ?? "\u2014" } })}
+          </span>
+        </Show>
+      </div>
+      <div class="fork-confirm-location">
+        <span class="fork-confirm-location-label">{_(S.forkLocationTitle)}</span>
+        <Show
+          when={!directories.loading}
+          fallback={
+            <span role="status" class="fork-confirm-impact-note">
+              {_(S.forkLocationLoading)}
+            </span>
+          }
+        >
+          <Show
+            when={!directories.latest?.failed}
+            fallback={
+              <div class="fork-confirm-location-error" role="alert">
+                <span>{_(S.forkLocationFailed)}</span>
+                <Button variant="secondary" onClick={() => void refetch()}>
+                  {_(S.forkLocationRetry)}
+                </Button>
+              </div>
+            }
+          >
+            <MenuField
+              ariaLabel={_(S.forkLocationTitle)}
+              options={choices().map((item) => ({ value: item.id, label: labels()[item.kind] }))}
+              value={selectedID()}
+              onChange={setSelected}
+              disabled={state.pending}
+            />
+            <Show when={choice()?.path}>
+              {(path) => (
+                <span class="fork-confirm-location-path" title={path()}>
+                  {path()}
+                </span>
+              )}
+            </Show>
+          </Show>
+        </Show>
       </div>
       <div data-slot="dialog-actions" class="fork-confirm-actions">
-        <Button type="button" variant="ghost" size="large" disabled={state.pending} onClick={() => dialog.close()}>
+        <Button type="button" variant="ghost" size="large" disabled={state.pending} onClick={props.onClose}>
           {_(S.forkConfirmCancel)}
         </Button>
         <Button
@@ -112,7 +190,7 @@ export function DialogForkConfirm(props: DialogForkConfirmProps) {
           variant="primary"
           size="large"
           class="fork-confirm-button"
-          disabled={state.pending}
+          disabled={state.pending || directories.loading || directories.latest?.failed || !choice()}
           onClick={() => void handleConfirm()}
         >
           {state.pending ? (

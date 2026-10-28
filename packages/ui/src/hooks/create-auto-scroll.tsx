@@ -104,7 +104,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     })
   }
 
-  const flushScrollToBottom = () => {
+  const flushScrollToBottom = (allowGrowthMotion = true) => {
     scrollFrame = undefined
     const force = forceNextScroll
     forceNextScroll = false
@@ -119,7 +119,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
     if (Math.abs(distance) < 2 && !options.motionTarget) return
 
-    const animate = !!options.motionTarget && (!force || smoothForce)
+    const animate = !!options.motionTarget && (smoothForce || (allowGrowthMotion && !force))
     motion.move(scroll, bottom, animate, animate && !!store.contentRef?.querySelector("[data-motion-resizing]"))
     smoothForce = false
   }
@@ -140,7 +140,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (force) beginSettle(settleWindow(), true)
     forceNextScroll ||= force
     if (scrollFrame !== undefined) return
-    scrollFrame = requestAnimationFrame(flushScrollToBottom)
+    scrollFrame = requestAnimationFrame(() => flushScrollToBottom())
   }
 
   const stop = (allowResume = false) => {
@@ -220,7 +220,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
 
   const handleScroll = () => {
     if (!scroll || !enabled()) return
-    // Virtual layout compensation can deliver scroll before ResizeObserver; retain the pre-layout reading offset.
+    // Only a scroll receipt acknowledges changed extent; compensation can arrive before or after ResizeObserver.
     if (readingAnchor && movementOffset === undefined && anchoredScrollHeight !== scroll.scrollHeight) {
       readingAnchor.restore()
       anchoredScrollTop = scroll.scrollTop
@@ -241,9 +241,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
     }
     if (!compensated && down) stop(resumeRequested)
     if (!compensated) {
-      movementOffset = undefined
+      if (movementOffset !== undefined) movementOffset = scroll.scrollTop
       preserveReadingAnchor()
     }
+  }
+
+  // One input can produce several scroll receipts: https://developer.mozilla.org/en-US/docs/Web/API/Element/scrollend_event
+  const handleScrollEnd = () => {
+    movementOffset = undefined
   }
 
   const handleLayoutRestored = (event: Event) => {
@@ -274,7 +279,6 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (!readingAnchor || !readingAnchor.owner.isConnected) preserveReadingAnchor()
     if (scroll && readingAnchor) {
       anchoredScrollTop = scroll.scrollTop
-      anchoredScrollHeight = scroll.scrollHeight
       if (movementOffset !== undefined) movementOffset = scroll.scrollTop
     }
     scheduleMeasure()
@@ -290,7 +294,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         if (forcedSettling) beginSettle(settleWindow(), true)
         // Resize delivery follows frame callbacks; another frame would paint the new height before its latest pin.
         if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
-        flushScrollToBottom()
+        flushScrollToBottom(false)
         return
       }
       restoreReadingLayout()
@@ -298,14 +302,14 @@ export function createAutoScroll(options: AutoScrollOptions) {
     { box: "border-box" },
   )
 
-  createEffect(() => {
+  createEffect<Set<HTMLElement | undefined>>((previous) => {
     // Virtual rows can resize before the content extent updates; preserve reading in that same paint.
+    // Re-observing stable ancestors while capturing an owner would restart their initial resize notifications.
     const targets = new Set(enabled() ? [store.contentRef, store.viewportRef, readingAnchorOwner()] : [])
-    for (const target of targets) if (target) resizeObserver.observe(target)
-    onCleanup(() => {
-      for (const target of targets) if (target) resizeObserver.unobserve(target)
-    })
-  })
+    for (const target of previous) if (target && !targets.has(target)) resizeObserver.unobserve(target)
+    for (const target of targets) if (target && !previous.has(target)) resizeObserver.observe(target)
+    return targets
+  }, new Set())
 
   createEffect(() => {
     const owner = readingAnchorOwner()
@@ -400,6 +404,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
       el.addEventListener("pointerdown", handlePointerDown)
       el.addEventListener("touchstart", handleTouchStart, { passive: true })
       el.addEventListener("keydown", handleKeyDown)
+      el.addEventListener("scrollend", handleScrollEnd)
       el.addEventListener("content-layout-restored", handleLayoutRestored)
 
       cleanup = () => {
@@ -407,6 +412,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         el.removeEventListener("pointerdown", handlePointerDown)
         el.removeEventListener("touchstart", handleTouchStart)
         el.removeEventListener("keydown", handleKeyDown)
+        el.removeEventListener("scrollend", handleScrollEnd)
         el.removeEventListener("content-layout-restored", handleLayoutRestored)
         window.removeEventListener("pointerup", handlePointerUp)
         window.removeEventListener("touchend", handleTouchEnd)

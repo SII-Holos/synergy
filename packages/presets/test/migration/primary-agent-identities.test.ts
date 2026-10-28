@@ -126,10 +126,8 @@ test("full composition upgrades owned execution references without rewriting his
     expect(upgradeImportedConfig(config)).toEqual({
       default_agent: "atlas",
       channel: {
-        clarus: { accounts: { team: { agent: "forge" } } },
         github: { accounts: { team: { agent: "pico" } } },
       },
-      holos: { agentId: "synergy" },
     })
     expect(config.default_agent).toBe("synergy")
   })

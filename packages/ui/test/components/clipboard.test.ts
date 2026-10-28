@@ -1,8 +1,95 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
-import { configureClipboard, copyTextToClipboard, createCopyController } from "../../src/components/clipboard-core"
+import {
+  configureClipboard,
+  copyImageToClipboard,
+  copyTextToClipboard,
+  createCopyController,
+} from "../../src/components/clipboard-core"
+
+class ImageClipboardItem {
+  constructor(readonly data: Record<string, Promise<Blob>>) {}
+}
+
+function imageEnvironment(write: (items: ImageClipboardItem[]) => Promise<void>) {
+  return {
+    isSecureContext: true,
+    navigator: { clipboard: { write } } as unknown as Pick<Navigator, "clipboard">,
+    ClipboardItem: ImageClipboardItem as unknown as typeof ClipboardItem,
+  }
+}
 
 describe("clipboard", () => {
+  test("admits image writing before decoding finishes and preserves PNG bytes", async () => {
+    const pending = Promise.withResolvers<Blob>()
+    const writes: Promise<Blob>[] = []
+    const blobs: Blob[] = []
+    const operation = copyImageToClipboard(
+      () => pending.promise,
+      imageEnvironment(async (items) => {
+        expect(items).toHaveLength(1)
+        expect(Object.keys(items[0].data)).toEqual(["image/png"])
+        writes.push(items[0].data["image/png"])
+        blobs.push(await items[0].data["image/png"])
+      }),
+    )
+    expect(writes).toHaveLength(1)
+    expect(blobs).toHaveLength(0)
+    const png = new Blob([new Uint8Array([0, 1, 2, 255])], { type: "image/png" })
+    pending.resolve(png)
+    expect(await operation).toEqual({ ok: true, method: "navigator" })
+    expect(blobs[0]).toBe(png)
+  })
+
+  test("unavailable image copying does not decode or fall back to a text writer", async () => {
+    let reads = 0
+    let textWrites = 0
+    const restore = configureClipboard({
+      writer: () => {
+        textWrites++
+      },
+    })
+    try {
+      const load = async () => {
+        reads++
+        return new Blob()
+      }
+      expect(await copyImageToClipboard(load, { isSecureContext: false })).toEqual({ ok: false, reason: "unavailable" })
+      expect(await copyImageToClipboard(load, { isSecureContext: true })).toEqual({ ok: false, reason: "unavailable" })
+      expect(reads).toBe(0)
+      expect(textWrites).toBe(0)
+    } finally {
+      restore()
+    }
+  })
+
+  test("image conversion failure remains an operation failure", async () => {
+    const error = new Error("PNG conversion failed")
+    const result = await copyImageToClipboard(
+      async () => {
+        throw error
+      },
+      imageEnvironment(async (items) => {
+        await items[0].data["image/png"]
+      }),
+    )
+    expect(result).toEqual({ ok: false, reason: "failed", error })
+  })
+
+  test("denied image admission observes a later conversion rejection", async () => {
+    const pending = Promise.withResolvers<Blob>()
+    const error = new Error("Clipboard denied")
+    const operation = copyImageToClipboard(
+      () => pending.promise,
+      imageEnvironment(async () => {
+        throw error
+      }),
+    )
+    expect(await operation).toEqual({ ok: false, reason: "failed", error })
+    pending.reject(new Error("Conversion cancelled after admission failed"))
+    await Bun.sleep(0)
+  })
+
   test("copy fetches original text on demand and retains failed feedback", async () => {
     const copied: string[] = []
     const restore = configureClipboard({

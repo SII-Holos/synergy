@@ -421,34 +421,6 @@
         "typescript": "catalog:",
       },
     },
-    "packages/channel-clarus": {
-      "name": "@ericsanchezok/synergy-channel-clarus",
-      "version": "1.1.26",
-      "dependencies": {
-        "@ericsanchezok/synergy-agenda": "workspace:*",
-        "@ericsanchezok/synergy-channels": "workspace:*",
-        "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-holos": "workspace:*",
-        "@ericsanchezok/synergy-util": "workspace:*",
-        "@sii-holos/holos-cli": "0.1.1",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@ericsanchezok/synergy-channel-feishu": "workspace:*",
-        "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@ericsanchezok/synergy-testing": "workspace:*",
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-      },
-      "peerDependencies": {
-        "@ericsanchezok/synergy-server": "workspace:*",
-      },
-      "optionalPeers": [
-        "@ericsanchezok/synergy-server",
-      ],
-    },
     "packages/channel-feishu": {
       "name": "@ericsanchezok/synergy-channel-feishu",
       "version": "1.1.26",
@@ -664,14 +636,12 @@
       "version": "1.1.26",
       "dependencies": {
         "@ericsanchezok/synergy-boss-feishu": "workspace:*",
-        "@ericsanchezok/synergy-channel-clarus": "workspace:*",
         "@ericsanchezok/synergy-channel-feishu": "workspace:*",
         "@ericsanchezok/synergy-channel-github": "workspace:*",
         "@ericsanchezok/synergy-channels": "workspace:*",
         "@ericsanchezok/synergy-email": "workspace:*",
         "@ericsanchezok/synergy-github": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-holos": "workspace:*",
         "@ericsanchezok/synergy-util": "workspace:*",
       },
       "devDependencies": {
@@ -870,34 +840,6 @@
         "js-tiktoken": "1.0.21",
         "typescript": "catalog:",
       },
-    },
-    "packages/holos": {
-      "name": "@ericsanchezok/synergy-holos",
-      "version": "1.1.26",
-      "dependencies": {
-        "@clack/prompts": "1.8.1",
-        "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-local-runtime": "workspace:*",
-        "@ericsanchezok/synergy-util": "workspace:*",
-        "@sii-holos/holos-cli": "0.1.1",
-        "hono": "catalog:",
-        "hono-openapi": "catalog:",
-        "open": "11.0.4",
-        "zod": "catalog:",
-      },
-      "devDependencies": {
-        "@ericsanchezok/synergy-testing": "workspace:*",
-        "@tsconfig/bun": "catalog:",
-        "@types/bun": "catalog:",
-        "@types/node": "catalog:",
-        "typescript": "catalog:",
-      },
-      "peerDependencies": {
-        "@ericsanchezok/synergy-server": "workspace:*",
-      },
-      "optionalPeers": [
-        "@ericsanchezok/synergy-server",
-      ],
     },
     "packages/lattice": {
       "name": "@ericsanchezok/synergy-lattice",
@@ -1324,7 +1266,6 @@
         "@ericsanchezok/synergy-boss-feishu": "workspace:*",
         "@ericsanchezok/synergy-browser-runtime": "workspace:*",
         "@ericsanchezok/synergy-channel-blueprint": "workspace:*",
-        "@ericsanchezok/synergy-channel-clarus": "workspace:*",
         "@ericsanchezok/synergy-channel-feishu": "workspace:*",
         "@ericsanchezok/synergy-channel-github": "workspace:*",
         "@ericsanchezok/synergy-channel-lattice": "workspace:*",
@@ -1341,7 +1282,6 @@
         "@ericsanchezok/synergy-github": "workspace:*",
         "@ericsanchezok/synergy-github-agenda": "workspace:*",
         "@ericsanchezok/synergy-harness": "workspace:*",
-        "@ericsanchezok/synergy-holos": "workspace:*",
         "@ericsanchezok/synergy-library": "workspace:*",
         "@ericsanchezok/synergy-local-runtime": "workspace:*",
         "@ericsanchezok/synergy-lsp": "workspace:*",
@@ -1395,6 +1335,7 @@
         "@hey-api/openapi-ts": "0.88.1",
         "@tsconfig/node22": "catalog:",
         "@types/node": "catalog:",
+        "prettier": "3.9.10",
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
@@ -1913,8 +1854,6 @@
 
     "@ericsanchezok/synergy-channel-blueprint": ["@ericsanchezok/synergy-channel-blueprint@workspace:packages/channel-blueprint"],
 
-    "@ericsanchezok/synergy-channel-clarus": ["@ericsanchezok/synergy-channel-clarus@workspace:packages/channel-clarus"],
-
     "@ericsanchezok/synergy-channel-feishu": ["@ericsanchezok/synergy-channel-feishu@workspace:packages/channel-feishu"],
 
     "@ericsanchezok/synergy-channel-github": ["@ericsanchezok/synergy-channel-github@workspace:packages/channel-github"],
@@ -1950,8 +1889,6 @@
     "@ericsanchezok/synergy-github-agenda": ["@ericsanchezok/synergy-github-agenda@workspace:packages/github-agenda"],
 
     "@ericsanchezok/synergy-harness": ["@ericsanchezok/synergy-harness@workspace:packages/harness"],
-
-    "@ericsanchezok/synergy-holos": ["@ericsanchezok/synergy-holos@workspace:packages/holos"],
 
     "@ericsanchezok/synergy-lattice": ["@ericsanchezok/synergy-lattice@workspace:packages/lattice"],
 
@@ -2464,8 +2401,6 @@
     "@shikijs/types": ["@shikijs/types@4.5.0", "", { "dependencies": { "@shikijs/vscode-textmate": "^10.0.2", "@types/hast": "^3.0.5" } }, "sha512-drtPrtD8N0DENyD2cyt6Ajy+IWsiCLgMxODwLTpvH1UsN6a9jf90tNTPjqwHvA+0Lzu9e0txk8DjfqH1p9UJRw=="],
 
     "@shikijs/vscode-textmate": ["@shikijs/vscode-textmate@10.0.2", "", {}, "sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg=="],
-
-    "@sii-holos/holos-cli": ["@sii-holos/holos-cli@0.1.1", "", { "dependencies": { "ws": "^8.18.0", "zod": "^3.24.2" }, "bin": { "holos": "dist/index.js", "holos-clarus": "dist/index.js" } }, "sha512-XR2fBU90LCb3kappm/UFo9Dsk2nBFFRiaJI/ToNACAtK8kcuhQvsywAKXWs5Krg3lTK3ihmFpmsUHCrdhQUowQ=="],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.27.12", "", {}, "sha512-hhyNJ+nbR6ZR7pToHvllEFun9TL0sbL+tk/ON75lo+Xas054uez98qRbsuNt7MBCyZKK4+8Yli/OAGZhmfBZ/g=="],
 
@@ -4700,8 +4635,6 @@
     "@shikijs/primitive/@types/hast": ["@types/hast@3.0.5", "", { "dependencies": { "@types/unist": "*" } }, "sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g=="],
 
     "@shikijs/types/@types/hast": ["@types/hast@3.0.5", "", { "dependencies": { "@types/unist": "*" } }, "sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g=="],
-
-    "@sii-holos/holos-cli/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@tailwindcss/node/lightningcss": ["lightningcss@1.32.0", "", { "dependencies": { "detect-libc": "^2.0.3" }, "optionalDependencies": { "lightningcss-android-arm64": "1.32.0", "lightningcss-darwin-arm64": "1.32.0", "lightningcss-darwin-x64": "1.32.0", "lightningcss-freebsd-x64": "1.32.0", "lightningcss-linux-arm-gnueabihf": "1.32.0", "lightningcss-linux-arm64-gnu": "1.32.0", "lightningcss-linux-arm64-musl": "1.32.0", "lightningcss-linux-x64-gnu": "1.32.0", "lightningcss-linux-x64-musl": "1.32.0", "lightningcss-win32-arm64-msvc": "1.32.0", "lightningcss-win32-x64-msvc": "1.32.0" } }, "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ=="],
 

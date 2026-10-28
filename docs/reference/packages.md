@@ -35,8 +35,8 @@ Plugin Host owns plugin execution and installation. Plugin Kit is an explicit au
 | `agenda`, `light-loop`                                       | Local Runtime; neither requires Note or Library                             |
 | `blueprint`, `lattice`                                       | Blueprint requires Note; Lattice requires Blueprint                         |
 | `boss`, `anima`                                              | Boss requires Agenda and Library; Anima additionally requires Note          |
-| `channels`, `github`, `holos`, `email`                       | Independent Local Runtime capabilities                                      |
-| `channel-feishu`, `channel-github`, `channel-clarus`         | Provider owners; GitHub requires GitHub, Clarus requires Holos and Agenda   |
+| `channels`, `github`, `email`                                | Independent Local Runtime capabilities                                      |
+| `channel-feishu`, `channel-github`                           | Provider owners; GitHub requires GitHub                                     |
 | `agenda-blueprint`, `agenda-light-loop`, `github-agenda`     | Explicit Agenda integrations requiring both named owners                    |
 | `plugin-agenda`, `plugin-blueprint`, `plugin-light-loop`     | Explicit Plugin Host services requiring Plugin Host and the named owner     |
 | `boss-feishu`                                                | Boss account routing, explicit replies and Feishu guidance                  |

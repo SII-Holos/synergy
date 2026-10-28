@@ -38,8 +38,6 @@ function requiredRuntimeArtifactPaths(name, profile = "full") {
             "fonts/noto-sans-sc-chinese-simplified-400-normal.woff2",
             "fonts/noto-sans-sc-latin-400-normal.woff2",
           ].map((file) => `${svg}/${file}`),
-          `${modules}@sii-holos/holos-cli/dist/index.js`,
-          `${modules}@sii-holos/holos-cli/dist/vendor/clarus-shared/index.js`,
           ...(!musl
             ? [
                 `${modules}@ast-grep/cli-${ast}/ast-grep${os === "windows" ? ".exe" : ""}`,

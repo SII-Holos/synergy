@@ -45,6 +45,7 @@ export function useSessionCommands(params: {
   navigateMessageByOffset: (offset: number) => void
   isWorking: () => boolean
   onRewind?: (message: UserMessage) => void
+  onFork: () => void
   locateMessage?: (messageID: string, partID?: string) => Promise<boolean>
 }) {
   const {
@@ -359,16 +360,7 @@ export function useSessionCommands(params: {
       category: i18n._(S.cmdCategorySession),
       keybind: "mod+shift+f",
       disabled: !routeParams.id,
-      onSelect: async () => {
-        const sessionID = routeParams.id
-        if (!sessionID) return
-        const forked = await sdk.client.session.fork({
-          sessionID,
-          workspace: { mode: "current" },
-          controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
-        })
-        if (forked.data) navigate(`/${routeParams.dir}/session/${forked.data.id}`)
-      },
+      onSelect: params.onFork,
     },
   ])
 }

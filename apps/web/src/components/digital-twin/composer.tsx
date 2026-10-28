@@ -9,6 +9,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
+import { isOptimisticMessagePending } from "@/context/session-optimistic-message"
 import { useViewActivity } from "@/context/view-residency"
 import { Persist, persisted } from "@/utils/persist"
 import type { ComposerDocumentController } from "../prompt-input/composer-document"
@@ -212,13 +213,19 @@ function SessionPrediction(props: Props) {
     const suggestion = saved.suggestion
     const snapshot = props.controller.current()
     const source = anchor()
+    const root = props.messages.findLast(
+      (message) => message.role === "user" && message.isRoot && !isOptimisticMessagePending(message),
+    )
+    const hidden =
+      !!snapshot.text ||
+      snapshot.mode !== "normal" ||
+      props.controller.composing() ||
+      props.blocked ||
+      props.status.type !== "idle"
     if (
       suggestion &&
-      (snapshot.text ||
-        snapshot.mode !== "normal" ||
-        props.controller.composing() ||
-        props.blocked ||
-        props.status.type !== "idle" ||
+      ((root && root.id !== suggestion.rootID) ||
+        sync.data.inbox[owner.sessionID]?.length ||
         (source && (suggestion.rootID !== source.rootID || suggestion.assistantID !== source.assistantID)))
     ) {
       setSaved("suggestion", undefined)
@@ -226,11 +233,11 @@ function SessionPrediction(props: Props) {
     }
     untrack(() => {
       const current = props.controller.completion("digital-twin")
-      if (!suggestion) {
+      if (!suggestion || !source || hidden) {
         if (current) service.setCompletion(undefined)
         return
       }
-      if (!source || (current?.proposalID === suggestion.proposalID && current.revision === snapshot.revision)) return
+      if (current?.proposalID === suggestion.proposalID && current.revision === snapshot.revision) return
       service.setCompletion({
         revision: snapshot.revision,
         position: 0,

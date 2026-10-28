@@ -256,6 +256,8 @@ OOM 通过本地 Unix Docker Engine API 在执行期间持续订阅并落盘，�
 
 CI 的生命周期和矩阵任务共用 `benchmark/src/synergy_bench/ci_evidence.py` 收集诊断，只复制明确列出的证据文件，跳过 native home、wire、输入目录与符号链接；单个不可读文件不会丢弃其他诊断，收集错误单独保留。显式 `preparation` 分组保留缓存准备目录直属的配方摘要日志，使 trial 创建之前的依赖或镜像失败仍可诊断；不递归进入未发布的构建目录，也不跟随缓存父目录的符号链接。
 
+The frozen CI producer explicitly selects a 900-second Python preparation deadline covering source preparation and verified publication, inside its unchanged 20-minute job. Local preparation keeps its 1800-second default. Owned subprocess cleanup has separate bounded termination and reap waits; failure or cancellation retains the fixed preparation receipt, attempt metadata and up to 256 KiB from each build log, with truncation recorded. See the [CI evidence decision](../docs/decisions/implemented/testing/2026-09-24-ci-verification-plans.md).
+
 轨迹分析的输出目录必须与输入证据树互不包含，不能选输入目录、其子目录或祖先目录。缺失响应或未识别的非 SSE 响应标记为 `stream_framing: unknown`，正文与工具流指标保持未知；`stream_invalid_lines` 单独计数解析失败，原始响应字节仍来自 wire 记录。
 
 缺失终态证据或 native attempt 对应的 wire 记录时，用途分组与总体摘要的 `total_tokens` 都保持未知，已观察到的 token 下界仍保留；用途未知的缺口不能据此断言其他用途已完整。

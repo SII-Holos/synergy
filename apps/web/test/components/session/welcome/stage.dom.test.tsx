@@ -15,12 +15,12 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(import.meta.dir, ".welcome-"))
   await Bun.write(
     path.join(directory, "index.html"),
-    '<style>body{font-family:system-ui,sans-serif}.fixture-controls{height:36px;white-space:nowrap;overflow:auto;font-size:10px}</style><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><style>body{font-family:system-ui,sans-serif}.fixture-controls{height:36px;white-space:nowrap;overflow:auto;font-size:10px}</style><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module" src="/main.tsx"></script>',
   )
   await Bun.write(
     path.join(directory, "main.tsx"),
     `
-    import { createSignal, Show } from "solid-js"
+    import { createSignal, lazy, Show } from "solid-js"
     import { render } from "solid-js/web"
     import { LocaleProvider } from "${source}/context/locale"
     import { ThemeProvider, useTheme } from "@ericsanchezok/synergy-ui/theme"
@@ -35,9 +35,9 @@ beforeAll(async () => {
     import { sceneRandom } from "${source}/components/session/welcome/random"
     import { sprite, sprites } from "${source}/components/session/welcome/pixels"
     import { handleComposerTypingAutofocus } from "${source}/components/prompt-input/typing-autofocus"
-    import { createPromptDockHeight } from "${source}/components/session/prompt-dock-height"
     import "@ericsanchezok/synergy-ui/styles"
     import "${source}/index.css"
+    const WelcomeLayout = lazy(() => import("${path.resolve(import.meta.dir, "../../../fixtures/welcome-layout")}").then(module => ({ default: module.WelcomeLayout })))
     let resolveLate
     const late = {id:"late", title:{id:"fixture.late",message:"Late"}, load:() => new Promise(resolve => {resolveLate=resolve})}
     const fifth = {id:"fifth", title:{id:"fixture.fifth",message:"Fifth"}, load:async() => ({default:() => <button>Fifth scene works</button>})}
@@ -53,31 +53,6 @@ beforeAll(async () => {
     }
     let failCount = 0
     const failing = {id:"failure", title:{id:"fixture.failure",message:"Failure"}, load:async()=>{if(!failCount++) throw Error("Fixture load failure"); return {default:()=> <div>Recovered scene</div>}}}
-    function Reserved(props) {
-      const [expanded, setExpanded] = createSignal(false)
-      const [resized, setResized] = createSignal(false)
-      const [motion, setMotion] = createSignal()
-      const [promptHeight, setPromptHeight] = createSignal(0)
-      const dock = createPromptDockHeight(next => setPromptHeight(next))
-      const toggle = () => {
-        const next = !expanded()
-        setMotion(next ? "expanding" : "collapsing")
-        setExpanded(next)
-        setTimeout(() => setMotion(undefined), next ? 340 : 240)
-      }
-      const height = () => (expanded() ? 420 : resized() ? 300 : 96)
-      return <><div class="fixture-controls"><button data-expand onClick={toggle}>Expand</button><button data-resize onClick={()=>setResized(!resized())}>Resize</button></div>
-        <div class="session-workbench-pane" style={"position:relative;height:calc(100dvh - 36px);display:flex;flex-direction:column;--prompt-height:" + promptHeight() + "px"}>
-          <div style="flex:1;min-height:0;overflow:hidden">
-            <div class="session-empty-view" data-interactive><div class="session-welcome-region"><WelcomeStage definition={props.definition} memory={props.memory} seed={8} blocked={props.blocked} /></div></div>
-          </div>
-          <div ref={element => dock.mount(element)} class="session-prompt-dock" style="position:absolute;bottom:0;left:0;right:0;padding-bottom:24px">
-            <div class="session-composer" data-expanded={expanded() ? "" : undefined} data-resized={resized() ? "" : undefined} data-motion={motion()} style={"height:" + height() + "px"}>
-              <textarea data-component="prompt-input" aria-label="Message" style="height:100%;width:100%" />
-            </div>
-          </div>
-        </div></>
-    }
     function App() {
       if (new URLSearchParams(location.search).has("lifecycle")) return <Lifecycle />
       const theme = useTheme()
@@ -90,7 +65,7 @@ beforeAll(async () => {
         const dpr = Math.min(devicePixelRatio || 1, 2)
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         const random = sceneRandom(8)
-         const masks = [...[sprites.star, sprites.ring, sprites.bolt, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0"))), sprites.ribbon]
+         const masks = [...[sprites.star, sprites.ring, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0"))), sprites.ribbon]
         for (let index = 0; index < 240; index++) {
           const column = index % 20, row = Math.floor(index / 20)
           const offset = random(), depth = 0.35 + random() * 0.65
@@ -164,7 +139,7 @@ beforeAll(async () => {
       document.addEventListener("keydown", e => handleComposerTypingAutofocus(e, input, blocked()))
       const select = value => {setMemory(createWelcomeMemory()); setDefinition(value)}
       if (new URLSearchParams(location.search).get("layout") === "reserved")
-        return <Reserved definition={definition()} memory={memory()} blocked={blocked()} />
+        return <WelcomeLayout definition={definition()} memory={memory()} blocked={blocked()} />
       return <><div class="fixture-controls"><button onClick={()=>select(failing)}>Load failing</button><button onClick={()=>theme.setThemeId(theme.themeId()==="synergy"?"catppuccin":"synergy")}>Theme</button><button onClick={()=>select(late)}>Load late</button><button onClick={()=>select(fifth)}>Load fifth</button><button onClick={()=>resolveLate?.({default:()=> <div>Obsolete scene</div>})}>Resolve late</button><button onClick={()=>setBlocked(!blocked())}>Overlay</button><button onClick={()=>setShown(!shown())}>Mount</button></div>
         <div class="session-workbench-pane" style="height:calc(100dvh - 36px);display:flex;flex-direction:column">
           <main style="flex:1;min-height:0;overflow:auto"><Show when={shown()}><WelcomeStage definition={definition()} memory={memory()} seed={8} blocked={blocked()} /></Show></main>
@@ -179,10 +154,24 @@ beforeAll(async () => {
     root: directory,
     cacheDir: path.join(directory, ".vite"),
     plugins: [solid(), tailwind(), ...lingui()],
-    resolve: { alias: { "@": source } },
+    resolve: {
+      alias: {
+        "@": source,
+        "lucide-solid": Bun.resolveSync("lucide-solid", path.resolve(source, "../../../packages/ui")),
+      },
+    },
     optimizeDeps: {
-      entries: [path.join(directory, "main.tsx")],
-      include: ["solid-js", "solid-js/web", "@lingui/core", "@lingui/solid"],
+      noDiscovery: true,
+      include: [
+        "solid-js",
+        "solid-js/web",
+        "@lingui/core",
+        "@lingui/solid",
+        "marked",
+        "dompurify",
+        "lucide-solid",
+        "matter-js",
+      ],
     },
     server: { host: "127.0.0.1", port: await fixturePort(), fs: { allow: [path.resolve(source, "../../..")] } },
   })
@@ -206,9 +195,9 @@ async function open(scene = "stack") {
   expect(errors).toEqual([])
 }
 
-async function openReserved(scene = "slingshot") {
+async function openReserved(scene = "slingshot", query = "") {
   errors.length = 0
-  await page.goto(`${url}?scene=${scene}&layout=reserved`)
+  await page.goto(`${url}?scene=${scene}&layout=reserved${query}`)
   await page.locator(".welcome-game-canvas").waitFor()
   await page.waitForFunction(
     () =>
@@ -220,21 +209,188 @@ async function openReserved(scene = "slingshot") {
   expect(errors).toEqual([])
 }
 
+async function settledDock() {
+  await page.waitForFunction(() => {
+    const dock = document.querySelector(".session-prompt-dock")!
+    const pane = document.querySelector(".session-workbench-pane")!
+    return (
+      Number.parseFloat(getComputedStyle(pane).getPropertyValue("--prompt-height")) ===
+      Math.ceil(dock.getBoundingClientRect().height)
+    )
+  })
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+}
+
+const fieldGeometry = () =>
+  page.locator(".welcome-game-canvas").evaluate((element) => {
+    const canvas = element as HTMLCanvasElement
+    const { x, y, width, height } = canvas.getBoundingClientRect()
+    return { x, y, width, height, bitmapWidth: canvas.width, bitmapHeight: canvas.height }
+  })
+
+for (const width of [960, 375]) {
+  test(`content and dock growth leave the welcome background geometry unchanged at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 920 })
+    await openReserved("blocks")
+    await settledDock()
+    const field = await fieldGeometry()
+    const dock = page.locator(".session-prompt-dock")
+    const initialHeight = (await dock.boundingBox())!.height
+    const editor = page.getByRole("textbox", { name: "Message" })
+    await editor.fill(Array(20).fill("A naturally growing draft line").join("\n"))
+    await settledDock()
+    expect((await dock.boundingBox())!.height).toBeGreaterThan(initialHeight + 100)
+    expect(await page.locator(".session-composer").getAttribute("data-resized")).toBeNull()
+    expect(await fieldGeometry()).toEqual(field)
+    expect(await page.locator(".welcome-stage").getAttribute("data-active")).toBe("")
+
+    for (const selector of ["[data-attach]", "[data-pending-toggle]"]) {
+      const before = (await dock.boundingBox())!.height
+      await page.locator(selector).click()
+      await settledDock()
+      expect((await dock.boundingBox())!.height).toBeGreaterThan(before)
+      expect(await fieldGeometry()).toEqual(field)
+    }
+    await editor.fill("")
+    await page.locator("[data-attach]").click()
+    await page.locator("[data-pending-toggle]").click()
+    await settledDock()
+    expect((await dock.boundingBox())!.height).toBe(initialHeight)
+    expect(await fieldGeometry()).toEqual(field)
+    expect(errors).toEqual([])
+  })
+
+  test(`a cold tall draft uses the same welcome geometry as an empty draft at ${width}px`, async () => {
+    await page.setViewportSize({ width, height: 920 })
+    await openReserved("blocks")
+    await settledDock()
+    const empty = await fieldGeometry()
+    await openReserved("blocks", "&draft&attachments")
+    await settledDock()
+    expect(await page.getByRole("textbox", { name: "Message" }).innerText()).toContain("Restored draft line")
+    expect(await fieldGeometry()).toEqual(empty)
+    expect(errors).toEqual([])
+  })
+}
+
+test("the background follows viewport geometry during expanded editing without retaining an old height", async () => {
+  await page.setViewportSize({ width: 960, height: 1020 })
+  await openReserved("blocks")
+  await settledDock()
+  const initial = await fieldGeometry()
+  await page.locator("[data-expand]").click()
+  await page.waitForFunction(() => !document.querySelector(".session-composer")?.hasAttribute("data-motion"))
+  expect(await fieldGeometry()).toEqual(initial)
+  await page.setViewportSize({ width: 960, height: 760 })
+  await settledDock()
+  const resized = await fieldGeometry()
+  expect(resized.height).toBeLessThan(initial.height)
+  await page.locator("[data-expand]").click()
+  await page.waitForFunction(() => !document.querySelector(".session-composer")?.hasAttribute("data-motion"))
+  await settledDock()
+  expect(await fieldGeometry()).toEqual(resized)
+  await openReserved("blocks")
+  await settledDock()
+  expect(await fieldGeometry()).toEqual(resized)
+  expect(errors).toEqual([])
+})
+
+test("a short narrow welcome scrolls the playfield above the compact composer and preserves transcript flow", async () => {
+  await page.setViewportSize({ width: 375, height: 540 })
+  await openReserved("blocks")
+  await settledDock()
+  const scroller = page.locator(".session-empty-view")
+  const bounds = (await scroller.boundingBox())!
+  await page.mouse.move(bounds.x + 24, bounds.y + 80)
+  await page.mouse.wheel(0, 1000)
+  await page.waitForFunction(() => document.querySelector(".session-empty-view")!.scrollTop > 0)
+  const canvas = (await page.locator(".welcome-game-canvas").boundingBox())!
+  const dock = (await page.locator(".session-prompt-dock").boundingBox())!
+  expect(canvas.y + canvas.height).toBeLessThanOrEqual(dock.y)
+  const send = page.getByRole("button", { name: "Send", exact: true })
+  expect(
+    await send.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+    }),
+  ).toBe(true)
+  await page.locator("[data-conversation-toggle]").click()
+  await settledDock()
+  const conversation = (await page.locator("[data-conversation-presentation]").boundingBox())!
+  const transcriptDock = (await page.locator(".session-prompt-dock").boundingBox())!
+  expect(conversation.y + conversation.height).toBeCloseTo(transcriptDock.y, 0)
+  expect(errors).toEqual([])
+})
+
+test("a tall dock leaves the complete playfield and empty-view contributions reachable in a short window", async () => {
+  await page.setViewportSize({ width: 375, height: 540 })
+  await openReserved("blocks", "&draft&attachments")
+  await settledDock()
+  const scroller = page.locator(".session-empty-view")
+  const scrollToEnd = async () => {
+    await scroller.evaluate((element) => element.scrollTo(0, element.scrollHeight))
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  }
+  await scrollToEnd()
+  const canvas = (await page.locator(".welcome-game-canvas").boundingBox())!
+  const dock = (await page.locator(".session-prompt-dock").boundingBox())!
+  expect(canvas.y + canvas.height).toBeLessThanOrEqual(dock.y)
+  await page.locator("[data-extension-toggle]").click()
+  await scrollToEnd()
+  const action = page.getByRole("button", { name: "Extension action", exact: true })
+  const button = (await action.boundingBox())!
+  expect(button.y + button.height).toBeLessThanOrEqual(dock.y)
+  expect(
+    await action.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2))
+    }),
+  ).toBe(true)
+  expect(errors).toEqual([])
+})
+
+test("plain greetings and the native dock stay independent across the mobile breakpoint", async () => {
+  await page.setViewportSize({ width: 767, height: 920 })
+  await openReserved("blocks")
+  await settledDock()
+  await page.locator("[data-games-toggle]").click()
+  const heading = (await page.locator(".welcome-scene-heading").boundingBox())!
+  expect(await page.locator(".welcome-stage,.welcome-ambient").count()).toBe(0)
+  await page.getByRole("textbox", { name: "Message" }).fill(Array(20).fill("Draft line").join("\n"))
+  await settledDock()
+  expect(await page.locator(".welcome-scene-heading").boundingBox()).toEqual(heading)
+  for (const width of [767, 768, 375]) {
+    await page.setViewportSize({ width, height: 920 })
+    await settledDock()
+    expect(await page.locator(".session-prompt-dock").evaluate((element) => getComputedStyle(element).position)).toBe(
+      "absolute",
+    )
+  }
+  await page.locator("[data-games-toggle]").click()
+  await page.locator(".welcome-game-canvas").waitFor()
+  expect(errors).toEqual([])
+})
+
 test("expanding the composer covers the playfield without resizing, repainting or moving it", async () => {
   await page.setViewportSize({ width: 960, height: 920 })
   await openReserved("slingshot")
+  await settledDock()
   const canvas = page.locator(".welcome-game-canvas")
   const stage = page.locator(".welcome-stage")
-  const reserved = () =>
-    page.locator(".session-empty-view").evaluate((el) => Number.parseFloat(getComputedStyle(el).paddingBottom))
-  const restingReserved = await reserved()
+  const restingDock = (await page.locator(".session-prompt-dock").boundingBox())!
   const restingBox = (await canvas.boundingBox())!
   const bitmap = () => canvas.evaluate((el) => [(el as HTMLCanvasElement).width, (el as HTMLCanvasElement).height])
   const restingBitmap = await bitmap()
 
   await page.locator("[data-expand]").click()
-  await page.waitForTimeout(500)
-  expect(await reserved()).toBeGreaterThan(restingReserved + 100)
+  await page.waitForFunction(() => {
+    const composer = document.querySelector(".session-composer")
+    return composer?.hasAttribute("data-expanded") && !composer.hasAttribute("data-motion")
+  })
+  await settledDock()
+  expect((await page.locator(".session-prompt-dock").boundingBox())!.height).toBeGreaterThan(restingDock.height + 100)
   expect(await stage.getAttribute("data-active")).toBeNull()
 
   const expandedBox = (await canvas.boundingBox())!
@@ -246,8 +402,12 @@ test("expanding the composer covers the playfield without resizing, repainting o
   expect(await stage.getAttribute("data-covered")).toBe("")
 
   await page.locator("[data-expand]").click()
-  await page.waitForTimeout(500)
-  expect(await reserved()).toBeCloseTo(restingReserved, 0)
+  await page.waitForFunction(() => {
+    const composer = document.querySelector(".session-composer")
+    return composer && !composer.hasAttribute("data-expanded") && !composer.hasAttribute("data-motion")
+  })
+  await settledDock()
+  expect((await page.locator(".session-prompt-dock").boundingBox())!.height).toBeCloseTo(restingDock.height, 0)
   const restored = (await canvas.boundingBox())!
   expect(Math.abs(restored.height - restingBox.height)).toBeLessThan(0.5)
   expect(await stage.getAttribute("data-active")).toBe("")
@@ -683,7 +843,7 @@ test("ambient frames reuse pixel motifs instead of repainting their cells", asyn
     const moving = await readCounts()
     expect(moving.cells - initial.cells).toBe(0)
     expect(moving.images).toBeGreaterThan(initial.images)
-    expect(moving.buffers).toHaveLength(9)
+    expect(moving.buffers).toHaveLength(8)
     await page.emulateMedia({ reducedMotion: "reduce" })
     const ambient = page.locator(".welcome-ambient")
     const frame = () => ambient.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
@@ -706,7 +866,7 @@ test("ambient frames reuse pixel motifs instead of repainting their cells", asyn
     )
     expect((await readCounts()).cells).toBe(themed.cells)
     await page.getByRole("button", { name: "Mount", exact: true }).click()
-    expect((await readCounts()).buffers).toEqual(Array.from({ length: 9 }, () => ({ width: 0, height: 0 })))
+    expect((await readCounts()).buffers).toEqual(Array.from({ length: 8 }, () => ({ width: 0, height: 0 })))
     expect(await page.locator(".welcome-ambient").count()).toBe(0)
     expect(errors).toEqual([])
   } finally {
@@ -1123,10 +1283,13 @@ test("blocks hold repeat, continuous touch movement, row clear and restart prese
   await open("blocks")
   const board = page.locator(".welcome-game-canvas")
   await board.focus()
-  await page.keyboard.down("ArrowLeft")
   const first = Number(await page.locator(".welcome-blocks").getAttribute("data-column"))
-  await page.waitForTimeout(230)
-  expect(Number(await page.locator(".welcome-blocks").getAttribute("data-column"))).toBeLessThan(first)
+  await page.keyboard.down("ArrowLeft")
+  await page.waitForFunction(
+    (column) => Number(document.querySelector(".welcome-blocks")?.getAttribute("data-column")) < column - 1,
+    first,
+  )
+  expect(Number(await page.locator(".welcome-blocks").getAttribute("data-column"))).toBeLessThan(first - 1)
   await page.keyboard.up("ArrowLeft")
   await page.keyboard.press("Escape")
   await page.getByRole("textbox").fill("Keep this draft")

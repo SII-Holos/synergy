@@ -118,6 +118,32 @@ afterAll(async () => {
   if (failures.length) throw new AggregateError(failures, "ProcessViewport fixture cleanup failed")
 })
 
+test.each([" ", "PageDown"])("one %s reading gesture retains movement across pending layout", async (key) => {
+  const result = await page.evaluate(async (key) => {
+    const harness = (window as unknown as FixtureWindow).processViewportFixture
+    const viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
+    harness.pause()
+    viewport.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }))
+    const before = viewport.scrollTop
+    viewport.scrollTop += 40
+    viewport.dispatchEvent(new Event("scroll"))
+    harness.growChildList("below")
+    await Promise.resolve()
+    viewport.scrollTop += 40
+    viewport.dispatchEvent(new Event("scroll"))
+    await harness.frames()
+    const moved = viewport.scrollTop - before
+    viewport.dispatchEvent(new Event("scrollend"))
+    const paragraph = document.getElementById("reading-paragraph")!
+    const offset = paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    harness.growChildList("above")
+    await harness.frames()
+    return { moved, drift: paragraph.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset }
+  }, key)
+  expect(result.moved).toBe(80)
+  expect(Math.abs(result.drift)).toBeLessThan(1)
+})
+
 test("a hidden process suspends measurements and preserves its reading anchor on return", async () => {
   const result = await page.evaluate(async () => {
     const harness = (window as unknown as FixtureWindow).processViewportFixture

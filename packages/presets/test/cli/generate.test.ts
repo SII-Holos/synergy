@@ -45,7 +45,6 @@ test("frontend access environment shares the normalized runtime endpoint", () =>
   runtime.run(() => {
     expect(Access.frontendEnv("http://127.0.0.1:4123///")).toEqual({
       VITE_SYNERGY_SERVER_URL: "http://127.0.0.1:4123",
-      VITE_SYNERGY_CALLBACK_URL: "http://127.0.0.1:4123/holos/callback",
     })
   }))
 

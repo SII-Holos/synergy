@@ -166,7 +166,7 @@ export namespace ExecutionProjection {
             state: "ready",
             summary: verified,
             roundSummaries: verifiedRounds,
-            detailPreviousRevision: verified.revision,
+            detailPreviousRevision: current.state === "ready" ? current.summary.revision : verified.revision,
             upserts: [],
             processUpserts: [],
             processRemoved: [],

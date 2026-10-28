@@ -49,7 +49,7 @@ test.each([
   "app/index.html",
   "browser-runtime/extra.js",
   "lib/onnxruntime-web/extra.wasm",
-  "lib/holos-cli/extra.js",
+  "lib/resvg-wasm/extra.wasm",
   "vec0.dylib",
 ])("rejects unlisted product payload %s in a core artifact", async (relative) => {
   const directory = await coreFixture()

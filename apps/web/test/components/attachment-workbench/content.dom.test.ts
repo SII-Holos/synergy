@@ -46,28 +46,35 @@ afterAll(async () => {
   await server?.close()
 })
 
+async function saveImage() {
+  const pending = page.waitForEvent("download")
+  await page.getByRole("button", { name: "Save image", exact: true }).click()
+  return (await pending).suggestedFilename()
+}
+
 test("an uploaded attachment reads without a File provider and keeps its original download", async () => {
   await page.goto(url)
   await page.locator(".attachment-workbench,[role=alert]").waitFor({ timeout: 10000 })
   expect(await page.locator("[role=alert]").allTextContents()).toEqual([])
-  await page.getByRole("link", { name: "Download", exact: true }).waitFor({ timeout: 5000 })
+  await page.getByRole("button", { name: "Save image", exact: true }).waitFor({ timeout: 5000 })
   expect(await page.locator("[role=alert]").count()).toBe(0)
   expect(await page.getByRole("img", { name: "original.svg" }).isVisible()).toBe(true)
-  expect(await page.getByRole("link", { name: "Download", exact: true }).getAttribute("download")).toBe("original.svg")
+  expect(await saveImage()).toBe("original.svg")
   expect(await page.getByRole("button", { name: "View source in Files" }).count()).toBe(0)
 })
 test("source navigation uses an optional host binding", async () => {
   await page.goto(`${url}?source`)
   await page.locator(".attachment-workbench,[role=alert]").waitFor({ timeout: 10000 })
   expect(await page.locator("[role=alert]").allTextContents()).toEqual([])
-  await page.getByRole("button", { name: "View source in Files" }).click({ timeout: 5000 })
+  await page.getByRole("button", { name: "Image actions", exact: true }).click()
+  await page.getByRole("menuitem", { name: "View source in Files" }).click({ timeout: 5000 })
   expect(await page.getByLabel("Opened source").textContent()).toBe("docs/original.svg")
 })
 test("an evicted message is read using its original session and message identity", async () => {
   await page.goto(`${url}?remote`)
   await page.locator(".attachment-workbench,[role=alert]").waitFor({ timeout: 10000 })
   expect(await page.locator("[role=alert]").allTextContents()).toEqual([])
-  await page.getByRole("link", { name: "Download", exact: true }).waitFor({ timeout: 5000 })
+  await page.getByRole("button", { name: "Save image", exact: true }).waitFor({ timeout: 5000 })
   expect(await page.getByRole("img", { name: "history.svg" }).isVisible()).toBe(true)
   expect(requested.at(-1)).toBe("/session/session-original/message/message-original")
 })
@@ -129,35 +136,23 @@ for (const locale of ["en", "zh-CN", "pseudo"])
     }
   })
 
-test.each(["png", "svg"])("%s images share compact external-open and download actions", async (kind) => {
+test.each(["png", "svg"])("%s images share the viewer and original-byte save in narrow panes", async (kind) => {
   await page.setViewportSize({ width: 1440, height: 750 })
   for (const theme of ["light", "dark"]) {
-    await page.goto(`${url}?${kind === "png" ? "png&" : ""}locale=zh-CN&theme=${theme}`)
-    const toolbar = page.locator(".attachment-workbench-toolbar")
-    await page.locator(".attachment-workbench-toolbar,[role=alert]").waitFor()
-    expect(await page.locator("[role=alert]").allTextContents()).toEqual([])
-    await page.locator(".attachment-image-stage img").evaluate((image: HTMLImageElement) => image.decode())
-    const external = page.getByRole("button", { name: "在你的浏览器中打开", exact: true })
-    const download = page.getByRole("link", { name: "下载", exact: true })
+    await page.goto(`${url}?${kind === "png" ? "png&" : ""}theme=${theme}`)
+    await page.locator("[data-slot=image-viewer-image]").waitFor()
     for (const width of [375, 720, 1024, 1100, 375]) {
       await page.locator("#preview-pane").evaluate((node, width) => (node.style.width = `${width}px`), width)
-      for (const action of [external, download]) {
-        expect(await action.isVisible()).toBe(true)
-        expect(await action.locator(":scope > span").isVisible()).toBe(width > 1024)
-        const bounds = await action.boundingBox()
-        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
-      }
-      expect(await toolbar.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true)
+      const action = page.getByRole("button", { name: "Save image", exact: true })
+      await action.scrollIntoViewIfNeeded()
+      const bounds = (await action.boundingBox())!
+      expect(bounds.x).toBeGreaterThanOrEqual(0)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width)
     }
-    await external.focus()
-    await page.getByRole("tooltip").waitFor({ state: "visible" })
-    expect(await page.getByRole("tooltip").innerText()).toBe("在你的浏览器中打开")
-    expect(await download.getAttribute("download")).toBe(
-      kind === "png" ? "narrow-panel-image-preview.png" : "original.svg",
-    )
-    expect(await download.getAttribute("href")).toContain(
-      kind === "png" ? "data:image/png;base64," : "data:image/svg+xml,",
-    )
+    expect(await saveImage()).toBe(kind === "png" ? "narrow-panel-image-preview.png" : "original.svg")
+    await page.getByRole("button", { name: "Image actions", exact: true }).click()
+    expect(await page.getByRole("menuitem", { name: "Open in system browser", exact: true }).count()).toBe(0)
+    await page.keyboard.press("Escape")
   }
 })
 

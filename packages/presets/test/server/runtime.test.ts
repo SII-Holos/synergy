@@ -253,6 +253,35 @@ describe("server request scope boundaries", () => {
     }))
 })
 
+describe("HTTP origin allowlist", () => {
+  test("does not grant implicit CORS access to retired network domains", () =>
+    runtime.run(async () => {
+      for (const origin of [
+        "https://holosai.io",
+        "https://app.holosai.io",
+        "https://attacker.holosai.io",
+        "https://untrusted.example",
+      ]) {
+        const response = await Server.App().request("/global/health", {
+          method: "OPTIONS",
+          headers: {
+            origin,
+            "access-control-request-method": "GET",
+          },
+        })
+        expect(response.headers.get("access-control-allow-origin")).toBeNull()
+      }
+      const response = await Server.App().request("/global/health", {
+        method: "OPTIONS",
+        headers: {
+          origin: "http://localhost:5173",
+          "access-control-request-method": "GET",
+        },
+      })
+      expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:5173")
+    }))
+})
+
 describe("global event origin allowlist", () => {
   test("allows the server's own origin over WebSocket", () =>
     runtime.run(() => {

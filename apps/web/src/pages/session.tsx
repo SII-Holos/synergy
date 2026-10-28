@@ -16,7 +16,7 @@ import {
   useSessionPreparation,
 } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
-import { NewSessionGreeting } from "@/components/session/session-new-view"
+import { NewSessionGreeting, SessionEmptyView } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
@@ -24,12 +24,9 @@ import { PendingComposerQueue } from "@/components/session/pending-composer-queu
 import { editPendingMessage, takePendingMessage } from "@/components/session/conversation-pending"
 import { SubagentSessionFooter } from "@/components/session/subagent-session-footer"
 import { PromptDockFloatLayer } from "@/components/session/prompt-dock-float-layer"
-import {
-  promptDockBackPath,
-  promptDockBackToParentID,
-  promptDockForkSourceID,
-} from "@/components/session/prompt-dock-model"
+import { promptDockBackToParentID } from "@/components/session/prompt-dock-model"
 import { S } from "@/components/session/session-i18n"
+import { forkHistoryIsComplete } from "@/components/session/dialog-fork-confirm-model"
 import type { PluginConversationService } from "@ericsanchezok/synergy-plugin"
 import { SessionSubmissionStatus } from "@/components/session/session-submission-status"
 import { optimisticPartSummaries } from "@/components/prompt-input/submission-parts"
@@ -640,28 +637,62 @@ function SessionPageContent() {
       />
     ))
   }
-  const openForkConfirm = (messageID: string) => {
-    const sessionID = params.id
-    if (!sessionID) return
+  const openForkConfirm = (messageID?: string) => {
+    const source = currentSession()
+    if (!source || forkDialogID) return
+    const sessionID = source.id
+    const client = sdk.client
+    const scopeID = sdk.scopeID
+    const controlProfile = source.controlProfile ?? sync.data.config.controlProfile
+    const localLocations = !sdk.isHome && globalSDK.capabilities.has("workbench")
+    const isCurrent = () => active() && params.id === sessionID && sdk.client === client && sdk.scopeID === scopeID
     const target = messages().find((message) => message.id === messageID)
-    if (!target) return
+    if (messageID && !target) return
     const timeline = messages().filter((message) => message.role === "user" || message.role === "assistant")
-    dialog.push(
+    let id: string | undefined
+    id = dialog.push(
       () => (
         <DialogForkConfirm
-          message={{ id: messageID, time: target.time }}
+          source={source}
+          message={target ? { id: target.id, time: target.time } : undefined}
           allMessages={timeline}
-          hasCompleteHistory={!historyMore()}
-          preview={forkReplyPreview(dataView().partsFor(messageID))}
-          onConfirm={async () => {
+          hasCompleteHistory={forkHistoryIsComplete({
+            hasEarlier: historyMore(),
+            atLatest: historyMode() === "latest" && !historyTailMissingLatest(),
+            messageID,
+          })}
+          preview={messageID ? forkReplyPreview(dataView().partsFor(messageID)) : undefined}
+          loadDirectories={
+            localLocations
+              ? async () => {
+                  if (source.environmentID) {
+                    const environment = await client.environment.get(
+                      { environmentID: source.environmentID },
+                      { throwOnError: true },
+                    )
+                    if (environment.data?.provider !== "native") return undefined
+                  }
+                  return (await client.project.directories({ scopeID }, { throwOnError: true })).data
+                }
+              : undefined
+          }
+          onClose={() => {
+            if (id) dialog.close(id)
+          }}
+          onConfirm={async (workspace) => {
+            if (!isCurrent()) return false
             try {
-              const forked = await sdk.client.session.fork({
-                sessionID,
-                position: { type: "through", messageID },
-                workspace: { mode: "current" },
-                controlProfile: info()?.controlProfile ?? sync.data.config.controlProfile,
-              })
-              if (!forked.data) return false
+              const forked = await client.session.fork(
+                {
+                  sessionID,
+                  position: messageID ? { type: "through", messageID } : { type: "current" },
+                  workspace,
+                  controlProfile,
+                },
+                { throwOnError: true },
+              )
+              if (!forked.data) throw new Error(i18n._(S.forkConfirmRequestFailed))
+              if (!isCurrent()) return true
               showToast({
                 type: "success",
                 title: i18n._(AP.sessionForked.id),
@@ -670,6 +701,7 @@ function SessionPageContent() {
               navigateToSession(forked.data.id)
               return true
             } catch (error) {
+              if (!isCurrent()) return false
               showToast({
                 type: "error",
                 title: i18n._(AP.sessionForkFailed.id),
@@ -681,13 +713,13 @@ function SessionPageContent() {
         />
       ),
       () => {
-        forkDialogID = undefined
+        if (forkDialogID === id) forkDialogID = undefined
       },
     )
-    forkDialogID = dialog.active?.id
+    forkDialogID = id
   }
   onCleanup(() => {
-    if (forkDialogID && dialog.active?.id === forkDialogID) dialog.close()
+    if (forkDialogID) dialog.close(forkDialogID)
   })
   const messagesReady = createMemo(() => messageSnapshot() !== undefined)
   const messageLoad = createMemo(() => {
@@ -1317,16 +1349,6 @@ function SessionPageContent() {
     if (!current?.parentID) return undefined
     return dataView().sessionFor(current.parentID)
   })
-  const forkedFromSession = createMemo(() => {
-    const source = currentSession()?.forkedFrom
-    if (!source) return undefined
-    return dataView().sessionFor(source.sessionID)
-  })
-  const backPath = createMemo(() => {
-    if (parentSession()) return undefined
-    const from = (location.state as { from?: string } | undefined)?.from
-    return from ?? undefined
-  })
 
   createEffect(() => {
     if (!active()) return
@@ -1376,6 +1398,7 @@ function SessionPageContent() {
       navigateMessageByOffset,
       isWorking: () => isWorkingStatus(status()),
       onRewind: openRewindConfirm,
+      onFork: () => openForkConfirm(),
       locateMessage,
     })
   })
@@ -2251,6 +2274,20 @@ function SessionPageContent() {
       </Show>
     ),
   }
+  const greeting = () => (
+    <NewSessionGreeting
+      disabled={
+        !composer()?.input.ready() ||
+        composer()?.input.readOnly() ||
+        composer()?.input.submitting() ||
+        composer()?.input.composing() ||
+        composer()?.input.current().mode !== "normal"
+      }
+      onProject={() => command.trigger("project.select")}
+      onFiles={() => composer()?.pickFiles()}
+    />
+  )
+  const emptyContributions = () => <SlotOutlet slot="session.empty" sessionId={params.id} />
   const composerLayout: PluginComposerLayoutService = {
     input: () => composer()?.input,
     mount: dockHeight.mount,
@@ -2273,24 +2310,6 @@ function SessionPageContent() {
           icon: "navigation.back",
           open: () => navigateToSession(parent, "return-to-parent"),
         })
-      const fork = promptDockForkSourceID(sessionMeta(), currentSession()?.forkedFrom?.sessionID)
-      if (fork)
-        links.push({
-          id: "fork",
-          label: i18n._(S.dockForkedFrom),
-          title: forkedFromSession()?.title ?? currentSession()?.forkedFrom?.title ?? i18n._(S.dockForkSourceTooltip),
-          icon: "workspace.worktree",
-          open: () => navigateToSession(fork),
-        })
-      const back = promptDockBackPath(sessionMeta(), backPath())
-      if (back)
-        links.push({
-          id: "back",
-          label: i18n._(S.dockBack),
-          title: i18n._(S.dockBack),
-          icon: "navigation.back",
-          open: () => navigate(back),
-        })
       return links
     },
     render(part) {
@@ -2309,18 +2328,8 @@ function SessionPageContent() {
       if (part === "greeting")
         return (
           <>
-            <NewSessionGreeting
-              disabled={
-                !composer()?.input.ready() ||
-                composer()?.input.readOnly() ||
-                composer()?.input.submitting() ||
-                composer()?.input.composing() ||
-                composer()?.input.current().mode !== "normal"
-              }
-              onProject={() => command.trigger("project.select")}
-              onFiles={() => composer()?.pickFiles()}
-            />
-            <SlotOutlet slot="session.empty" sessionId={params.id} />
+            {greeting()}
+            {emptyContributions()}
           </>
         )
       if (part === "inbox")
@@ -2466,11 +2475,9 @@ function SessionPageContent() {
               </Switch>
             </Match>
             <Match when={true}>
-              <div class="session-empty-view" data-interactive={!params.id ? "" : undefined}>
-                <div class={!params.id ? "session-welcome-region" : "session-content-column"}>
-                  {composerLayout.render("greeting")}
-                </div>
-              </div>
+              <SessionEmptyView interactive={!params.id} greeting={greeting()}>
+                {emptyContributions()}
+              </SessionEmptyView>
             </Match>
           </Switch>
         </div>

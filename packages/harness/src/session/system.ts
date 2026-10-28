@@ -10,14 +10,13 @@ import { WorkspaceCatalog } from "../workspace/catalog"
 import { SessionEndpoint } from "./endpoint"
 
 import PROMPT_FALLBACK from "./prompt/fallback.txt"
-import type { Provider } from "../provider/provider"
 import { InstructionFiles } from "./instruction-files"
 import { RuntimeContext, type RuntimeLaunch } from "../lifecycle/context"
 import { peekRuntimeListener } from "../util/runtime-endpoint"
 
 export namespace SystemPrompt {
-  export function provider(_model: Provider.Model) {
-    return [PROMPT_FALLBACK]
+  export function fallback(): string {
+    return PROMPT_FALLBACK
   }
 
   const endpointLabels: Record<string, string> = {

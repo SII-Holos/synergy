@@ -92,12 +92,6 @@ export const RELEASE_CATALOG = {
     registry: "@ericsanchezok/synergy-channel-github",
     versioned: true,
   },
-  holos: { directory: "packages/holos", registry: "@ericsanchezok/synergy-holos", versioned: true },
-  channel_clarus: {
-    directory: "packages/channel-clarus",
-    registry: "@ericsanchezok/synergy-channel-clarus",
-    versioned: true,
-  },
   email: { directory: "packages/email", registry: "@ericsanchezok/synergy-email", versioned: true },
   agenda_blueprint: {
     directory: "packages/agenda-blueprint",

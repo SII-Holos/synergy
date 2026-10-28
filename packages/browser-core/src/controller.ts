@@ -1754,8 +1754,7 @@ export class CdpPageController {
       retryable: false,
       pageId: this.options.pageId,
       locator,
-      suggestedAction:
-        'Use { kind: "role", role: "button", name: "Continue with Holos" } or { kind: "text", text: "Continue with Holos" }.',
+      suggestedAction: 'Use { kind: "role", role: "button", name: "Continue" } or { kind: "text", text: "Continue" }.',
     })
   }
 

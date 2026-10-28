@@ -16,7 +16,6 @@ const canonicalDomains = [
   "mcp",
   "permissions",
   "channels",
-  "holos",
   "email",
   "runtime",
 ]
@@ -41,8 +40,8 @@ describe("settings catalog", () => {
     }
   })
 
-  test("keeps Holos account settings without a Link target section", () => {
-    expect(BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "account")?.domainIds).toContain("holos")
+  test("omits retired account and Link settings", () => {
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("account")
     expect(BUILTIN_SETTINGS_IDS).not.toContain("synergyLink")
   })
 

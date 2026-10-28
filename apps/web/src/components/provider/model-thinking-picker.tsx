@@ -1,8 +1,7 @@
 import { useLingui } from "@lingui/solid"
-import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { List } from "@ericsanchezok/synergy-ui/list"
 import { createMemo, createSignal, Show } from "solid-js"
 import { thinkingChoices } from "@/context/prompt/model-selection"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -14,13 +13,6 @@ const variantOffDesc = { id: "settings.modelRole.variant.offDesc", message: "Dis
 const variantRoleDesc = { id: "settings.modelRole.variant.role", message: "Thinking effort" }
 const selectVariantLabel = { id: "settings.modelRole.selectVariant", message: "Select thinking effort" }
 
-type ModelVariantOption = {
-  key: string
-  label: string
-  description: string
-  value: string
-}
-
 export function ModelVariantPicker(props: {
   value?: string
   availableVariants: string[]
@@ -31,53 +23,26 @@ export function ModelVariantPicker(props: {
 }) {
   const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
-  const options = createMemo<ModelVariantOption[]>(() =>
+  const options = createMemo(() =>
     thinkingChoices(props.availableVariants).map((variant) => ({
-      key: variant || "default",
       label: variant === "" ? _(variantDefault) : variant === "off" ? _(variantOff) : variant,
-      description: variant === "" ? _(variantDesc) : variant === "off" ? _(variantOffDesc) : _(variantRoleDesc),
       value: variant,
     })),
   )
   const current = createMemo(() => options().find((option) => option.value === (props.value ?? "")))
   const label = () => current()?.label ?? props.value ?? _(variantDefault)
 
-  function select(option: ModelVariantOption | undefined) {
-    if (!option) return
-    props.onChange(option.value)
-    setOpen(false)
-  }
-
-  const content = () => (
-    <>
-      <List<ModelVariantOption>
-        class="min-h-0 flex-1"
-        key={(option) => option.key}
-        items={options}
-        current={current()}
-        filterKeys={["label", "description", "value"]}
-        onSelect={select}
-      >
-        {(option) => (
-          <div class="min-w-0 flex flex-col text-left">
-            <span class="truncate text-14-medium text-text-base">{option.label}</span>
-            <span class="truncate text-12-regular text-text-weak">{option.description}</span>
-          </div>
-        )}
-      </List>
-    </>
-  )
-
   return (
-    <Popover
+    <MenuField
+      value={props.value ?? ""}
+      options={options()}
+      onChange={props.onChange}
+      ariaLabel={_(selectVariantLabel)}
       open={open()}
       onOpenChange={setOpen}
       placement="bottom-end"
-      gutter={8}
-      variant="menu"
-      class="w-64"
-      portalMount={props.popoverLayer}
-      title={_(selectVariantLabel)}
+      surfaceClass="w-64!"
+      popoverLayer={props.popoverLayer}
       triggerAs={(triggerProps) => (
         <Tooltip
           placement="bottom"
@@ -100,7 +65,14 @@ export function ModelVariantPicker(props: {
         </Tooltip>
       )}
     >
-      {content()}
-    </Popover>
+      {(option) => (
+        <div class="min-w-0 flex flex-col text-left">
+          <span class="truncate text-13-medium text-text-base">{option.label}</span>
+          <span class="truncate text-12-regular text-text-weak">
+            {option.value === "" ? _(variantDesc) : option.value === "off" ? _(variantOffDesc) : _(variantRoleDesc)}
+          </span>
+        </div>
+      )}
+    </MenuField>
   )
 }

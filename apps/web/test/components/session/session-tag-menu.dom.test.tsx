@@ -86,12 +86,15 @@ afterAll(async () => {
 
 test("failed saves retain input; pending saves serialize edits; accepted tags survive delayed events", async () => {
   const page = await browser.newPage({ viewport: { width: 375, height: 720 } })
+  page.setDefaultTimeout(15_000)
   const errors: string[] = []
   page.on("pageerror", (error) => errors.push(error.message))
   try {
     await page.goto(url)
     await page.getByRole("button", { name: "Actions", exact: true }).click()
+    await page.getByRole("dialog", { name: "Session actions", exact: true }).locator(":focus").waitFor()
     await page.getByRole("menuitem", { name: "Tags", exact: true }).click()
+    await page.getByRole("dialog", { name: "Tags", exact: true }).locator(":focus").waitFor()
     const input = page.getByRole("textbox", { name: "Filter or create a tag" })
     await input.fill("##focus")
     await input.press("Enter")

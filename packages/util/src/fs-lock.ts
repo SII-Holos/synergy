@@ -29,7 +29,6 @@ const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_STALE_METADATA_MS = 5_000
 const VERIFIED_LIVE_TTL_MS = 1_000
 
-export const HOLOS_ACCOUNTS_WRITE_LOCK_KEY = "holos-accounts:write"
 export const LEGACY_API_KEY_WRITE_LOCK_KEY = "legacy-api-key:write"
 
 export function authLockDirectory(synergyRoot: string): string {

@@ -4,8 +4,6 @@ export {
   ChannelFeishuAccount,
   ChannelFeishu,
 } from "@ericsanchezok/synergy-channel-feishu/config-schema"
-export { ChannelClarusAccount, ChannelClarus } from "@ericsanchezok/synergy-channel-clarus/config-schema"
 export { ChannelGithubAccount, ChannelGithub } from "@ericsanchezok/synergy-channel-github/config-schema"
-export { Holos } from "@ericsanchezok/synergy-holos/config-schema"
 export { EmailSmtp, EmailImap, EmailFrom, Email } from "@ericsanchezok/synergy-email/config-schema"
 export { GithubIdentitySync, GithubWatch, Github } from "@ericsanchezok/synergy-github/config-schema"

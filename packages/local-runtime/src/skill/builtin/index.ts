@@ -1,7 +1,6 @@
 import { synergyAgentTooling } from "./synergy-agent-tooling"
 import { synergyPromptArchitect } from "./synergy-prompt-architect"
 import { synergySkillCreator } from "./synergy-skill-creator"
-import { clarusAgentParticipation } from "./clarus-agent-participation"
 import { synergyConfig } from "./synergy-config"
 import { agentManage } from "./agent-manage"
 
@@ -16,7 +15,6 @@ export interface BuiltinSkill {
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   synergySkillCreator,
   synergyConfig,
-  clarusAgentParticipation,
   synergyPromptArchitect,
   synergyAgentTooling,
   agentManage,

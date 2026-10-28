@@ -173,6 +173,7 @@ type Fixture = Window & {
 
 test("navigation controls stay quiet while disabled and keep their bounds through hover and menu opening", async () => {
   await page.goto(url)
+  await page.clock.install()
   const back = page.getByRole("button", { name: "Back", exact: true })
   const menu = page.getByRole("button", { name: "Browser options", exact: true })
   const disabled = await back.evaluate((node) => getComputedStyle(node).backgroundColor)
@@ -186,6 +187,18 @@ test("navigation controls stay quiet while disabled and keep their bounds throug
     return trigger && getComputedStyle(trigger).backgroundColor !== "rgba(0, 0, 0, 0)"
   })
   expect(await menu.boundingBox()).toEqual(bounds)
+  for (const name of ["Back", "Forward", "Reload", "Open in default browser", "Browser options"]) {
+    const control = page.getByRole("button", { name, exact: true })
+    await control.hover({ force: true })
+    await page.clock.runFor(500)
+    expect(await page.getByRole("tooltip").count()).toBe(0)
+    expect(await control.getAttribute("title")).toBeNull()
+    if (await control.isEnabled()) {
+      await control.focus()
+      await page.clock.runFor(100)
+      expect(await page.getByRole("tooltip").count()).toBe(0)
+    }
+  }
   await menu.click()
   expect(await menu.boundingBox()).toEqual(bounds)
 })
@@ -526,6 +539,7 @@ test("shared Browser menu returns focus on Escape and native view resumes only a
   })
   await page.getByRole("button", { name: "Fit", exact: true }).press("Escape")
   await page.getByRole("button", { name: "Fit", exact: true }).waitFor({ state: "hidden" })
+  await page.waitForFunction((node) => document.activeElement === node, await menu.elementHandle())
   expect(await menu.evaluate((node) => document.activeElement === node)).toBe(true)
   expect(await page.evaluate(() => (window as unknown as Fixture).attachments.at(-1)?.visible)).toBe(false)
   await page.evaluate(() => (window as unknown as Fixture).browserFixture.setAnnotationTarget(null))
@@ -666,6 +680,35 @@ test("import chooses a browser and independent data types without exposing imple
   ).toMatchObject({ sourceId: "chrome-work", kinds: ["cookies"], overwrite: false })
   await dialog.getByRole("button", { name: "Done", exact: true }).click()
   await page.getByRole("button", { name: "Open import", exact: true }).waitFor()
+})
+
+test("browser import choices share the borderless field and check-only selected state", async () => {
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" })
+    await page.goto(url)
+    await page.getByRole("button", { name: "Open import", exact: true }).click()
+    const dialog = page.getByRole("dialog", { name: "Import browser data", exact: true })
+    const trigger = dialog.getByRole("button", { name: "From: Google Chrome · Work", exact: true })
+    await trigger.waitFor()
+    const style = await trigger.evaluate((node) => {
+      const css = getComputedStyle(node)
+      return { radius: css.borderRadius, border: css.borderTopWidth, shadow: css.boxShadow }
+    })
+    expect(style).toEqual({ radius: "10px", border: "0px", shadow: "none" })
+    await trigger.click()
+    const menu = page.getByRole("listbox", { name: "From", exact: true })
+    const current = menu.getByRole("option", { name: "Google Chrome · Work", exact: true })
+    await menu.getByRole("option", { name: "Safari", exact: true }).hover()
+    expect(await current.getAttribute("aria-selected")).toBe("true")
+    expect(await current.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    expect(await current.locator('.menu-field-item-mark [data-component="icon"]').count()).toBe(1)
+    await page.keyboard.press("Escape")
+    await menu.waitFor({ state: "detached" })
+    expect(await dialog.isVisible()).toBe(true)
+    await page.waitForFunction(
+      () => document.activeElement?.getAttribute("aria-label") === "From: Google Chrome · Work",
+    )
+  }
 })
 
 test("Safari shows an honest export path and import dialog stays within a narrow viewport", async () => {

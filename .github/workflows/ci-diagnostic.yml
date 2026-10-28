@@ -158,6 +158,16 @@ jobs:
         with:
           dependencies: "false"
       - run: bun script/ci.ts run --unit benchmark-prepare
+      - name: Collect benchmark preparation diagnostics
+        if: failure() || cancelled()
+        run: python3 benchmark/src/synergy_bench/ci_evidence.py preparation --root .artifacts/ci/benchmark --output "$RUNNER_TEMP/benchmark-preparation-evidence"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure() || cancelled()
+        with:
+          name: ci-benchmark-preparation-diagnostics-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/benchmark-preparation-evidence
+          if-no-files-found: error
+          retention-days: 3
       - run: tar -I 'zstd -T2 -3' -cf .artifacts/ci/benchmark.tar.zst -C .artifacts/ci benchmark/prepared
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

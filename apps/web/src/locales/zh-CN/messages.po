@@ -2855,6 +2855,10 @@ msgid "app.file.empty.openAFile"
 msgstr "打开文件"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.error.sourceLoadFailedHint"
+msgstr "请先重试；若源码视图仍无法加载，请刷新页面。"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.error.unableToOpen"
 msgstr "无法打开文件"
 
@@ -2955,6 +2959,10 @@ msgid "app.file.workspace.missing"
 msgstr "请从文件所属的工作区重新打开此文件。"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.alreadyExists"
+msgstr "此文件夹中已存在同名项目。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.apply"
 msgstr "执行"
 
@@ -2967,12 +2975,32 @@ msgid "app.fileEntries.copy"
 msgstr "复制"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyName"
+msgstr "{name} 副本"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyNameNumbered"
+msgstr "{name} 副本 {number}"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPath"
+msgstr "复制相对路径"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPathFailed"
+msgstr "无法复制相对路径。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createDirectory"
 msgstr "新建文件夹"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createFile"
 msgstr "新建文件"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cut"
+msgstr "剪切"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.deleteWarning"
@@ -2987,12 +3015,28 @@ msgid "app.fileEntries.failed"
 msgstr "文件操作失败。"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidDestination"
+msgstr "请选择其他目标文件夹。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidName"
+msgstr "请输入有效的文件或文件夹名称，不含路径分隔符。"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.move"
 msgstr "移动或重命名"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.name"
+msgstr "名称"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.operation"
 msgstr "操作"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.paste"
+msgstr "粘贴"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.path"
@@ -3005,6 +3049,10 @@ msgstr "请先刷新文件列表，再修改此项目。"
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.remove"
 msgstr "永久删除"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.rename"
+msgstr "重命名"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.title"
@@ -3021,6 +3069,10 @@ msgstr "关闭文件树"
 #. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr "折叠所有文件夹"
+
+#. js-lingui-explicit-id
+msgid "app.fileExplorer.action.expandAll"
+msgstr "展开所有文件夹"
 
 #. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
@@ -3086,190 +3138,26 @@ msgstr "工作区文件"
 msgid "app.fileExplorer.tree.symbolicLink"
 msgstr "符号链接"
 
-#. js-lingui-explicit-id
-msgid "app.holos.agentImported"
-msgstr "智能体已导入"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentImportedDesc"
-msgstr "已导入 {name}"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentLoggedOut"
-msgstr "智能体已登出"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentLoggedOutDesc"
-msgstr "已在本地移除活动 Holos 智能体。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentSwitched"
-msgstr "已切换智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.agentSwitchedDesc"
-msgstr "已切换到 {id}"
-
-#. js-lingui-explicit-id
-msgid "app.holos.cancel"
-msgstr "取消"
-
-#. js-lingui-explicit-id
-msgid "app.holos.connected"
-msgstr "Holos 已连接"
-
-#. js-lingui-explicit-id
-msgid "app.holos.connectedDesc"
-msgstr "你的智能体现已关联到 Holos。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.continue"
-msgstr "继续"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent"
-msgstr "创建智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent.description"
-msgstr "选择此智能体在 Holos 中的显示方式。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.createAgent.title"
-msgstr "创建智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.currentAgent"
-msgstr "当前 Holos 智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.agentSecret"
-msgstr "智能体密钥"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.agentSecretPlaceholder"
-msgstr "粘贴智能体密钥"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.avatarUrl"
-msgstr "头像 URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.avatarUrlPlaceholder"
-msgstr "可选图片 URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.description"
-msgstr "描述"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.descriptionPlaceholder"
-msgstr "可选描述"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.name"
-msgstr "名称"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.namePlaceholder"
-msgstr "智能体名称"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.nameRequired"
-msgstr "名称为必填项"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.secretRequired"
-msgstr "智能体密钥为必填项"
-
-#. js-lingui-explicit-id
-msgid "app.holos.form.urlInvalid"
-msgstr "请输入有效的 URL"
-
-#. js-lingui-explicit-id
-msgid "app.holos.import"
-msgstr "导入"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent"
-msgstr "导入智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent.description"
-msgstr "粘贴现有 Holos 智能体的密钥。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importAgent.title"
-msgstr "导入智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importFailed"
-msgstr "导入失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.importing"
-msgstr "正在导入…"
-
-#. js-lingui-explicit-id
-msgid "app.holos.loginFailed"
-msgstr "Holos 登录失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.logoutFailed"
-msgstr "登出失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.noLoginUrl"
-msgstr "未返回登录 URL。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.noSavedAgents"
-msgstr "没有已保存的智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.opening"
-msgstr "正在打开…"
-
-#. js-lingui-explicit-id
-msgid "app.holos.popupBlocked"
-msgstr "弹出窗口被拦截"
-
-#. js-lingui-explicit-id
-msgid "app.holos.popupBlockedDesc"
-msgstr "请允许此站点弹出窗口，以便登录 Holos。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.profileUnavailable"
-msgstr "个人资料不可用"
-
-#. js-lingui-explicit-id
-msgid "app.holos.reconnectFailed"
-msgstr "Holos 重新连接失败"
-
-#. js-lingui-explicit-id
-msgid "app.holos.savedAgent"
-msgstr "已保存在此设备"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switch"
-msgstr "切换"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchAgent.description"
-msgstr "选择 Synergy 要使用的已保存 Holos 智能体。"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchAgent.title"
-msgstr "切换智能体"
-
-#. js-lingui-explicit-id
-msgid "app.holos.switchFailed"
-msgstr "智能体切换失败"
-
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.home.start"
 msgstr "开始"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.clipboardUnavailable"
+msgstr "当前环境无法复制图片，请保存图片。"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.linkCopyFailed"
+msgstr "无法复制链接，请重试。"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.readFailed"
+msgstr "无法读取图片，请重试或打开源文件。"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.unavailable"
+msgstr "图片数据不可用，请重试或打开源文件。"
 
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.addPane"
@@ -8660,7 +8548,7 @@ msgstr "会话已分叉"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.forked.desc"
-msgstr "已将该消息之前的对话复制到新会话。"
+msgstr "已将对话复制到新会话。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -8871,10 +8759,6 @@ msgid "app.shell.window.restore"
 msgstr "还原"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.account.menu"
-msgstr "HOLOS 账号菜单"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.addProject"
 msgstr "添加项目"
 
@@ -8897,10 +8781,6 @@ msgstr "无智能体"
 #. Attention notice
 msgid "app.sidebar.attention.busy"
 msgstr "正在工作…"
-
-#. Brand / logo
-msgid "app.sidebar.brand.logo"
-msgstr "HOLOS"
 
 #. Channel account status
 msgid "app.sidebar.channel.account.connected"
@@ -8985,70 +8865,6 @@ msgstr "展开侧边栏"
 #. Flyout
 msgid "app.sidebar.flyout.projects"
 msgstr "项目"
-
-#. Connection status labels
-msgid "app.sidebar.holos.connected"
-msgstr "已连接"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connectedToHolos"
-msgstr "已连接到 Holos"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connecting"
-msgstr "正在连接…"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connection"
-msgstr "Holos 连接"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.connectionFailed"
-msgstr "连接失败"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.disabled"
-msgstr "已关闭"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.disconnected"
-msgstr "未连接"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.loadingIdentity"
-msgstr "正在加载身份…"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.localWorkspace"
-msgstr "本地工作区"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.login"
-msgstr "登录"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.notAvailable"
-msgstr "不可用"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.notLoggedIn"
-msgstr "未登录"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.profileUnavailable"
-msgstr "个人资料不可用"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.savedOnDevice"
-msgstr "已保存在此设备"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.service"
-msgstr "服务"
-
-#. ── Sidebar ──────────────────────────────────────────────────────────────────
-msgid "app.sidebar.holos.signIn"
-msgstr "登录"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.loading.projects"
@@ -9185,6 +9001,14 @@ msgstr "草稿"
 #. Session fallback
 msgid "app.sidebar.session.untitled"
 msgstr "未命名"
+
+#. js-lingui-explicit-id
+msgid "app.sidebar.space.current"
+msgstr "当前空间"
+
+#. js-lingui-explicit-id
+msgid "app.sidebar.space.personal"
+msgstr "个人空间"
 
 #. Runtime Lingui descriptors for stats host labels, UI text, and tooltips.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -9921,94 +9745,6 @@ msgid "app.statusBar.details"
 msgstr "详情"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.agent"
-msgstr "智能体 {id}"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.connected"
-msgstr "Holos 已连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.connecting"
-msgstr "Holos 正在连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.disabled"
-msgstr "Holos 已禁用"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.disconnected"
-msgstr "Holos 已断开连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.failed"
-msgstr "Holos 失败"
-
-#. Holos labels
-msgid "app.statusBar.holos.loading"
-msgstr "Holos 正在加载"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.login"
-msgstr "登录"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.notLoggedIn"
-msgstr "未登录"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.reconnect"
-msgstr "重新连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.service"
-msgstr "服务"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.signedOut"
-msgstr "Holos 已登出"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.connected"
-msgstr "已连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.connecting"
-msgstr "连接中"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.disabled"
-msgstr "已关闭"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.disconnected"
-msgstr "未连接"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.failed"
-msgstr "失败"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.loading"
-msgstr "正在加载"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.signedOut"
-msgstr "已退出登录"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.state.unknown"
-msgstr "未知"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.title"
-msgstr "Holos"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
-msgid "app.statusBar.holos.unknown"
-msgstr "Holos 未知"
-
-#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.panel.connections"
 msgstr "连接"
 
@@ -10547,14 +10283,6 @@ msgstr "检测到冲突标记"
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.diagnostic-error"
 msgstr "错误"
-
-#. js-lingui-explicit-id
-msgid "brand.logo.alt"
-msgstr "Holos"
-
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "brand.workbench.synergy"
-msgstr "Synergy 工作台"
 
 #. js-lingui-explicit-id
 msgid "browser.capture.add"
@@ -13181,14 +12909,6 @@ msgid "features.browser.name"
 msgstr "浏览器"
 
 #. js-lingui-explicit-id
-msgid "features.channel-clarus.description"
-msgstr "提供Clarus 渠道相关功能。"
-
-#. js-lingui-explicit-id
-msgid "features.channel-clarus.name"
-msgstr "Clarus 渠道"
-
-#. js-lingui-explicit-id
 msgid "features.channel-feishu.description"
 msgstr "提供飞书渠道相关功能。"
 
@@ -13275,14 +12995,6 @@ msgstr "提供GitHub相关功能。"
 #. js-lingui-explicit-id
 msgid "features.github.name"
 msgstr "GitHub"
-
-#. js-lingui-explicit-id
-msgid "features.holos.description"
-msgstr "提供Holos相关功能。"
-
-#. js-lingui-explicit-id
-msgid "features.holos.name"
-msgstr "Holos"
 
 #. js-lingui-explicit-id
 msgid "features.kanban.description"
@@ -13395,6 +13107,18 @@ msgstr "显示文件列表"
 #. js-lingui-explicit-id
 msgid "fileWorkbench.options"
 msgstr "文件选项"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.label"
+msgstr "工作区"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.workingCopy"
+msgstr "工作副本"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.wordWrap"
+msgstr "自动换行"
 
 #. js-lingui-explicit-id
 msgid "list.for-label"
@@ -17833,25 +17557,9 @@ msgstr "跳过本次提问"
 msgid "session.decision.submitting"
 msgstr "正在提交…"
 
-#. js-lingui-explicit-id
-msgid "session.dock.back"
-msgstr "后退"
-
 #. prompt-dock.tsx
 msgid "session.dock.backToParent"
 msgstr "返回父级"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkedFrom"
-msgstr "分叉自"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkSource"
-msgstr "分叉来源"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkSourceTooltip"
-msgstr "分叉来源"
 
 #. prompt-dock.tsx — remaining hardcoded
 msgid "session.dock.loadingPrompt"
@@ -18046,6 +17754,10 @@ msgid "session.fork.confirm.description"
 msgstr "将此回复及其之前的对话复制到一个新会话中。"
 
 #. js-lingui-explicit-id
+msgid "session.fork.confirm.description.current"
+msgstr "将对话复制到一个新会话中。"
+
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.description.preview"
 msgstr "将对话复制到「{preview}」这条回复为止，并放入一个新会话中。"
 
@@ -18063,7 +17775,43 @@ msgstr "请求失败"
 
 #. dialog-fork-confirm.tsx
 msgid "session.fork.confirm.title"
-msgstr "从此消息分叉会话"
+msgstr "分叉会话"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.create"
+msgstr "新建工作树"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.current"
+msgstr "同一个工作区"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.failed"
+msgstr "无法加载工作位置，请重试。"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.loading"
+msgstr "正在加载工作位置…"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.main"
+msgstr "主目录"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.none"
+msgstr "无工作区"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.title"
+msgstr "工作位置"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.worktree"
+msgstr "同一个工作树"
 
 #. js-lingui-explicit-id
 msgid "session.history.copied"
@@ -19401,190 +19149,6 @@ msgid "session.worktree.title.refreshFailed"
 msgstr "无法刷新文件位置"
 
 #. js-lingui-explicit-id
-msgid "settings.account.actions.create"
-msgstr "创建智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.actions.import"
-msgstr "导入智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.actions.switch"
-msgstr "切换智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.agentPrefix"
-msgstr "智能体 {id}"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.connecting"
-msgstr "连接中"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.disabled"
-msgstr "连接已关闭"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.disconnected"
-msgstr "未连接"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.failed"
-msgstr "连接失败"
-
-#. js-lingui-explicit-id
-msgid "settings.account.connection.unknown"
-msgstr "状态暂不可用"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile"
-msgstr "编辑资料"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.avatarUrl"
-msgstr "头像 URL"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.avatarUrlPlaceholder"
-msgstr "https://..."
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.cancel"
-msgstr "取消"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.description"
-msgstr "描述"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.descriptionPlaceholder"
-msgstr "此智能体代表什么"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.name"
-msgstr "名称"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.namePlaceholder"
-msgstr "智能体名称"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.saveChanges"
-msgstr "保存更改"
-
-#. js-lingui-explicit-id
-msgid "settings.account.editProfile.saving"
-msgstr "正在保存…"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.agentId"
-msgstr "智能体 ID"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.copied"
-msgstr "已复制"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.copy"
-msgstr "复制"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.description"
-msgstr "管理当前设备上的连接状态和登录凭据。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.noActiveAgent"
-msgstr "没有活动智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.status"
-msgstr "状态"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.statusDescription"
-msgstr "当前 Holos 连接状态"
-
-#. js-lingui-explicit-id
-msgid "settings.account.holosSection.title"
-msgstr "Holos 智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.invalidUrl"
-msgstr "请输入有效的 URL"
-
-#. js-lingui-explicit-id
-msgid "settings.account.loading"
-msgstr "正在加载"
-
-#. js-lingui-explicit-id
-msgid "settings.account.logout"
-msgstr "退出登录"
-
-#. js-lingui-explicit-id
-msgid "settings.account.nameRequired"
-msgstr "名称为必填项"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noAgent"
-msgstr "没有 Holos 智能体"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noDescription"
-msgstr "暂无描述。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.noHolosAgent"
-msgstr "创建或导入 Holos 智能体以使用身份功能。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.page.description"
-msgstr "管理 Synergy 当前使用的 Holos 智能体身份。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.page.title"
-msgstr "账号"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileLoadError"
-msgstr "Holos 无法加载此个人资料。请重试；如果持续失败，请重新导入智能体。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaved.description"
-msgstr "Holos 个人资料已更新。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaved.title"
-msgstr "个人资料已保存"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaveFailed.description"
-msgstr "无法更新 Holos 个人资料。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileSaveFailed.title"
-msgstr "保存个人资料失败"
-
-#. js-lingui-explicit-id
-msgid "settings.account.profileUnavailable"
-msgstr "个人资料不可用"
-
-#. js-lingui-explicit-id
-msgid "settings.account.retry"
-msgstr "重试"
-
-#. js-lingui-explicit-id
-msgid "settings.account.savedToHolos"
-msgstr "已直接保存到 Holos。"
-
-#. js-lingui-explicit-id
-msgid "settings.account.signedOut"
-msgstr "已退出登录"
-
-#. js-lingui-explicit-id
 msgid "settings.accountToggle.account"
 msgstr "账号"
 
@@ -19875,18 +19439,6 @@ msgstr "应用内浏览器"
 #. js-lingui-explicit-id
 msgid "settings.browser.unavailable"
 msgstr "浏览器数据不可用，请重试。"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.description"
-msgstr "Holos 智能体身份和本地账号控制。"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.label"
-msgstr "账号"
-
-#. js-lingui-explicit-id
-msgid "settings.catalog.account.searchTerms"
-msgstr "用户 | 身份 | 登录 | Holos | 智能体"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.archivedSessions.description"
@@ -20317,66 +19869,6 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "工作树 | git | 工作区 | 分支 | 删除 | 项目"
 
 #. js-lingui-explicit-id
-msgid "settings.channels.clarus.account"
-msgstr "前往账户"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.description"
-msgstr "允许每个 Holos Agent 账号接收并执行 Clarus 任务。"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.diagnostics"
-msgstr "下载诊断"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.diagnosticsFailed"
-msgstr "下载 Clarus 诊断失败"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.empty"
-msgstr "尚未配置 Clarus 账号。"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.enable"
-msgstr "Clarus 任务执行"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.enableAccount"
-msgstr "为 {accountName} 启用 Clarus 任务执行"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.maintenance"
-msgstr "账号维护"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.maintenanceAccount"
-msgstr "{accountName} 的账号维护"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.preparingDiagnostics"
-msgstr "正在准备诊断…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refresh"
-msgstr "刷新项目"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refreshFailed"
-msgstr "刷新 Clarus 项目失败"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.refreshing"
-msgstr "正在刷新…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.setup"
-msgstr "在账户设置中登录 Holos。Synergy 会添加对应的 Clarus 账户，默认关闭；需要接收任务时，可在这里启用。"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.clarus.title"
-msgstr "Clarus"
-
-#. js-lingui-explicit-id
 msgid "settings.channels.configure"
 msgstr "查看频道配置"
 
@@ -20503,38 +19995,6 @@ msgstr "管理消息与任务频道账号。"
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
 msgstr "频道"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.connecting"
-msgstr "正在连接…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.disabled"
-msgstr "已关闭"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.disconnected"
-msgstr "未连接"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.failed"
-msgstr "连接失败"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.syncing"
-msgstr "正在同步…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.unavailable"
-msgstr "状态暂不可用"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.waitingForTransport"
-msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
@@ -25628,14 +25088,6 @@ msgstr "项目工作树"
 msgid "settings.worktrees.source"
 msgstr "来源与关联任务"
 
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "sidebar.account.holos"
-msgstr "HOLOS 账号"
-
-#. --- SidebarAgentHub: bottom avatar/identity trigger + dropdown menu ---
-msgid "sidebar.account.signedOut"
-msgstr "未登录 · 本地工作台"
-
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.blueprint"
 msgstr "蓝图"
@@ -26541,14 +25993,6 @@ msgid "tool.title.claim"
 msgstr "管理研究论点"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.clarus-extend-task"
-msgstr "延长 Clarus 任务"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.clarus-submit-task-result"
-msgstr "提交 Clarus 结果"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
 msgstr "整理会话上下文"
 
@@ -27401,16 +26845,64 @@ msgid "ui.execution.waiting"
 msgstr "等待输入"
 
 #. js-lingui-explicit-id
+msgid "ui.imagePreview.actionFailed"
+msgstr "操作失败，请重试。"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.actual"
+msgstr "实际大小（1:1）"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.background"
+msgstr "透明背景网格"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
 msgid "ui.imagePreview.close"
 msgstr "关闭图片预览"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.download"
-msgstr "下载图片"
+msgid "ui.imagePreview.copied"
+msgstr "图片已复制"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.copy"
+msgstr "复制图片"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.copyLink"
+msgstr "复制图片链接"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.downloadStarted"
+msgstr "已开始下载"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.exitFullscreen"
+msgstr "退出全屏"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fit"
+msgstr "适应窗口"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fitLabel"
+msgstr "适应"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fullscreen"
+msgstr "进入全屏"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.imageActions"
 msgstr "图片操作"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.linkCopied"
+msgstr "链接已复制"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.loadFailed"
@@ -27429,8 +26921,12 @@ msgid "ui.imagePreview.noImageSelected"
 msgstr "未选择图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.openNewWindow"
-msgstr "在新窗口打开图片"
+msgid "ui.imagePreview.opened"
+msgstr "正在系统浏览器中打开"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openExternal"
+msgstr "在系统浏览器中打开"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openSource"
@@ -27441,20 +26937,28 @@ msgid "ui.imagePreview.previous"
 msgstr "上一张图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.resetView"
-msgstr "重置图片视图"
+msgid "ui.imagePreview.retry"
+msgstr "重试"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.rotateClockwise"
 msgstr "顺时针旋转图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.unavailable"
-msgstr "图片预览不可用。"
+msgid "ui.imagePreview.save"
+msgstr "保存图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.zoomControls"
-msgstr "缩放控件"
+msgid "ui.imagePreview.saved"
+msgstr "图片已保存"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.thumbnails"
+msgstr "缩略图"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.working"
+msgstr "正在处理…"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.zoomIn"

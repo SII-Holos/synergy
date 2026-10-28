@@ -3,14 +3,42 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
-import { fixture } from "@ericsanchezok/synergy-harness/test/support/rollout"
+import { complete, fixture } from "@ericsanchezok/synergy-harness/test/support/rollout"
 import { testRuntime } from "../support/runtime"
 import { ExecutionService } from "../../src/execution/service"
 import { ExecutionSchema } from "../../src/execution/schema"
-import { RolloutSnapshot } from "@ericsanchezok/synergy-harness/rollout"
+import { RolloutExecution, RolloutSnapshot } from "@ericsanchezok/synergy-harness/rollout"
+import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
+import { Usage } from "@ericsanchezok/synergy-harness/usage"
+import { ExecutionActivity } from "../../src/execution/activity"
+import { ExecutionProcess } from "../../src/execution/process"
 
 const runtime = await testRuntime()
 afterAll(() => runtime.close())
+
+test("unchanged summary reads and trajectory pages reuse static projections", () =>
+  runtime.run(() =>
+    fixture(async ({ session }) => {
+      const before = await ExecutionService.summary(session.id)
+      const first = await ExecutionService.trajectory(session.id, ExecutionSchema.Query.parse({ limit: 1 }))
+      expect(first.nextCursor).not.toBeNull()
+      using usage = spyOn(Usage, "summarize")
+      using activity = spyOn(ExecutionActivity, "project")
+      using process = spyOn(ExecutionProcess, "project")
+      const summary = await ExecutionService.summary(session.id)
+      const next = await ExecutionService.trajectory(
+        session.id,
+        ExecutionSchema.Query.parse({ limit: 1, cursor: first.nextCursor }),
+      )
+      expect(summary.revision).toBe(before.revision)
+      expect(summary.accounting).toEqual(before.accounting)
+      expect(next.items).toHaveLength(1)
+      expect(next.items[0].id).not.toBe(first.items[0].id)
+      expect(usage).not.toHaveBeenCalled()
+      expect(activity).not.toHaveBeenCalled()
+      expect(process).not.toHaveBeenCalled()
+    }),
+  ))
 
 test("current statistics and trajectory do not wait for historical journal verification", () =>
   runtime.run(() =>
@@ -21,6 +49,70 @@ test("current statistics and trajectory do not wait for historical journal verif
       const page = await ExecutionService.trajectory(session.id, ExecutionSchema.Query.parse({ limit: 10 }))
       expect(page.items.length).toBeGreaterThan(0)
       expect(replay).not.toHaveBeenCalled()
+    }),
+  ))
+
+test("returned root and round summaries cannot mutate their static preparation", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID }) => {
+      for (const runID of [undefined, rootID]) {
+        const first = await ExecutionService.summary(session.id, runID)
+        const expected = structuredClone(first)
+        first.coverage.partial = !first.coverage.partial
+        first.accounting.calls = -1
+        first.status = "cancelled"
+        const next = await ExecutionService.summary(session.id, runID)
+        expect(next.coverage).toEqual(expected.coverage)
+        expect(next.accounting).toEqual(expected.accounting)
+        expect(next.status).toBe(expected.status)
+      }
+    }),
+  ))
+
+test("cached statistics resample canonical root, child and round clocks without aggregating usage", () =>
+  runtime.run(() =>
+    fixture(async ({ session, rootID, call }) => {
+      await complete(call)
+      const segment = await RolloutLedger.beginSegment({ owner: call.owner, runID: rootID, input: {} })
+      await RolloutExecution.provide({ owner: call.owner, runID: rootID }, () => RolloutExecution.start(segment))
+      const child = await Session.create({ parentID: session.id, title: "Active child" })
+      const owner = { kind: "session" as const, scopeID: child.scope.id, sessionID: child.id }
+      const runID = Identifier.ascending("message")
+      const childSegment = await RolloutLedger.beginSegment({
+        owner,
+        runID,
+        input: {},
+        parent: { owner: call.owner, runID: rootID, messageID: rootID },
+      })
+      await RolloutExecution.provide({ owner, runID }, () => RolloutExecution.start(childSegment))
+      try {
+        const sample = RolloutExecution.clock()
+        using clock = spyOn(RolloutExecution, "clock").mockReturnValue(sample)
+        const first = await ExecutionService.summary(session.id)
+        const scoped = await ExecutionService.summary(session.id, rootID)
+        using usage = spyOn(Usage, "summarize")
+        clock.mockReturnValue({ ...sample, now: sample.now + 1000 })
+        const later = await ExecutionService.summary(session.id)
+        const laterScoped = await ExecutionService.summary(session.id, rootID)
+        expect(later.revision).toBe(first.revision)
+        expect(later.elapsedActive).toBe(true)
+        expect(later.elapsedMs).toBe(first.elapsedMs! + 1000)
+        expect(later.rounds.find((round) => round.id === rootID)?.elapsedMs).toBe(
+          first.rounds.find((round) => round.id === rootID)!.elapsedMs! + 1000,
+        )
+        expect(laterScoped.elapsedMs).toBe(scoped.elapsedMs! + 1000)
+        expect(later.tasks.find((task) => task.sessionID === child.id)?.elapsedMs).toBe(
+          first.tasks.find((task) => task.sessionID === child.id)!.elapsedMs! + 1000,
+        )
+        expect(later.sampledAt).toBe(sample.now + 1000)
+        expect(usage).not.toHaveBeenCalled()
+      } finally {
+        await RolloutExecution.stop(childSegment)
+        await RolloutLedger.finishSegment(childSegment, "completed")
+        await Session.remove(child.id)
+        await RolloutExecution.stop(segment)
+        await RolloutLedger.finishSegment(segment, "completed")
+      }
     }),
   ))
 

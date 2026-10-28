@@ -285,6 +285,8 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
             "python",
             "-m",
             "synergy_bench.ci_prepare",
+            "--timeout",
+            "900",
             "--output",
             path.join(root, OUTPUT, "benchmark"),
             "--source",

@@ -26,7 +26,6 @@
     "@ericsanchezok/synergy-sdk",
     "@scope/plugin",
     "playwright",
-    "@sii-holos/holos-cli",
     "@shikijs/themes",
     "@shikijs/transformers",
     "@solid-primitives/bounds",
@@ -261,16 +260,6 @@
       "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
     },
     "packages/channel-github": {
-      "entry": ["test/**/*.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
-    },
-    "packages/holos": {
-      "entry": ["test/**/*.ts", "script/**/*.ts"],
-      "project": ["src/**/*.ts", "test/**/*.ts", "script/**/*.ts"],
-      "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],
-    },
-    "packages/channel-clarus": {
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
       "ignoreDependencies": ["@ericsanchezok/synergy-server", "@ericsanchezok/synergy-testing"],

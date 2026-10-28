@@ -14,7 +14,6 @@ export function dataManagement(): RuntimeComponent {
       agenda: version,
       blueprint: version,
       channels: version,
-      holos: version,
     },
     adapters: { cli: new URL("./cli-adapter.ts", import.meta.url) },
     register() {},

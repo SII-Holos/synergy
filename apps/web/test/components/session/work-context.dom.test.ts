@@ -3,7 +3,7 @@ import type { SessionWorkspaceSelection } from "@ericsanchezok/synergy-sdk/clien
 import { afterAll, beforeAll, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
-import { chromium, type Browser, type Page } from "playwright"
+import { chromium, type Browser, type Locator, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import tailwind from "@tailwindcss/vite"
@@ -343,6 +343,44 @@ test("main and Worktree icons retain the full pending or existing location witho
   expect(errors).toEqual([])
 }, 20_000)
 
+test("the worktree action menu marks the selected directory without a persistent fill", async () => {
+  const hover = async (active: Locator, resting: Locator) => {
+    await active.hover()
+    await page.waitForFunction(
+      ([active, resting]) =>
+        !!active &&
+        !!resting &&
+        getComputedStyle(active).backgroundColor !== "rgba(0, 0, 0, 0)" &&
+        getComputedStyle(resting).backgroundColor === "rgba(0, 0, 0, 0)" &&
+        !active.getAnimations().length &&
+        !resting.getAnimations().length,
+      [await active.elementHandle(), await resting.elementHandle()],
+    )
+  }
+  for (const scheme of ["light", "dark"] as const) {
+    await open()
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" })
+    const trigger = page.locator("[data-worktree-task-selector]")
+    await trigger.click()
+    const menu = page.getByRole("dialog", { name: "Worktrees", exact: true })
+    const main = menu.getByRole("button", { name: "Main folder", exact: true })
+    const create = menu.getByRole("button", { name: "New Worktree Created when you start the task.", exact: true })
+    await hover(create, main)
+    expect(await main.getAttribute("aria-pressed")).toBe("true")
+    expect(await main.locator('.project-flow-check [data-component="icon"]').count()).toBe(1)
+    expect(await main.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    expect(await create.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)")
+    await hover(main, create)
+    expect(await main.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)")
+    expect(await create.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+    await page.keyboard.press("Escape")
+    await menu.waitFor({ state: "detached" })
+    await page.waitForFunction(() => document.activeElement?.hasAttribute("data-worktree-task-selector"))
+    expect(await page.evaluate("window.fixture.requests")).toEqual(["worktrees"])
+  }
+  expect(errors).toEqual([])
+}, 20_000)
+
 test("a long computer name keeps the folder heading on one line and menu state preserves its geometry", async () => {
   await open()
   await page.locator("[data-open-form]").click()
@@ -658,6 +696,10 @@ test("computer and project metadata keep the composer and welcome canvas stable 
       return !fixture.healthPending && !fixture.directoryPending
     })
     await unchanged()
+    await page.waitForFunction(
+      (node) => !!node?.contains(document.activeElement),
+      await page.locator('[role="dialog"][data-expanded]').elementHandle(),
+    )
     await page.keyboard.press("Escape")
     await page.waitForFunction(
       (kind) =>
@@ -682,6 +724,10 @@ test("computer and project metadata keep the composer and welcome canvas stable 
       kind,
     )
     await unchanged()
+    await page.waitForFunction(
+      (node) => !!node?.contains(document.activeElement),
+      await page.locator('[role="dialog"][data-expanded]').elementHandle(),
+    )
     await page.keyboard.press("Escape")
     await page.waitForFunction(
       (kind) =>

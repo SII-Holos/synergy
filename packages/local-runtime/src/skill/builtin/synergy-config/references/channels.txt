@@ -77,45 +77,6 @@ Channels integrate Synergy with external messaging platforms.
 
 Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
 
-### Clarus channel
-
-Clarus accounts reuse the active Holos credential. A successful Holos login adds the matching account when it is absent, so access tokens never belong in Channel config. Explicit account settings are preserved.
-
-```jsonc
-{
-  "channel": {
-    "clarus": {
-      "type": "clarus",
-      "accounts": {
-        "<holos-agent-id>": {
-          "enabled": true,
-          "agent": "atlas"
-        }
-      }
-    }
-  }
-}
-```
-
-`apiUrl` is an optional per-account override. Clarus has no top-level config domain or workspace-root setting: each remote project is mapped to a standard Synergy Project Scope by the Channel runtime.
-
-### Holos platform configuration
-
-Holos is configured under `100-holos.jsonc`, not in channels:
-
-```jsonc
-{
-  "holos": {
-    "enabled": true,
-    "apiUrl": "https://api.holosai.io",
-    "wsUrl": "wss://api.holosai.io",
-    "portalUrl": "https://www.holosai.io"
-  }
-}
-```
-
-See the Holos domain file (`100-holos.jsonc`) — do not add `type: "holos"` under `channel`.
-
 ### GitHub channel
 
 The GitHub channel uses a GitHub App installation to poll selected repositories. Configure `SYNERGY_GITHUB_APP_ID` and `SYNERGY_GITHUB_APP_PRIVATE_KEY` in the server environment, then the installation and repository account settings in `90-channels.jsonc`. Personal GitHub login in Settings is a separate identity and does not configure these channel credentials.
@@ -137,16 +98,11 @@ Channel config belongs only in:
 <project>/.synergy/synergy.d/90-channels.jsonc
 ```
 
-Holos config belongs in `100-holos.jsonc`, not in channels. Do not edit model, provider, email, or runtime domain files when importing or updating channels.
+Do not edit model, provider, email, or runtime domain files when importing or updating channels.
 
 ---
 
 ## Troubleshooting
-
-### Clarus
-
-- **Account is absent** — sign in to Holos, which creates the matching `channel.clarus` account without copying credentials.
-- **Project is unavailable** — verify the Holos account can manage the project; project discovery failures leave existing Scopes and Sessions intact while Channel reconnects.
 
 ### Feishu/Lark
 

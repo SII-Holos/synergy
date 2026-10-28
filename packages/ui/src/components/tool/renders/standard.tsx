@@ -1538,52 +1538,6 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "clarus_submit_task_result",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: getToolIcon(props.tool, props.input, props.metadata),
-          title: TOOL_TITLE_DESC["clarus_submit_task_result"],
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
-  name: "clarus_extend_task",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: getToolIcon(props.tool, props.input, props.metadata),
-          title: TOOL_TITLE_DESC["clarus_extend_task"],
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
   name: "github_deliver_fix",
   render(props) {
     return (

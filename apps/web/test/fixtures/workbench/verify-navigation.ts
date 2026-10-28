@@ -47,7 +47,7 @@ try {
   await page.locator(".sb-integrated [data-sidebar-toggle]").waitFor()
   checks.push("actual registered built-in Shell mounts integrated navigation")
   await expanded(true)
-  await page.getByRole("button", { name: /HOLOS 账号菜单|HOLOS account menu/ }).click()
+  await page.getByRole("button", { name: /当前空间|Current space/ }).click()
   await page.getByRole("menuitem", { name: /^提供商$|^Providers$/ }).click()
   const settings = page.getByRole("dialog", { name: /^设置$|^Settings$/ })
   await settings.getByRole("heading", { name: /^提供商$|^Providers$/ }).waitFor()
@@ -68,6 +68,11 @@ try {
       .evaluate((element) => element.hasAttribute("inert") && getComputedStyle(element).opacity === "0"),
     "collapsed navigation excludes all descendants from painting and interaction",
   )
+  const space = page.getByRole("button", { name: /当前空间|Current space/ })
+  await space.click()
+  check((await page.getByRole("menuitem").count()) === 3, "collapsed navigation keeps personal-space actions reachable")
+  await page.keyboard.press("Escape")
+  await page.waitForFunction(() => document.activeElement?.matches(".space-switcher-trigger"))
   check(await editorNode!.evaluate((element) => element.isConnected), "collapsing does not remount the editor")
   check((await editor.innerText()) === "Navigation acceptance draft", "collapse preserves draft")
   const nav = page.locator("[data-sidebar-navigation]")

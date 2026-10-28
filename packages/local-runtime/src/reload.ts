@@ -104,7 +104,6 @@ export namespace RuntimeReload {
     formatter: ["config"],
     watcher: ["config"],
     channel: ["config"],
-    holos: ["config"],
     command: ["config"],
     tool_registry: ["config"],
     skill: [],
@@ -181,7 +180,6 @@ export namespace RuntimeReload {
           "formatter",
           "watcher",
           "channel",
-          "holos",
           "command",
           "tool_registry",
           "skill",
@@ -550,9 +548,6 @@ export namespace RuntimeReload {
     }
     if (changed.has("channel")) {
       cascaded.push("channel")
-    }
-    if (changed.has("holos")) {
-      cascaded.push("holos")
     }
     if (changed.has("command")) {
       cascaded.push("command")

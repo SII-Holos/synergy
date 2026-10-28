@@ -1,5 +1,13 @@
 import type { JSX } from "solid-js"
 
+export const resourceMenuPointerMove: JSX.EventHandler<HTMLDivElement, PointerEvent> = (event) => {
+  if (event.pointerType === "touch") return
+  const item = (event.target as Element).closest<HTMLButtonElement>('button:not(:disabled):not([aria-disabled="true"])')
+  if (item && event.currentTarget.contains(item) && item !== item.ownerDocument.activeElement) {
+    item.focus({ preventScroll: true })
+  }
+}
+
 export const resourceMenuKeyDown: JSX.EventHandler<HTMLDivElement, KeyboardEvent> = (event) => {
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return
   if ((event.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return

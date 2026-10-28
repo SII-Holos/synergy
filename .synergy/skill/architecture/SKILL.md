@@ -14,7 +14,7 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
    - workspace and files: `workspace-and-files.md`
    - session/message/compaction: `session-and-messages.md`, `llm-loop.md`
    - Web state: `frontend-data-sync.md`
-   - Channels and Native Clarus: `channels.md`
+   - Channels: `channels.md`
    - permissions/tools: `execution-boundaries.md`
    - delegation: `cortex.md`
    - Plan, BlueprintLoop, Light Loop, Lattice: `workflows.md`
@@ -26,7 +26,7 @@ description: Navigate and trace the Synergy codebase, identify subsystem ownersh
    - HTTP/OpenAPI/SDK contract: `change-server-api`
    - durable state or migration: `change-persistence`
    - capability/permission/sandbox behavior: `change-execution-boundaries`
-   - Channel runtime, managed Projects, or Native Clarus: `change-channel-runtime`
+   - Channel runtime, managed Projects: `change-channel-runtime`
    - Browser/Desktop/WebRTC runtime: `change-browser-runtime`
    - plugin public/host/runtime behavior: `change-plugin-runtime`
 

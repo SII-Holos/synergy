@@ -10,7 +10,7 @@ Synergy separates execution mechanisms, concrete host implementations, optional 
 
 The full product is a client-server system built around the same persistent runtime:
 
-1. Product composition selects installation-wide services such as plugins, Channels, Holos, MCP, Agenda, recovery, and marketplace state.
+1. Product composition selects installation-wide services such as plugins, Channels, MCP, Agenda, recovery, and marketplace state.
 2. A `Scope` selects home or project context for each request and session.
 3. A lazily started project `ScopeRuntime` owns project configuration and command state. Each resolved Workspace generation owns file watching, LSP, formatting and VCS resources through `WorkspaceState`.
 4. A durable session owns messages, inbox state, session-local workflow state, workspace binding, and at most one active LLM loop.
@@ -93,7 +93,7 @@ Workspace membership and dependency versions come from the root and package `pac
 | `packages/browser-runtime`, `packages/computer-runtime`                          | Browser and Computer backend capabilities, tools, ownership, recovery and host connections                                                 |
 | `packages/library`, `packages/note`                                              | Knowledge processing and retrieval; documents and note operations                                                                          |
 | `packages/workflows`                                                             | Blueprint, Light Loop, Lattice, Agenda and Boss                                                                                            |
-| `packages/connections`                                                           | Email, Channels, Holos and GitHub integration                                                                                              |
+| `packages/connections`                                                           | Email, Channels and GitHub integration                                                                                                     |
 | `packages/workbench`                                                             | Product Projects, statistics, notifications and read models                                                                                |
 | `mcp`, `lsp`, `formatter`, `acp`, `external-agents`, `link-client`, `code-tools` | Independently selected agent integrations, native services and coding tools                                                                |
 | `packages/media`                                                                 | Document extraction, voice and image operations                                                                                            |

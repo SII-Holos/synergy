@@ -1,4 +1,4 @@
-import { Show, type JSX } from "solid-js"
+import { Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
@@ -10,7 +10,6 @@ export function SidebarNavigation(props: {
   onSearch: () => void
   onNew: () => void
   notice?: string
-  children?: JSX.Element
 }) {
   return (
     <div class="sb-navigation" data-sidebar-navigation>
@@ -29,7 +28,6 @@ export function SidebarNavigation(props: {
           </Show>
         </button>
       </Tooltip>
-      <div class="sb-navigation-brand">{props.children}</div>
       <Tooltip value={props.labels.search} placement="bottom" class="sb-navigation-search">
         <button type="button" class="sb-icon-btn" aria-label={props.labels.search} onClick={props.onSearch}>
           <Icon name={getSemanticIcon("action.search")} size="normal" />

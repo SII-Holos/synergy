@@ -13,8 +13,8 @@ export function AmbientField(props: {
   const theme = useTheme()
   const random = sceneRandom(props.seed)
   const masks = [
-    ...[sprites.star, sprites.ring, sprites.bolt, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(
-      (mask) => mask.map((row) => row.replaceAll("2", "0")),
+    ...[sprites.star, sprites.ring, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map((mask) =>
+      mask.map((row) => row.replaceAll("2", "0")),
     ),
     sprites.ribbon,
   ]

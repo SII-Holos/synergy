@@ -2,9 +2,7 @@ import { registerConfig as registerBossConfig } from "@ericsanchezok/synergy-bos
 import { registerConfig as registerAnimaConfig } from "@ericsanchezok/synergy-anima/config-schema"
 import { registerConfig as registerGithubConfig } from "@ericsanchezok/synergy-github/config-schema"
 import { registerConfig as registerEmailConfig } from "@ericsanchezok/synergy-email/config-schema"
-import { registerConfig as registerHolosConfig } from "@ericsanchezok/synergy-holos/config-schema"
 import { registerConfig as registerChannelGithubConfig } from "@ericsanchezok/synergy-channel-github/config-schema"
-import { registerConfig as registerChannelClarusConfig } from "@ericsanchezok/synergy-channel-clarus/config-schema"
 import { registerConfig as registerChannelFeishuConfig } from "@ericsanchezok/synergy-channel-feishu/config-schema"
 import { registerConfig as registerChannelsConfig } from "@ericsanchezok/synergy-channels/config-schema"
 import { registerConfig as registerLocalConfig } from "@ericsanchezok/synergy-local-runtime/config-schema"
@@ -31,9 +29,7 @@ export function registerFullConfiguration() {
   registerWorkbenchConfig()
   registerChannelsConfig()
   registerChannelFeishuConfig()
-  registerChannelClarusConfig()
   registerChannelGithubConfig()
-  registerHolosConfig()
   registerEmailConfig()
   registerGithubConfig()
   registerBossConfig()

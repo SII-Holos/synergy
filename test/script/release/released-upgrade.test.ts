@@ -6,9 +6,14 @@ import { pathToFileURL } from "node:url"
 import { z } from "zod"
 import { compilePluginManifest } from "@ericsanchezok/synergy-plugin"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
-import { installedProvider } from "../../../packages/presets/test/acceptance/installed-provider"
+import {
+  installedProvider,
+  type InstalledProviderDecision,
+} from "../../../packages/presets/test/acceptance/installed-provider"
 import pluginDefinition from "./upgrade-plugin-fixture"
 import { expectRetainedHistory } from "./upgrade-history"
+import { upgradeCommand } from "./upgrade-command"
+import { upgradeProtocolEvidence } from "./upgrade-protocol"
 
 const previous = process.env.SYNERGY_UPGRADE_PREVIOUS
 const candidate = process.env.SYNERGY_UPGRADE_CANDIDATE
@@ -17,6 +22,7 @@ const messageSchema = z.object({
   info: z.object({ id: z.string(), role: z.string() }).passthrough(),
   parts: z.array(z.object({ type: z.string() }).passthrough()),
 })
+const toolStateSchema = z.object({ status: z.string(), metadata: z.object({ exit: z.number() }) })
 
 test.skipIf(!previous || !candidate)(
   "released 3.0.22 preserves history, plugins and assets through upgrade, restart and backup recovery",
@@ -24,7 +30,9 @@ test.skipIf(!previous || !candidate)(
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "synergy-released-upgrade-")))
     const home = path.join(root, "home")
     const workspace = path.join(root, "workspace")
-    using provider = installedProvider()
+    let phase = "setup"
+    const decisions: (InstalledProviderDecision & { phase: string })[] = []
+    using provider = installedProvider((decision) => decisions.push({ phase, ...decision }))
     const config = {
       model: "fixture/model",
       provider: {
@@ -97,6 +105,7 @@ test.skipIf(!previous || !candidate)(
       return stdout.trim()
     }
     async function start(directory: string, label: string) {
+      phase = label
       const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null) })
       const port = reservation.port!
       await reservation.stop(true)
@@ -143,19 +152,29 @@ test.skipIf(!previous || !candidate)(
         await stop().catch(() => {})
         throw error
       }
-      async function response(route: string, body?: unknown, method = body === undefined ? "GET" : "POST") {
+      async function response(
+        route: string,
+        body?: unknown,
+        method = body === undefined ? "GET" : "POST",
+        timeout = 120000,
+      ) {
         const endpoint = new URL(route, url)
         endpoint.searchParams.set("directory", workspace)
         const response = await fetch(endpoint, {
           method,
           headers: body instanceof FormData ? {} : { "content-type": "application/json" },
           ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }),
-          signal: AbortSignal.timeout(120000),
+          signal: AbortSignal.timeout(timeout),
         })
         return response
       }
-      async function request(route: string, body?: unknown, method = body === undefined ? "GET" : "POST") {
-        const result = await response(route, body, method)
+      async function request(
+        route: string,
+        body?: unknown,
+        method = body === undefined ? "GET" : "POST",
+        timeout = 120000,
+      ) {
+        const result = await response(route, body, method, timeout)
         const text = await result.text()
         if (!result.ok) {
           const diagnostics = route.startsWith("/plugin/")
@@ -167,15 +186,39 @@ test.skipIf(!previous || !candidate)(
       }
       return { request, response, [Symbol.asyncDispose]: stop }
     }
-    const prompt = (file: string) => ({
+    const prompt = (file: string, output: "silent" | "stdout") => ({
       model: { providerID: "fixture", modelID: "model" },
       parts: [
         {
           type: "text",
-          text: `Installed acceptance task\nRead record.txt and copy it exactly once.\nCOMMAND_BEGIN\ncat record.txt > ${file}; printf x >> effects.txt; cat ${file}\nCOMMAND_END`,
+          text: `Installed acceptance task\nRead record.txt and copy it exactly once.\nCOMMAND_BEGIN\n${upgradeCommand(file, output)}\nCOMMAND_END`,
         },
       ],
     })
+    async function expectEffects(server: Awaited<ReturnType<typeof start>>, sessionID: string, expected: string) {
+      let actual: string | undefined
+      try {
+        actual = await Bun.file(path.join(workspace, "effects.txt")).text()
+        expect(actual).toBe(expected)
+      } catch (error) {
+        const history = await server
+          .request(`/session/${sessionID}/message?raw=true`, undefined, "GET", 5000)
+          .catch(() => undefined)
+        console.error(
+          "Released upgrade protocol evidence",
+          JSON.stringify({
+            phase,
+            expectedEffects: expected.length,
+            actualEffects: actual?.length ?? null,
+            providerCount: decisions.length,
+            provider: decisions.slice(-128),
+            historyCount: Array.isArray(history) ? history.length : null,
+            history: Array.isArray(history) ? upgradeProtocolEvidence(history) : null,
+          }),
+        )
+        throw error
+      }
+    }
     let passed = false
     try {
       expect(await version(installations.previous)).toBe("3.0.22")
@@ -272,7 +315,8 @@ test.skipIf(!previous || !candidate)(
             { type: "attachment", mime: "image/png", filename: "upgrade.png", url: asset.url },
           ],
         })
-        await old.request(`/session/${sessionID}/message`, prompt("old-result.txt"))
+        const previousDecisions = decisions.length
+        await old.request(`/session/${sessionID}/message`, prompt("old-result.txt", "silent"))
         before = z.array(messageSchema).parse(await old.request(`/session/${sessionID}/message?raw=true`))
         await Bun.write(path.join(root, "before.json"), JSON.stringify(before))
         attachmentPartID = z
@@ -283,14 +327,36 @@ test.skipIf(!previous || !candidate)(
               .find((part) => part.type === "attachment" && part.filename === "upgrade.png")?.id,
           )
         expect(await Bun.file(path.join(workspace, "old-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("x")
-        expect(before.some((message) => message.parts.some((part) => part.type === "tool"))).toBe(true)
+        await expectEffects(old, sessionID, "x")
+        expect(decisions.slice(previousDecisions).filter((decision) => decision.emitsToolCall)).toHaveLength(1)
+        expect(
+          before
+            .flatMap((message) => message.parts)
+            .filter((part) => part.type === "tool")
+            .map((part) => toolStateSchema.parse(part.state)),
+        ).toEqual([{ status: "completed", metadata: { exit: 0 } }])
         await retainedExtras(old)
       }
       await fs.cp(home, path.join(root, "pre-upgrade-backup"), { recursive: true })
       expect(await version(installations.candidate)).toBe(expectedVersion)
       {
         await using upgraded = await start(installations.candidate, "upgraded")
+        const preparationRoute = `/global/storage/upgrade/sessions/${sessionID}`
+        const preparationSchema = z
+          .object({ state: z.enum(["pending", "preparing", "ready", "blocked", "failed"]) })
+          .passthrough()
+        let preparation = preparationSchema.parse(
+          await upgraded.request(`${preparationRoute}/prepare`, undefined, "POST"),
+        )
+        const preparationDeadline = Date.now() + 120000
+        while (preparation.state !== "ready") {
+          if (preparation.state === "blocked" || preparation.state === "failed")
+            throw new Error(`Historical Session preparation failed: ${JSON.stringify(preparation)}`)
+          if (Date.now() >= preparationDeadline)
+            throw new Error(`Historical Session preparation did not become ready: ${JSON.stringify(preparation)}`)
+          await Bun.sleep(100)
+          preparation = preparationSchema.parse(await upgraded.request(preparationRoute))
+        }
         const messages = z.array(messageSchema).parse(await upgraded.request(`/session/${sessionID}/message?raw=true`))
         expect(messages.map((message) => message.info.id)).toEqual(before.map((message) => message.info.id))
         expect(
@@ -319,9 +385,9 @@ test.skipIf(!previous || !candidate)(
               return { ...legacy, workBrief: description, state: { ...legacy.state, input } }
             }),
         )
-        await upgraded.request(`/session/${sessionID}/message`, prompt("continued-result.txt"))
+        await upgraded.request(`/session/${sessionID}/message`, prompt("continued-result.txt", "stdout"))
         expect(await Bun.file(path.join(workspace, "continued-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xx")
+        await expectEffects(upgraded, sessionID, "xx")
         await retainedExtras(upgraded)
         continuedHistory = z
           .array(messageSchema)
@@ -341,14 +407,14 @@ test.skipIf(!previous || !candidate)(
         await using restarted = await start(installations.candidate, "restarted")
         const messages = z.array(messageSchema).parse(await restarted.request(`/session/${sessionID}/message?raw=true`))
         expectRetainedHistory(continuedHistory, messages)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xx")
+        await expectEffects(restarted, sessionID, "xx")
         await retainedExtras(restarted)
         const fresh = z
           .object({ id: z.string() })
           .parse(await restarted.request("/session", { title: "Post-upgrade work", controlProfile: "full_access" }))
-        await restarted.request(`/session/${fresh.id}/message`, prompt("fresh-result.txt"))
+        await restarted.request(`/session/${fresh.id}/message`, prompt("fresh-result.txt", "stdout"))
         expect(await Bun.file(path.join(workspace, "fresh-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xxx")
+        await expectEffects(restarted, fresh.id, "xxx")
       }
       await fs.rename(home, path.join(root, "post-upgrade-home"))
       await fs.cp(path.join(root, "pre-upgrade-backup"), home, { recursive: true })
@@ -357,10 +423,23 @@ test.skipIf(!previous || !candidate)(
         const messages = z.array(messageSchema).parse(await restored.request(`/session/${sessionID}/message?raw=true`))
         expectRetainedHistory(before, messages)
         await retainedExtras(restored)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xxx")
-        await restored.request(`/session/${sessionID}/message`, prompt("restored-result.txt"))
+        await expectEffects(restored, sessionID, "xxx")
+        const restoredDecisions = decisions.length
+        await restored.request(`/session/${sessionID}/message`, prompt("restored-result.txt", "silent"))
         expect(await Bun.file(path.join(workspace, "restored-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xxxx")
+        await expectEffects(restored, sessionID, "xxxx")
+        expect(decisions.slice(restoredDecisions).filter((decision) => decision.emitsToolCall)).toHaveLength(1)
+        const previousIDs = new Set(messages.map((message) => message.info.id))
+        const restoredHistory = z
+          .array(messageSchema)
+          .parse(await restored.request(`/session/${sessionID}/message?raw=true`))
+        expect(
+          restoredHistory
+            .filter((message) => !previousIDs.has(message.info.id))
+            .flatMap((message) => message.parts)
+            .filter((part) => part.type === "tool")
+            .map((part) => toolStateSchema.parse(part.state)),
+        ).toEqual([{ status: "completed", metadata: { exit: 0 } }])
       }
       passed = true
     } finally {

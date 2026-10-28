@@ -270,9 +270,9 @@ export namespace LLM {
   export type StreamOutput = StreamTextResult<ToolSet, Record<string, unknown>, OutputInterface>
 
   export async function prepare(input: StreamInput): Promise<PreparedTurn> {
-    const [{ Config }, { withPreambleSection }, { SystemPrompt }] = await Promise.all([
+    const [{ Config }, { withProgressUpdates }, { SystemPrompt }] = await Promise.all([
       import("../config/config"),
-      import("../agent/prompt/preamble"),
+      import("../agent/prompt/progress"),
       import("./system"),
     ])
     const trigger = SessionPluginHooks.trigger
@@ -286,15 +286,13 @@ export namespace LLM {
     const systemTimer = l.time("system.assembly")
 
     let system: string[] = []
-    const baseSystem = (input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)).map((prompt) =>
-      withPreambleSection(prompt),
-    )
+    const baseSystem = withProgressUpdates(input.agent.prompt || SystemPrompt.fallback(), input.model)
 
     // Part 1: Agent prompt (most stable, always first for caching)
     // Kept separate from custom parts so the static agent prompt can be
     // cached independently even when dynamic parts (env block with timestamps)
     // change on each invoke.
-    system.push(...baseSystem)
+    system.push(baseSystem)
     system.push(
       ...AgentPromptContributions.render(input.agent, new Set(input.availableToolIDs ?? Object.keys(input.tools))),
     )

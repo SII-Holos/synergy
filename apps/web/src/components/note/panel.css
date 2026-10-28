@@ -48,32 +48,36 @@
   padding: 0;
   max-height: min(28rem, calc(100dvh - 80px));
   overflow-y: auto;
-  border: 1px solid var(--border-weak-base);
-  border-radius: 10px;
-  background: var(--surface-raised-base);
   z-index: 100;
 }
 .note-toolbar-menu button {
   display: flex;
   width: 100%;
-  min-height: 32px;
+  min-height: 36px;
   height: auto;
+  align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: transparent;
   color: var(--text-base);
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 18px;
 }
 .note-toolbar-menu small {
   margin-inline-start: auto;
   color: var(--text-weak);
 }
-.note-toolbar-menu button[aria-checked="true"] {
-  background: var(--surface-raised-base-hover);
+.note-toolbar-check {
+  display: flex;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--icon-strong);
 }
 .note-toolbar-popover [data-slot="popover-body"] {
-  padding: 6px;
+  padding: 4px;
 }
 .note-toolbar-name {
   width: 260px;
@@ -82,8 +86,8 @@
   margin-bottom: 6px;
   border-bottom: 1px solid var(--border-weaker-base);
 }
-.note-toolbar-menu button:hover {
-  background: var(--surface-raised-base-hover);
+.note-toolbar-menu button:not(:disabled):is(:hover, :focus-visible) {
+  background: var(--menu-field-item-hover-bg, var(--surface-raised-stronger-hover));
 }
 .note-toolbar-menu button:disabled {
   color: var(--text-weaker);

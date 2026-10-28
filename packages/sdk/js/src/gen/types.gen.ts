@@ -3123,36 +3123,6 @@ export type AgendaItem = {
   }
 }
 
-export type HolosLoginResponse = {
-  url: string
-}
-
-export type HolosAgentProfileInput = {
-  name: string
-  description?: string
-  avatarUrl?: string
-}
-
-export type HolosAgentProfile = {
-  name: string
-  description: string
-  avatarUrl: string | null
-}
-
-export type HolosCredentialsResponse = {
-  success: true
-  agentId: string
-  profile: HolosAgentProfile
-}
-
-export type HolosLogoutResponse = {
-  success: true
-}
-
-export type HolosReconnectResponse = {
-  success: true
-}
-
 export type PushVapidKey = {
   publicKey: string
 }
@@ -3660,6 +3630,7 @@ export type Session = {
     sessionID: string
     messageID?: string
     title?: string
+    generatedTitle?: string
   }
   category?: "project" | "home" | "channel" | "background" | "github"
   tags?: SessionTags
@@ -5629,25 +5600,6 @@ export type ChannelFeishuConfig = {
   responseFormat?: "text" | "markdown"
 }
 
-export type ChannelClarusAccountConfig = {
-  enabled?: boolean
-  /**
-   * Clarus REST API base URL override, including an optional path prefix; defaults to the configured Holos API base URL
-   */
-  apiUrl?: string
-  /**
-   * Primary Synergy agent for project and assignment Sessions
-   */
-  agent?: string
-}
-
-export type ChannelClarusConfig = {
-  type: "clarus"
-  accounts: {
-    [key: string]: ChannelClarusAccountConfig
-  }
-}
-
 export type ChannelGithubAccountConfig = {
   enabled?: boolean
   /**
@@ -5697,25 +5649,6 @@ export type ChannelGithubConfig = {
   accounts: {
     [key: string]: ChannelGithubAccountConfig
   }
-}
-
-export type HolosConfig = {
-  /**
-   * Enable the Holos runtime connection
-   */
-  enabled?: boolean
-  /**
-   * Holos API base URL
-   */
-  apiUrl?: string
-  /**
-   * Holos WebSocket base URL
-   */
-  wsUrl?: string
-  /**
-   * Holos portal URL for browser-facing pages (bind/start)
-   */
-  portalUrl?: string
 }
 
 /**
@@ -7146,11 +7079,7 @@ export type Config = {
    * Channel configurations for selected messaging providers
    */
   channel?: {
-    [key: string]: ChannelFeishuConfig | ChannelClarusConfig | ChannelGithubConfig
-  }
-  holos?: HolosConfig
-  enterprise?: {
-    url?: string
+    [key: string]: ChannelFeishuConfig | ChannelGithubConfig
   }
   github?: GithubConfig
   digitalTwin?: DigitalTwinSettings
@@ -7520,7 +7449,6 @@ export type ConfigDomainSummary = {
     | "library"
     | "anima"
     | "channels"
-    | "holos"
     | "github"
     | "digital-twin"
     | "email"
@@ -7582,7 +7510,6 @@ export type ConfigExportResult = {
     | "library"
     | "anima"
     | "channels"
-    | "holos"
     | "github"
     | "digital-twin"
     | "email"
@@ -7644,7 +7571,6 @@ export type ConfigDomainImportDomainPlan = {
     | "library"
     | "anima"
     | "channels"
-    | "holos"
     | "github"
     | "digital-twin"
     | "email"
@@ -7703,7 +7629,6 @@ export type ConfigDomainImportPlanInput = {
     | "library"
     | "anima"
     | "channels"
-    | "holos"
     | "github"
     | "digital-twin"
     | "email"
@@ -7727,7 +7652,6 @@ export type RuntimeReloadTarget =
   | "formatter"
   | "watcher"
   | "channel"
-  | "holos"
   | "command"
   | "tool_registry"
   | "all"
@@ -7792,7 +7716,6 @@ export type ConfigImportRevisionConflictError = {
       | "library"
       | "anima"
       | "channels"
-      | "holos"
       | "github"
       | "digital-twin"
       | "email"
@@ -7829,7 +7752,6 @@ export type ConfigDomainImportApplyInput = {
     | "library"
     | "anima"
     | "channels"
-    | "holos"
     | "github"
     | "digital-twin"
     | "email"
@@ -13582,124 +13504,6 @@ export type BrowserControlRequest = {
   traceId?: string
 }
 
-export type HolosCredentialsStatusResponse = {
-  exists: boolean
-  agentId?: string
-  maskedSecret?: string
-}
-
-export type HolosAccountMeta = {
-  agentId: string
-  createdAt: number
-  updatedAt: number
-  profile?: HolosAgentProfile | null
-  profileError?: string
-}
-
-export type HolosIdentityState = {
-  loggedIn: boolean
-  agentId: string | null
-  activeAccount: HolosAccountMeta | null
-  accounts: Array<HolosAccountMeta>
-}
-
-export type HolosConnectionState = {
-  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
-  error?: string
-}
-
-export type HolosReadinessState = {
-  ready: boolean
-  reason?: "not_logged_in" | "not_connected"
-}
-
-export type Contact = {
-  /**
-   * Holos Agent ID
-   */
-  id: string
-  /**
-   * Display name
-   */
-  name: string
-  /**
-   * Block messages from this contact
-   */
-  blocked?: boolean
-  /**
-   * Timestamp when contact was added
-   */
-  addedAt: number
-}
-
-export type HolosSocialState = {
-  profile: HolosAgentProfile | null
-  profileError?: string
-  contacts: Array<Contact>
-  presence: {
-    [key: string]: "online" | "offline" | "unknown"
-  }
-}
-
-export type HolosState = {
-  identity: HolosIdentityState
-  connection: HolosConnectionState
-  readiness: HolosReadinessState
-  social: HolosSocialState
-}
-
-export type HolosAgentMe = {
-  agentId: string
-  profile: HolosAgentProfile
-}
-
-export type HolosVerifyResponse = {
-  valid: true
-  agentId: string
-}
-
-export type HolosAccountsListResponse = {
-  activeAccountId: string | null
-  accounts: Array<HolosAccountMeta>
-}
-
-export type HolosAccountsSwitchResponse = {
-  success: true
-  activeAccountId: string
-  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
-}
-
-export type HolosAccountsRemoveResponse = {
-  success: true
-  activeAccountId: string | null
-  wasActive: boolean
-}
-
-export type HolosStatusResponse = {
-  agentId: string | null
-  status: "connected" | "connecting" | "disconnected" | "disabled" | "failed" | "unknown"
-  error?: string
-  peerId: string | null
-}
-
-export type HolosPresenceMap = {
-  [key: string]: string
-}
-
-export type HolosSendResponse = {
-  messageId: string
-  sent: boolean
-  reason?: string
-}
-
-export type HolosRetryResponse = {
-  messageId: string
-  sent: boolean
-  reason?: string
-}
-
-export type MailboxMessageList = Array<unknown>
-
 export type GlobalThemeContribution = {
   pluginId: string
   name: string
@@ -14409,16 +14213,7 @@ export type WellKnownAuth = {
   }
 }
 
-export type HolosAuth = {
-  type: "holos"
-  agentId: string
-  agentSecret: string
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
+export type Auth = OAuth | ApiAuth | WellKnownAuth
 
 export type EventConfigUpdated = {
   type: "config.updated"
@@ -15316,50 +15111,6 @@ export type EventAppPush = {
   }
 }
 
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
 export type EventLatticeRunCreated = {
   type: "lattice.run.created"
   properties: {
@@ -15579,12 +15330,6 @@ export type Event =
   | EventChannelDisconnected
   | EventChannelCommandExecuted
   | EventAppPush
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
   | EventLatticeRunCreated
   | EventLatticeRunUpdated
   | EventLatticeEventAppended
@@ -17324,146 +17069,6 @@ export type GlobalAgendaListResponses = {
 
 export type GlobalAgendaListResponse = GlobalAgendaListResponses[keyof GlobalAgendaListResponses]
 
-export type HolosLoginData = {
-  body?: {
-    callbackUrl?: string
-    clientSurface?: "web" | "desktop"
-    profile: HolosAgentProfileInput
-  }
-  path?: never
-  query?: never
-  url: "/holos/login"
-}
-
-export type HolosLoginErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosLoginError = HolosLoginErrors[keyof HolosLoginErrors]
-
-export type HolosLoginResponses = {
-  /**
-   * Login URL
-   */
-  200: HolosLoginResponse
-}
-
-export type HolosLoginResponse2 = HolosLoginResponses[keyof HolosLoginResponses]
-
-export type HolosCallbackData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/holos/callback"
-}
-
-export type HolosCallbackErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosCallbackError = HolosCallbackErrors[keyof HolosCallbackErrors]
-
-export type HolosCallbackResponses = {
-  /**
-   * Login result HTML page
-   */
-  200: string
-}
-
-export type HolosCallbackResponse = HolosCallbackResponses[keyof HolosCallbackResponses]
-
-export type HolosLogoutData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/holos/credentials"
-}
-
-export type HolosLogoutErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosLogoutError = HolosLogoutErrors[keyof HolosLogoutErrors]
-
-export type HolosLogoutResponses = {
-  /**
-   * Credentials cleared
-   */
-  200: HolosLogoutResponse
-}
-
-export type HolosLogoutResponse2 = HolosLogoutResponses[keyof HolosLogoutResponses]
-
-export type HolosCredentialsData = {
-  body?: {
-    agentSecret: string
-    expectedAgentId?: string
-  }
-  path?: never
-  query?: never
-  url: "/holos/credentials"
-}
-
-export type HolosCredentialsErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosCredentialsError = HolosCredentialsErrors[keyof HolosCredentialsErrors]
-
-export type HolosCredentialsResponses = {
-  /**
-   * Credentials saved
-   */
-  200: HolosCredentialsResponse
-}
-
-export type HolosCredentialsResponse2 = HolosCredentialsResponses[keyof HolosCredentialsResponses]
-
-export type HolosReconnectData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/holos/reconnect"
-}
-
-export type HolosReconnectErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosReconnectError = HolosReconnectErrors[keyof HolosReconnectErrors]
-
-export type HolosReconnectResponses = {
-  /**
-   * Reconnect initiated
-   */
-  200: HolosReconnectResponse
-}
-
-export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
-
 export type PushGetVapidKeyData = {
   body?: never
   path?: never
@@ -18792,7 +18397,6 @@ export type ConfigDomainGetData = {
       | "library"
       | "anima"
       | "channels"
-      | "holos"
       | "github"
       | "digital-twin"
       | "email"
@@ -18848,7 +18452,6 @@ export type ConfigDomainUpdateData = {
       | "library"
       | "anima"
       | "channels"
-      | "holos"
       | "github"
       | "digital-twin"
       | "email"
@@ -18904,7 +18507,6 @@ export type ConfigDomainOpenData = {
       | "library"
       | "anima"
       | "channels"
-      | "holos"
       | "github"
       | "digital-twin"
       | "email"
@@ -18968,7 +18570,6 @@ export type ConfigExportData = {
       | "library"
       | "anima"
       | "channels"
-      | "holos"
       | "github"
       | "digital-twin"
       | "email"
@@ -18991,7 +18592,6 @@ export type ConfigExportData = {
           | "library"
           | "anima"
           | "channels"
-          | "holos"
           | "github"
           | "digital-twin"
           | "email"
@@ -30355,725 +29955,6 @@ export type BrowserControlResponses = {
 }
 
 export type BrowserControlResponse2 = BrowserControlResponses[keyof BrowserControlResponses]
-
-export type HolosCredentialsStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/credentials/status"
-}
-
-export type HolosCredentialsStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosCredentialsStatusError = HolosCredentialsStatusErrors[keyof HolosCredentialsStatusErrors]
-
-export type HolosCredentialsStatusResponses = {
-  /**
-   * Credential status
-   */
-  200: HolosCredentialsStatusResponse
-}
-
-export type HolosCredentialsStatusResponse2 = HolosCredentialsStatusResponses[keyof HolosCredentialsStatusResponses]
-
-export type HolosStateData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/state"
-}
-
-export type HolosStateErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosStateError = HolosStateErrors[keyof HolosStateErrors]
-
-export type HolosStateResponses = {
-  /**
-   * Unified Holos state
-   */
-  200: HolosState
-}
-
-export type HolosStateResponse = HolosStateResponses[keyof HolosStateResponses]
-
-export type HolosProfileGetData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/profile"
-}
-
-export type HolosProfileGetErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosProfileGetError = HolosProfileGetErrors[keyof HolosProfileGetErrors]
-
-export type HolosProfileGetResponses = {
-  /**
-   * Current Holos profile
-   */
-  200: HolosAgentMe
-}
-
-export type HolosProfileGetResponse = HolosProfileGetResponses[keyof HolosProfileGetResponses]
-
-export type HolosProfileUpdateData = {
-  body?: HolosAgentProfileInput
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/profile"
-}
-
-export type HolosProfileUpdateErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosProfileUpdateError = HolosProfileUpdateErrors[keyof HolosProfileUpdateErrors]
-
-export type HolosProfileUpdateResponses = {
-  /**
-   * Updated Holos profile
-   */
-  200: HolosAgentMe
-}
-
-export type HolosProfileUpdateResponse = HolosProfileUpdateResponses[keyof HolosProfileUpdateResponses]
-
-export type HolosVerifyData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/verify"
-}
-
-export type HolosVerifyErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosVerifyError = HolosVerifyErrors[keyof HolosVerifyErrors]
-
-export type HolosVerifyResponses = {
-  /**
-   * Credentials valid
-   */
-  200: HolosVerifyResponse
-}
-
-export type HolosVerifyResponse2 = HolosVerifyResponses[keyof HolosVerifyResponses]
-
-export type HolosAccountsListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/accounts"
-}
-
-export type HolosAccountsListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosAccountsListError = HolosAccountsListErrors[keyof HolosAccountsListErrors]
-
-export type HolosAccountsListResponses = {
-  /**
-   * Account list
-   */
-  200: HolosAccountsListResponse
-}
-
-export type HolosAccountsListResponse2 = HolosAccountsListResponses[keyof HolosAccountsListResponses]
-
-export type HolosAccountsSwitchData = {
-  body?: {
-    agentId: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/accounts/switch"
-}
-
-export type HolosAccountsSwitchErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosAccountsSwitchError = HolosAccountsSwitchErrors[keyof HolosAccountsSwitchErrors]
-
-export type HolosAccountsSwitchResponses = {
-  /**
-   * Account switched
-   */
-  200: HolosAccountsSwitchResponse
-}
-
-export type HolosAccountsSwitchResponse2 = HolosAccountsSwitchResponses[keyof HolosAccountsSwitchResponses]
-
-export type HolosAccountsRemoveData = {
-  body?: never
-  path: {
-    agentId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/accounts/{agentId}"
-}
-
-export type HolosAccountsRemoveErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosAccountsRemoveError = HolosAccountsRemoveErrors[keyof HolosAccountsRemoveErrors]
-
-export type HolosAccountsRemoveResponses = {
-  /**
-   * Account removed
-   */
-  200: HolosAccountsRemoveResponse
-}
-
-export type HolosAccountsRemoveResponse2 = HolosAccountsRemoveResponses[keyof HolosAccountsRemoveResponses]
-
-export type HolosStatusData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/status"
-}
-
-export type HolosStatusErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosStatusError = HolosStatusErrors[keyof HolosStatusErrors]
-
-export type HolosStatusResponses = {
-  /**
-   * Connection status
-   */
-  200: HolosStatusResponse
-}
-
-export type HolosStatusResponse2 = HolosStatusResponses[keyof HolosStatusResponses]
-
-export type HolosContactListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact"
-}
-
-export type HolosContactListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactListError = HolosContactListErrors[keyof HolosContactListErrors]
-
-export type HolosContactListResponses = {
-  /**
-   * List of contacts
-   */
-  200: Array<Contact>
-}
-
-export type HolosContactListResponse = HolosContactListResponses[keyof HolosContactListResponses]
-
-export type HolosContactAddData = {
-  body?: {
-    id: string
-    name: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact"
-}
-
-export type HolosContactAddErrors = {
-  /**
-   * Bad request
-   */
-  400: BadRequestError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactAddError = HolosContactAddErrors[keyof HolosContactAddErrors]
-
-export type HolosContactAddResponses = {
-  /**
-   * Added contact
-   */
-  200: Contact
-}
-
-export type HolosContactAddResponse = HolosContactAddResponses[keyof HolosContactAddResponses]
-
-export type HolosContactRemoveData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact/{id}"
-}
-
-export type HolosContactRemoveErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactRemoveError = HolosContactRemoveErrors[keyof HolosContactRemoveErrors]
-
-export type HolosContactRemoveResponses = {
-  /**
-   * Removed
-   */
-  200: boolean
-}
-
-export type HolosContactRemoveResponse = HolosContactRemoveResponses[keyof HolosContactRemoveResponses]
-
-export type HolosContactGetData = {
-  body?: never
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact/{id}"
-}
-
-export type HolosContactGetErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactGetError = HolosContactGetErrors[keyof HolosContactGetErrors]
-
-export type HolosContactGetResponses = {
-  /**
-   * Contact
-   */
-  200: Contact
-}
-
-export type HolosContactGetResponse = HolosContactGetResponses[keyof HolosContactGetResponses]
-
-export type HolosContactToggleBlockData = {
-  body?: {
-    blocked: boolean
-  }
-  path: {
-    id: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/contact/{id}/block"
-}
-
-export type HolosContactToggleBlockErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosContactToggleBlockError = HolosContactToggleBlockErrors[keyof HolosContactToggleBlockErrors]
-
-export type HolosContactToggleBlockResponses = {
-  /**
-   * Updated contact
-   */
-  200: Contact
-}
-
-export type HolosContactToggleBlockResponse = HolosContactToggleBlockResponses[keyof HolosContactToggleBlockResponses]
-
-export type HolosPresenceData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/presence"
-}
-
-export type HolosPresenceErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosPresenceError = HolosPresenceErrors[keyof HolosPresenceErrors]
-
-export type HolosPresenceResponses = {
-  /**
-   * Presence map
-   */
-  200: HolosPresenceMap
-}
-
-export type HolosPresenceResponse = HolosPresenceResponses[keyof HolosPresenceResponses]
-
-export type HolosAgentsListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-    limit?: number
-    offset?: number
-    need_active?: boolean
-  }
-  url: "/holos/agents"
-}
-
-export type HolosAgentsListErrors = {
-  /**
-   * Service unavailable or runtime shutting down
-   */
-  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
-}
-
-export type HolosAgentsListError = HolosAgentsListErrors[keyof HolosAgentsListErrors]
-
-export type HolosAgentsListResponses = {
-  /**
-   * Agent list
-   */
-  200: {
-    code: number
-    message?: string
-    data: {
-      items: Array<{
-        agent_id?: string
-        agent_key?: string
-        owner_id: string
-        owner_name: string
-        is_active: boolean
-        profile?: {
-          [key: string]: unknown
-        }
-      }>
-      total: number
-    }
-  }
-}
-
-export type HolosAgentsListResponse = HolosAgentsListResponses[keyof HolosAgentsListResponses]
-
-export type HolosAgentsGetData = {
-  body?: never
-  path: {
-    agentId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/agents/{agentId}"
-}
-
-export type HolosAgentsGetErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Service unavailable or runtime shutting down
-   */
-  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
-}
-
-export type HolosAgentsGetError = HolosAgentsGetErrors[keyof HolosAgentsGetErrors]
-
-export type HolosAgentsGetResponses = {
-  /**
-   * Agent detail
-   */
-  200: {
-    code: number
-    message?: string
-    data: {
-      agent_id?: string
-      agent_key?: string
-      owner_id: string
-      owner_name: string
-      is_active: boolean
-      profile?: {
-        [key: string]: unknown
-      }
-    }
-  }
-}
-
-export type HolosAgentsGetResponse = HolosAgentsGetResponses[keyof HolosAgentsGetResponses]
-
-export type HolosSendData = {
-  body?: {
-    /**
-     * Recipient Holos agent ID
-     */
-    toId: string
-    /**
-     * Message text
-     */
-    text: string
-    replyToMessageId?: string
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/send"
-}
-
-export type HolosSendErrors = {
-  /**
-   * Service unavailable or runtime shutting down
-   */
-  503: ServiceUnavailableError | StorageServiceError | RuntimeShuttingDownError
-}
-
-export type HolosSendError = HolosSendErrors[keyof HolosSendErrors]
-
-export type HolosSendResponses = {
-  /**
-   * Send result
-   */
-  200: HolosSendResponse
-}
-
-export type HolosSendResponse2 = HolosSendResponses[keyof HolosSendResponses]
-
-export type HolosSendRetryData = {
-  body?: never
-  path: {
-    messageId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/send/{messageId}/retry"
-}
-
-export type HolosSendRetryErrors = {
-  /**
-   * Not found
-   */
-  404: NotFoundError
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosSendRetryError = HolosSendRetryErrors[keyof HolosSendRetryErrors]
-
-export type HolosSendRetryResponses = {
-  /**
-   * Retry result
-   */
-  200: HolosRetryResponse
-}
-
-export type HolosSendRetryResponse = HolosSendRetryResponses[keyof HolosSendRetryResponses]
-
-export type HolosInboxListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/inbox"
-}
-
-export type HolosInboxListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosInboxListError = HolosInboxListErrors[keyof HolosInboxListErrors]
-
-export type HolosInboxListResponses = {
-  /**
-   * Inbox messages
-   */
-  200: MailboxMessageList
-}
-
-export type HolosInboxListResponse = HolosInboxListResponses[keyof HolosInboxListResponses]
-
-export type HolosOutboxListData = {
-  body?: never
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/outbox"
-}
-
-export type HolosOutboxListErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosOutboxListError = HolosOutboxListErrors[keyof HolosOutboxListErrors]
-
-export type HolosOutboxListResponses = {
-  /**
-   * Outbox messages
-   */
-  200: MailboxMessageList
-}
-
-export type HolosOutboxListResponse = HolosOutboxListResponses[keyof HolosOutboxListResponses]
-
-export type HolosThreadGetData = {
-  body?: never
-  path: {
-    contactId: string
-  }
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/holos/thread/{contactId}"
-}
-
-export type HolosThreadGetErrors = {
-  /**
-   * Runtime shutting down
-   */
-  503: RuntimeShuttingDownError
-}
-
-export type HolosThreadGetError = HolosThreadGetErrors[keyof HolosThreadGetErrors]
-
-export type HolosThreadGetResponses = {
-  /**
-   * Thread messages
-   */
-  200: MailboxMessageList
-}
-
-export type HolosThreadGetResponse = HolosThreadGetResponses[keyof HolosThreadGetResponses]
 
 export type ComputerHostBrokerData = {
   body?: never

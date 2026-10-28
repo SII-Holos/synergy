@@ -49,7 +49,7 @@ async function writeAssistantMessage(input: {
   return id
 }
 
-async function runTaskTool(input: { parentSessionID: string; messageID: string; category?: string }) {
+async function runTaskTool(input: { parentSessionID: string; messageID: string; category?: string; model?: string }) {
   using launch = spyOn(Cortex, "launch").mockImplementation(Cortex.prepare)
   const tool = await TaskTool.init({})
   await tool.execute(
@@ -59,6 +59,7 @@ async function runTaskTool(input: { parentSessionID: string; messageID: string; 
       subagent_type: "developer",
       background: true,
       category: input.category,
+      model: input.model,
     },
     {
       sessionID: input.parentSessionID,
@@ -70,6 +71,31 @@ async function runTaskTool(input: { parentSessionID: string; messageID: string; 
     },
   )
   return launch.mock.calls[0]?.[0].model
+}
+
+async function expectRejected(input: { parentSessionID: string; messageID: string; model: string }) {
+  using launch = spyOn(Cortex, "launch").mockImplementation(Cortex.prepare)
+  const tool = await TaskTool.init({})
+  await expect(
+    tool.execute(
+      {
+        taskTitle: "Model resolution probe",
+        taskInstructions: "probe",
+        subagent_type: "developer",
+        background: true,
+        model: input.model,
+      },
+      {
+        sessionID: input.parentSessionID,
+        messageID: input.messageID,
+        agent: PrimaryAgentIdentity.names.general,
+        abort: new AbortController().signal,
+        metadata() {},
+        async ask() {},
+      },
+    ),
+  ).rejects.toThrow(/not available|provider\/model/)
+  expect(launch).not.toHaveBeenCalled()
 }
 
 describe("task tool delegated model resolution", () => {
@@ -127,6 +153,123 @@ describe("task tool delegated model resolution", () => {
         })
       }))
   }
+
+  test("blank model values preserve the category override", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+          using category = spyOn(Category, "resolve").mockResolvedValue({ model: "category-provider/category-model" })
+          const parent = await Session.create({})
+          const messageID = await writeAssistantMessage({
+            sessionID: parent.id,
+            agent: PrimaryAgentIdentity.names.general,
+            model: PARENT,
+          })
+          for (const model of ["", " \t "]) {
+            expect(await runTaskTool({ parentSessionID: parent.id, messageID, category: "quick", model })).toEqual({
+              providerID: "category-provider",
+              modelID: "category-model",
+            })
+          }
+        },
+      })
+    }))
+
+  test("an explicit model wins over the parent and category models", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+          using category = spyOn(Category, "resolve").mockResolvedValue({
+            model: "category-provider/category-model",
+            promptAppend: "keep the prompt",
+          })
+          const parent = await Session.create({})
+          const messageID = await writeAssistantMessage({
+            sessionID: parent.id,
+            agent: PrimaryAgentIdentity.names.general,
+            model: PARENT,
+          })
+          expect(
+            await runTaskTool({
+              parentSessionID: parent.id,
+              messageID,
+              category: "quick",
+              model: "explicit-provider/explicit-model",
+            }),
+          ).toEqual({ providerID: "explicit-provider", modelID: "explicit-model" })
+        },
+      })
+    }))
+
+  test("a configured role wins over the available parent model", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        config: { thinking_model: "thinking-provider/reasoner" },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+          const parent = await Session.create({})
+          const messageID = await writeAssistantMessage({
+            sessionID: parent.id,
+            agent: PrimaryAgentIdentity.names.general,
+            model: PARENT,
+          })
+          expect(await runTaskTool({ parentSessionID: parent.id, messageID, model: "thinking" })).toEqual({
+            providerID: "thinking-provider",
+            modelID: "reasoner",
+          })
+        },
+      })
+    }))
+
+  test("an unavailable explicit model fails before launch", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(false)
+          const parent = await Session.create({})
+          const messageID = await writeAssistantMessage({
+            sessionID: parent.id,
+            agent: PrimaryAgentIdentity.names.general,
+            model: PARENT,
+          })
+          await expectRejected({ parentSessionID: parent.id, messageID, model: "explicit-provider/missing" })
+        },
+      })
+    }))
+
+  test("the exposed tool description lists available configured models and omits vision", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        config: {
+          thinking_model: "thinking-provider/reasoner",
+          vision_model: "vision-provider/eyes",
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+          const tool = await TaskTool.init({ model: PARENT })
+          expect(tool.description).toContain("parent: test-provider/parent-model")
+          expect(tool.description).toContain("thinking: thinking-provider/reasoner")
+          expect(tool.description).not.toContain("vision-provider/eyes")
+          expect(tool.description).not.toContain("- vision:")
+        },
+      })
+    }))
 })
 
 afterRuntimeTests(() => runtime.close())

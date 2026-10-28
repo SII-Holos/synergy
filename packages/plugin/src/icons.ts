@@ -5,7 +5,6 @@ const surfaceSizingIcons = {
 
 export const SemanticIconToken = {
   // Product entities
-  "holos.main": "satellite",
   "mcp.main": "cable",
   "lsp.main": "code-xml",
   "cortex.main": "workflow",
@@ -89,7 +88,6 @@ export const SemanticIconToken = {
   // Product domains
   "blueprint.main": "clipboard-list",
   "dag.main": "git-graph",
-  "holos.branch": "git-merge",
   "notes.main": "notebook-text",
   "notes.create": "pen-line",
   "notes.search": "scan-search",
@@ -217,6 +215,11 @@ export const SemanticIconToken = {
   "review.layout": "columns-2",
   "review.files": "folders",
   "review.comments": "message-square-text",
+
+  "image.actual": "scan",
+  "image.rotate": "rotate-cw-square",
+  "image.background": "grid-2x2",
+  "image.thumbnails": "gallery-vertical-end",
 
   // Generic actions and state
   "action.expand": surfaceSizingIcons.expand,

@@ -49,8 +49,6 @@ export namespace ProviderAuthRecovery {
         return `${auth.type}:${auth.key}:${JSON.stringify(auth.metadata ?? {})}`
       case "wellknown":
         return `${auth.type}:${auth.key}:${auth.token}`
-      case "holos":
-        return `${auth.type}:${auth.agentId}:${auth.agentSecret}`
     }
   }
 

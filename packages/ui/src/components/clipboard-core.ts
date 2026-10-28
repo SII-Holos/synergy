@@ -24,6 +24,7 @@ export type ClipboardEnvironment = {
   navigator?: Pick<Navigator, "clipboard">
   document?: Document
   isSecureContext?: boolean
+  ClipboardItem?: typeof ClipboardItem
 }
 
 export type ClipboardConfig = {
@@ -70,6 +71,7 @@ function currentEnvironment(environment?: ClipboardEnvironment): ClipboardEnviro
     navigator: environment?.navigator ?? (typeof navigator !== "undefined" ? navigator : undefined),
     document: environment?.document ?? (typeof document !== "undefined" ? document : undefined),
     isSecureContext: environment?.isSecureContext ?? (typeof window !== "undefined" ? window.isSecureContext : false),
+    ClipboardItem: environment?.ClipboardItem ?? (typeof ClipboardItem !== "undefined" ? ClipboardItem : undefined),
   }
 }
 
@@ -147,6 +149,26 @@ export async function copyTextToClipboard(text: string, options: CopyTextOptions
   }
   notifyFailure(text, options, result)
   return result
+}
+
+export async function copyImageToClipboard(
+  loadPng: () => Promise<Blob>,
+  options?: ClipboardEnvironment,
+): Promise<ClipboardCopyResult> {
+  const environment = currentEnvironment(options)
+  const clipboard = environment.navigator?.clipboard
+  const Item = environment.ClipboardItem
+  if (!environment.isSecureContext || !clipboard?.write || !Item) return { ok: false, reason: "unavailable" }
+  try {
+    const png = loadPng()
+    // Admission can fail before Chromium observes a later conversion rejection.
+    void png.catch(() => {})
+    // Admit within the click task; decoding must not consume user activation.
+    await clipboard.write([new Item({ "image/png": png })])
+    return { ok: true, method: "navigator" }
+  } catch (error) {
+    return { ok: false, reason: "failed", error }
+  }
 }
 
 export type CopyControllerOptions = {

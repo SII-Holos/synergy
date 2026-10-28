@@ -199,7 +199,7 @@ describe("settings form performance monitoring", () => {
 })
 
 describe("settings form channel accounts", () => {
-  test("hydrates Feishu model overrides and Clarus enablement", () => {
+  test("hydrates Feishu model overrides", () => {
     expect(
       initializedChannels({
         channel: {
@@ -214,15 +214,6 @@ describe("settings form channel accounts", () => {
               },
             },
           },
-          clarus: {
-            type: "clarus",
-            accounts: {
-              "agent-id": {
-                enabled: false,
-                agent: TEST_AGENT_NAME,
-              },
-            },
-          },
         },
       }),
     ).toEqual({
@@ -232,12 +223,6 @@ describe("settings form channel accounts", () => {
           enabled: true,
           model: "openai-codex/gpt-5.6-sol",
           variant: "high",
-        },
-      ],
-      clarusAccounts: [
-        {
-          key: "agent-id",
-          enabled: false,
         },
       ],
       githubAccounts: [],

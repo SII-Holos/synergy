@@ -87,6 +87,7 @@ export namespace Tool {
   export interface InitContext {
     agent?: Agent.Info
     fileToolGroup?: FileToolGroup
+    model?: { providerID: string; modelID: string }
   }
 
   export type Source =

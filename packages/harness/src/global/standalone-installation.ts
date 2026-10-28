@@ -424,10 +424,6 @@ export namespace StandaloneInstallation {
             "watcher.node",
             "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs",
             "lib/onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm",
-            "lib/holos-cli/index.js",
-            "lib/holos-cli/vendor/clarus-shared/index.js",
-            "lib/holos-cli/node_modules/ws/package.json",
-            "lib/holos-cli/node_modules/zod/package.json",
           ]
         : []),
       ...(context.platform === "linux" ? ["sandbox/synergy-sandbox-linux"] : []),

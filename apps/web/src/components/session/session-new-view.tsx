@@ -1,12 +1,21 @@
 import { useLocale } from "@/context/locale"
 import { useSync } from "@/context/sync"
-import { Show } from "solid-js"
+import { Show, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWelcome } from "./welcome/context"
 import { welcomeScenes } from "./welcome/registry"
 import { WelcomeHeading, WelcomeStage } from "./welcome/stage"
+
+export function SessionEmptyView(props: { interactive: boolean; greeting: JSX.Element; children?: JSX.Element }) {
+  return (
+    <div class="session-empty-view" data-interactive={props.interactive ? "" : undefined}>
+      <div class={props.interactive ? "session-welcome-region" : "session-content-column"}>{props.greeting}</div>
+      {props.children}
+    </div>
+  )
+}
 
 export function NewSessionGreeting(props: { disabled: boolean; onProject: () => void; onFiles: () => void }) {
   const { i18n } = useLocale()

@@ -22,7 +22,7 @@ Attachment guidance is split by owner: the general response guidance states refe
 
 `Leaving` keeps only the distinction the architecture contract requires — which operation leaves and which reclaims — and leaves the mechanics to the tool descriptions. `Listener bind` prints only when the bind differs from the normalized address, so a wildcard bind still reports how the listener is exposed while a loopback bind states it once.
 
-The private `## Sharing progress updates` section is removed from `developer/base.txt`, leaving the shared policy as the single source for every agent prompt. `progress-guidance.test.ts` now assembles every `agent/prompt/*/base.txt` through `withPreambleSection` and asserts exactly one progress-policy heading, so a future prompt that words its own policy differently fails instead of silently shipping two.
+The private `## Sharing progress updates` section is removed from `developer/base.txt`, leaving the shared policy as the single source for every agent prompt. `progress-guidance.test.ts` assembles every `agent/prompt/*/base.txt` through `withProgressUpdates` with an eligible model and asserts exactly one progress-policy heading, so a future prompt that words its own policy differently fails instead of silently shipping two. Model eligibility follows [model-selected progress guidance](../bug-fix/2026-10-26-select-progress-guidance-by-model.md).
 
 `RuntimeAdvisory.protocol` takes the layout and returns the protocol only for the durable observation layout that emits `<context-source>` entries; the raw-text envelope layouts receive none. The retained text states the state meanings, that events are occurrences rather than present state, and that knowledge entries are immutable versions.
 

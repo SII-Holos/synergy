@@ -306,6 +306,10 @@ export const fileWorkbench = {
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },
   loadingSourceViewer: { id: "app.file.loading.sourceViewer", message: "Loading source viewer…" },
+  sourceLoadFailedHint: {
+    id: "app.file.error.sourceLoadFailedHint",
+    message: "Retry, or reload this page if the source viewer still cannot load.",
+  },
   edit: { id: "app.file.toolbar.edit", message: "Edit" },
   save: { id: "app.file.toolbar.save", message: "Save" },
   saving: { id: "app.file.toolbar.saving", message: "Saving…" },
@@ -368,6 +372,8 @@ export const fileEntries = {
   createDirectory: { id: "app.fileEntries.createDirectory", message: "New folder" },
   move: { id: "app.fileEntries.move", message: "Move or rename" },
   copy: { id: "app.fileEntries.copy", message: "Copy" },
+  copyName: { id: "app.fileEntries.copyName", message: "{name} copy" },
+  copyNameNumbered: { id: "app.fileEntries.copyNameNumbered", message: "{name} copy {number}" },
   remove: { id: "app.fileEntries.remove", message: "Delete permanently" },
   path: { id: "app.fileEntries.path", message: "Path within Workspace" },
   deleteWarning: {
@@ -383,6 +389,21 @@ export const fileEntries = {
   cancel: { id: "app.fileEntries.cancel", message: "Cancel" },
   apply: { id: "app.fileEntries.apply", message: "Apply" },
   working: { id: "app.fileEntries.working", message: "Working…" },
+  name: { id: "app.fileEntries.name", message: "Name" },
+  rename: { id: "app.fileEntries.rename", message: "Rename" },
+  cut: { id: "app.fileEntries.cut", message: "Cut" },
+  paste: { id: "app.fileEntries.paste", message: "Paste" },
+  copyPath: { id: "app.fileEntries.copyPath", message: "Copy relative path" },
+  invalidName: {
+    id: "app.fileEntries.invalidName",
+    message: "Enter a valid file or folder name without path separators.",
+  },
+  alreadyExists: {
+    id: "app.fileEntries.alreadyExists",
+    message: "An entry with this name already exists in this folder.",
+  },
+  invalidDestination: { id: "app.fileEntries.invalidDestination", message: "Choose a different destination folder." },
+  copyPathFailed: { id: "app.fileEntries.copyPathFailed", message: "The relative path could not be copied." },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 export const fileExplorer = {
@@ -391,6 +412,7 @@ export const fileExplorer = {
   showHidden: { id: "app.fileExplorer.action.showHidden", message: "Show hidden and ignored files" },
   refresh: { id: "app.fileExplorer.action.refresh", message: "Refresh files" },
   collapseAll: { id: "app.fileExplorer.action.collapseAll", message: "Collapse all folders" },
+  expandAll: { id: "app.fileExplorer.action.expandAll", message: "Expand all folders" },
   closeTree: { id: "app.fileExplorer.action.closeTree", message: "Close file tree" },
   resize: { id: "app.fileExplorer.resize", message: "Resize file explorer" },
   searchPlaceholder: { id: "app.fileExplorer.search.placeholder", message: "Search files" },
@@ -684,7 +706,6 @@ export const sidebar = {
   projects: { id: "app.sidebar.projects", message: "Projects" },
   addProject: { id: "app.sidebar.addProject", message: "Add project" },
   collapseAllProjects: { id: "app.sidebar.collapseAllProjects", message: "Collapse all projects" },
-  agentMenu: { id: "app.sidebar.account.menu", message: "HOLOS account menu" },
   agent: { id: "app.sidebar.agent", message: "Agent" },
   // Sections
   collections: { id: "app.sidebar.collections", message: "Session collections" },
@@ -725,23 +746,7 @@ export const sidebar = {
   reconnect: { id: "app.sidebar.menu.reconnect", message: "Reconnect" },
   usage: { id: "app.sidebar.menu.usage", message: "Usage" },
   logout: { id: "app.sidebar.menu.logout", message: "Log out" },
-  holosConnection: { id: "app.sidebar.holos.connection", message: "Holos Connection" },
-  holosLogin: { id: "app.sidebar.holos.login", message: "Login" },
-  holosService: { id: "app.sidebar.holos.service", message: "Service" },
-  notLoggedIn: { id: "app.sidebar.holos.notLoggedIn", message: "Not logged in" },
-  notAvailable: { id: "app.sidebar.holos.notAvailable", message: "Not available" },
-  profileUnavailable: { id: "app.sidebar.holos.profileUnavailable", message: "Profile unavailable" },
-  savedOnDevice: { id: "app.sidebar.holos.savedOnDevice", message: "Saved on this device" },
   // Connection status labels
-  connected: { id: "app.sidebar.holos.connected", message: "Connected" },
-  connecting: { id: "app.sidebar.holos.connecting", message: "Connecting…" },
-  connectionFailed: { id: "app.sidebar.holos.connectionFailed", message: "Connection failed" },
-  disconnected: { id: "app.sidebar.holos.disconnected", message: "Disconnected" },
-  disabled: { id: "app.sidebar.holos.disabled", message: "Disabled" },
-  signIn: { id: "app.sidebar.holos.signIn", message: "Sign in" },
-  loadingIdentity: { id: "app.sidebar.holos.loadingIdentity", message: "Loading identity..." },
-  localWorkspace: { id: "app.sidebar.holos.localWorkspace", message: "Local workspace" },
-  connectedToHolos: { id: "app.sidebar.holos.connectedToHolos", message: "Connected to Holos" },
   // Attention notice
   busy: { id: "app.sidebar.attention.busy", message: "Working..." },
   // Orphan group
@@ -749,8 +754,6 @@ export const sidebar = {
   // Session fallback
   untitled: { id: "app.sidebar.session.untitled", message: "Untitled" },
   draftBadge: { id: "app.sidebar.session.draftBadge", message: "Draft" },
-  // Brand / logo
-  logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
   channelGithub: { id: "app.sidebar.channel.github", message: "GitHub" },
   addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },
@@ -775,29 +778,6 @@ export const sidebar = {
 // ── Status Bar ───────────────────────────────────────────────────────────────
 
 export const statusBar = {
-  // Holos labels
-  holosLoading: { id: "app.statusBar.holos.loading", message: "Holos loading" },
-  holosSignedOut: { id: "app.statusBar.holos.signedOut", message: "Holos signed out" },
-  holosConnected: { id: "app.statusBar.holos.connected", message: "Holos connected" },
-  holosConnecting: { id: "app.statusBar.holos.connecting", message: "Holos connecting" },
-  holosFailed: { id: "app.statusBar.holos.failed", message: "Holos failed" },
-  holosDisconnected: { id: "app.statusBar.holos.disconnected", message: "Holos disconnected" },
-  holosDisabled: { id: "app.statusBar.holos.disabled", message: "Holos disabled" },
-  holosUnknown: { id: "app.statusBar.holos.unknown", message: "Holos unknown" },
-  holosTitle: { id: "app.statusBar.holos.title", message: "Holos" },
-  holosLoginLabel: { id: "app.statusBar.holos.login", message: "Login" },
-  holosServiceLabel: { id: "app.statusBar.holos.service", message: "Service" },
-  notLoggedIn: { id: "app.statusBar.holos.notLoggedIn", message: "Not logged in" },
-  reconnect: { id: "app.statusBar.holos.reconnect", message: "Reconnect" },
-  holosAgent: { id: "app.statusBar.holos.agent", message: "Agent {id}" },
-  holosStateLoading: { id: "app.statusBar.holos.state.loading", message: "Loading" },
-  holosStateSignedOut: { id: "app.statusBar.holos.state.signedOut", message: "Signed out" },
-  holosStateConnected: { id: "app.statusBar.holos.state.connected", message: "Connected" },
-  holosStateConnecting: { id: "app.statusBar.holos.state.connecting", message: "Connecting" },
-  holosStateFailed: { id: "app.statusBar.holos.state.failed", message: "Failed" },
-  holosStateDisconnected: { id: "app.statusBar.holos.state.disconnected", message: "Disconnected" },
-  holosStateDisabled: { id: "app.statusBar.holos.state.disabled", message: "Disabled" },
-  holosStateUnknown: { id: "app.statusBar.holos.state.unknown", message: "Unknown" },
   // Workspace
   mainCheckout: { id: "app.statusBar.workspace.main", message: "Main checkout" },
   worktreeLabel: { id: "app.statusBar.workspace.worktree", message: "Worktree: {name}" },

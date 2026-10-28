@@ -39,8 +39,12 @@ describe("Electron Browser Host broker contract", () => {
         const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-browser-native-smoke-"))
         temporaryDirectories.push(directory)
         const build = await Bun.build({
-          entrypoints: [path.resolve(import.meta.dir, `fixture/${fixture}.ts`)],
+          entrypoints: [
+            path.resolve(import.meta.dir, `fixture/${fixture}.ts`),
+            path.resolve(import.meta.dir, "../src/chromium.ts"),
+          ],
           outdir: directory,
+          naming: "[name].js",
           target: "node",
           external: ["electron"],
         })
@@ -169,6 +173,8 @@ async function isolatedElectronEntry(directory: string, entry: string): Promise<
     [
       'import { app } from "electron";',
       'import { pathToFileURL } from "node:url";',
+      'import { configureDesktopChromium } from "./chromium.js";',
+      "configureDesktopChromium(app);",
       ...(process.env.SYNERGY_DESKTOP_BACKGROUND_TEST === "1"
         ? ['app.once("ready", () => app.setActivationPolicy?.("accessory"));']
         : []),

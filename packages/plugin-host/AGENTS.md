@@ -23,6 +23,8 @@ Installation CLI handlers use the metadata-first manager. API4 activation journa
 
 Launcher upgrades preserve roots, third-party pins and API4 grants; first-party versions advance with the core. Initial selection has a versioned pre-bootstrap owner registered with the central migration runner. Keep component-only changes independent of SQL maintenance and source composition independent of installed-package state.
 
+Selection v3 removes retired identity component roots from v2 selections while preserving v1/v2 evidence and unrelated selections. Bootstrap prunes those roots from active generations through the existing installation transaction; pinned old workers retain their generation.
+
 Selection v2 replaces legacy aggregate component roots with explicit capability and bridge roots, including Connections' historical Workflows closure. Preserve the original v1 selection as evidence, distinguish new preset selections from old component roots, and commit through the existing generation ledger. Test delayed migration, retry, removal/reinstall, plugin-grant preservation and old worker pins with real package archives.
 
 Own legacy plugin configuration, credential and cache catch-up in `src/config-migration.ts`. Keep file configuration separate from store conversions; exclusive host configuration leaves file receipts pending. Order store catch-up after catalog invalidation, retain original stores and unknown settings, and verify cold-start removal/reinstall and later local activation.

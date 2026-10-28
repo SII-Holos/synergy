@@ -490,9 +490,6 @@ export namespace ProviderCatalog {
       case "wellknown":
         credential = { type: auth.type, key: auth.key, token: auth.token }
         break
-      case "holos":
-        credential = { type: auth.type, agentId: auth.agentId, agentSecret: auth.agentSecret }
-        break
       default: {
         const unsupported: never = auth
         throw new Error(`Unsupported auth type: ${String(unsupported)}`)

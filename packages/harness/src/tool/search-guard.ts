@@ -17,7 +17,6 @@ export namespace SearchGuard {
     if (/\b408\b/.test(text) || text.includes("timed out") || text.includes("timeout") || text.includes("aborterror"))
       return "timeout"
     if (
-      text.includes("holoscapabilityunavailableerror") ||
       text.includes("connection was lost") ||
       text.includes("unavailable") ||
       text.includes("blocked") ||

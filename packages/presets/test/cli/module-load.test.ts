@@ -13,8 +13,6 @@ const cliModules = [
   "../../../library/src/cli/embed",
   "../../../cli/src/cli/cmd/export",
   "../../src/cli/generate",
-  "@ericsanchezok/synergy-holos/holos/cli/holos-server",
-  "@ericsanchezok/synergy-holos/holos/cli/holos",
   "../../../cli/src/cli/cmd/import",
   "../../../library/src/cli/library",
   "../../../cli/src/cli/cmd/logs",

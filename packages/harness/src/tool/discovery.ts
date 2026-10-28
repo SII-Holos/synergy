@@ -41,7 +41,12 @@ export namespace ToolDiscovery {
     const tools: Entry[] = []
     const imageTools = await imageToolEligibility(input.model)
 
-    for (const item of await ToolRegistry.catalog(input.providerID, input.agent, input.session?.workspaceID)) {
+    for (const item of await ToolRegistry.catalog(
+      input.providerID,
+      input.agent,
+      input.session?.workspaceID,
+      input.model ? { providerID: input.model.providerID, modelID: input.model.id } : undefined,
+    )) {
       if ((item.id === "view_image" || item.id === "look_at") && !imageTools.has(item.id)) continue
       const exposure = ToolExposure.normalize(item.id, item.exposure)
       const group = ToolExposure.groupInfoFromExposure(item.id, exposure)

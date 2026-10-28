@@ -5,10 +5,12 @@ import platform as host_platform
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
 import uuid
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -139,13 +141,58 @@ def source_recipe(source: Path, *, image_id: str, protocol: str, links: dict[str
 
 
 def command(args: list[str], log: Path | None = None, *, timeout: float = 1800) -> str:
+    started = time.monotonic()
+    status = "failed"
+    operation = " ".join(args[:2])
     if log:
-        with log.open("a") as stream:
-            process = subprocess.run(args, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
-        if process.returncode:
-            raise RuntimeError(f"{args[0]} failed; see {log}")
-        return ""
-    return subprocess.check_output(args, stderr=subprocess.PIPE, timeout=timeout).decode().strip()
+        print(f"[benchmark preparation] started {operation} timeout={timeout:.1f}s log={log}", flush=True)
+    try:
+        with log.open("a") if log else nullcontext() as stream:
+            process = subprocess.Popen(
+                args,
+                stdin=subprocess.DEVNULL,
+                stdout=stream if log else subprocess.PIPE,
+                stderr=subprocess.STDOUT if log else subprocess.PIPE,
+                start_new_session=True,
+            )
+            try:
+                stdout, stderr = process.communicate(timeout=timeout)
+            finally:
+                try:
+                    if process.poll() is None:
+                        try:
+                            os.killpg(process.pid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            pass
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            pass
+                finally:
+                    try:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                        process.wait(timeout=5)
+                    finally:
+                        if process.stdout:
+                            process.stdout.close()
+                        if process.stderr:
+                            process.stderr.close()
+            if process.returncode:
+                if log:
+                    raise RuntimeError(f"{args[0]} failed; see {log}")
+                raise subprocess.CalledProcessError(process.returncode, args, output=stdout, stderr=stderr)
+            status = "completed"
+            return "" if log else stdout.decode().strip()
+    finally:
+        if log:
+            print(
+                f"[benchmark preparation] finished {operation} "
+                f"status={status} seconds={time.monotonic() - started:.1f} log={log}",
+                flush=True,
+            )
 
 
 def transient_preparation_error(detail: str) -> bool:
@@ -182,6 +229,9 @@ def retry_command(args: list[str], log: Path, *, timeout: float = 1800, backoff:
             if not transient or attempt == 2 or time.monotonic() + delay >= deadline:
                 raise
             row["backoff_seconds"] = delay
+        except BaseException as error:
+            row.update(status="interrupted", error=type(error).__name__, retryable=False)
+            raise
         finally:
             row["ended_at"] = time.time()
             atomic_json(history, records)
@@ -307,7 +357,10 @@ def prepare_source(
                     log,
                     timeout=max(1, deadline - time.monotonic()),
                 )
-                image_id = command(["docker", "image", "inspect", base_image, "--format", "{{index .RepoDigests 0}}"])
+                image_id = command(
+                    ["docker", "image", "inspect", base_image, "--format", "{{index .RepoDigests 0}}"],
+                    timeout=max(0.01, deadline - time.monotonic()),
+                )
                 manifests = stage / "manifests"
                 manifests.mkdir()
                 for name in ["package.json", "bun.lock"]:
@@ -329,6 +382,7 @@ def prepare_source(
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--platform",
                         platform,
                         "--label",
@@ -355,9 +409,14 @@ def prepare_source(
                             "--name",
                             container,
                             image,
-                        ]
+                        ],
+                        timeout=max(0.01, deadline - time.monotonic()),
                     )
-                    command(["docker", "cp", f"{container}:/opt/synergy", str(stage / "bundle")], log)
+                    command(
+                        ["docker", "cp", f"{container}:/opt/synergy", str(stage / "bundle")],
+                        log,
+                        timeout=max(0.01, deadline - time.monotonic()),
+                    )
                 finally:
                     remove_owned_container(container_file)
                     container_file.unlink(missing_ok=True)
@@ -371,7 +430,10 @@ def prepare_source(
                     "source": receipt,
                     "base_image": image_id,
                     "image": image,
-                    "image_id": command(["docker", "image", "inspect", image, "--format", "{{.Id}}"]),
+                    "image_id": command(
+                        ["docker", "image", "inspect", image, "--format", "{{.Id}}"],
+                        timeout=max(0.01, deadline - time.monotonic()),
+                    ),
                     "runtime_digest": runtime_digest,
                     "binary_digest": inventory.tree_digest("bin", excluded={"node_modules", "__pycache__", ".git"}),
                     "bundle_digest": inventory.tree_digest(),

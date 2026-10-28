@@ -73,6 +73,7 @@ export namespace SessionCompaction {
   export const PRUNE_MINIMUM = 20_000
   export const PRUNE_PROTECT = 40_000
   const OUTPUT_BUDGET = 32_000
+  const noopRequestsSchema = z.array(z.string())
   export type Request = CompactionRequest
 
   function copyModelMessages(messages: ModelMessage[]): ModelMessage[] {
@@ -109,10 +110,10 @@ export namespace SessionCompaction {
   const PRUNE_PROTECTED_TOOLS = ["skill"]
   type CompactionAttemptState = "running" | "committed" | "failed" | "empty"
 
-  function setAttemptState(msg: MessageV2.Assistant, state: CompactionAttemptState) {
+  function setAttemptState(msg: MessageV2.Assistant, state: CompactionAttemptState, reason?: "no-history") {
     msg.metadata = {
       ...msg.metadata,
-      compactionAttempt: { state },
+      compactionAttempt: { state, ...(reason ? { reason } : {}) },
     }
   }
 
@@ -175,7 +176,13 @@ export namespace SessionCompaction {
     messages: readonly MessageV2.WithParts[],
     rootID: string,
   ): boolean {
-    const requests = rootParts.reduce((n, p) => (p.type === "compaction" ? n + 1 : n), 0)
+    const root = messages.find((message) => message.info.id === rootID)
+    const parsed = noopRequestsSchema.safeParse(root?.info.metadata?.compactionNoopRequests)
+    const noops = new Set(parsed.success ? parsed.data : [])
+    const requests = rootParts.reduce(
+      (count, part) => count + Number(part.type === "compaction" && !noops.has(part.id)),
+      0,
+    )
     if (requests === 0) return false
     const fulfilled = messages.reduce((n, m) => {
       if (m.info.role !== "assistant") return n
@@ -796,6 +803,39 @@ export namespace SessionCompaction {
             sourceRequest.messageSources,
           )
       abort.throwIfAborted()
+      const projection = CompactionRegion.project({
+        messages: request.messages,
+        messageSources: request.messageSources,
+        infos: input.messages.map((message) => message.info),
+        rootID: input.parentID,
+      })
+      if (!projection.groups.length) {
+        await finalizeLocal(async () => {
+          const root = await MessageV2.get({ sessionID: input.sessionID, messageID: input.parentID })
+          const parsed = noopRequestsSchema.safeParse(root.info.metadata?.compactionNoopRequests)
+          const noops = new Set(parsed.success ? parsed.data : [])
+          const fulfilled = input.messages.filter(
+            (message) =>
+              message.info.role === "assistant" &&
+              message.info.summary &&
+              message.info.finish &&
+              message.info.parentID === input.parentID,
+          ).length
+          const pending = root.parts
+            .filter((part) => part.type === "compaction" && !noops.has(part.id))
+            .slice(fulfilled)
+          await Session.updateMessage({
+            ...root.info,
+            ...(root.info.metadata?.compactionBoundary === true ? { includeInContext: false } : {}),
+            metadata: { ...root.info.metadata, compactionNoopRequests: [...noops, ...pending.map((part) => part.id)] },
+          })
+          msg.finish = "stop"
+          msg.time.completed = Date.now()
+          setAttemptState(msg, "empty", "no-history")
+          await Session.updateMessage(msg)
+        })
+        return "noop" as const
+      }
       const compacting = await awaitLocal(
         Plugin.trigger(
           "experimental.session.compacting",
@@ -835,12 +875,6 @@ export namespace SessionCompaction {
             { encryptedReasoningTokens },
           ),
         )
-      const projection = CompactionRegion.project({
-        messages: request.messages,
-        messageSources: request.messageSources,
-        infos: input.messages.map((message) => message.info),
-        rootID: input.parentID,
-      })
       const configuredOutput = model.limit?.output && model.limit.output > 0 ? model.limit.output : OUTPUT_BUDGET
       const outputBudget = Math.min(configuredOutput, OUTPUT_BUDGET)
       const budget = PromptBudgeter.budget(model.limit, { maxOutputTokens: outputBudget })
@@ -1216,7 +1250,7 @@ export namespace SessionCompaction {
           sessionID: ctx.sessionID,
           auto: part.auto,
         })
-        return result
+        return result === "noop" ? "stop" : result
       },
     })
   }

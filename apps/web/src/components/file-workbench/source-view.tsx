@@ -1,5 +1,6 @@
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { resolveThemeColor, useTheme, type ResolvedTheme } from "@ericsanchezok/synergy-ui/theme"
@@ -38,12 +39,17 @@ function loadMonaco() {
       import("monaco-editor/languages/definitions/xml/register.js"),
       import("monaco-editor/languages/definitions/yaml/register.js"),
     ]),
-  ]).then(([monaco, worker]) => {
-    ;(self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment = {
-      getWorker: () => new worker.default(),
-    }
-    return monaco as unknown as Monaco
-  })
+  ])
+    .then(([monaco, worker]) => {
+      ;(self as typeof self & { MonacoEnvironment?: unknown }).MonacoEnvironment = {
+        getWorker: () => new worker.default(),
+      }
+      return monaco as unknown as Monaco
+    })
+    .catch((error) => {
+      monacoPromise = undefined
+      throw error
+    })
   return monacoPromise
 }
 
@@ -107,17 +113,17 @@ export function FileSourceView(props: {
   path: string
   content: string
   editable?: boolean
+  wordWrap?: boolean
   onDirtyChange?: (dirty: boolean) => void
   onRegister?: (api: FileSourceViewApi) => void
 }) {
   const file = useFile()
   const theme = useTheme()
   const lingui = useLingui()
-  const [loading, setLoading] = createSignal(true)
+  const [status, setStatus] = createSignal<"loading" | "failed" | "ready">("loading")
   let host!: HTMLDivElement
   let monacoInstance: Monaco | undefined
   let editor: import("monaco-editor").editor.IStandaloneCodeEditor | undefined
-  const [ready, setReady] = createSignal(false)
   let disposed = false
   let handleFontChange: ((event: Event) => void) | undefined
   let baseline = props.content
@@ -127,7 +133,7 @@ export function FileSourceView(props: {
 
   createEffect(() => {
     const request = file.navigation(props.path)
-    if (!ready() || !request || request.location.kind !== "text" || !editor) return
+    if (status() !== "ready" || !request || request.location.kind !== "text" || !editor) return
     const location = request.location
     const model = editor.getModel()
     if (!model) return
@@ -164,14 +170,11 @@ export function FileSourceView(props: {
       editor.focus()
   })
 
-  onMount(() => {
-    handleFontChange = (event: Event) => {
-      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
-      if (kind === "mono") editor?.updateOptions({ fontFamily: getConfiguredMonoFontFamily() })
-    }
-    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
-
-    void loadMonaco().then((monaco) => {
+  async function initialize() {
+    if (disposed || status() === "ready") return
+    setStatus("loading")
+    try {
+      const monaco = await loadMonaco()
       if (disposed) return
       monacoInstance = monaco
       const scope = encodeURIComponent(file.resourceKey)
@@ -205,7 +208,7 @@ export function FileSourceView(props: {
         renderLineHighlight: "line",
         scrollBeyondLastLine: false,
         smoothScrolling: false,
-        wordWrap: "off",
+        wordWrap: (props.wordWrap ?? true) ? "on" : "off",
         quickSuggestions: false,
         suggest: { showWords: false },
         fontFamily: getConfiguredMonoFontFamily(),
@@ -228,7 +231,7 @@ export function FileSourceView(props: {
           endColumn: cached.model.getLineMaxColumn(selected.end),
         })
       }
-      setReady(true)
+      setStatus("ready")
       editor.onDidScrollChange((event) => {
         file.view.setSourceScroll(props.path, event.scrollTop, event.scrollLeft)
       })
@@ -285,8 +288,23 @@ export function FileSourceView(props: {
         },
       })
       pruneFileSourceModels(key)
-      setLoading(false)
-    })
+    } catch {
+      if (disposed) return
+      modelListener?.dispose()
+      modelListener = undefined
+      editor?.dispose()
+      editor = undefined
+      setStatus("failed")
+    }
+  }
+
+  onMount(() => {
+    handleFontChange = (event: Event) => {
+      const kind = (event as CustomEvent<{ kind?: string }>).detail?.kind
+      if (kind === "mono") editor?.updateOptions({ fontFamily: getConfiguredMonoFontFamily() })
+    }
+    document.addEventListener(FONT_CHANGE_EVENT, handleFontChange)
+    void initialize()
   })
 
   createEffect(() => {
@@ -295,6 +313,12 @@ export function FileSourceView(props: {
     // the effect re-runs once Monaco exists and the edit toggle changes.
     const editable = props.editable
     editor?.updateOptions({ readOnly: !editable, domReadOnly: !editable })
+  })
+
+  createEffect(() => {
+    const wordWrap = props.wordWrap ?? true
+    if (status() !== "ready" || !editor) return
+    editor.updateOptions({ wordWrap: wordWrap ? "on" : "off" })
   })
 
   createEffect(() => {
@@ -332,10 +356,24 @@ export function FileSourceView(props: {
   return (
     <div class="file-source-view">
       <div ref={host} class="file-source-view-editor" />
-      {loading() && (
-        <div class="file-workbench-loading">
-          <Spinner class="size-5" />
-          <span>{lingui._({ id: F.loadingSourceViewer.id, message: F.loadingSourceViewer.message })}</span>
+      {status() !== "ready" && (
+        <div class="file-workbench-loading" classList={{ "file-workbench-state": status() === "failed" }} role="status">
+          <Show
+            when={status() === "failed"}
+            fallback={
+              <>
+                <Spinner class="size-5" />
+                <span>{lingui._({ id: F.loadingSourceViewer.id, message: F.loadingSourceViewer.message })}</span>
+              </>
+            }
+          >
+            <FileIcon node={{ path: props.path, type: "file" }} class="size-10" aria-hidden="true" />
+            <strong>{lingui._({ id: F.unableToOpen.id, message: F.unableToOpen.message })}</strong>
+            <p>{lingui._({ id: F.sourceLoadFailedHint.id, message: F.sourceLoadFailedHint.message })}</p>
+            <button type="button" onClick={() => void initialize()}>
+              {lingui._({ id: F.retry.id, message: F.retry.message })}
+            </button>
+          </Show>
         </div>
       )}
     </div>

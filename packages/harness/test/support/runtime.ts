@@ -14,6 +14,7 @@ export async function testRuntime(
     env?: Record<string, string | undefined>
     postgres?: string
     namespace?: string
+    traceClose?: boolean
   } = {},
 ) {
   const fixture = await runtimeHome({ home: options.home })
@@ -52,7 +53,23 @@ export async function testRuntime(
       },
     })
     let closing: Promise<void> | undefined
-    const close = () => (closing ??= runtime.close().finally(() => fixture[Symbol.asyncDispose]()))
+    async function closeWithTrace() {
+      const report = (stage: "runtime" | "fixture", state: "start" | "completed") =>
+        console.error("Runtime fixture close phase", JSON.stringify({ stage, state }))
+      report("runtime", "start")
+      try {
+        await runtime.close()
+        report("runtime", "completed")
+      } finally {
+        report("fixture", "start")
+        await fixture[Symbol.asyncDispose]()
+        report("fixture", "completed")
+      }
+    }
+    const close = () =>
+      (closing ??= options.traceClose
+        ? closeWithTrace()
+        : runtime.close().finally(() => fixture[Symbol.asyncDispose]()))
     return { ...runtime, host, close, [Symbol.asyncDispose]: close }
   } catch (error) {
     await fixture[Symbol.asyncDispose]()

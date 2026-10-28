@@ -234,7 +234,7 @@ export const AP = {
   sessionForked: { id: "app.session.forked", message: "Session forked" },
   sessionForkedDesc: {
     id: "app.session.forked.desc",
-    message: "Forked the conversation up to this message.",
+    message: "Copied the conversation into a new session.",
   },
   sessionForkFailed: { id: "app.session.fork.failed", message: "Fork failed" },
 

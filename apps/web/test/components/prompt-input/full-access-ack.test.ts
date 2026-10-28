@@ -316,7 +316,7 @@ async function openModeMenu(harness: Harness) {
 }
 
 async function selectMode(label: string) {
-  const item = [...document.querySelectorAll<HTMLButtonElement>('[data-slot="list-item"]')].find((node) =>
+  const item = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
     node.textContent?.startsWith(label),
   )
   expect(item, `no prompt-input permission mode labelled ${label}`).toBeDefined()

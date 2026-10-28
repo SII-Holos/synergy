@@ -8,7 +8,7 @@ Local compaction must summarize a native session without continuing its task or 
 
 ## Decision
 
-Native `SessionInvoke` defers pending compaction until ordinary request preparation. Explicit and automatic budget-triggered compaction call the summary owner directly, which runs `AgentTurn.prepare()` once for a cold request. A successful local attempt makes one summary call; cold manual and automatic budget paths do not send a preliminary conversation turn. Provider overflow instead summarizes the originating prepared request captured before processor cleanup, with independent request arrays and cancellation rebound to the session lease signal. Model-stream settlement releases snapshots not needed for context recovery before tools can wait for authorization or execute.
+Native `SessionInvoke` defers pending compaction until ordinary request preparation. Explicit and automatic budget-triggered compaction pass that prepared snapshot to the summary owner, which runs `AgentTurn.prepare()` only for callers without prepared data. A successful local attempt makes one summary call; cold manual and automatic budget paths do not send a preliminary conversation turn. Provider overflow instead summarizes the originating prepared request captured before processor cleanup, with independent request arrays and cancellation rebound to the session lease signal. Model-stream settlement releases snapshots not needed for context recovery before tools can wait for authorization or execute. Complete-request admission follows the [prepared-budget decision](../bug-fix/2026-10-28-prepared-request-budget-admission.md).
 
 The summary reuses the original agent, model, user envelope including variant/thinking, model-selection snapshot, final system and parameter-hook results, provider preparation, ordered native tool definitions, active IDs, system cache breakpoint, late-system context, and projected materialized history. The summary instruction is a user suffix after the complete provider-specific `LLM.promptMessages()` layout, including late-user runtime context. Final preparation is reused, not reconstructed or rerun with a compaction agent.
 
@@ -36,7 +36,7 @@ Local adaptation: Preserve the originating native request's instructions, model 
 
 **Remove tool schemas to enforce summary-only behavior.** Dropping schemas changes the model input prefix. Keeping them with explicit provider tool disablement and an early processor rejection preserves input continuity without passing executable callbacks or relying on configurable agent permissions.
 
-**Blindly resend an overflowing request with a summary suffix.** The suffix and summary output require additional room. Measuring the full fixed envelope and trimming oldest valid history is necessary even though trimming reduces prefix continuity. A context-length failure during summarization still uses the deterministic mechanical fallback; other failures remain explicit.
+**Blindly resend an overflowing request with a summary suffix.** The suffix and summary output require additional room. Measuring the full fixed envelope and selecting a fitting atomic prefix is necessary even though reducing history reduces prefix continuity. Summary context overflow shrinks the candidate prefix according to the prefix coverage decision; an unsuccessful attempt never creates a mechanical boundary.
 
 ## Consequences
 

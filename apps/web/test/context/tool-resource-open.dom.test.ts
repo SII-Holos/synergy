@@ -218,6 +218,7 @@ beforeAll(async () => {
         { find: "@/components/workspace/browser/browser-catalog", replacement: bridge },
         ...[
           "@/context/sdk",
+          "@/context/platform",
           "@/context/layout",
           "@/context/global-sdk",
           "@/context/file",
@@ -266,6 +267,9 @@ beforeAll(async () => {
     if (message.type() === "error") errors.push(message.text())
   })
   page.on("requestfailed", (request) => errors.push(`${request.url()}: ${request.failure()?.errorText}`))
+  await page.goto(url)
+  expect(errors).toEqual([])
+  expect(await page.locator("#root").evaluate((element) => element.childElementCount)).toBeGreaterThan(0)
 }, 60000)
 
 afterAll(async () => {

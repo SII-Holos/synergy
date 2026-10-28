@@ -42,8 +42,6 @@ describe("coverage batch splitting", () => {
 
   test("isolated set is pinned to the known load- and state-sensitive files", () => {
     expect([...ISOLATED_BATCH_FILES].toSorted()).toEqual([
-      "packages/channel-clarus/test/channel/clarus-assignment.test.ts",
-      "packages/channel-clarus/test/channel/clarus-invite-accept.test.ts",
       "packages/channel-feishu/test/channel/feishu-provider.test.ts",
       "packages/channel-feishu/test/channel/feishu-reaction-only.test.ts",
       "packages/channel-feishu/test/channel/foreground-reaction-only.test.ts",
@@ -77,9 +75,6 @@ describe("coverage batch splitting", () => {
       "packages/harness/test/storage/storage-retry.test.ts",
       "packages/harness/test/storage/storage-silent-not-found.test.ts",
       "packages/harness/test/storage/storage-worker-suspend.test.ts",
-      "packages/holos/test/holos/legacy-data-migration.test.ts",
-      "packages/holos/test/holos/mailbox.test.ts",
-      "packages/holos/test/holos/runtime.test.ts",
       "packages/library/test/database.test.ts",
       "packages/library/test/embedding-local.test.ts",
       "packages/library/test/embedding.test.ts",

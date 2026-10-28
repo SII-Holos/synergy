@@ -4,6 +4,7 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
 
 let server: ViteDevServer
 let browser: Browser
@@ -24,14 +25,14 @@ beforeAll(async () => {
       async createDirectory(path){h.calls.push({kind:"createDirectory",path})},
       async move(input){h.calls.push({kind:"move",...input}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
       async copy(input){h.calls.push({kind:"copy",...input})},
-      async remove(input){h.calls.push({kind:"remove",...input})},
+      async remove(input){h.calls.push({kind:"remove",...input}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
     }
 
   `,
   )
   await Bun.write(
     path.join(fixture, "index.html"),
-    '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+    '<!doctype html><html style="overflow:hidden"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>',
   )
   await Bun.write(
     path.join(fixture, "main.tsx"),
@@ -40,9 +41,13 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
-    import {FileEntryDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
+    import {FileDeleteDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
     import {FileCloseDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/close-dialog.tsx`)}
     import {actions} from "./stubs"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"app.fileEntries.title":"文件操作","app.fileEntries.operation":"操作","app.fileEntries.move":"移动或重命名","app.fileEntries.remove":"永久删除","app.fileEntries.apply":"执行","app.fileEntries.cancel":"取消"}}})
     window.fixture.locale=()=>i18n.activate("zh-CN")
     window.fixture.closeResults=[]
@@ -60,11 +65,12 @@ beforeAll(async () => {
         window.fixture.closeResults.push(choice)
       }
       return <>
-        <button id="open" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} operation="move" dirty={true}/>)}>Open</button>
+        <button id="open" onClick={()=>dialog.show(()=><FileDeleteDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} dirty={true}/>)}>Open</button>
+        <button id="create" onClick={()=>dialog.show(()=><FileDeleteDialog actions={actions} workspacePath="/workspace" node={{path:"unknown.txt",type:"file",name:"unknown.txt"}}/>)}>Unavailable entry</button>
         <button id="leave" onClick={leave}>Leave file</button>
       </>
     }
-    render(()=><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><MetaProvider><Font/><ThemeProvider><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider></ThemeProvider></MetaProvider>,document.getElementById("root"))
 
   `,
   )
@@ -75,7 +81,7 @@ beforeAll(async () => {
     configFile: false,
     root: fixture,
     cacheDir: path.join(fixture, ".vite"),
-    plugins: [solid()],
+    plugins: [solid(), tailwind()],
     resolve: { alias: { "@": appSrc } },
     optimizeDeps: {
       include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
@@ -97,30 +103,21 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-async function open() {
-  errors.length = 0
+test("delete retains the captured entry version and errors until success", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByRole("button", { name: "/first", exact: true }).waitFor()
-  expect(errors).toEqual([])
-}
-
-test("entry actions retain captured versions, errors and entered paths until success", async () => {
-  await page.goto(base)
-  await page.locator("#open").click()
-  await page.getByLabel("Path within Workspace").fill("folder/renamed.txt")
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click()
   await page.getByRole("alert").filter({ hasText: "Workspace is busy" }).waitFor()
-  expect(await page.getByLabel("Path within Workspace").inputValue()).toBe("folder/renamed.txt")
+  expect(await page.getByText("folder/source.txt", { exact: true }).isVisible()).toBe(true)
   await page.evaluate(() => {
-    ;(window as any).fixture.fail = false
+    Reflect.get(window, "fixture").fail = false
   })
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
-  const calls = await page.evaluate(() => (window as any).fixture.calls)
+  const calls = await page.evaluate(() => Reflect.get(window, "fixture").calls)
   expect(calls).toEqual([
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
+    { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
+    { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
   ])
   await page.waitForFunction(() => document.activeElement?.id === "open")
   expect(errors).toEqual([])
@@ -129,15 +126,33 @@ test("entry actions retain captured versions, errors and entered paths until suc
 test("delete is explicit, localized and preserves the selected filesystem identity", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByLabel("Operation", { exact: true }).selectOption("remove")
-  await page.evaluate(() => (window as any).fixture.locale())
-  await page.getByRole("dialog", { name: "文件操作" }).waitFor()
+  await page.evaluate(() => {
+    const fixture = Reflect.get(window, "fixture")
+    fixture.fail = false
+    fixture.locale()
+  })
+  await page.getByRole("dialog", { name: "永久删除" }).waitFor()
   expect(await page.getByText("folder/source.txt", { exact: false }).count()).toBeGreaterThan(0)
   await page.getByRole("button", { name: "永久删除", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
-  expect(await page.evaluate(() => (window as any).fixture.calls)).toEqual([
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([
     { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
   ])
+  expect(errors).toEqual([])
+}, 30_000)
+
+test("delete requires an observed entry version and exposes no operation selector", async () => {
+  errors.length = 0
+  await page.goto(base)
+  await page.locator("#create").click()
+  const dialog = page.getByRole("dialog", { name: "Delete permanently", exact: true })
+  await page.waitForFunction((element) => element?.contains(document.activeElement), await dialog.elementHandle())
+  expect(await dialog.getByRole("button", { name: "Delete permanently", exact: true }).isDisabled()).toBe(true)
+  expect(await dialog.getByText("Refresh the file list before changing this entry.", { exact: true }).isVisible()).toBe(
+    true,
+  )
+  expect(await dialog.getByRole("combobox").count()).toBe(0)
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([])
   expect(errors).toEqual([])
 }, 30_000)
 

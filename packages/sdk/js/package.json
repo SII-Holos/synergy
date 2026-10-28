@@ -41,6 +41,7 @@
     "@hey-api/openapi-ts": "0.88.1",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
+    "prettier": "3.9.10",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "publishConfig": {

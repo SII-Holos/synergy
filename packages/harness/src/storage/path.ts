@@ -418,65 +418,8 @@ export namespace StoragePath {
     eventID,
   ]
 
-  export const holosContactsRoot = () => ["holos", "contacts"]
-  export const holosContact = (id: string) => ["holos", "contacts", id]
-
-  export const holosMailboxInboxRoot = (contactId: string) => ["holos", "mailbox", "inbox", contactId]
-  export const holosMailboxInboxItem = (contactId: string, messageId: string) => [
-    "holos",
-    "mailbox",
-    "inbox",
-    contactId,
-    messageId,
-  ]
-  export const holosMailboxOutboxRoot = (contactId: string) => ["holos", "mailbox", "outbox", contactId]
-  export const holosMailboxOutboxItem = (contactId: string, messageId: string) => [
-    "holos",
-    "mailbox",
-    "outbox",
-    contactId,
-    messageId,
-  ]
-
   export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
   export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]
-  export const clarusProviderAccountRoot = (accountHash: string) => [
-    "channel",
-    "providers",
-    "clarus",
-    "accounts",
-    accountHash,
-  ]
-  export const clarusProviderAccountsRoot = () => ["channel", "providers", "clarus", "accounts"]
-  export const clarusProviderAssignment = (accountHash: string, assignmentHash: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "assignments",
-    assignmentHash,
-  ]
-  export const clarusProviderAssignmentSession = (accountHash: string, sessionID: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "assignment_session_index",
-    sessionID,
-  ]
-  export const clarusProviderResultOutboxRoot = (accountHash: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "outbox",
-    "results",
-  ]
-  export const clarusProviderResultOutbox = (accountHash: string, recordHash: string) => [
-    ...clarusProviderResultOutboxRoot(accountHash),
-    recordHash,
-  ]
-  export const clarusProviderExtensionOutboxRoot = (accountHash: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "outbox",
-    "extensions",
-  ]
-  export const clarusProviderExtensionOutbox = (accountHash: string, recordHash: string) => [
-    ...clarusProviderExtensionOutboxRoot(accountHash),
-    recordHash,
-  ]
-
   export const githubChannelAccountRoot = (accountHash: string) => [
     "channel",
     "providers",

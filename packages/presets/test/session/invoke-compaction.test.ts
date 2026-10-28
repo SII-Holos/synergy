@@ -5,6 +5,8 @@ import { SessionHistory } from "@ericsanchezok/synergy-harness/session/history"
 import { SessionInvoke } from "@ericsanchezok/synergy-harness/session/invoke"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import { SessionProcessor } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { SessionMessageCache } from "@ericsanchezok/synergy-harness/test/support/internals"
+import { Asset } from "@ericsanchezok/synergy-harness/asset/asset"
 import { PromptBudgeter } from "@ericsanchezok/synergy-harness/test/internal/session/prompt-budgeter"
 import { ToolResolver } from "@ericsanchezok/synergy-harness/test/support/internals"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
@@ -56,13 +58,6 @@ class CompactionIntercept extends Error {
   constructor() {
     super("compaction part injected")
   }
-}
-
-function isCompactionIntercept(error: unknown): boolean {
-  if (error instanceof CompactionIntercept) return true
-  if (!error || typeof error !== "object") return false
-  const nested = error as { error?: unknown; suppressed?: unknown }
-  return nested.error instanceof CompactionIntercept || nested.suppressed instanceof CompactionIntercept
 }
 
 function testModel(limit: { context: number; output: number } = { context: 100_000, output: 8_192 }) {
@@ -249,6 +244,8 @@ async function runCompactionProcessCase(input: {
   beforeProcess?: () => void
   beforeAttemptWrite?: (message: MessageV2.Assistant) => Promise<void>
   beforeProviderLookup?: () => void
+  cachedHistory?: boolean
+  prepareHistory?: (user: MessageV2.User) => Promise<void>
 }) {
   await using tmp = await tmpdir({ git: true })
   const scope = await tmp.scope()
@@ -392,6 +389,15 @@ async function runCompactionProcessCase(input: {
       scope,
       fn: async () => {
         const session = await Session.create({})
+        using cache = {
+          [Symbol.dispose]() {
+            if (input.cachedHistory) SessionMessageCache.disable(session.id)
+          },
+        }
+        if (input.cachedHistory) {
+          SessionMessageCache.enable(session.id)
+          await SessionHistory.modelMessages({ sessionID: session.id })
+        }
         const user = await Session.updateMessage({
           id: Identifier.ascending("message"),
           role: "user",
@@ -445,7 +451,10 @@ async function runCompactionProcessCase(input: {
             text,
           })
         }
-        const before = await Session.messages({ sessionID: session.id })
+        await input.prepareHistory?.(user)
+        const before = input.cachedHistory
+          ? await SessionHistory.modelMessages({ sessionID: session.id })
+          : await Session.messages({ sessionID: session.id })
         let result: Awaited<ReturnType<typeof SessionCompaction.process>> | undefined
         let thrown: unknown
         input.beforeProcess?.()
@@ -542,164 +551,6 @@ async function runCompactionProcessCase(input: {
   }
 }
 
-async function expectPreflightCompaction(input: { shouldCompact: boolean; contextExceeded: boolean }) {
-  await using tmp = await tmpdir({ git: true })
-
-  const originalGetModel = Provider.getModel
-  const originalGetAgent = Agent.get
-  const originalConfigCurrent = Config.current
-  const originalAvailability = ToolResolver.availability
-  const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
-  const originalBuildPlan = PromptBudgeter.buildPlan
-  const originalDecide = PromptBudgeter.decide
-  const originalProcessorCreate = SessionProcessor.create
-  const originalUpdatePart = Session.updatePart
-  const originalCortexList = Cortex.list
-  const originalCortexGetRunningTasks = Cortex.getRunningTasks
-
-  const processCalled = mock(async () => "stop" as const)
-  const interceptedCompactionParts: Array<{ messageID: string; sessionID: string; auto: boolean }> = []
-  const hardOverflowBelowSoft = input.contextExceeded && !input.shouldCompact
-
-  try {
-    ;(Provider.getModel as any) = mock(async () =>
-      testModel(hardOverflowBelowSoft ? { context: 10_000, output: 10_000 } : undefined),
-    )
-    ;(Agent.get as any) = mock(async () => primaryAgent())
-    ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
-    ;(ToolResolver.availability as any) = mock(async () => ({
-      visible: [],
-      diagnostics: new Map(),
-      autoExpandable: new Set(),
-    }))
-    ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
-      definitions: [],
-      executionTools: {},
-      executorKinds: {},
-      activeToolIDs: [],
-    }))
-    ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
-      system: ["stub system"],
-      messages: input.messages,
-      messageSources: input.messageSources,
-      toolDefinitions: [],
-    }))
-    ;(PromptBudgeter.decide as any) = mock(async () => ({
-      budget: hardOverflowBelowSoft
-        ? {
-            context: 10_000,
-            usable: 10_000,
-            output: 1,
-            margin: 2_048,
-            inputEnvelope: 10_000,
-            threshold: 0.85,
-            soft: 8_500,
-          }
-        : {
-            context: 100_000,
-            usable: 100_000,
-            output: 8_192,
-            margin: 5_000,
-            inputEnvelope: 86_808,
-            threshold: 0.99,
-            soft: 85_939,
-          },
-      measure: {
-        system: 10,
-        messages: 10,
-        tools: 0,
-        total: hardOverflowBelowSoft ? 8_200 : 95_000,
-      },
-      shouldCompact: input.shouldCompact,
-      contextExceeded: input.contextExceeded,
-    }))
-    ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
-      message: createInput.assistantMessage,
-      partFromToolCall: () => undefined,
-      modelInputFromToolCall: () => undefined,
-      trackExecution: () => {},
-      process: processCalled,
-    }))
-    ;(Session.updatePart as any) = mock(async (partInput: Parameters<typeof Session.updatePart>[0]) => {
-      if ("type" in partInput && partInput.type === "compaction") {
-        await originalUpdatePart(partInput as any)
-        interceptedCompactionParts.push({
-          messageID: partInput.messageID,
-          sessionID: partInput.sessionID,
-          auto: partInput.auto,
-        })
-        throw new CompactionIntercept()
-      }
-      return await originalUpdatePart(partInput as any)
-    })
-    ;(Cortex.list as any) = mock(() => [])
-    ;(Cortex.getRunningTasks as any) = mock(() => [])
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const session = await Session.create({})
-        const sessionID = session.id
-
-        const user = await Session.updateMessage({
-          id: Identifier.ascending("message"),
-          role: "user",
-          sessionID,
-          agent: PrimaryAgentIdentity.names.general,
-          model: {
-            providerID: "test-provider",
-            modelID: "test-model",
-          },
-          time: {
-            created: Date.now(),
-          },
-        })
-
-        await originalUpdatePart({
-          id: Identifier.ascending("part"),
-          messageID: user.id,
-          sessionID,
-          type: "text",
-          text: "Please continue with next steps.",
-        })
-
-        let intercepted: unknown
-        try {
-          await SessionInvoke.loop.force(sessionID)
-        } catch (error) {
-          intercepted = error
-        }
-
-        expect(isCompactionIntercept(intercepted)).toBe(true)
-        expect(interceptedCompactionParts).toHaveLength(1)
-        const [compactionPart] = interceptedCompactionParts
-        expect(compactionPart.sessionID).toBe(sessionID)
-        expect(compactionPart.auto).toBe(true)
-        expect(compactionPart.messageID).toBe(user.id)
-
-        const root = await MessageV2.get({ sessionID, messageID: compactionPart.messageID })
-        expect(root.info?.role).toBe("user")
-        expect(root.parts).toEqual(
-          expect.arrayContaining([expect.objectContaining({ type: "compaction", auto: true, messageID: user.id })]),
-        )
-        expect(processCalled).not.toHaveBeenCalled()
-      },
-    })
-  } finally {
-    ;(Provider.getModel as any) = originalGetModel
-    ;(Agent.get as any) = originalGetAgent
-    ;(Config.current as any) = originalConfigCurrent
-    ;(ToolResolver.availability as any) = originalAvailability
-    ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
-    ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
-    ;(PromptBudgeter.decide as any) = originalDecide
-    ;(SessionProcessor.create as any) = originalProcessorCreate
-    ;(Session.updatePart as any) = originalUpdatePart
-    ;(Cortex.list as any) = originalCortexList
-    ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
-  }
-}
-
 describe.serial("SessionInvoke preflight compaction", () => {
   test("opaque reasoning size cannot remove an early user constraint from compaction input", () =>
     runtime.run(async () => {
@@ -744,6 +595,46 @@ describe.serial("SessionInvoke preflight compaction", () => {
           ),
         ).toBe(true)
       }
+    }))
+
+  test("commits unchanged cached attachment history from an earlier task", () =>
+    runtime.run(async () => {
+      const observed = await runCompactionProcessCase({
+        native: true,
+        cachedHistory: true,
+        text: "The earlier task supplied an image. Continue the current task.",
+        prepareHistory: async (user) => {
+          const earlierID = Identifier.ascending("message")
+          const earlier = await Session.updateMessage({
+            ...user,
+            id: earlierID,
+            rootID: earlierID,
+            time: { created: user.time.created - 1 },
+          })
+          const asset = await Asset.write(Buffer.from("retained fixture image"), "image/png", "fixture.png")
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: user.sessionID,
+            messageID: earlier.id,
+            type: "attachment",
+            mime: "image/png",
+            url: `asset://${asset}`,
+            filename: "fixture.png",
+            presentation: { renderer: "image", size: "small" },
+            model: { mode: "summary", summary: "An image from the earlier task." },
+          })
+        },
+      })
+      expect(observed.thrown).toBeUndefined()
+      expect(observed.attempt.info).toMatchObject({
+        summary: true,
+        includeInContext: true,
+        metadata: { compactionAttempt: { state: "committed" } },
+      })
+      expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(true)
+      expect(
+        observed.messages.flatMap((message) => message.parts).find((part) => part.type === "attachment"),
+      ).toMatchObject({ filename: "fixture.png", presentation: { renderer: "image", size: "small" } })
     }))
 
   test("rejects a summary when its source changes before the commit", () =>
@@ -878,200 +769,6 @@ describe.serial("SessionInvoke preflight compaction", () => {
         expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
         for (const source of observed.before)
           expect(observed.workingSet.find((message) => message.info.id === source.info.id)?.parts).toEqual(source.parts)
-      }
-    }))
-
-  test("injects a compaction part before main inference when the soft prompt budget is exceeded", () =>
-    runtime.run(async () => {
-      await expectPreflightCompaction({ shouldCompact: true, contextExceeded: false })
-    }))
-
-  test("injects compaction for hard overflow even below the configured soft threshold", () =>
-    runtime.run(async () => {
-      await expectPreflightCompaction({ shouldCompact: false, contextExceeded: true })
-    }))
-
-  test("continues progressive compaction until the recovered prompt fits", () =>
-    runtime.run(async () => {
-      await using tmp = await tmpdir({ git: true })
-
-      const originalGetModel = Provider.getModel
-      const originalGetAgent = Agent.get
-      const originalGetAvailableModel = Agent.getAvailableModel
-      const originalConfigCurrent = Config.current
-      const originalAvailability = ToolResolver.availability
-      const originalResolveWithAvailability = ToolResolver.resolveWithAvailability
-      const originalBuildPlan = PromptBudgeter.buildPlan
-      const originalDecide = PromptBudgeter.decide
-      const originalProcessorCreate = SessionProcessor.create
-      const originalPluginTrigger = Plugin.trigger
-      const originalCortexList = Cortex.list
-      const originalCortexGetRunningTasks = Cortex.getRunningTasks
-
-      let decideCount = 0
-      let mainProcessCount = 0
-
-      try {
-        ;(Provider.getModel as any) = mock(async () => testModel())
-        ;(Agent.get as any) = mock(async () => primaryAgent())
-        ;(Agent.getAvailableModel as any) = mock(async () => ({
-          providerID: "test-provider",
-          modelID: "test-model",
-        }))
-        ;(Config.current as any) = mock(async () => fastLoopTestConfig(originalConfigCurrent))
-        ;(ToolResolver.availability as any) = mock(async () => ({
-          visible: [],
-          diagnostics: new Map(),
-          autoExpandable: new Set(),
-        }))
-        ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
-          definitions: [],
-          executionTools: {},
-          executorKinds: {},
-          activeToolIDs: [],
-        }))
-        ;(PromptBudgeter.buildPlan as any) = mock(async (input: PromptBudgeter.PromptPlanInput) => ({
-          system: ["stub system"],
-          messages: input.messages,
-          messageSources: input.messageSources,
-          toolDefinitions: [],
-        }))
-        ;(PromptBudgeter.decide as any) = mock(async () => {
-          decideCount++
-          return {
-            budget: {
-              context: 100_000,
-              usable: 100_000,
-              output: 8_192,
-              margin: 5_000,
-              inputEnvelope: 86_808,
-              threshold: 0.99,
-              soft: 85_939,
-            },
-            measure: { system: 10, messages: 10, tools: 0, total: 95_000 },
-            shouldCompact: false,
-            contextExceeded: decideCount <= 2,
-          }
-        })
-        ;(SessionProcessor.create as any) = mock((createInput: Parameters<typeof SessionProcessor.create>[0]) => ({
-          message: createInput.assistantMessage,
-          partFromToolCall: () => undefined,
-          modelInputFromToolCall: () => undefined,
-          trackExecution: () => {},
-          process: mock(async () => {
-            if (createInput.assistantMessage.mode !== "compaction") {
-              mainProcessCount++
-              createInput.assistantMessage.finish = "stop"
-              createInput.assistantMessage.time.completed = Date.now()
-              await Session.updateMessage(createInput.assistantMessage)
-              return "stop" as const
-            }
-            const now = Date.now()
-            await Session.updatePart({
-              id: Identifier.ascending("part"),
-              messageID: createInput.assistantMessage.id,
-              sessionID: createInput.sessionID,
-              type: "text",
-              text: "## Goal\n\nContinue after compaction.",
-              time: { start: now, end: now },
-            })
-            createInput.assistantMessage.finish = "stop"
-            createInput.assistantMessage.time.completed = now
-            await Session.updateMessage(createInput.assistantMessage)
-            return "stop" as const
-          }),
-        }))
-        ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
-        ;(Cortex.list as any) = mock(() => [])
-        ;(Cortex.getRunningTasks as any) = mock(() => [])
-
-        await ScopeContext.provide({
-          scope: await tmp.scope(),
-          fn: async () => {
-            const session = await Session.create({})
-            const past = await Session.updateMessage({
-              id: Identifier.ascending("message"),
-              role: "user",
-              sessionID: session.id,
-              agent: PrimaryAgentIdentity.names.general,
-              model: { providerID: "test-provider", modelID: "test-model" },
-              time: { created: Date.now() },
-            })
-            await Session.updatePart({
-              id: Identifier.ascending("part"),
-              sessionID: session.id,
-              messageID: past.id,
-              type: "text",
-              text: "Earlier task constraints",
-            })
-            for (let index = 0; index < 3; index++) {
-              const history = testAssistant({
-                id: Identifier.ascending("message"),
-                sessionID: session.id,
-                parentID: past.id,
-                created: Date.now(),
-              })
-              await Session.updateMessage(history.info)
-              await Session.updatePart({
-                id: Identifier.ascending("part"),
-                sessionID: session.id,
-                messageID: history.info.id,
-                type: "text",
-                text: `history-${index} ` + "observed implementation details ".repeat(2400),
-              })
-            }
-            const user = await Session.updateMessage({
-              id: Identifier.ascending("message"),
-              role: "user",
-              sessionID: session.id,
-              agent: PrimaryAgentIdentity.names.general,
-              model: { providerID: "test-provider", modelID: "test-model" },
-              time: { created: Date.now() },
-            })
-            await Session.updatePart({
-              id: Identifier.ascending("part"),
-              messageID: user.id,
-              sessionID: session.id,
-              type: "text",
-              text: "Compress progressively, then continue the task.",
-            })
-
-            let thrown: unknown
-            try {
-              await SessionInvoke.loop.force(session.id)
-            } catch (error) {
-              thrown = error
-            }
-
-            const root = await MessageV2.get({ sessionID: session.id, messageID: user.id })
-            const messages = await Session.messages({ sessionID: session.id })
-            const terminal = messages.findLast(
-              (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
-                message.info.role === "assistant" && message.info.parentID === user.id && !!message.info.error,
-            )
-            expect(root.parts.filter((part) => part.type === "compaction")).toHaveLength(2)
-            expect(
-              messages.filter((message) => message.info.role === "assistant" && message.info.summary),
-            ).toHaveLength(2)
-            expect(decideCount).toBe(4)
-            expect(mainProcessCount).toBe(1)
-            expect(terminal).toBeUndefined()
-            expect(thrown).toBeUndefined()
-          },
-        })
-      } finally {
-        ;(Provider.getModel as any) = originalGetModel
-        ;(Agent.get as any) = originalGetAgent
-        ;(Agent.getAvailableModel as any) = originalGetAvailableModel
-        ;(Config.current as any) = originalConfigCurrent
-        ;(ToolResolver.availability as any) = originalAvailability
-        ;(ToolResolver.resolveWithAvailability as any) = originalResolveWithAvailability
-        ;(PromptBudgeter.buildPlan as any) = originalBuildPlan
-        ;(PromptBudgeter.decide as any) = originalDecide
-        ;(SessionProcessor.create as any) = originalProcessorCreate
-        ;(Plugin.trigger as any) = originalPluginTrigger
-        ;(Cortex.list as any) = originalCortexList
-        ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
       }
     }))
 
@@ -2423,33 +2120,48 @@ describe("remote compaction rollout", () => {
       using remote = spyOn(CodexProvider, "requestRemoteCompactionV2")
       const started = Promise.withResolvers<void>()
       const release = Promise.withResolvers<void>()
+      const hookSettled = Promise.withResolvers<void>()
+      const localSettled = Promise.withResolvers<void>()
+      const abort = new AbortController()
+      let localStarted = false
       let released = false
       let returnedBeforeRelease = false
       let hookSignal: AbortSignal | undefined
-      const rescue = setTimeout(() => {
-        released = true
-        release.resolve()
-      }, 1_000)
+      let watchdog: ReturnType<typeof setTimeout> | undefined
+      const failed = new Promise<never>((_resolve, reject) => {
+        watchdog = setTimeout(() => reject(new Error("Remote compaction fixture did not settle")), 15_000)
+      })
+      const pending = runCompactionProcessCase({
+        native: true,
+        auto: true,
+        abort,
+        invokeMs: deadline.invokeMs,
+        providerID: CodexProvider.PROVIDER_ID,
+        beforeHistoryTransform: async (signal) => {
+          hookSignal = signal
+          started.resolve()
+          try {
+            await release.promise
+          } finally {
+            hookSettled.resolve()
+          }
+        },
+        beforeLocal: () => {
+          localStarted = true
+          return started.promise
+        },
+        onProcessorSettled: () => localSettled.resolve(),
+        text: "Committed before remote preparation cancellation",
+        afterSummaryCommit: () => setTimeout(() => deadline.expire(), 0),
+        afterProcess: async () => {
+          returnedBeforeRelease = !released
+          released = true
+          release.resolve()
+          if (hookSignal) await hookSettled.promise
+        },
+      })
       try {
-        const observed = await runCompactionProcessCase({
-          native: true,
-          auto: true,
-          invokeMs: deadline.invokeMs,
-          providerID: CodexProvider.PROVIDER_ID,
-          beforeHistoryTransform: (signal) => {
-            hookSignal = signal
-            started.resolve()
-            return release.promise
-          },
-          beforeLocal: () => started.promise,
-          text: "Committed before remote preparation cancellation",
-          afterSummaryCommit: () => setTimeout(() => deadline.expire(), 0),
-          afterProcess: async () => {
-            returnedBeforeRelease = !released
-            release.resolve()
-            await Bun.sleep(0)
-          },
-        })
+        const observed = await Promise.race([pending, failed])
         expect(returnedBeforeRelease).toBe(true)
         expect(observed.thrown).toMatchObject({ name: "AbortError" })
         expect(hookSignal?.aborted).toBe(true)
@@ -2462,8 +2174,14 @@ describe("remote compaction rollout", () => {
         })
         expect(observed.messages).toHaveLength(3)
       } finally {
-        clearTimeout(rescue)
+        clearTimeout(watchdog)
+        abort.abort(new Error("Compaction fixture cleanup"))
+        started.resolve()
+        released = true
         release.resolve()
+        await pending
+        if (localStarted) await localSettled.promise
+        if (hookSignal) await hookSettled.promise
       }
     }))
 

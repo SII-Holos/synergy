@@ -94,17 +94,25 @@ test.each(["2.0.0", "2.1.0"])(
   async (version) => {
     await using temp = await fixture()
     const first = await seedInstalledCore(temp.root, await temp.release("2.0.0"), "2.0.0", {
-      roots: { [name("workflows")]: "2.0.0", [name("connections")]: "2.0.0", "third-party": "^1.7.0" },
+      roots: {
+        [name("workflows")]: "2.0.0",
+        [name("connections")]: "2.0.0",
+        [name("holos")]: "2.0.0",
+        [name("channel-clarus")]: "2.0.0",
+        "third-party": "^1.7.0",
+      },
     })
     const options = { version, installedCore: await temp.release(version) }
     const upgraded = await prepareInstalledLaunch(temp.root, options)
     expect(upgraded.roots[name("workflows")]).toBeUndefined()
     expect(upgraded.roots[name("connections")]).toBeUndefined()
+    expect(upgraded.packages[name("holos")]).toBeUndefined()
+    expect(upgraded.packages[name("channel-clarus")]).toBeUndefined()
     for (const id of [
       "agenda",
       "blueprint",
       "channels",
-      "channel-clarus",
+      "channel-feishu",
       "boss-feishu",
       "github-agenda",
       "channel-blueprint",

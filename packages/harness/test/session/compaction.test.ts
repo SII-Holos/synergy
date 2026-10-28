@@ -696,6 +696,34 @@ describe("session.compaction.hasPendingCompaction", () => {
     runtime.run(() => {
       expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary("msg_other")], rootID)).toBe(true)
     }))
+
+  test("no-op requests and completed summaries settle distinct parts without counting empty attempts", () =>
+    runtime.run(() => {
+      const root: MessageV2.WithParts = {
+        info: {
+          id: rootID,
+          sessionID: "session-root",
+          role: "user",
+          time: { created: 1 },
+          agent: "fixture",
+          model: { providerID: "fixture", modelID: "fixture" },
+          metadata: { compactionNoopRequests: ["part_noop"] },
+        },
+        parts: [],
+      }
+      const parts = ["part_noop", "part_summarized", "part_pending"].map((id) => ({ ...compactionPart(), id }))
+      const empty = assistant()
+      empty.info.parentID = rootID
+      empty.info.metadata = { compactionAttempt: { state: "empty", reason: "no-history" } }
+      const messages = [root, summary(), empty]
+      expect(SessionCompaction.hasPendingCompaction(parts.slice(0, 2), messages, rootID)).toBe(false)
+      expect(SessionCompaction.hasPendingCompaction(parts, messages, rootID)).toBe(true)
+      root.info.metadata!.compactionNoopRequests = ["part_noop", "part_pending"]
+      expect(SessionCompaction.hasPendingCompaction(parts, messages, rootID)).toBe(false)
+      expect(
+        SessionCompaction.hasPendingCompaction([...parts, { ...compactionPart(), id: "part_next" }], messages, rootID),
+      ).toBe(true)
+    }))
 })
 
 // ---------------------------------------------------------------------------

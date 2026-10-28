@@ -84,11 +84,19 @@ export type FileViewMode = "source" | "preview"
 
 export type FileViewState = {
   mode?: FileViewMode
+  wordWrap?: boolean
   sourceScrollTop?: number
   sourceScrollLeft?: number
   previewScrollTop?: number
   selectedLines?: SelectedLineRange | null
   imageScaleMode?: "fit" | "actual"
+}
+
+export type FileEntryClipboard = {
+  resourceKey: string
+  workspace: FileWorkspace
+  node: WorkspaceFileNode
+  operation: "move" | "copy"
 }
 
 export type FileDocumentState = {
@@ -213,6 +221,8 @@ function createViewSession(dir: string, id: string | undefined) {
     state: (path: string) => view.file[path],
     mode: (path: string) => view.file[path]?.mode,
     setMode: (path: string, mode: FileViewMode) => patchFile(path, { mode }),
+    wordWrap: (path: string) => view.file[path]?.wordWrap ?? true,
+    setWordWrap: (path: string, wordWrap: boolean) => patchFile(path, { wordWrap }),
     sourceScrollTop: (path: string) => view.file[path]?.sourceScrollTop,
     sourceScrollLeft: (path: string) => view.file[path]?.sourceScrollLeft,
     previewScrollTop: (path: string) => view.file[path]?.previewScrollTop,
@@ -264,6 +274,12 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     nodes: Record<string, WorkspaceFileNode>
     directories: Record<string, ExplorerDirectoryState>
   }>({ documents: {}, pdfs: {}, nodes: {}, directories: {} })
+  const [expandingAll, setExpandingAll] = createSignal(false)
+  let expansionGeneration = 0
+  const cancelExpansion = () => {
+    expansionGeneration++
+    setExpandingAll(false)
+  }
 
   const viewCache = new Map<string, ViewCacheEntry>()
   const documentAccess = new Map<string, number>()
@@ -920,10 +936,62 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
 
   const isExpanded = (path: string) => scope.expanded.includes(path)
   const setExpanded = (path: string, expanded: boolean) => {
+    cancelExpansion()
     setScope("expanded", (items) =>
       expanded ? (items.includes(path) ? items : [...items, path]) : items.filter((item) => item !== path),
     )
     if (expanded) void loadChildren(path)
+  }
+  const expandAll = async (signal?: AbortSignal) => {
+    if (disposed || !workspace || signal?.aborted) return
+    const generation = ++expansionGeneration
+    const cancelled = () => disposed || signal?.aborted || generation !== expansionGeneration
+    const abort = () => {
+      if (generation === expansionGeneration) cancelExpansion()
+    }
+    signal?.addEventListener("abort", abort, { once: true })
+    setExpandingAll(true)
+    const queue = [""]
+    const visited = new Set(queue)
+    const expanded = new Set(scope.expanded)
+    try {
+      for (let index = 0; index < queue.length && !cancelled();) {
+        const paths = queue.slice(index, index + MAX_DIRECTORY_CONCURRENCY)
+        index += paths.length
+        await Promise.all(
+          paths.map(async (path) => {
+            if (cancelled()) return
+            await loadChildren(path)
+            while (!cancelled()) {
+              const directory = store.directories[path]
+              const cursor = directory?.nextCursor
+              if (!cursor || directory.error) break
+              await loadChildren(path)
+              if (store.directories[path]?.nextCursor === cursor) break
+            }
+            if (cancelled()) return
+            const children = (store.directories[path]?.items ?? []).filter((child) => {
+              const node = store.nodes[child]
+              return node?.type === "directory" && !node.symlink && !visited.has(child)
+            })
+            setScope(
+              produce((draft) => {
+                for (const child of children) {
+                  visited.add(child)
+                  queue.push(child)
+                  if (expanded.has(child)) continue
+                  expanded.add(child)
+                  draft.expanded.push(child)
+                }
+              }),
+            )
+          }),
+        )
+      }
+    } finally {
+      signal?.removeEventListener("abort", abort)
+      if (generation === expansionGeneration) setExpandingAll(false)
+    }
   }
   const reveal = async (input: string) => {
     const path = normalize(input)
@@ -1087,18 +1155,30 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     if (activeConsumers) refresh()
     else refreshPending = true
   }
-  async function entryRequest<T>(request: () => Promise<{ data?: T }>): Promise<T> {
+  async function entryRequest<T>(
+    request: (signal: AbortSignal) => Promise<{ data?: T }>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const controller = new AbortController()
+    const abort = () => controller.abort(signal?.reason)
+    if (disposed || signal?.aborted) abort()
+    signal?.addEventListener("abort", abort, { once: true })
+    controllers.add(controller)
     try {
-      const response = await request()
+      controller.signal.throwIfAborted()
+      const response = await request(controller.signal)
       if (!response.data) throw new Error("The server returned an empty filesystem response")
       return response.data
     } finally {
+      controllers.delete(controller)
+      signal?.removeEventListener("abort", abort)
       if (!disposed) refresh()
     }
   }
   window.addEventListener("focus", handleFocus)
   onCleanup(() => {
     disposed = true
+    cancelExpansion()
     status.dispose()
     for (const waiter of [...documentWaiters.splice(0), ...directoryWaiters.splice(0)]) waiter()
     stop()
@@ -1128,43 +1208,62 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
     reference,
     entries: {
       createFile: (path: string, signal?: AbortSignal) =>
-        entryRequest(() =>
-          sdk.client.workspace.files.write(
-            {
-              ...reference(),
-              workspaceFileWriteFileInput: {
-                path,
-                content: "",
-                encoding: "utf-8",
-                expectedVersion: null,
-                createParents: false,
-                conflictPolicy: "fail",
+        entryRequest(
+          (requestSignal) =>
+            sdk.client.workspace.files.write(
+              {
+                ...reference(),
+                workspaceFileWriteFileInput: {
+                  path,
+                  content: "",
+                  encoding: "utf-8",
+                  expectedVersion: null,
+                  createParents: false,
+                  conflictPolicy: "fail",
+                },
               },
-            },
-            { signal },
-          ),
+              { signal: requestSignal },
+            ),
+          signal,
         ),
       createDirectory: (path: string, signal?: AbortSignal) =>
-        entryRequest(() =>
-          sdk.client.workspace.files.createDirectory(
-            {
-              ...reference(),
-              workspaceFileCreateDirectoryInput: { path, createParents: false },
-            },
-            { signal },
-          ),
+        entryRequest(
+          (requestSignal) =>
+            sdk.client.workspace.files.createDirectory(
+              {
+                ...reference(),
+                workspaceFileCreateDirectoryInput: { path, createParents: false },
+              },
+              { signal: requestSignal },
+            ),
+          signal,
         ),
       move: (input: WorkspaceFileMoveInput, signal?: AbortSignal) =>
-        entryRequest(() =>
-          sdk.client.workspace.files.move({ ...reference(), workspaceFileMoveInput: input }, { signal }),
+        entryRequest(
+          (requestSignal) =>
+            sdk.client.workspace.files.move(
+              { ...reference(), workspaceFileMoveInput: input },
+              { signal: requestSignal },
+            ),
+          signal,
         ),
       copy: (input: WorkspaceFileCopyInput, signal?: AbortSignal) =>
-        entryRequest(() =>
-          sdk.client.workspace.files.copy({ ...reference(), workspaceFileCopyInput: input }, { signal }),
+        entryRequest(
+          (requestSignal) =>
+            sdk.client.workspace.files.copy(
+              { ...reference(), workspaceFileCopyInput: input },
+              { signal: requestSignal },
+            ),
+          signal,
         ),
       remove: (input: WorkspaceFileDeleteInput, signal?: AbortSignal) =>
-        entryRequest(() =>
-          sdk.client.workspace.files.remove({ ...reference(), workspaceFileDeleteInput: input }, { signal }),
+        entryRequest(
+          (requestSignal) =>
+            sdk.client.workspace.files.remove(
+              { ...reference(), workspaceFileDeleteInput: input },
+              { signal: requestSignal },
+            ),
+          signal,
         ),
     },
     hasDrafts: () => Object.values(store.documents).some((document) => !!document.draft),
@@ -1218,6 +1317,14 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
         const path = normalize(input)
         if (path) view().setMode(path, mode)
       },
+      wordWrap: (input: string) => {
+        const path = normalize(input)
+        return path ? view().wordWrap(path) : true
+      },
+      setWordWrap: (input: string, wordWrap: boolean) => {
+        const path = normalize(input)
+        if (path) view().setWordWrap(path, wordWrap)
+      },
       sourceScrollTop: (input: string) => {
         const path = normalize(input)
         return path ? view().sourceScrollTop(path) : undefined
@@ -1262,6 +1369,7 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
       setWidth: (width: number) => view().setExplorerWidth(Math.max(220, Math.min(420, width))),
       showHidden: () => scope.showHidden,
       setShowHidden: (show: boolean) => {
+        cancelExpansion()
         setScope("showHidden", show)
         setStore(
           produce((draft) => {
@@ -1274,9 +1382,14 @@ function createWorkspaceFiles(workspace: FileWorkspace | null) {
         void loadChildren("", { reset: true, force: true })
       },
       expanded: () => scope.expanded,
+      expandingAll,
       isExpanded,
       setExpanded,
-      collapseAll: () => setScope("expanded", []),
+      expandAll,
+      collapseAll: () => {
+        cancelExpansion()
+        setScope("expanded", [])
+      },
       node: (path: string) => store.nodes[path],
       directory: (path: string) => store.directories[path],
       loadChildren,
@@ -1360,6 +1473,7 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const dialog = useDialog()
     const { i18n } = useLocale()
     const entries = new Map<string, { value: WorkspaceFiles; dispose: VoidFunction; users: number }>()
+    const [clipboard, setClipboard] = createSignal<FileEntryClipboard>()
     const [taskWorkspace, setTaskWorkspace] = createSignal<FileWorkspace | null | undefined>(undefined, {
       equals: (a, b) =>
         a === b ||
@@ -1404,6 +1518,11 @@ const { use: useFileManager, provider: FileProvider } = createSimpleContext({
     const roots = createMemo(() => projectFileWorkspaces(selected(), sync.data.workspaces))
     return {
       roots,
+      clipboard: {
+        get: clipboard,
+        set: (value: FileEntryClipboard | undefined) =>
+          setClipboard(value ? { ...value, workspace: { ...value.workspace }, node: { ...value.node } } : undefined),
+      },
       peek: (workspace: FileWorkspace, path: string) =>
         entries.get(fileWorkspaceKey(sdk.url, sdk.scopeID, workspace))?.value.get(path),
       async canClose(tab: WorkbenchPanelTab) {

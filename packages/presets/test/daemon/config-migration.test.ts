@@ -40,7 +40,7 @@ describe("daemon.spec", () => {
     await runtime.close()
   })
 
-  test("resolveNetwork migrates legacy channel holos config before reading config", () =>
+  test("resolveNetwork retires legacy channel identity config before reading config", () =>
     runtime.run(async () => {
       const target = path.join(home, ".synergy", "config", "synergy.jsonc")
       await Bun.write(
@@ -72,12 +72,7 @@ describe("daemon.spec", () => {
       expect(network.port).toBe(4321)
 
       const migrated = await readMigratedLegacyConfig(target)
-      expect(migrated.holos).toEqual({
-        enabled: true,
-        apiUrl: "https://www.holosai.io",
-        wsUrl: "wss://www.holosai.io",
-        portalUrl: "https://www.holosai.io",
-      })
+      expect(migrated.holos).toBeUndefined()
       expect(migrated.channel).toBeUndefined()
     }))
 
@@ -117,12 +112,7 @@ describe("daemon.spec", () => {
       expect(network.port).toBe(4321)
 
       const migrated = await readMigratedLegacyConfig(target)
-      expect(migrated.holos).toEqual({
-        enabled: true,
-        apiUrl: "https://api.holosai.io",
-        wsUrl: "wss://api.holosai.io",
-        portalUrl: "https://www.holosai.io",
-      })
+      expect(migrated.holos).toBeUndefined()
       expect(migrated.channel).toBeUndefined()
     }))
 

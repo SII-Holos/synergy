@@ -1,6 +1,6 @@
 import { createMarkdownParser } from "./markdown-parser"
 import { parseMarkdownDocument } from "./markdown-document"
-import { useMarkdownMathMarker } from "./marked-math"
+import { useMarkdownMathMarker } from "./markdown-math-source"
 
 const parser = createMarkdownParser()
 const jobs = new Map<number, { markdown: string; blocks?: boolean; inline?: boolean; mathMarker?: string }>()

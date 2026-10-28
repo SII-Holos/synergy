@@ -12,16 +12,24 @@ test.each([false, true])(
     await frames()
     await page.waitForFunction(() => !document.querySelector("[data-motion-changing]"))
     const viewport = page.locator('[data-component="process-viewport"]').last()
-    await viewport.evaluate((element) => {
-      element.dispatchEvent(new WheelEvent("wheel", { deltaY: -1, bubbles: true }))
-      element.scrollTop -= 1
-    })
-    await page.waitForTimeout(200)
-    await viewport.evaluate((element) => {
+    await viewport.evaluate(async (element) => {
       const node = element.querySelector<HTMLElement>('[data-part-id="many-400"]')!
-      element.scrollTop += node.getBoundingClientRect().top - element.getBoundingClientRect().top
+      const delta = node.getBoundingClientRect().top - element.getBoundingClientRect().top
+      element.dispatchEvent(new WheelEvent("wheel", { deltaY: delta || -1, bubbles: true }))
+      const before = element.scrollTop
+      element.scrollTop += delta
+      if (element.scrollTop !== before)
+        await new Promise<void>((resolve) => element.addEventListener("scroll", () => resolve(), { once: true }))
     })
-    await page.waitForTimeout(200)
+    await frames()
+    expect(
+      await viewport.evaluate((element) =>
+        Math.abs(
+          element.querySelector<HTMLElement>('[data-part-id="many-400"]')!.getBoundingClientRect().top -
+            element.getBoundingClientRect().top,
+        ),
+      ),
+    ).toBeLessThanOrEqual(1)
     const samples = await viewport.evaluate(async (element) => {
       const node = element.querySelector<HTMLElement>('[data-part-id="many-400"]')!
       const top = node.getBoundingClientRect().top

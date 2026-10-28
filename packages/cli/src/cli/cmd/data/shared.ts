@@ -20,7 +20,7 @@ export interface Category {
 export const CATEGORIES: Category[] = [
   {
     key: "core",
-    label: "Core data (sessions, notes, agenda, library, auth, holos)",
+    label: "Core data (sessions, notes, agenda, library, auth)",
     subdirs: ["data"],
     required: true,
     defaultValue: true,

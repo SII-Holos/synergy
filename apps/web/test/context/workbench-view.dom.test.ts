@@ -67,6 +67,8 @@ async function reset() {
   frames.length = 0
   errors.length = 0
   await page.goto(`${server.resolvedUrls!.local[0]}?backend=${encodeURIComponent(`http://127.0.0.1:${backend.port}`)}`)
+  expect(errors).toEqual([])
+  expect(await page.locator("#root").evaluate((root) => root.childElementCount)).toBeGreaterThan(0)
   await page.waitForSelector('textarea[aria-label="Composer"]')
 }
 async function act(method: string, ...args: unknown[]) {
@@ -122,7 +124,7 @@ beforeAll(async () => {
           "../sdk",
           "../sync",
           "../layout",
-          "./platform",
+          "@/context/platform",
           "@/context/sdk",
           "@/context/sync",
           "@/context/layout",
@@ -166,6 +168,7 @@ beforeAll(async () => {
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
   page.on("pageerror", (error) => errors.push(error.message))
+  await reset()
 }, 60000)
 afterEach(() => expect(errors).toEqual([]))
 afterAll(async () => {

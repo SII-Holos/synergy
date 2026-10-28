@@ -33,7 +33,6 @@ if (process.argv[2] === "server") {
       ])
       process.env.SYNERGY_CONFIG_CONTENT = JSON.stringify({
         anima: { enabled: false },
-        holos: { enabled: false },
         library: { experience: { retrieve: false, encode: false } },
         pluginMarketplace: { enabled: false },
         channel: {},

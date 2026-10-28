@@ -165,7 +165,7 @@ function createScrollHarness() {
 
 describe("createAutoScroll", () => {
   for (const revoke of ["remove", "replace"] as const) {
-    test(`${revoke} of the motion target settles an in-flight follow without waiting for resize or losing follow intent`, () => {
+    test(`${revoke} of the motion target cancels an explicit smooth follow without losing follow intent`, () => {
       const harness = createScrollHarness()
       const style = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle")
       Object.defineProperty(globalThis, "getComputedStyle", {
@@ -198,19 +198,21 @@ describe("createAutoScroll", () => {
         owner.autoScroll.scrollRef(element)
         owner.autoScroll.forceScrollToBottom({ untilInteraction: true })
         harness.flushFrames()
+        expect(animations).toHaveLength(0)
         element.scrollHeight += 32
-        harness.lastObserver()!.fire(element)
+        owner.autoScroll.forceScrollToBottom({ untilInteraction: true, smooth: true })
+        harness.flushFrames()
         expect(animations).toHaveLength(1)
         const before = element.scrollTop
         owner.setTarget(revoke === "remove" ? undefined : target())
-        expect(animations[0].cancelled).toBe(true)
+        expect(animations[0]?.cancelled).toBe(true)
         expect(element.scrollTop).toBe(before)
         expect(owner.autoScroll.userScrolled()).toBe(false)
         owner.setTarget(first)
         expect(animations).toHaveLength(1)
         element.scrollHeight += 32
         harness.lastObserver()!.fire(element)
-        expect(animations).toHaveLength(2)
+        expect(animations).toHaveLength(1)
       } finally {
         dispose()
         harness.restore()
@@ -219,6 +221,44 @@ describe("createAutoScroll", () => {
       }
     })
   }
+
+  test("automatic bottom growth keeps the motion target stable instead of animating the viewport", () => {
+    const harness = createScrollHarness()
+    const style = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle")
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({ getPropertyValue: () => "" }),
+    })
+    const animations: { cancelled: boolean }[] = []
+    const motionTarget = () =>
+      ({
+        animate() {
+          const state = { cancelled: false }
+          animations.push(state)
+          return { onfinish: null, cancel: () => (state.cancelled = true) }
+        },
+      }) as unknown as HTMLElement
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      createRoot((cleanup) => {
+        dispose = cleanup
+        const autoScroll = createAutoScroll({ working: () => true, motionTarget })
+        autoScroll.scrollRef(element)
+        autoScroll.forceScrollToBottom({ untilInteraction: true })
+      })
+      harness.flushFrames()
+      expect(animations).toHaveLength(0)
+      element.scrollHeight += 14
+      harness.lastObserver()!.fire(element)
+      expect(animations).toHaveLength(0)
+    } finally {
+      dispose()
+      harness.restore()
+      if (style) Object.defineProperty(globalThis, "getComputedStyle", style)
+      else Reflect.deleteProperty(globalThis, "getComputedStyle")
+    }
+  })
 
   test("explicit history navigation releases the old reading anchor until native reading resumes", async () => {
     const harness = createScrollHarness()
@@ -639,8 +679,14 @@ describe("createAutoScroll", () => {
     },
   )
 
-  for (const native of [false, true])
-    test(`scroll delivery before resize ${native ? "accepts native reading movement" : "preserves the pre-layout reading offset"}`, async () => {
+  for (const { native, resizeFirst } of [
+    { native: undefined, resizeFirst: false },
+    { native: undefined, resizeFirst: true },
+    { native: "before", resizeFirst: false },
+    { native: "before", resizeFirst: true },
+    { native: "after", resizeFirst: true },
+  ])
+    test(`scroll delivery ${resizeFirst ? "after" : "before"} resize ${native ? `accepts native movement ${native} resize` : "preserves the pre-layout reading offset"}`, async () => {
       const harness = createScrollHarness()
       let dispose = () => {}
       try {
@@ -669,9 +715,11 @@ describe("createAutoScroll", () => {
         await harness.tick()
         element.scrollTop = 200
         autoScroll.handleInteraction()
-        if (native) element.dispatchEvent(harness.key())
+        if (native === "before") element.dispatchEvent(harness.key())
         element.scrollHeight = 1540
         documentTop = 1140
+        if (resizeFirst) harness.lastObserver()!.fire(element)
+        if (native === "after") element.dispatchEvent(harness.key())
         element.scrollTop = 800
         autoScroll.handleScroll()
         expect(element.scrollTop).toBe(native ? 800 : 740)
@@ -686,6 +734,61 @@ describe("createAutoScroll", () => {
         harness.restore()
       }
     })
+
+  test.each(["touchstart", "pointerdown", "wheel", "keydown"])(
+    "one %s gesture retains subsequent movement across resize until scrollend",
+    async (intent) => {
+      const harness = createScrollHarness()
+      let dispose = () => {}
+      try {
+        const element = harness.makeScroller()
+        let documentTop = 600
+        let autoScroll!: ReturnType<typeof createAutoScroll>
+        createRoot((cleanup) => {
+          dispose = cleanup
+          autoScroll = createAutoScroll({
+            working: () => false,
+            captureReadingAnchor: () => {
+              const offset = documentTop - element.scrollTop
+              return {
+                owner: element,
+                restore: () => {
+                  element.scrollTop = documentTop - offset
+                },
+              }
+            },
+          })
+          autoScroll.scrollRef(element)
+          autoScroll.contentRef(element)
+        })
+        await harness.tick()
+        element.scrollTop = 200
+        autoScroll.handleInteraction()
+        const input = intent === "keydown" ? harness.key() : new Event(intent)
+        if (intent === "wheel") Object.defineProperty(input, "deltaY", { value: 80 })
+        element.dispatchEvent(input)
+        element.scrollTop = 240
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(240)
+        element.scrollHeight += 100
+        harness.lastObserver()!.fire(element)
+        element.scrollTop = 280
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(280)
+        element.dispatchEvent(new Event("scrollend"))
+        documentTop += 100
+        element.scrollHeight += 100
+        harness.lastObserver()!.fire(element)
+        expect(element.scrollTop).toBe(380)
+        element.scrollTop = 440
+        autoScroll.handleScroll()
+        expect(element.scrollTop).toBe(380)
+      } finally {
+        dispose()
+        harness.restore()
+      }
+    },
+  )
 
   test("a resize accepts an already compensated reading offset without adopting a newly visible owner", async () => {
     const harness = createScrollHarness()

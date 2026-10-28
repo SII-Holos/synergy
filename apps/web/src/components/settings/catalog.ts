@@ -23,7 +23,6 @@ export const SETTINGS_GROUP_ORDER: readonly SettingsGroupKey[] = SETTINGS_GROUP_
 export type SettingsGroup = string
 
 export const BUILTIN_SETTINGS_IDS = [
-  "account",
   "personalize",
   "digital-twin",
   "general",
@@ -114,18 +113,6 @@ const BUILTIN_SETTINGS_COPY = {
       message: "prediction | next input | writing | digital twin",
     },
     rowLabels: [twinCopy.automatic, twinCopy.model],
-  },
-  account: {
-    label: { id: "settings.catalog.account.label", message: "Account" },
-    description: {
-      id: "settings.catalog.account.description",
-      message: "Holos agent identities and local account controls.",
-    },
-    searchTerms: {
-      id: "settings.catalog.account.searchTerms",
-      message: "user | identity | login | holos | agent",
-      comment: SEARCH_TERMS_COMMENT,
-    },
   },
   personalize: {
     label: { id: "settings.catalog.personalize.label", message: "Personalize" },
@@ -627,7 +614,6 @@ const BUILTIN_SETTINGS_COPY = {
 } satisfies Record<BuiltinSettingsId, SettingsCopyDefinition>
 
 export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
-  section("account", "personal", 30, "settings.account", ["holos"]),
   section("personalize", "personal", 20, "settings.personalize"),
   section("digital-twin", "personal", 30, "digital-twin.main", ["digital-twin"]),
   section("general", "personal", 10, "settings.general", ["general"]),

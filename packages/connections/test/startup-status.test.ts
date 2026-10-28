@@ -19,7 +19,6 @@ test("Connections status composes selected owners and releases live reports with
         const reports: RuntimeStatusRow[][] = []
         expect(await connectionStatusRows((rows) => reports.push(rows))).toEqual([
           { label: "Channels", value: "none configured", kind: "muted" },
-          { label: "Holos", value: "agent network disconnected", kind: "muted" },
         ])
         await Bus.publish(Channel.Event.Connected, { channelType: "fixture", accountId: "one" })
         expect(reports).toEqual([[{ label: "Channels", value: "fixture:one reconnected", kind: "success" }]])

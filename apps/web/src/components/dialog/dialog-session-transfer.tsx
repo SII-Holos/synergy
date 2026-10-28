@@ -1,8 +1,9 @@
-import { For, Show, createSignal, onMount } from "solid-js"
+import { Show, createSignal, onMount } from "solid-js"
 import { useNavigate } from "@solidjs/router"
 import { useLingui } from "@lingui/solid"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createSynergyClient, type SessionTransferState } from "@ericsanchezok/synergy-sdk/client"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -161,16 +162,17 @@ export function DialogSessionTransfer(props: { sessionID: string; scopeID: strin
         <label class="session-export-label" for="session-transfer-destination">
           {_(transferCopy.destination)}
         </label>
-        <select
+        <MenuField
           id="session-transfer-destination"
+          ariaLabel={_(transferCopy.destination)}
+          options={[
+            { value: "", label: _(transferCopy.select) },
+            ...destinations().map((url) => ({ value: url, label: server.displayName(url) })),
+          ]}
           value={selected()}
-          onChange={(event) => setSelected(event.currentTarget.value)}
+          onChange={setSelected}
           disabled={busy() || loading() || (!!state() && state()!.phase !== "cancelled")}
-          class="rounded-md border border-border-base bg-background-base p-2 text-text-base"
-        >
-          <option value="">{_(transferCopy.select)}</option>
-          <For each={destinations()}>{(url) => <option value={url}>{server.displayName(url)}</option>}</For>
-        </select>
+        />
         <Show when={!destinations().length}>
           <p>{_(transferCopy.empty)}</p>
         </Show>

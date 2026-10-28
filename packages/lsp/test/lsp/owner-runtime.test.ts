@@ -1,7 +1,10 @@
-import { expect, test } from "bun:test"
+import { expect, spyOn, test } from "bun:test"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { StreamMessageReader } from "vscode-jsonrpc/node"
+import { LSPClient } from "../../src/client"
 import { LSP } from "../../src/index"
+import { LSPProcess } from "../../src/process"
 import { LSPServer } from "../../src/server"
 import { WorkspaceFileSymbolSource } from "@ericsanchezok/synergy-local-runtime/workspace-file/symbol-source"
 import { WorkspaceAccess } from "@ericsanchezok/synergy-harness/workspace/access"
@@ -368,7 +371,7 @@ test(
             fixture: {
               command: [process.execPath, path.join(import.meta.dir, "fixtures/owner-server.cjs")],
               extensions: [".fixture"],
-              env: { LSP_FIXTURE_INIT_DELAY_MS: "700" },
+              env: { LSP_FIXTURE_HOLD_INIT: "1" },
             },
           },
         },
@@ -377,33 +380,82 @@ test(
         scope: await tmp.scope(),
         fn: async () => {
           const controller = new AbortController()
+          const secondController = new AbortController()
+          const initializing = Promise.withResolvers<number | undefined>()
+          const start = LSPProcess.start
+          using launch = spyOn(LSPProcess, "start").mockImplementation((...args) =>
+            start(...args).catch((error) => {
+              initializing.reject(new Error("Native LSP startup failed before initialization", { cause: error }))
+              throw error
+            }),
+          )
+          const create = LSPClient.create
+          using observe = spyOn(LSPClient, "create").mockImplementation((input) => {
+            const reader = new StreamMessageReader(input.server.process.stdout)
+            const listening = reader.listen((message) => {
+              if ("method" in message && message.method === "fixture/initializing")
+                initializing.resolve(input.server.process.pid)
+            })
+            return create(input)
+              .catch((error) => {
+                initializing.reject(
+                  new Error("LSP initialization failed before the fixture handshake", { cause: error }),
+                )
+                throw error
+              })
+              .finally(() => {
+                listening.dispose()
+                reader.dispose()
+              })
+          })
           const input = { file: path.join(tmp.path, "source.fixture"), line: 0, character: 0 }
           const first = WorkspaceAccess.task(
-            { workspace: ScopeContext.current.workspace, signal: controller.signal },
+            { workspace: ScopeContext.current.workspace, signal: controller.signal, lazy: true },
             () => LSP.hover(input),
           )
           const failure = first.then(
             () => undefined,
             (error: unknown) => error,
           )
+          const second = WorkspaceAccess.task(
+            { workspace: ScopeContext.current.workspace, signal: secondController.signal, lazy: true },
+            () => LSP.hover(input),
+          )
+          const deadline = Promise.withResolvers<never>()
+          let phase = "initialization handshake"
+          const timer = setTimeout(() => {
+            const error = new DOMException(`LSP fixture timed out during ${phase}`, "TimeoutError")
+            deadline.reject(error)
+            controller.abort(error)
+            secondController.abort(error)
+          }, 10_000)
           try {
-            const deadline = Date.now() + 5000
-            while (!(await Bun.file(path.join(tmp.path, "initializing")).exists())) {
-              if (Date.now() >= deadline) throw new Error("First language server did not begin initialization")
-              await Bun.sleep(10)
-            }
-            const firstPID = Number(await Bun.file(path.join(tmp.path, "server.pid")).text())
-            const second = LSP.hover(input)
-            await Bun.sleep(30)
+            const firstPID = await Promise.race([
+              initializing.promise,
+              deadline.promise,
+              failure.then((error) => {
+                throw new Error("First query completed before LSP initialization", { cause: error })
+              }),
+              second.then(() => {
+                throw new Error("Second query completed before LSP initialization")
+              }),
+            ])
+            expect(firstPID).toBeNumber()
+            phase = "shared startup recovery"
+            await Bun.write(path.join(tmp.path, "initialize-release"), "ready")
             controller.abort()
-            const [error, result] = await Promise.all([failure, second])
+            const [error, result] = await Promise.race([Promise.all([failure, second]), deadline.promise])
             expect(error).toMatchObject({ name: "AbortError" })
             expect(result).toEqual([{ contents: "fixture hover" }])
-            expect(ProcessInspection.alive(firstPID)).toBe(false)
+            expect(ProcessInspection.alive(firstPID!)).toBe(false)
             expect(Number(await Bun.file(path.join(tmp.path, "server.pid")).text())).not.toBe(firstPID)
+            expect(launch).toHaveBeenCalledTimes(2)
+            expect(observe).toHaveBeenCalledTimes(2)
           } finally {
+            clearTimeout(timer)
             controller.abort()
-            await first.catch(() => {})
+            secondController.abort()
+            await Promise.allSettled([first, second])
             await LSP.reload()
           }
         },

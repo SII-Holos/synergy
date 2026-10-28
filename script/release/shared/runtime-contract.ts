@@ -133,7 +133,6 @@ async function assertNoProductAssets(runtimeDir: string): Promise<void> {
     "runtime/node_modules/@ericsanchezok/synergy-browser-runtime",
     "lib/onnxruntime-web",
     "lib/resvg-wasm",
-    "lib/holos-cli",
     "computer",
     "vec0.so",
     "vec0.dylib",
