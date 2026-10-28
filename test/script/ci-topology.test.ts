@@ -4,12 +4,14 @@ import path from "node:path"
 import { catalog } from "../../script/ci/catalog"
 import { createPlan, executionQueue, LIMITS } from "../../script/ci/plan"
 import { latestExecutions } from "../../script/ci/github"
+import { commands } from "../../script/ci/run"
 
 const root = path.resolve(import.meta.dir, "../..")
 interface Job {
   name?: string
   if?: string
   needs?: string[]
+  "timeout-minutes"?: number
   strategy?: { "max-parallel": number; "fail-fast": boolean }
   steps?: { name?: string; if?: string | boolean; run?: string; uses?: string; with?: Record<string, unknown> }[]
 }
@@ -239,6 +241,49 @@ describe("required CI topology", () => {
       expect(job.needs, task.id).toContain("benchmark-prepare")
       expect(units[0]!.benchmark, task.id).toBe(true)
       expect(job.steps!.some((step) => step.name === "Execute planned tasks")).toBe(true)
+    }
+  })
+  test("benchmark preparation leaves cleanup time and retains pre-trial diagnostics on failure", async () => {
+    const tasks = await catalog()
+    const plan = createPlan({
+      base: "base",
+      head: "head",
+      sha: "tested",
+      run: "fixture",
+      mode: "diagnostic",
+      changed: [],
+      baseWorkspaces: [],
+      headWorkspaces: [],
+      tasks,
+      only: ["benchmark-prepare"],
+    })
+    const [command] = await commands(
+      tasks.find((task) => task.id === "benchmark-prepare")!,
+      plan,
+    )
+    const deadline = command!.args.indexOf("--timeout")
+    expect(deadline).toBeGreaterThan(0)
+    const seconds = Number(command!.args[deadline + 1])
+    expect(seconds).toBe(900)
+    const diagnostic = Bun.YAML.parse(
+      await readFile(path.join(root, ".github/workflows/ci-diagnostic.yml"), "utf8"),
+    ) as { jobs: Record<string, Job> }
+    for (const configured of [workflow, diagnostic]) {
+      const job = configured.jobs["benchmark-prepare"]!
+      expect(job["timeout-minutes"]! * 60 - seconds).toBeGreaterThanOrEqual(180)
+      const collect = job.steps!.find((step) => step.run?.includes("synergy_bench/ci_evidence.py"))!
+      expect(collect).toBeDefined()
+      expect(collect.if).toBe("failure() || cancelled()")
+      const args = collect.run!.split(/\s+/)
+      expect(args.slice(0, 3)).toEqual(["python3", "benchmark/src/synergy_bench/ci_evidence.py", "preparation"])
+      expect(args[args.indexOf("--root") + 1]).toBe(".artifacts/ci/benchmark")
+      const upload = job.steps!.find(
+        (step) =>
+          step.uses?.startsWith("actions/upload-artifact@") &&
+          step.with?.name === "ci-benchmark-preparation-diagnostics-${{ github.run_attempt }}",
+      )!
+      expect(upload?.if).toBe("failure() || cancelled()")
+      expect(upload?.with?.path).toBe("${{ runner.temp }}/benchmark-preparation-evidence")
     }
   })
   test("diagnostics has one execution matrix capped at two and no required check", async () => {

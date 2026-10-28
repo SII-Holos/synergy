@@ -18,6 +18,10 @@ PR 的默认模式与历史样本准入、Docker 队列布局由 [PR 反馈决�
 
 Benchmark 产物消费者由任务对 `benchmark-prepare` 的真实依赖路由到准备队列，队列在执行前统一下载并解包产物；契约测试联结实际任务计划与解析后的工作流，覆盖全部消费路径及步骤顺序。
 
+The frozen benchmark producer explicitly gives the CI Python preparation entry 900 seconds for source freezing, cache admission, Docker preparation and verified publication. Its enclosing job remains 20 minutes, leaving room for checkout, dependency setup, cleanup and evidence upload. Local preparation retains its 1800-second default. A one-shot deadline disables itself before raising so it cannot interrupt teardown a second time. Each command launched by the preparation command helper starts in its own process group; cleanup allows five seconds after SIGTERM, then sends SIGKILL to that group and allows five seconds to reap the leader. Existing container inspection and removal keep their independent 15/30-second limits. Cleanup failure remains a failure, including when the leader had already completed successfully.
+
+Preparation records safe source/publish status, elapsed time and exception class before and after work. Docker build output uses plain progress in its existing log; console progress contains only the operation and log location. Both required and diagnostic workflows collect the fixed preparation receipt, hash-named build logs and attempt receipts on failure or cancellation. Each retained build log is limited to its final 256 KiB with original and retained byte counts. Collection never recurses into unpublished stages or private Homes. This preserves the last observed build progress without claiming that a deadline or logging correction fixes an unobserved Docker, registry or compiler failure.
+
 构建缓存键在实际构建 runner 上计算，包含镜像及 Rust/C 工具链身份。跨 job 恢复另以源码、Bun、OS/架构和 libc ABI 校验兼容性；托管镜像滚动更新可能让同一工作流使用不同镜像版本，不能把消费端镜像版本等同于构建输入。完整字节和权限核验保持不变。
 
 任务目录声明浏览器、Desktop 和 sandbox 前置环境；包级浏览器需求从其 Playwright 依赖自动发现，调度器只合并这些声明。已验证的 sandbox helper 暂存到既有 Cargo 产物发现路径，再由源码 Runtime 安装到各自独立 Home；同一二进制也安装到临时 runner 的标准位置，供既有安装产物端到端测试验证完整执行链。每个包的 coverage 入口使用统一执行器，完整发现测试并生成 JUnit、lcov 与逐批次清单，避免测试通过却缺少准入证据。原先单进程执行的包显式保留一个主批次，已有分组和特殊隔离保持不变；不能把接入执行器等同于重新拆分所有包，因为 Bun 的分进程覆盖率并不完全等价。
@@ -41,6 +45,8 @@ Archive 写入和读取每 128 个条目交还一次事件循环，限制连续 
 **仅依据路径跳过工作流。** 删除、动态资源和测试依赖可能漏选；缺报或跳过的 job 也不能证明计划完成。两侧依赖图、未知输入全量与报告核验提供可测试的保守路径。
 
 **复用历史覆盖率或目录 mtime。** 不能证明本次完整测试和内容完整性，因而不用于准入或 benchmark 恢复。
+
+**Increase the job timeout to outlast an unobserved build.** This would postpone cancellation while leaving child ownership and missing diagnostics unresolved. An explicit preparation deadline and independently retained failure evidence preserve the existing job ceiling and expose the next actionable cause.
 
 **立即打开 PR 选测。** 本地选择器测试不能替代真实全量对照，故默认 shadow，并把切换条件写入准入器。
 

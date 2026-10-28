@@ -47,31 +47,50 @@ def collect(root: Path, output: Path, families: Sequence[str]) -> dict[str, obje
         raise ValueError("Unknown evidence family")
     output.mkdir(parents=True, exist_ok=True)
     errors: list[dict[str, str]] = []
+    truncated: list[dict[str, str | int]] = []
     copied = 0
 
     def failed(error: OSError, path: Path | None = None) -> None:
         path = path or (Path(error.filename) if error.filename else root)
         errors.append({"path": str(path.relative_to(root)), "error": type(error).__name__})
 
-    def retain(source: Path) -> None:
+    def retain(source: Path, *, tail: int | None = None) -> None:
         nonlocal copied
         target = output / source.relative_to(root)
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, target)
+            if tail is None:
+                shutil.copyfile(source, target)
+            else:
+                with source.open("rb") as stream:
+                    size = os.fstat(stream.fileno()).st_size
+                    stream.seek(max(0, size - tail))
+                    data = stream.read(tail)
+                target.write_bytes(data)
+                if size > len(data):
+                    truncated.append(
+                        {"path": str(source.relative_to(root)), "bytes": size, "retained_bytes": len(data)}
+                    )
             copied += 1
         except OSError as error:
             failed(error, source)
 
     for family in dict.fromkeys(families):
         if family == "preparation":
+            receipt = root / "preparation.json"
+            if not receipt.is_symlink() and receipt.is_file():
+                retain(receipt)
             preparing = root / "cache/preparing"
             if preparing.parent.is_symlink() or preparing.is_symlink() or not preparing.is_dir():
                 continue
             try:
                 for source in preparing.iterdir():
-                    if re.fullmatch(r"[0-9a-f]{64}\.log", source.name) and not source.is_symlink() and source.is_file():
-                        retain(source)
+                    if (
+                        re.fullmatch(r"[0-9a-f]{64}\.log(?:\.attempts\.json)?", source.name)
+                        and not source.is_symlink()
+                        and source.is_file()
+                    ):
+                        retain(source, tail=256 * 1024 if source.suffix == ".log" else None)
             except OSError as error:
                 failed(error, preparing)
             continue
@@ -89,7 +108,9 @@ def collect(root: Path, output: Path, families: Sequence[str]) -> dict[str, obje
                 if name not in FILENAMES or source.is_symlink():
                     continue
                 retain(source)
-    result = {"copied": copied, "errors": errors}
+    result: dict[str, object] = {"copied": copied, "errors": errors}
+    if truncated:
+        result["truncated"] = truncated
     (output / "collection.json").write_text(json.dumps(result))
     return result
 

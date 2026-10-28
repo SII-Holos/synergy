@@ -155,6 +155,8 @@ Use the [secret-detection package](../../../packages/secret-detection/README.md)
 
 ## CI preparation and timing
 
+Keep the CI preparation deadline inside the enclosing job deadline, with time left for cleanup and diagnostics. The CI Python entry owns one deadline across source freezing, cache admission, Docker preparation and verified publication; checkout, dependency setup and artifact upload remain outside that deadline. Preserve the local preparation default. Test real owned process groups with descendant readiness and a descendant that ignores SIGTERM, then require channel closure after bounded SIGKILL/reap; failed readiness must also clean the created process. Record source/publish failure metadata even before a Docker log exists. Collect only the fixed preparation receipt, hash-named build logs and attempt receipts, retain bounded log tails with truncation metadata, and never traverse unpublished stages or Homes. Keep an unknown Docker layer cause separate from the proven deadline or evidence defect.
+
 Exercise shared-cache inspection while another run retires a reference after enumeration. Tolerate only a missing retired reference; malformed or unreadable live references must still stop inspection, and surviving references must continue to prevent collection. Keep the deterministic race regression separate from native Docker lifecycle controls.
 
 For deadline-accounting unit tests, advance one controlled clock for both the event loop and lifecycle measurements. Yield to the real timer callbacks before and after a pause, and assert nested queue, active and wall durations exactly. Keep real timeout and cancellation controls separately; do not make correctness depend on synchronous evidence writes finishing within a millisecond budget.

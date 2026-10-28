@@ -12,6 +12,7 @@ import {
 } from "../../../packages/presets/test/acceptance/installed-provider"
 import pluginDefinition from "./upgrade-plugin-fixture"
 import { expectRetainedHistory } from "./upgrade-history"
+import { upgradeCommand } from "./upgrade-command"
 import { upgradeProtocolEvidence } from "./upgrade-protocol"
 
 const previous = process.env.SYNERGY_UPGRADE_PREVIOUS
@@ -21,6 +22,7 @@ const messageSchema = z.object({
   info: z.object({ id: z.string(), role: z.string() }).passthrough(),
   parts: z.array(z.object({ type: z.string() }).passthrough()),
 })
+const toolStateSchema = z.object({ status: z.string(), metadata: z.object({ exit: z.number() }) })
 
 test.skipIf(!previous || !candidate)(
   "released 3.0.22 preserves history, plugins and assets through upgrade, restart and backup recovery",
@@ -184,12 +186,12 @@ test.skipIf(!previous || !candidate)(
       }
       return { request, response, [Symbol.asyncDispose]: stop }
     }
-    const prompt = (file: string) => ({
+    const prompt = (file: string, output: "silent" | "stdout") => ({
       model: { providerID: "fixture", modelID: "model" },
       parts: [
         {
           type: "text",
-          text: `Installed acceptance task\nRead record.txt and copy it exactly once.\nCOMMAND_BEGIN\ncat record.txt > ${file}; printf x >> effects.txt; cat ${file}\nCOMMAND_END`,
+          text: `Installed acceptance task\nRead record.txt and copy it exactly once.\nCOMMAND_BEGIN\n${upgradeCommand(file, output)}\nCOMMAND_END`,
         },
       ],
     })
@@ -313,7 +315,8 @@ test.skipIf(!previous || !candidate)(
             { type: "attachment", mime: "image/png", filename: "upgrade.png", url: asset.url },
           ],
         })
-        await old.request(`/session/${sessionID}/message`, prompt("old-result.txt"))
+        const previousDecisions = decisions.length
+        await old.request(`/session/${sessionID}/message`, prompt("old-result.txt", "silent"))
         before = z.array(messageSchema).parse(await old.request(`/session/${sessionID}/message?raw=true`))
         await Bun.write(path.join(root, "before.json"), JSON.stringify(before))
         attachmentPartID = z
@@ -325,12 +328,13 @@ test.skipIf(!previous || !candidate)(
           )
         expect(await Bun.file(path.join(workspace, "old-result.txt")).text()).toBe(marker)
         await expectEffects(old, sessionID, "x")
+        expect(decisions.slice(previousDecisions).filter((decision) => decision.emitsToolCall)).toHaveLength(1)
         expect(
           before
             .flatMap((message) => message.parts)
             .filter((part) => part.type === "tool")
-            .map((part) => z.object({ state: z.object({ status: z.string() }) }).parse(part).state.status),
-        ).toEqual(["completed"])
+            .map((part) => toolStateSchema.parse(part.state)),
+        ).toEqual([{ status: "completed", metadata: { exit: 0 } }])
         await retainedExtras(old)
       }
       await fs.cp(home, path.join(root, "pre-upgrade-backup"), { recursive: true })
@@ -381,7 +385,7 @@ test.skipIf(!previous || !candidate)(
               return { ...legacy, workBrief: description, state: { ...legacy.state, input } }
             }),
         )
-        await upgraded.request(`/session/${sessionID}/message`, prompt("continued-result.txt"))
+        await upgraded.request(`/session/${sessionID}/message`, prompt("continued-result.txt", "stdout"))
         expect(await Bun.file(path.join(workspace, "continued-result.txt")).text()).toBe(marker)
         await expectEffects(upgraded, sessionID, "xx")
         await retainedExtras(upgraded)
@@ -408,7 +412,7 @@ test.skipIf(!previous || !candidate)(
         const fresh = z
           .object({ id: z.string() })
           .parse(await restarted.request("/session", { title: "Post-upgrade work", controlProfile: "full_access" }))
-        await restarted.request(`/session/${fresh.id}/message`, prompt("fresh-result.txt"))
+        await restarted.request(`/session/${fresh.id}/message`, prompt("fresh-result.txt", "stdout"))
         expect(await Bun.file(path.join(workspace, "fresh-result.txt")).text()).toBe(marker)
         await expectEffects(restarted, fresh.id, "xxx")
       }
@@ -420,9 +424,22 @@ test.skipIf(!previous || !candidate)(
         expectRetainedHistory(before, messages)
         await retainedExtras(restored)
         await expectEffects(restored, sessionID, "xxx")
-        await restored.request(`/session/${sessionID}/message`, prompt("restored-result.txt"))
+        const restoredDecisions = decisions.length
+        await restored.request(`/session/${sessionID}/message`, prompt("restored-result.txt", "silent"))
         expect(await Bun.file(path.join(workspace, "restored-result.txt")).text()).toBe(marker)
         await expectEffects(restored, sessionID, "xxxx")
+        expect(decisions.slice(restoredDecisions).filter((decision) => decision.emitsToolCall)).toHaveLength(1)
+        const previousIDs = new Set(messages.map((message) => message.info.id))
+        const restoredHistory = z
+          .array(messageSchema)
+          .parse(await restored.request(`/session/${sessionID}/message?raw=true`))
+        expect(
+          restoredHistory
+            .filter((message) => !previousIDs.has(message.info.id))
+            .flatMap((message) => message.parts)
+            .filter((part) => part.type === "tool")
+            .map((part) => toolStateSchema.parse(part.state)),
+        ).toEqual([{ status: "completed", metadata: { exit: 0 } }])
       }
       passed = true
     } finally {

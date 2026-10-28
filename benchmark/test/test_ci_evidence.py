@@ -104,6 +104,8 @@ def test_preparation_collection_retains_build_logs_without_walking_private_stage
     preparing.mkdir(parents=True)
     name = "a" * 64 + ".log"
     (preparing / name).write_text("npm installation failed\n")
+    receipt = name + ".attempts.json"
+    (preparing / receipt).write_text('[{"status":"failed","error":"TimeoutExpired"}]')
     (preparing / "auth.json").write_text("private")
     (preparing / "unknown.log").write_text("private")
     stage = preparing / "engine-unpublished"
@@ -112,10 +114,37 @@ def test_preparation_collection_retains_build_logs_without_walking_private_stage
     outside = tmp_path / "secret.log"
     outside.write_text("private target")
     (preparing / ("b" * 64 + ".log")).symlink_to(outside)
+    (preparing / ("b" * 64 + ".log.attempts.json")).symlink_to(outside)
     result = collect(root, output, ["preparation"])
-    assert result == {"copied": 1, "errors": []}
+    assert result == {"copied": 2, "errors": []}
     assert (output / "cache/preparing" / name).read_text() == "npm installation failed\n"
     assert len(list(output.rglob("*.log"))) == 1
+    assert json.loads((output / "cache/preparing" / receipt).read_text()) == [
+        {"status": "failed", "error": "TimeoutExpired"}
+    ]
+
+
+def test_preparation_collection_bounds_build_output_and_preserves_pre_docker_failure(tmp_path):
+    root, output = tmp_path / "source", tmp_path / "output"
+    root.mkdir()
+    receipt = {"status": "failed", "stage": "source", "error": "TimeoutError"}
+    (root / "preparation.json").write_text(json.dumps(receipt))
+    assert collect(root, output, ["preparation"]) == {"copied": 1, "errors": []}
+    assert json.loads((output / "preparation.json").read_text()) == receipt
+    preparing = root / "cache/preparing"
+    preparing.mkdir(parents=True)
+    name = "a" * 64 + ".log"
+    content = b"old output\n" + b"x" * (512 * 1024) + b"\nlast failed build stage\n"
+    (preparing / name).write_bytes(content)
+    result = collect(root, output, ["preparation"])
+    retained = (output / "cache/preparing" / name).read_bytes()
+    assert len(retained) == 256 * 1024
+    assert retained == content[-len(retained) :]
+    assert result == {
+        "copied": 2,
+        "errors": [],
+        "truncated": [{"path": f"cache/preparing/{name}", "bytes": len(content), "retained_bytes": len(retained)}],
+    }
 
 
 @pytest.mark.parametrize("linked", ["cache", "cache/preparing"])

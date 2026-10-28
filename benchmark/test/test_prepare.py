@@ -1,3 +1,9 @@
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -5,6 +11,149 @@ import pytest
 
 from synergy_bench.prepare import recipe_links, source_recipe
 from synergy_bench.storage import atomic_json
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "failure", "success"])
+def test_preparation_command_reaps_owned_descendants_and_retains_build_output(
+    tmp_path: Path, monkeypatch, capsys, outcome
+) -> None:
+    from synergy_bench import prepare
+
+    owner, inherited = socket.socketpair()
+    owner.settimeout(10)
+    program = tmp_path / "build.py"
+    descendant = (
+        "import os, signal, sys; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "os.write(int(sys.argv[1]), b'ready'); os.close(int(sys.argv[1])); signal.pause()"
+    )
+    program.write_text(
+        "import json, os, signal, socket, subprocess, sys\n"
+        "connection = socket.socket(fileno=int(sys.argv[1]))\n"
+        "if os.getpgrp() != os.getpid():\n"
+        " connection.sendall(json.dumps({'owner': os.getpid(), 'isolated': False}).encode() + b'\\n')\n"
+        " sys.exit(8)\n"
+        "ready, notify = os.pipe()\n"
+        f"child = subprocess.Popen([sys.executable, '-c', {descendant!r}, str(notify)], "
+        "pass_fds=(connection.fileno(), notify), stdin=subprocess.DEVNULL, "
+        "stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        "os.close(notify)\n"
+        "assert os.read(ready, 5) == b'ready'\n"
+        "os.close(ready)\n"
+        "print('layer: native compilation ready', flush=True)\n"
+        "connection.sendall(json.dumps({'owner': os.getpid(), 'child': child.pid, "
+        "'isolated': True}).encode() + b'\\n')\n"
+        "if sys.argv[2] == 'timeout': signal.pause()\n"
+        "sys.exit(7 if sys.argv[2] == 'failure' else 0)\n"
+    )
+    original = subprocess.Popen
+    process = None
+    identity = None
+    isolated = False
+
+    def launch(*args, **kwargs):
+        nonlocal process, identity, isolated
+        process = original(*args, pass_fds=(inherited.fileno(),), **kwargs)
+        isolated = kwargs.get("start_new_session") is True
+        inherited.close()
+        received = b""
+        while not received.endswith(b"\n"):
+            part = owner.recv(1024)
+            assert part, "build exited before its descendant became ready"
+            received += part
+        identity = json.loads(received)
+        assert identity["owner"] == process.pid and identity["isolated"]
+        assert identity["child"] > 0
+        return process
+
+    monkeypatch.setattr(prepare.subprocess, "Popen", launch)
+    log = tmp_path / "build.log"
+    try:
+        with (
+            pytest.raises(subprocess.TimeoutExpired)
+            if outcome == "timeout"
+            else pytest.raises(RuntimeError, match="failed; see")
+            if outcome == "failure"
+            else nullcontext()
+        ):
+            prepare.command([sys.executable, str(program), str(inherited.fileno()), outcome], log, timeout=0.1)
+        assert process is not None and process.poll() is not None
+        owner.settimeout(2)
+        assert owner.recv(1) == b"", "preparation returned with an owned descendant still running"
+        assert log.read_text() == "layer: native compilation ready\n"
+        progress = capsys.readouterr().out
+        assert "started" in progress and "finished" in progress and str(log) in progress
+        assert "layer: native compilation ready" not in progress
+    finally:
+        if process is not None:
+            try:
+                if isolated:
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except ProcessLookupError:
+                pass
+            process.wait(timeout=5)
+        owner.close()
+        inherited.close()
+
+
+def test_ci_preparation_forwards_its_budget_and_publishes_only_verified_bytes(tmp_path: Path, monkeypatch) -> None:
+    from synergy_bench import ci_prepare
+
+    source = tmp_path / "source"
+    source.mkdir()
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+    (artifact / "payload").write_bytes(b"verified build")
+    observed = []
+
+    def build(*args, **kwargs):
+        observed.append(kwargs["timeout"])
+        return artifact
+
+    def verify(stage):
+        assert (stage / "payload").read_bytes() == b"verified build"
+        assert not (tmp_path / "output/prepared").exists()
+
+    monkeypatch.setattr(ci_prepare, "prepare_source", build)
+    monkeypatch.setattr(ci_prepare, "verify_prepared", verify)
+    target = ci_prepare.prepare(tmp_path / "output", source, timeout=900)
+    assert observed == [900]
+    assert (target / "payload").read_bytes() == b"verified build"
+
+
+@pytest.mark.parametrize("stage", ["source", "publish"])
+def test_ci_deadline_records_failures_before_and_after_docker_without_publishing(tmp_path: Path, monkeypatch, stage):
+    from synergy_bench import ci_prepare
+
+    artifact = tmp_path / "artifact"
+    artifact.mkdir()
+    (artifact / "payload").write_text("unpublished")
+
+    def build(*args, **kwargs):
+        assert 0 < signal.getitimer(signal.ITIMER_REAL)[0] <= 900
+        if stage == "source":
+            signal.raise_signal(signal.SIGALRM)
+        return artifact
+
+    def verify(*args):
+        assert 0 < signal.getitimer(signal.ITIMER_REAL)[0] <= 900
+        signal.raise_signal(signal.SIGALRM)
+
+    monkeypatch.setattr(ci_prepare, "prepare_source", build)
+    monkeypatch.setattr(ci_prepare, "verify_prepared", verify)
+    output = tmp_path / "output"
+    with pytest.raises(TimeoutError):
+        ci_prepare.main(["--output", str(output), "--source", str(tmp_path), "--timeout", "900"])
+    receipt = json.loads((output / "preparation.json").read_text())
+    assert receipt["status"] == "failed"
+    assert receipt["stage"] == stage
+    assert receipt["error"] == "TimeoutError"
+    assert receipt["elapsed_seconds"] >= 0
+    assert set(receipt) == {"status", "stage", "timeout_seconds", "elapsed_seconds", "error"}
+    assert not (output / "prepared").exists()
+    assert not list(output.glob(".publish-*"))
+    assert signal.getitimer(signal.ITIMER_REAL) == (0, 0)
 
 
 def test_current_source_preparation_resolves_the_renamed_runtime_package(tmp_path):
