@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
@@ -244,6 +244,8 @@ beforeAll(async () => {
       host: "127.0.0.1",
       port: await fixturePort(),
       strictPort: true,
+      watch: null,
+      hmr: false,
       fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
     },
   })
@@ -255,6 +257,10 @@ beforeAll(async () => {
   baseUrl = resolved
 
   browser = await chromium.launch({ headless: true })
+})
+
+beforeEach(async () => {
+  pageErrors.length = 0
   page = await browser.newPage({ viewport: { width: 420, height: 600 } })
   page.setDefaultTimeout(5000)
   page.on("pageerror", (error) => pageErrors.push(error))
@@ -266,8 +272,11 @@ beforeAll(async () => {
   })
 })
 
-afterAll(async () => {
+afterEach(async () => {
   await page?.close()
+})
+
+afterAll(async () => {
   await browser?.close()
   await server?.close()
   if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true })

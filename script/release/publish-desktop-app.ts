@@ -5,7 +5,11 @@ import os from "node:os"
 import { DESKTOP_RELEASE_PLATFORMS } from "../../apps/desktop/src/release-assets"
 import { sha256File } from "../../packages/plugin-host/src/installation/files"
 import { currentRepo } from "../shared/current-repo"
-import { createDesktopAppPackage } from "./shared/desktop-app-package"
+import {
+  assertDesktopUpgradeReceipt,
+  createDesktopAppPackage,
+  DESKTOP_UPGRADE_RECEIPT,
+} from "./shared/desktop-app-package"
 import { publishDirectory } from "./shared/publish-generic"
 import { configureNpmAuth } from "./shared/runtime"
 
@@ -17,11 +21,15 @@ export async function publishDesktopApplication(directory: string, version: stri
   )
   const manifest = createDesktopAppPackage({ version, repository, receipts })
   if (manifest.synergy.kind !== "app") throw new Error("Expected a Desktop application manifest")
+  const hashes = new Map<string, string>()
   for (const artifact of manifest.synergy.artifacts) {
     const file = path.join(directory, path.basename(new URL(artifact.url).pathname))
-    if ((await sha256File(file)) !== artifact.sha256)
+    const hash = await sha256File(file)
+    if (hash !== artifact.sha256)
       throw new Error(`Desktop artifact changed after signature validation: ${artifact.target}`)
+    hashes.set(path.basename(file), hash)
   }
+  assertDesktopUpgradeReceipt(await Bun.file(path.join(directory, DESKTOP_UPGRADE_RECEIPT)).json(), version, hashes)
   const stage = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-desktop-package-"))
   try {
     await Bun.write(path.join(stage, "package.json"), JSON.stringify(manifest, null, 2))

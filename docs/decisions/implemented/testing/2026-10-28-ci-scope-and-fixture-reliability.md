@@ -14,6 +14,8 @@ Distribute Web batches across the existing six ordinary Linux execution units. P
 
 Use static compiled browser fixtures with independent pages, scoped filesystem spies and owned worker-queue leases. Queue assertions observe state at the acknowledged receipt; subsequent diagnostic queries can flush unrelated observations. The shared resource helper drains in reverse acquisition order and aggregates named cleanup failures. The stability command repeats explicitly selected files or their original batch in fresh Homes with recorded order seeds, preserves all attempts and fails if any attempt fails. The test policy rejects focused tests and increases in retries or unisolated module replacements relative to the exact base; fixed sleeps and existing debt in edited tests remain review advisories.
 
+The file-explorer fixture retains one prepared Vite server and Chromium process but gives every case its own browser context and page. Viewport, theme, scroll position, clipboard stubs and page errors belong to that case. Its immutable files require neither watching nor HMR. The existing restoration, menu, mutation and keyboard assertions retain their deadlines; isolating their state adds no duplicate scenarios.
+
 ## Alternatives considered
 
 **Increase global timeouts or rerun failed tests automatically.** This hides ordering and ownership defects while raising feedback cost; it does not demonstrate a repaired invariant.

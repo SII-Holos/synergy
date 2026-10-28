@@ -151,7 +151,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-15
             platform: darwin
             runtime_targets: darwin-x64,darwin-arm64
             builder_args: --mac pkg dmg zip --x64 --arm64
@@ -282,6 +282,22 @@ jobs:
             throw "Windows installer Authenticode signature is not valid: $($signature.Status)"
           }
 
+      - name: Verify final Desktop released upgrade
+        if: ${{ matrix.platform == 'darwin' }}
+        run: bun script/release/verify-desktop-upgrade.ts
+        env:
+          SYNERGY_VERSION: ${{ needs.stable_candidate.outputs.version }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SYNERGY_UPGRADE_JUNIT: .artifacts/release/desktop-upgrade.xml
+
+      - name: Upload Desktop upgrade test report
+        if: ${{ always() && matrix.platform == 'darwin' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: desktop-upgrade-test
+          path: .artifacts/release/desktop-upgrade.xml
+          if-no-files-found: ignore
+
       - name: Record portable Desktop application identities
         run: bun script/release/desktop-app-receipt.ts
         env:
@@ -304,6 +320,7 @@ jobs:
             apps/desktop/release/*.yml
             apps/desktop/release/*.zip
             apps/desktop/release/synergy-desktop-app-*.json
+            apps/desktop/release/synergy-desktop-upgrade.json
 
   stable_desktop_publish:
     name: Upload Desktop Artifacts
