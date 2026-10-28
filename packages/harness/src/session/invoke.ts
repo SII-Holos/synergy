@@ -26,6 +26,7 @@ import { Agent } from "../agent/agent"
 import { AgentPermissionContributions } from "../agent/permission-contributions"
 import { Provider } from "../provider/provider"
 import { SessionCompaction } from "./compaction"
+import { CompactionRegion } from "./compaction-region"
 import { Token } from "../util/token"
 import { Lock } from "../util/lock"
 import { Bus } from "../bus"
@@ -1425,85 +1426,6 @@ export namespace SessionInvoke {
                   }
                 }
 
-                const shouldInjectCompaction =
-                  !jobCtx.compactionAutoDisabled &&
-                  !SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id) &&
-                  (promptDecision.shouldCompact || promptDecision.contextExceeded)
-                if (shouldInjectCompaction) {
-                  log.info("prompt budget exceeded, injecting compaction", {
-                    sessionID,
-                    total: promptDecision.measure.total,
-                    soft: promptDecision.budget.soft,
-                    usable: promptDecision.budget.usable,
-                    inputEnvelope: promptDecision.budget.inputEnvelope,
-                    output: promptDecision.budget.output,
-                    margin: promptDecision.budget.margin,
-                    contextExceeded: promptDecision.contextExceeded,
-                  })
-                  await Session.updatePart({
-                    id: Identifier.ascending("part"),
-                    messageID: R.id,
-                    sessionID,
-                    type: "compaction",
-                    auto: true,
-                  })
-                }
-
-                if (shouldInjectCompaction || deferCompaction) {
-                  const catalog = ToolResolver.modelDefinitions(toolAvailability)
-                  const request: SessionCompaction.Request = {
-                    user: R,
-                    modelSelection,
-                    agent,
-                    model,
-                    system: promptPlan.system,
-                    systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
-                    lateSystem: promptPlan.lateSystem,
-                    messages: promptPlan.messages,
-                    messageSources: promptPlan.messageSources!,
-                    toolDefinitions: catalog,
-                    activeToolIDs: catalog.map((definition) => definition.id),
-                    codexReplay: await SessionCompaction.codexReplayPlan({
-                      messages: msgs,
-                      providerID: model.providerID,
-                      modelID: model.id,
-                      profileID: producingProvider?.profileID,
-                      apiModelID: model.api.id,
-                    }),
-                  }
-                  try {
-                    const compacted = await SessionCompaction.process({
-                      parentID: R.id,
-                      messages: msgs,
-                      sessionID,
-                      abort,
-                      auto:
-                        shouldInjectCompaction || RParts!.findLast((part) => part.type === "compaction")?.auto === true,
-                      request,
-                      assistantMessageID: processor.message.id,
-                    })
-                    if (compacted === "stop") break
-                    emergencyCompactionTriggered = false
-                    recoveringCompaction = true
-                    promptBaseline = undefined
-                    continue
-                  } catch (error) {
-                    if (RolloutRecordingError.isInstance(error)) throw error
-                    break
-                  }
-                }
-
-                if (promptDecision.contextExceeded) {
-                  await completeAssistantWithError({
-                    sessionID,
-                    processor,
-                    model,
-                    error: new PromptBudgeter.ContextBudgetExceededError(),
-                    abort,
-                  })
-                  break
-                }
-
                 const toolResolveTimer = log.time("toolResolver.resolve")
                 let resolvedTools = await ToolResolver.resolveWithAvailability(
                   {
@@ -1533,7 +1455,7 @@ export namespace SessionInvoke {
                   }),
                 )
                 const activeToolIDs = new Set(resolvedTools.activeToolIDs)
-                const activeToolDefinitions = promptPlan.toolDefinitions.filter((definition) =>
+                const activeToolDefinitions = resolvedTools.definitions.filter((definition) =>
                   activeToolIDs.has(definition.id),
                 )
                 const contextUsageProvenance = ContextUsage.buildProvenance({
@@ -1615,12 +1537,6 @@ export namespace SessionInvoke {
                   streamInput = undefined
                 }
 
-                // Count LLM calls for registered workflow kinds in memory; flushed to
-                // the durable domain state at turn boundaries / policy entry.
-                const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
-                if (activeKind) {
-                  WorkflowPromptRegistry.get(activeKind)?.onModelCall?.(sessionID)
-                }
                 const processTimer = log.time("processor.process")
                 const timeoutCfg = await TimeoutConfig.resolve()
                 const turnDeadline = new AbortController()
@@ -1657,6 +1573,8 @@ export namespace SessionInvoke {
                 })
                 let turnSpanEnded = false
                 let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+                let compactBeforeCall = false
+                let modelDispatched = false
                 // Codex remote-compaction replay plan for this root's model call,
                 // computed from the newest compaction summary message's persisted
                 // metadata (config- and same-model-gated; undefined otherwise).
@@ -1707,24 +1625,6 @@ export namespace SessionInvoke {
                   if (promptPruning) {
                     processor.message.metadata = { ...processor.message.metadata, promptPruning }
                   }
-                  if (contextMessage) {
-                    const contextRoot = R
-                    const recordsTime = observation?.metadata.sources.some(
-                      (source) => source.id === "time" && source.kind === "event",
-                    )
-                    await Storage.transaction(async () => {
-                      await Session.updateMessage(contextMessage.info)
-                      for (const part of contextMessage.parts) await Session.updatePart(part)
-                      if (recordsTime)
-                        await Session.mergeMessageMetadata({
-                          sessionID,
-                          messageID: contextRoot.id,
-                          metadata: { runtimeContextTimeRecorded: true },
-                        })
-                    })
-                    if (recordsTime)
-                      R = { ...contextRoot, metadata: { ...contextRoot.metadata, runtimeContextTimeRecorded: true } }
-                  }
                   const currentStreamInput = streamInput
                   const process = () =>
                     Promise.race([
@@ -1751,11 +1651,22 @@ export namespace SessionInvoke {
                             ? undefined
                             : await PromptBudgeter.calibrate(finalPlan, model, promptBaseline, reasoningTokens),
                         })
-                        if (
-                          finalDecision.contextExceeded ||
-                          (!jobCtx.compactionAutoDisabled && finalDecision.shouldCompact)
-                        ) {
-                          if (jobCtx.compactionAutoDisabled) compactionRequest = undefined
+                        const hasHistory =
+                          CompactionRegion.project({
+                            messages: preparedRequest.messages,
+                            messageSources: promptPlan!.messageSources!,
+                            infos: msgs.map((message) => message.info),
+                            rootID: R!.id,
+                          }).groups.length > 0
+                        compactBeforeCall =
+                          deferCompaction ||
+                          (!jobCtx.compactionAutoDisabled &&
+                            hasHistory &&
+                            (finalDecision.shouldCompact || finalDecision.contextExceeded))
+                        if (compactBeforeCall) return "stop" as const
+                        if (!hasHistory) compactionRequest = undefined
+                        if (finalDecision.contextExceeded) {
+                          compactionRequest = undefined
                           throw new PromptBudgeter.ContextBudgetExceededError()
                         }
                         streamInput.maxOutputTokens = finalDecision.maxOutputTokens
@@ -1764,6 +1675,31 @@ export namespace SessionInvoke {
                           : await PromptBudgeter.snapshot(finalPlan, model, reasoningTokens)
                         promptBaseline = undefined
                         combinedAbort.throwIfAborted()
+                        if (contextMessage) {
+                          const contextRoot = R!
+                          const recordsTime = observation?.metadata.sources.some(
+                            (source) => source.id === "time" && source.kind === "event",
+                          )
+                          await Storage.transaction(async () => {
+                            await Session.updateMessage(contextMessage.info)
+                            for (const part of contextMessage.parts) await Session.updatePart(part)
+                            if (recordsTime)
+                              await Session.mergeMessageMetadata({
+                                sessionID,
+                                messageID: contextRoot.id,
+                                metadata: { runtimeContextTimeRecorded: true },
+                              })
+                          })
+                          if (recordsTime)
+                            R = {
+                              ...contextRoot,
+                              metadata: { ...contextRoot.metadata, runtimeContextTimeRecorded: true },
+                            }
+                        }
+                        combinedAbort.throwIfAborted()
+                        const activeKind = WorkflowKindRegistry.effectiveKind(session?.workflow)
+                        if (activeKind) WorkflowPromptRegistry.get(activeKind)?.onModelCall?.(sessionID)
+                        modelDispatched = true
                         const result = await processor.process(streamInput)
                         if (requestSnapshot && !processor.message.error && !combinedAbort.aborted)
                           promptBaseline = PromptBudgeter.withUsage(requestSnapshot, processor.message.tokens)
@@ -1820,7 +1756,10 @@ export namespace SessionInvoke {
                   turnDeadline.abort()
                   processTimer.stop()
                   releaseTurnReferences(!turnTimedOut)
-                  if (!processor.message.error || !SessionCompaction.isContextExceeded(processor.message.error))
+                  if (
+                    !compactBeforeCall &&
+                    (!processor.message.error || !SessionCompaction.isContextExceeded(processor.message.error))
+                  )
                     compactionRequest = undefined
                   if (!turnSpanEnded) {
                     ObservabilitySpans.end(turnSpan, {
@@ -1832,6 +1771,38 @@ export namespace SessionInvoke {
                     })
                   }
                 }
+                if (compactBeforeCall && compactionRequest) {
+                  if (!SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id)) {
+                    await Session.updatePart({
+                      id: Identifier.ascending("part"),
+                      messageID: R.id,
+                      sessionID,
+                      type: "compaction",
+                      auto: true,
+                    })
+                  }
+                  try {
+                    const compacted = await SessionCompaction.process({
+                      parentID: R.id,
+                      messages: msgs,
+                      sessionID,
+                      abort,
+                      auto: !deferCompaction || RParts!.findLast((part) => part.type === "compaction")?.auto === true,
+                      request: compactionRequest,
+                      assistantMessageID: processor.message.id,
+                    })
+                    compactionRequest = undefined
+                    if (compacted !== "continue") break
+                    emergencyCompactionTriggered = false
+                    recoveringCompaction = true
+                    promptBaseline = undefined
+                    continue
+                  } catch (error) {
+                    if (RolloutRecordingError.isInstance(error)) throw error
+                    break
+                  }
+                }
+                if (!modelDispatched) break
                 recoveringCompaction = false
 
                 let postRequestedStop = false
@@ -1898,7 +1869,7 @@ export namespace SessionInvoke {
                       request: compactionRequest,
                     })
                     compactionRequest = undefined
-                    if (compacted === "stop") break
+                    if (compacted !== "continue") break
                     emergencyCompactionTriggered = false
                     recoveringCompaction = true
                     promptBaseline = undefined

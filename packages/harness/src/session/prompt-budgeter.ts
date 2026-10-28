@@ -9,6 +9,7 @@ import type { MessageV2 } from "./message-v2"
 import { Token } from "../util/token"
 import { Log } from "../util/log"
 import { ToolResolver } from "./tool-resolver"
+import { ToolIntent } from "./tool-intent"
 
 export namespace PromptBudgeter {
   const log = Log.create({ service: "prompt-budgeter" })
@@ -112,7 +113,11 @@ export namespace PromptBudgeter {
       system: plan.system,
       lateSystem: plan.lateSystem ?? [],
       systemCacheBreakpoint: plan.systemCacheBreakpoint,
-      tools: plan.toolDefinitions.map(({ id, description, inputSchema }) => ({ id, description, inputSchema })),
+      tools: plan.toolDefinitions.map(({ id, description, inputSchema }) => ({
+        id,
+        description,
+        inputSchema: ToolIntent.snapshot(inputSchema).schema,
+      })),
     })
   }
 
@@ -492,7 +497,7 @@ export namespace PromptBudgeter {
         const [idTokens, descTokens, schemaTokens] = await Promise.all([
           Token.estimateModel(modelID, item.id),
           Token.estimateModel(modelID, item.description),
-          estimateSchema(modelID, item.inputSchema),
+          estimateSchema(modelID, ToolIntent.snapshot(item.inputSchema).schema),
         ])
         return TOOL_OVERHEAD_PER_TOOL + idTokens + descTokens + schemaTokens
       }),
