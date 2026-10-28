@@ -147,6 +147,8 @@ Preserve canonical rate and cache coverage through concise metric labels and qua
 
 For execution loading changes, count initiated and aborted requests as well as successful responses. Exercise ordinary oversized checkpoints separately from actual gaps and reconnects, including a checkpoint while the initial page is pending and latest navigation from a nonempty node anchor. Verify same-revision summary and page reads reuse static aggregation while canonical active clocks advance. Hold event publication beyond its coalescing interval, consume later dirty data through HTTP, and require one publisher plus eventual delivery of the later revision.
 
+Keep trajectory pages and scoped summaries under separate request lifetimes. Hold a selected-round summary across pagination and require acceptance without another summary read; separately reject late results after selection, connection or activity changes. Deliver a terminal detail-gap event with no later events and verify its complete scoped summary settles while the missing detail recovers.
+
 ## Conversation navigation motion
 
 Sample loading animation at several times in the same production fixture: line positions and base opacity stay fixed while only a bounded decorative layer moves. Verify inactive-view pause/resume, subtree-wide reduced motion and delayed-loading action hit targets. Do not use JavaScript playback overrides when checking CSS-owned pause state.

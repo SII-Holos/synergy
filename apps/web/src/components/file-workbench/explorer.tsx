@@ -172,12 +172,16 @@ export function FileExplorer(props: { onClose: () => void; onOpenResource?: () =
       (event.target as HTMLElement).closest("button, a, input, textarea, [contenteditable='true']")
     )
       return
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
-      const key = event.key.toLowerCase()
+    const key = event.key.toLowerCase()
+    if (
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (key === "x" || key === "c" || key === "v")
+    ) {
       if (key === "x") entryActions.capture("move")
       else if (key === "c") entryActions.capture("copy")
-      else if (key === "v") void entryActions.paste()
-      else return
+      else void entryActions.paste()
       event.preventDefault()
       return
     }

@@ -311,7 +311,8 @@ test.skipIf(!previous || !candidate)(
           throw error
         }
         expect(
-          before.flatMap((message) => message.parts)
+          before
+            .flatMap((message) => message.parts)
             .filter((part) => part.type === "tool")
             .map((part) => z.object({ state: z.object({ status: z.string() }) }).parse(part).state.status),
         ).toEqual(["completed"])

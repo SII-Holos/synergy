@@ -33,7 +33,9 @@ interface RetainedInputWindow extends Window {
       path: string
       options: { directory: boolean }
     }[]
-    setRoots(roots: { id: string; generation: number; scopeID: string; type: string; path: string }[]): void
+    setRoots(
+      roots: { id: string; generation: number; scopeID: string; type: string; path: string; name?: string }[],
+    ): void
   }
 }
 
@@ -399,7 +401,7 @@ describe("file toolbar ownership and layout", () => {
     const parents = toolbar.getByRole("navigation", { name: "File path" })
     expect(await parents.textContent()).toContain("docs")
     expect(await parents.textContent()).toContain("guides")
-    await origin.click()
+    await origin.press("ArrowDown")
     expect(await page.getByRole("option").allTextContents()).toEqual([
       "/workspace/demo",
       "/workspace/team",
@@ -408,6 +410,17 @@ describe("file toolbar ownership and layout", () => {
     expect(await page.getByRole("option", { name: "/workspace/demo", exact: true }).getAttribute("aria-selected")).toBe(
       "true",
     )
+    await page.getByRole("option", { name: "/workspace/demo", exact: true }).press("ArrowDown")
+    await page.locator('[role="option"]:focus').filter({ hasText: "/workspace/team" }).waitFor()
+    expect(await page.getByRole("option", { name: "/workspace/demo", exact: true }).getAttribute("aria-selected")).toBe(
+      "true",
+    )
+    expect(await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.opens)).toEqual([])
+    await page.keyboard.press("Escape")
+    await page.getByRole("listbox").waitFor({ state: "hidden" })
+    await page.locator('button[aria-label="Workspace: demo"]:focus').waitFor()
+    expect(await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.opens)).toEqual([])
+    await origin.press("ArrowDown")
     await page.getByRole("option", { name: "/workspace/demo-rebound", exact: true }).click()
     expect(await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.opens)).toEqual([
       {
@@ -431,6 +444,8 @@ describe("file toolbar ownership and layout", () => {
     await page.evaluate(() =>
       (window as unknown as RetainedInputWindow).fixture.setRoots([
         { id: "wsp_elsewhere", generation: 4, scopeID: "home", path: "/workspace/elsewhere", type: "directory" },
+        { id: "wsp_named", generation: 3, scopeID: "home", path: "", type: "directory", name: "Shared files" },
+        { id: "wsp_unnamed", generation: 5, scopeID: "home", path: "", type: "directory" },
       ]),
     )
     expect(await origin.textContent()).toBe("demo")
@@ -438,6 +453,22 @@ describe("file toolbar ownership and layout", () => {
     expect(await page.getByRole("option", { name: "/workspace/demo", exact: true }).getAttribute("aria-selected")).toBe(
       "true",
     )
+    expect(await page.getByRole("option").allTextContents()).toEqual([
+      "/workspace/demo",
+      "/workspace/elsewhere",
+      "Shared files",
+      "wsp_unnamed",
+    ])
+    await page.getByRole("option", { name: "/workspace/demo", exact: true }).press("End")
+    await page.locator('[role="option"]:focus').filter({ hasText: "wsp_unnamed" }).waitFor()
+    expect(await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.opens)).toHaveLength(1)
+    await page.keyboard.press("Enter")
+    expect(await page.evaluate(() => (window as unknown as RetainedInputWindow).fixture.opens.at(-1))).toEqual({
+      workspace: { id: "wsp_unnamed", generation: 5, scopeID: "home", path: "", type: "directory" },
+      path: "",
+      options: { directory: true },
+    })
+    expect(await origin.textContent()).toBe("demo")
   })
 
   test("uses a short named origin or Working copy without hiding the original path options", async () => {

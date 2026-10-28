@@ -39,6 +39,7 @@ export function createExecutionTrajectory(input: {
   const [generation, setGeneration] = createSignal(0)
   const [recoveryVersion, setRecoveryVersion] = createSignal(0)
   let abort: AbortController | undefined
+  let summaryAbort: AbortController | undefined
   let pending: { key: string; controller: AbortController; promise: Promise<void> } | undefined
   let disposed = false
   let selectionKey = ""
@@ -149,30 +150,34 @@ export function createExecutionTrajectory(input: {
   const refreshSummary = async () => {
     const sessionID = input.sessionID()
     const runID = input.runID()
-    const controller = abort
-    const version = generation()
+    const client = input.sdk.client
+    const connection = input.connectionVersion()
+    summaryAbort?.abort()
+    const controller = new AbortController()
+    summaryAbort = controller
+    const current = () =>
+      !disposed &&
+      summaryAbort === controller &&
+      !controller.signal.aborted &&
+      input.enabled?.() !== false &&
+      input.sessionID() === sessionID &&
+      input.runID() === runID &&
+      input.sdk.client === client &&
+      input.connectionVersion() === connection
     if (!sessionID || input.enabled?.() === false) return
     if (!runID) {
       setState("summary", undefined)
       return
     }
     try {
-      const response = await input.sdk.client.session.executionSummary(
+      const response = await client.session.executionSummary(
         { sessionID, runID },
-        { signal: controller?.signal, throwOnError: true },
+        { signal: controller.signal, throwOnError: true },
       )
-      if (
-        !disposed &&
-        !controller?.signal.aborted &&
-        generation() === version &&
-        input.enabled?.() !== false &&
-        input.sessionID() === sessionID &&
-        input.runID() === runID &&
-        newerExecutionSample(state.summary, response.data, true)
-      )
+      if (current() && newerExecutionSample(state.summary, response.data, true))
         setState("summary", reconcile(response.data))
     } catch {
-      if (!disposed && generation() === version && !controller?.signal.aborted) setState("error", true)
+      if (current()) setState("error", true)
     }
   }
   createEffect(
@@ -230,14 +235,22 @@ export function createExecutionTrajectory(input: {
               undefined,
               true,
             )
-            void refreshSummary()
           }
           return
         }
         selectionKey = key
         requiredRevision = -1
-        setState({ rows: [], revision: -1, next: null, previous: null, summary: undefined, pending: 0, history: false })
+        setState({ rows: [], revision: -1, next: null, previous: null, pending: 0, history: false })
         void load(undefined, input.anchor() || (input.query() ? undefined : "latest"))
+      },
+    ),
+  )
+  createEffect(
+    on(
+      [input.sessionID, input.runID, () => input.sdk.client, input.connectionVersion, () => input.enabled?.() ?? true],
+      ([sessionID, runID, client], previous) => {
+        if (!previous || previous[0] !== sessionID || previous[1] !== runID || previous[2] !== client)
+          setState("summary", undefined)
         void refreshSummary()
       },
     ),
@@ -246,6 +259,8 @@ export function createExecutionTrajectory(input: {
     const update = event.properties
     if (input.enabled?.() === false) return
     if (update.sessionID !== input.sessionID() || update.revision <= state.revision) return
+    const summary = input.runID() ? update.roundSummaries.find((value) => value.runID === input.runID()) : undefined
+    if (summary && newerExecutionSample(state.summary, summary)) setState("summary", reconcile(summary))
     if (update.previousRevision !== undefined && update.previousRevision > state.revision) {
       requiredRevision = Math.max(requiredRevision, update.revision)
       setRecoveryVersion((value) => value + 1)
@@ -259,8 +274,6 @@ export function createExecutionTrajectory(input: {
         return
       }
     }
-    const summary = input.runID() ? update.roundSummaries.find((value) => value.runID === input.runID()) : undefined
-    if (summary && newerExecutionSample(state.summary, summary)) setState("summary", reconcile(summary))
     const runs = input.runID()
       ? new Set([
           input.sessionID() + ":" + input.runID(),
@@ -316,6 +329,7 @@ export function createExecutionTrajectory(input: {
   onCleanup(() => {
     disposed = true
     abort?.abort()
+    summaryAbort?.abort()
     unsubscribe()
   })
   return { state, load, recoveryVersion, setHistory: (value: boolean) => setState("history", value), refreshSummary }

@@ -152,7 +152,7 @@ beforeAll(async () => {
             copy: input => mutate("copy", input),
             remove: input => mutate("remove", input),
           },
-          openWorkspaceFile: async path => { h.calls.push({kind: "open", path}); return {id: "opened"} },
+          openWorkspaceFile: async (path, options) => { h.calls.push({kind: "open", path, ...(options?.newTab ? {newTab: true} : {})}); return {id: "opened"} },
           explorer: {
             open: () => true,
             setOpen: () => {},
@@ -546,6 +546,22 @@ describe("file explorer expanded-state restore", () => {
     await page.getByRole("menuitem", { name: "Rename", exact: true }).click()
     expect(await page.getByRole("textbox", { name: "Name", exact: true }).inputValue()).toBe("api.md")
   }, 30000)
+
+  test.each(["Control", "Meta"])("%s+Enter opens the focused file in a new tab", async (modifier) => {
+    await page.goto(baseUrl)
+    await page.locator('[data-path="docs/api.md"]').dispatchEvent("mousedown")
+    const tree = page.getByRole("tree")
+    await tree.press(`${modifier}+Enter`)
+    expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([
+      { kind: "open", path: "docs/api.md", newTab: true },
+    ])
+    await tree.press("Enter")
+    expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([
+      { kind: "open", path: "docs/api.md", newTab: true },
+      { kind: "open", path: "docs/api.md" },
+    ])
+    expect(pageErrors).toEqual([])
+  })
 
   test("new-entry input scrolls into the mounted virtual range and Escape cancels without writing", async () => {
     await page.goto(`${baseUrl}?many`)

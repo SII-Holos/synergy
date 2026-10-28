@@ -173,6 +173,7 @@ type Fixture = Window & {
 
 test("navigation controls stay quiet while disabled and keep their bounds through hover and menu opening", async () => {
   await page.goto(url)
+  await page.clock.install()
   const back = page.getByRole("button", { name: "Back", exact: true })
   const menu = page.getByRole("button", { name: "Browser options", exact: true })
   const disabled = await back.evaluate((node) => getComputedStyle(node).backgroundColor)
@@ -189,12 +190,12 @@ test("navigation controls stay quiet while disabled and keep their bounds throug
   for (const name of ["Back", "Forward", "Reload", "Open in default browser", "Browser options"]) {
     const control = page.getByRole("button", { name, exact: true })
     await control.hover({ force: true })
-    await page.waitForTimeout(500)
+    await page.clock.runFor(500)
     expect(await page.getByRole("tooltip").count()).toBe(0)
     expect(await control.getAttribute("title")).toBeNull()
     if (await control.isEnabled()) {
       await control.focus()
-      await page.waitForTimeout(100)
+      await page.clock.runFor(100)
       expect(await page.getByRole("tooltip").count()).toBe(0)
     }
   }
