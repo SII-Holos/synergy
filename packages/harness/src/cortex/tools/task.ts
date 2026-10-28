@@ -141,12 +141,13 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>(
           providerID: msg.info.providerID,
         }
 
+        const requestedModel = params.model?.trim()
         let promptAppend = ""
         let categoryModel: DelegationModel.Ref | undefined
 
         const categoryConfig = await Category.resolve(params.category)
         if (categoryConfig) {
-          if (!params.model && categoryConfig.model) {
+          if (!requestedModel && categoryConfig.model) {
             const parsed = Provider.parseModel(categoryConfig.model)
             if (!parsed.providerID.trim() || !parsed.modelID.trim()) {
               throw new Error(
@@ -159,7 +160,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>(
         }
 
         const model = await DelegationModel.select({
-          requested: params.model,
+          requested: requestedModel,
           parent: parentModel,
           categoryModel,
           subtaskModel: ctx.extra?.subtaskModel,

@@ -154,6 +154,30 @@ describe("task tool delegated model resolution", () => {
       }))
   }
 
+  test("blank model values preserve the category override", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          using availability = spyOn(Provider, "isModelAvailable").mockResolvedValue(true)
+          using category = spyOn(Category, "resolve").mockResolvedValue({ model: "category-provider/category-model" })
+          const parent = await Session.create({})
+          const messageID = await writeAssistantMessage({
+            sessionID: parent.id,
+            agent: PrimaryAgentIdentity.names.general,
+            model: PARENT,
+          })
+          for (const model of ["", " \t "]) {
+            expect(await runTaskTool({ parentSessionID: parent.id, messageID, category: "quick", model })).toEqual({
+              providerID: "category-provider",
+              modelID: "category-model",
+            })
+          }
+        },
+      })
+    }))
+
   test("an explicit model wins over the parent and category models", () =>
     runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
