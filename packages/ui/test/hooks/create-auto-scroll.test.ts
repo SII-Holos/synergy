@@ -165,7 +165,7 @@ function createScrollHarness() {
 
 describe("createAutoScroll", () => {
   for (const revoke of ["remove", "replace"] as const) {
-    test(`${revoke} of the motion target settles an in-flight follow without waiting for resize or losing follow intent`, () => {
+    test(`${revoke} of the motion target cancels an explicit smooth follow without losing follow intent`, () => {
       const harness = createScrollHarness()
       const style = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle")
       Object.defineProperty(globalThis, "getComputedStyle", {
@@ -198,19 +198,21 @@ describe("createAutoScroll", () => {
         owner.autoScroll.scrollRef(element)
         owner.autoScroll.forceScrollToBottom({ untilInteraction: true })
         harness.flushFrames()
+        expect(animations).toHaveLength(0)
         element.scrollHeight += 32
-        harness.lastObserver()!.fire(element)
+        owner.autoScroll.forceScrollToBottom({ untilInteraction: true, smooth: true })
+        harness.flushFrames()
         expect(animations).toHaveLength(1)
         const before = element.scrollTop
         owner.setTarget(revoke === "remove" ? undefined : target())
-        expect(animations[0].cancelled).toBe(true)
+        expect(animations[0]?.cancelled).toBe(true)
         expect(element.scrollTop).toBe(before)
         expect(owner.autoScroll.userScrolled()).toBe(false)
         owner.setTarget(first)
         expect(animations).toHaveLength(1)
         element.scrollHeight += 32
         harness.lastObserver()!.fire(element)
-        expect(animations).toHaveLength(2)
+        expect(animations).toHaveLength(1)
       } finally {
         dispose()
         harness.restore()
@@ -219,6 +221,44 @@ describe("createAutoScroll", () => {
       }
     })
   }
+
+  test("automatic bottom growth keeps the motion target stable instead of animating the viewport", () => {
+    const harness = createScrollHarness()
+    const style = Object.getOwnPropertyDescriptor(globalThis, "getComputedStyle")
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({ getPropertyValue: () => "" }),
+    })
+    const animations: { cancelled: boolean }[] = []
+    const motionTarget = () =>
+      ({
+        animate() {
+          const state = { cancelled: false }
+          animations.push(state)
+          return { onfinish: null, cancel: () => (state.cancelled = true) }
+        },
+      }) as unknown as HTMLElement
+    let dispose = () => {}
+    try {
+      const element = harness.makeScroller()
+      createRoot((cleanup) => {
+        dispose = cleanup
+        const autoScroll = createAutoScroll({ working: () => true, motionTarget })
+        autoScroll.scrollRef(element)
+        autoScroll.forceScrollToBottom({ untilInteraction: true })
+      })
+      harness.flushFrames()
+      expect(animations).toHaveLength(0)
+      element.scrollHeight += 14
+      harness.lastObserver()!.fire(element)
+      expect(animations).toHaveLength(0)
+    } finally {
+      dispose()
+      harness.restore()
+      if (style) Object.defineProperty(globalThis, "getComputedStyle", style)
+      else Reflect.deleteProperty(globalThis, "getComputedStyle")
+    }
+  })
 
   test("explicit history navigation releases the old reading anchor until native reading resumes", async () => {
     const harness = createScrollHarness()

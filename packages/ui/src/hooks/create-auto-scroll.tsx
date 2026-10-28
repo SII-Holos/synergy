@@ -104,7 +104,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     })
   }
 
-  const flushScrollToBottom = () => {
+  const flushScrollToBottom = (allowGrowthMotion = true) => {
     scrollFrame = undefined
     const force = forceNextScroll
     forceNextScroll = false
@@ -119,7 +119,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     const distance = bottom - scroll.clientHeight - scroll.scrollTop
     if (Math.abs(distance) < 2 && !options.motionTarget) return
 
-    const animate = !!options.motionTarget && (!force || smoothForce)
+    const animate = !!options.motionTarget && (smoothForce || (allowGrowthMotion && !force))
     motion.move(scroll, bottom, animate, animate && !!store.contentRef?.querySelector("[data-motion-resizing]"))
     smoothForce = false
   }
@@ -140,7 +140,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
     if (force) beginSettle(settleWindow(), true)
     forceNextScroll ||= force
     if (scrollFrame !== undefined) return
-    scrollFrame = requestAnimationFrame(flushScrollToBottom)
+    scrollFrame = requestAnimationFrame(() => flushScrollToBottom())
   }
 
   const stop = (allowResume = false) => {
@@ -290,7 +290,7 @@ export function createAutoScroll(options: AutoScrollOptions) {
         if (forcedSettling) beginSettle(settleWindow(), true)
         // Resize delivery follows frame callbacks; another frame would paint the new height before its latest pin.
         if (scrollFrame !== undefined) cancelAnimationFrame(scrollFrame)
-        flushScrollToBottom()
+        flushScrollToBottom(false)
         return
       }
       restoreReadingLayout()
