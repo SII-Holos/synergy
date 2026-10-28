@@ -95,6 +95,11 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
       task.inputs!.map((file) => owner(file)?.directory).filter((directory): directory is string => !!directory),
     )
     let complete = true
+    const unresolved = new Set<string>()
+    const incomplete = (file: string, reason: string) => {
+      complete = false
+      unresolved.add(`${file}: ${reason}`)
+    }
     const addPackage = (name: string) => {
       const entry = workspaces.find((item) => item.name === name)
       if (!entry || packages.has(entry.directory)) return
@@ -105,14 +110,14 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
       if (visited.has(file)) return
       visited.add(file)
       if (inventory.get(file)?.type !== "blob") {
-        complete = false
+        incomplete(file, "missing or non-file input")
         return
       }
       if (!/\.[cm]?[jt]sx?$/.test(file)) return
       const fileOwner = owner(file)
       const alias = fileOwner && aliases.get(fileOwner.directory)
       const analysis = analyze(file)
-      if (!analysis.complete) complete = false
+      if (!analysis.complete) incomplete(file, "dynamic import or unsupported TypeScript aliases")
       for (const specifier of analysis.specifiers) {
         const local = specifier.startsWith(".")
           ? path.posix.join(path.posix.dirname(file), specifier)
@@ -122,7 +127,7 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
         if (local) {
           const target = resolve(path.posix.normalize(local))
           if (!target) {
-            complete = false
+            incomplete(file, `unresolved import ${specifier}`)
             continue
           }
           const targetOwner = owner(target)
@@ -131,7 +136,7 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
           continue
         }
         if (specifier.startsWith("#") || specifier.startsWith("@/")) {
-          complete = false
+          incomplete(file, `unresolved alias ${specifier}`)
           continue
         }
         const name = specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!
@@ -139,7 +144,7 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
         if (dependency) {
           addPackage(dependency.name)
           const targets = publicInputs(dependency, specifier)
-          if (!targets.length || targets.some((target) => !target)) complete = false
+          if (!targets.length || targets.some((target) => !target)) incomplete(file, `unresolved export ${specifier}`)
           for (const target of targets) if (target) visit(target)
         }
       }
@@ -151,7 +156,12 @@ export async function taskInputs(snapshot: SourceSnapshot, tasks: Task[], worksp
           file.startsWith(directory + "/") && /\/(?:src|test|script)\//.test(file) && !/\.[cm]?[jt]sx?$/.test(file),
       ))
         visited.add(file)
-    results[task.id] = { files: [...visited].sort(), packages: [...packages].sort(), complete }
+    results[task.id] = {
+      files: [...visited].sort(),
+      packages: [...packages].sort(),
+      complete,
+      ...(unresolved.size ? { unresolved: [...unresolved].sort() } : {}),
+    }
   }
   return results
 }

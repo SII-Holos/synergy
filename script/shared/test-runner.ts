@@ -101,6 +101,8 @@ export async function runBatchedTests(options: TestRunnerOptions) {
           // coverage from the main batch.
           ...(coverage ? ["--coverage", "--coverage-reporter=lcov", "--coverage-dir", `coverage/shards/${shard}`] : []),
           ...(batch.browser ? ["--conditions=browser"] : []),
+          ...(process.env.SYNERGY_TEST_SEED ? ["--randomize", "--seed", process.env.SYNERGY_TEST_SEED] : []),
+          ...(process.env.SYNERGY_TEST_NAME ? ["--test-name-pattern", process.env.SYNERGY_TEST_NAME] : []),
           ...files,
         ],
         {

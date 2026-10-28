@@ -69,6 +69,22 @@ export function inputArtifact(
   return artifact?.name
 }
 
+async function fetchHistory(url: string, headers: Record<string, string>) {
+  for (let attempt = 0; ; attempt++) {
+    let response: Response
+    try {
+      response = await fetch(url, { headers, signal: AbortSignal.timeout(15_000) })
+    } catch (error) {
+      if (attempt === 2) throw new Error("CI provenance transport unavailable after three attempts", { cause: error })
+      await Bun.sleep(250 * (attempt + 1))
+      continue
+    }
+    if (attempt === 2 || ![502, 503, 504].includes(response.status)) return response
+    await response.body?.cancel()
+    await Bun.sleep(250 * (attempt + 1))
+  }
+}
+
 function client(plan: Plan) {
   const repository = process.env.GITHUB_REPOSITORY
   const token = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
@@ -77,14 +93,12 @@ function client(plan: Plan) {
   const cache = new Map<string, { etag: string; data: unknown }>()
   async function get<T>(suffix: string): Promise<T> {
     const previous = cache.get(suffix)
-    const response = await fetch(
+    const response = await fetchHistory(
       `${process.env.GITHUB_API_URL ?? "https://api.github.com"}/repos/${repository}/actions/runs/${plan.run}${suffix}`,
       {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          ...(previous ? { "If-None-Match": previous.etag } : {}),
-        },
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        ...(previous ? { "If-None-Match": previous.etag } : {}),
       },
     )
     if (response.status === 304 && previous) return previous.data as T
@@ -99,10 +113,11 @@ function client(plan: Plan) {
 
 async function allJobs(get: ReturnType<typeof client>["get"]) {
   const jobs: WorkflowJob[] = []
+  const perPage = 50
   for (let page = 1; ; page++) {
-    const data = await get<{ jobs: WorkflowJob[] }>(`/jobs?filter=all&per_page=100&page=${page}`)
+    const data = await get<{ jobs: WorkflowJob[] }>(`/jobs?filter=all&per_page=${perPage}&page=${page}`)
     jobs.push(...data.jobs)
-    if (data.jobs.length < 100) return jobs
+    if (data.jobs.length < perPage) return jobs
   }
 }
 

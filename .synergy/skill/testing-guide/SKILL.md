@@ -13,6 +13,10 @@ Start with `bun run verify plan` to inspect the working-tree impact, including u
 
 Use `bun run verify coverage --package <workspace>` when changing coverage policy, removing substantial test coverage or changing instrumentation. A focused LCOV report cannot establish package thresholds. Finish generation and self-review before this checkpoint. Collect all causal failures from one CI attempt before making the next focused correction; infrastructure retries retain the same SHA.
 
+## Diagnose instability before expanding CI
+
+Use the [stability workflow](references/stability.md) when a test passes alone, fails under load, leaks state, or requires repeated CI repairs. Select the lowest useful behavioral layer, reproduce the original batch, control the causal event, and measure cold/warm cost before adding scenarios. A green rerun is evidence of intermittency, not a fix.
+
 ## Avoid concurrent artifact mutation
 
 Finish or cancel concurrent file writers before final verification. Never run static gates alongside browser suites or builds in one worktree. Reuse passing evidence unless changed inputs invalidate it; preserve isolated Homes, fresh reports and real Scope fixtures. Raw Harness coverage/parallel commands are unsafe; use the canonical executor.

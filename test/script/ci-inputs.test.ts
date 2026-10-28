@@ -9,7 +9,7 @@ import { createPlan, type Task, type WorkspaceInput } from "../../script/ci/plan
 import { RevisionSnapshot } from "../../script/ci/revision"
 import { WorkingSnapshot } from "../../script/verification"
 
-test("only descriptive workspace metadata can avoid full configuration selection", async () => {
+test("workspace manifests distinguish descriptive, bounded execution and unknown changes", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ci-metadata-"))
   const file = "packages/core/package.json"
   const workspaces = [{ directory: "packages/core", name: "core", dependencies: [], testDependencies: [] }]
@@ -30,6 +30,7 @@ test("only descriptive workspace metadata can avoid full configuration selection
       const after = new WorkingSnapshot(root)
       const result = await selectionInputs(before, after, [file], workspaces, workspaces)
       expect(result.metadataOnly ?? []).toEqual(expected ? [file] : [])
+      expect(result.scopedManifests ?? []).toEqual("unknown" in change ? [] : [file])
     }
     await Bun.write(path.join(root, file), "{")
     expect(

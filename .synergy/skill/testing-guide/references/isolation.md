@@ -118,3 +118,5 @@ When a polling cleanup test opens real Runtimes, observe only timers scheduled b
 Capture operation metrics through `ObservabilityMetrics.withForwarder` when that boundary is available; a global metric spy can include other connections. Retain an independent asynchronous metric in exact-count fixtures. Suites replacing the process-wide monotonic clock or deadline timers run in their own batch so sibling Runtime work keeps its actual clock.
 
 An offline fixture that opens Storage under a raw RuntimeContext must stop observability producers and drain their store before disposing that context. Prefer the existing migration or Runtime fixtures; closing the SQL handle alone leaves aggregate timers owned by the disposed context.
+
+For module replacement and resource cleanup, follow [the stability workflow](stability.md). A filesystem boundary spy is preferable to a whole-module replacement; `mock.restore()` does not undo `mock.module`.

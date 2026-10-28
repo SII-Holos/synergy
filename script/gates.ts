@@ -32,6 +32,7 @@ const LOCAL_GATES: Gate[] = [
   { id: "lint", run: "bun run lint", needs: [] },
   { id: "skill:check", run: "bun run skill:check", needs: [] },
   { id: "package-guide:check", run: "bun run package-guide:check", needs: [] },
+  { id: "test-policy:check", run: "bun run test-policy:check", needs: [] },
   { id: "test-layout:check", run: "bun run test-layout:check", needs: [] },
   { id: "localization:check", run: "bun run localization:check", needs: [] },
   { id: "typecheck", run: "bun run typecheck", needs: [] },

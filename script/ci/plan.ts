@@ -40,6 +40,7 @@ export interface TaskInputs {
   files: string[]
   packages: string[]
   complete: boolean
+  unresolved?: string[]
 }
 
 export interface Task {
@@ -137,13 +138,36 @@ export function taskOrder(a: Task, b: Task) {
   return Number(b.kind === "policy") - Number(a.kind === "policy") || b.seconds - a.seconds || a.id.localeCompare(b.id)
 }
 
-function finishTime(tasks: Task[], workers: number) {
-  const lanes = Array.from({ length: workers }, () => 0)
-  for (const task of tasks.toSorted(taskOrder)) {
-    lanes.sort((a, b) => a - b)
-    lanes[0]! += task.seconds
+export function executionWaves(tasks: Task[], workers: number): Task[][] {
+  const waves: Task[][] = []
+  for (const task of tasks) {
+    const exclusive =
+      task.prerequisites?.includes("browser") ||
+      task.prerequisites?.includes("desktop") ||
+      ["typecheck", "desktop", "artifacts", "native-workspace"].includes(task.kind)
+    const last = waves.at(-1)
+    if (
+      !exclusive &&
+      last &&
+      last.length < workers &&
+      last.every(
+        (entry) =>
+          !entry.prerequisites?.includes("browser") &&
+          !entry.prerequisites?.includes("desktop") &&
+          !["typecheck", "desktop", "artifacts", "native-workspace"].includes(entry.kind),
+      )
+    )
+      last.push(task)
+    else waves.push([task])
   }
-  return Math.max(...lanes)
+  return waves
+}
+
+function finishTime(tasks: Task[], workers: number) {
+  return executionWaves(tasks.toSorted(taskOrder), workers).reduce(
+    (seconds, wave) => seconds + Math.max(...wave.map((task) => task.seconds)),
+    0,
+  )
 }
 
 export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
@@ -303,8 +327,9 @@ export function createPlan(input: {
   }
   for (const id of ids) visit(id)
   const knownTests = input.tasks
+    .filter((task) => task.kind !== "suite")
     .flatMap((task) => task.files ?? [])
-    .filter((file) => file.startsWith("test/script/") && file.endsWith(".test.ts"))
+    .filter((file) => file.startsWith("test/") && /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file))
   const impact = selectAffected(
     input.changed,
     input.baseWorkspaces,
@@ -363,10 +388,12 @@ export function createPlan(input: {
         impact.full
           ? "full: shared or unclassified input"
           : proposed.has(task.id)
-            ? `affected: ${input.changed
-                .filter((file) => !impact.documentationOnly || file.startsWith("docs/"))
-                .slice(0, 5)
-                .join(", ")} → ${task.owners.filter((owner) => affected.has(owner)).join(", ") || task.id}`
+            ? task.inputs && (!input.baseInputs?.[task.id]?.complete || !input.headInputs?.[task.id]?.complete)
+              ? `conservative input fallback: ${[...new Set([...(input.baseInputs?.[task.id]?.unresolved ?? []), ...(input.headInputs?.[task.id]?.unresolved ?? [])])].join("; ") || "missing input evidence"}`
+              : `affected: ${input.changed
+                  .filter((file) => !impact.documentationOnly || file.startsWith("docs/"))
+                  .slice(0, 5)
+                  .join(", ")} → ${task.owners.filter((owner) => affected.has(owner)).join(", ") || task.id}`
             : selected.has(task.id)
               ? `${input.mode}: complete verification`
               : "not affected by this change",

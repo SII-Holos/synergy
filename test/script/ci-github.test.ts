@@ -37,6 +37,36 @@ const plan = createPlan({
 })
 const job: WorkflowJob = { name: "postgres (case)", run_attempt: 1, status: "completed", conclusion: "success" }
 
+test("transient transport failures retry the same history; authorization errors fail immediately", async () => {
+  const previous = { ...process.env }
+  let calls = 0,
+    status = 503
+  const server = Bun.serve({
+    port: 0,
+    fetch() {
+      calls++
+      if (status === 401 || calls === 1) return new Response("", { status })
+      return Response.json({ jobs: [job] })
+    },
+  })
+  try {
+    process.env.GITHUB_REPOSITORY = "fixture/repository"
+    process.env.GH_TOKEN = "fixture-token"
+    process.env.GITHUB_API_URL = server.url.origin
+    expect(await workflowExecutions(plan)).toEqual([
+      { unit: "case", attempt: "1", status: "completed", conclusion: "success" },
+    ])
+    expect(calls).toBe(2)
+    calls = 0
+    status = 401
+    await expect(workflowExecutions(plan)).rejects.toThrow("HTTP 401")
+    expect(calls).toBe(1)
+  } finally {
+    process.env = previous
+    await server.stop(true)
+  }
+})
+
 test("only the latest actual unit execution admits retained results", () => {
   const executions = latestExecutions(plan, [
     job,
@@ -133,6 +163,49 @@ test("the final gate waits for completed metadata of the latest actual execution
     expect(await workflowExecutions(plan, { timeoutMs: 0, pollMs: 0 })).toEqual([
       { unit: "case", attempt: "2", status: "in_progress", conclusion: null },
     ])
+  } finally {
+    process.env = previous
+    await server.stop(true)
+  }
+})
+
+test("workflow evidence reads every page of a large rerun history before admitting a result", async () => {
+  const previous = { ...process.env }
+  const original = {
+    ...job,
+    created_at: "2026-09-30T00:00:00Z",
+    started_at: "2026-09-30T00:00:01Z",
+    completed_at: "2026-09-30T00:01:00Z",
+  }
+  const history = [
+    original,
+    ...Array.from({ length: 130 }, () => ({
+      ...original,
+      run_attempt: 4,
+      created_at: "2026-09-30T00:04:00Z",
+    })),
+    { ...job, run_attempt: 2, conclusion: "failure" },
+  ]
+  const pages: number[] = []
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url)
+      const size = Number(url.searchParams.get("per_page"))
+      if (size > 50) return new Response("Server Error", { status: 502 })
+      const page = Number(url.searchParams.get("page"))
+      pages.push(page)
+      return Response.json({ total_count: history.length, jobs: history.slice((page - 1) * size, page * size) })
+    },
+  })
+  try {
+    process.env.GITHUB_REPOSITORY = "fixture/repository"
+    process.env.GH_TOKEN = "fixture-token"
+    process.env.GITHUB_API_URL = server.url.origin
+    expect(await workflowExecutions(plan, { timeoutMs: 1000, pollMs: 0 })).toEqual([
+      { unit: "case", attempt: "2", status: "completed", conclusion: "failure" },
+    ])
+    expect(pages).toEqual([1, 2, 3])
   } finally {
     process.env = previous
     await server.stop(true)

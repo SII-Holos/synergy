@@ -5,6 +5,8 @@ description: Route a Synergy source change to the current repository development
 
 # Apply Development Standards
 
+Test infrastructure changes must follow [the stability workflow](../testing-guide/references/stability.md), including original-batch reproduction and measured CI cost.
+
 ## Establish Ownership
 
 1. Read the nearest `AGENTS.md` and [Development reference](../../../docs/reference/development.md).

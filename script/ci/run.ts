@@ -5,7 +5,7 @@ import { createIsolatedTestEnv } from "../../packages/testing/src/env"
 import { loadManifest } from "../coverage-check"
 import { fileHash, filesIn } from "./artifacts"
 import { OUTPUT, ROOT } from "./catalog"
-import { validatePlan, taskOrder, unitWorkers, type Plan, type Task } from "./plan"
+import { validatePlan, taskOrder, executionWaves, unitWorkers, type Plan, type Task } from "./plan"
 import { type Report, type TaskResult } from "./evidence"
 import { collectTests } from "../../packages/testing/script/batches"
 
@@ -89,6 +89,7 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
           "secrets:check",
           "workflow:check",
         ].map(run),
+        bun("test-policy", ["script/test-policy-check.ts", plan.base]),
         test("oryn-policy", ["--config", "/dev/null", ...task.files!]),
         bun("oryn-snapshot", [".github/oryn/validate.ts", "snapshot"]),
       ]
@@ -441,6 +442,7 @@ export async function executeTask(
   plan: Plan,
   root = ROOT,
   executionAttempt = plan.attempt,
+  prepare?: () => Promise<void>,
 ): Promise<TaskResult> {
   const output = path.join(root, OUTPUT, "results")
   await rm(path.join(output, task.id), { recursive: true, force: true })
@@ -470,7 +472,22 @@ export async function executeTask(
     steps: [],
   }
   const isolated = await createIsolatedTestEnv()
+  let phase: NonNullable<TaskResult["failure"]>["phase"] = "prepare"
+  const fail = (error: unknown) => {
+    result.status = "failure"
+    result.exitCode ||= 1
+    result.failure ??= {
+      phase,
+      at: new Date().toISOString(),
+      message: error instanceof Error ? error.message : String(error),
+    }
+    console.error(result.failure.message)
+  }
   try {
+    const started = performance.now()
+    await prepare?.()
+    result.preparationSeconds = (performance.now() - started) / 1000
+    phase = "command"
     const list = await commands(task, plan, root)
     for (const command of list) {
       console.info(`::group::${task.id}: ${command.name}`)
@@ -506,6 +523,7 @@ export async function executeTask(
       console.info("::endgroup::")
       if (exitCode !== 0) {
         result.exitCode = exitCode
+        fail(new Error(`${command.name} exited with ${exitCode}`))
         break
       }
     }
@@ -514,17 +532,23 @@ export async function executeTask(
       result.exitCode = 0
     }
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error))
+    fail(error)
   } finally {
+    phase = "cleanup"
+    const cleanupStarted = performance.now()
     try {
       await isolated.dispose()
     } catch (error) {
-      result.status = "failure"
-      result.exitCode = 1
-      console.error(error)
+      fail(error)
+    }
+    result.cleanupSeconds = (performance.now() - cleanupStarted) / 1000
+    phase = "reports"
+    try {
+      result.reports = await captureReports(task, root, output)
+    } catch (error) {
+      fail(error)
     }
     result.completed = new Date().toISOString()
-    result.reports = await captureReports(task, root, output)
     await Bun.write(path.join(output, task.id, "result.json"), JSON.stringify(result, null, 2))
   }
   return result
@@ -561,7 +585,8 @@ export async function executeUnit(
   async function execute(taskID: string) {
     const task = plan.tasks.find((entry) => entry.id === taskID)!
     const profile = task.profile ?? (task.needs.includes("benchmark-prepare") ? "benchmark" : undefined)
-    if (profile) {
+    const prepare = async () => {
+      if (!profile) return
       if (!prepared.has(profile))
         prepared.set(
           profile,
@@ -572,21 +597,18 @@ export async function executeUnit(
         )
       await prepared.get(profile)
     }
-    const result = await executeTask(task, plan, root, executionAttempt)
+    const result = await executeTask(task, plan, root, executionAttempt, prepare)
     if (result.status !== "success") failures.push(taskID)
   }
-  let cursor = 0
-  const workers = await Promise.allSettled(
-    Array.from(
-      {
-        length: unit ? unitWorkers(unit.pool, plan.mode, unit.id === "linux-contracts") : 1,
-      },
-      async () => {
-        while (cursor < ordered.length) await execute(ordered[cursor++]!)
-      },
-    ),
-  )
-  const rejected = workers.find((worker) => worker.status === "rejected")
-  if (rejected?.status === "rejected") throw rejected.reason
+  const tasks = ordered.map((id) => plan.tasks.find((task) => task.id === id)!)
+  const errors: unknown[] = []
+  for (const wave of executionWaves(
+    tasks,
+    unit ? unitWorkers(unit.pool, plan.mode, unit.id === "linux-contracts") : 1,
+  )) {
+    const results = await Promise.allSettled(wave.map((task) => execute(task.id)))
+    for (const result of results) if (result.status === "rejected") errors.push(result.reason)
+  }
+  if (errors.length) throw new AggregateError(errors, "CI task execution failed")
   return failures.sort()
 }

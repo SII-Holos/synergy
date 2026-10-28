@@ -43,6 +43,8 @@ async function executeBatch(
     "--reporter=junit",
     `--reporter-outfile=${path.join(directory, "junit.xml")}`,
     ...(coverage ? ["--coverage", "--coverage-reporter=lcov", `--coverage-dir=${directory}`] : []),
+    ...(process.env.SYNERGY_TEST_SEED ? ["--randomize", "--seed", process.env.SYNERGY_TEST_SEED] : []),
+    ...(process.env.SYNERGY_TEST_NAME ? ["--test-name-pattern", process.env.SYNERGY_TEST_NAME] : []),
     ...files,
   ]
   const invocation = batchInvocation(args, root)

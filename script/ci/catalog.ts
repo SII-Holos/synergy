@@ -46,7 +46,10 @@ export async function workspaceInputs(snapshot: SourceSnapshot): Promise<Workspa
       const dependency = specifier.startsWith(".")
         ? owner(path.posix.normalize(path.posix.join(path.posix.dirname(file), specifier)))
         : byName.get(specifier.startsWith("@") ? specifier.split("/").slice(0, 2).join("/") : specifier.split("/")[0]!)
-      if (dependency && dependency !== from) from.testDependencies.push(dependency.name)
+      if (dependency && dependency !== from) {
+        const edges = file.startsWith(`${from.directory}/test/`) ? from.testDependencies : from.dependencies
+        edges.push(dependency.name)
+      }
     }
   }
   // Desktop embeds the Web host and launches the preset runtime without a workspace import.
@@ -59,11 +62,11 @@ export async function workspaceInputs(snapshot: SourceSnapshot): Promise<Workspa
       "packages/computer-protocol",
     ]) {
       const dependency = packages.find((entry) => entry.directory === directory)
-      if (dependency) desktop.testDependencies.push(dependency.name)
+      if (dependency) desktop.dependencies.push(dependency.name)
     }
   return packages.map((entry) => ({
     ...entry,
-    dependencies: entry.dependencies.filter((name) => byName.has(name)),
+    dependencies: [...new Set(entry.dependencies)].filter((name) => byName.has(name)).sort(),
     testDependencies: [...new Set(entry.testDependencies)].filter((name) => byName.has(name)).sort(),
   }))
 }
@@ -169,7 +172,11 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
       "web",
       170,
       ["apps/web", "packages/ui", "packages/plugin", "packages/plugin-kit", "packages/sdk/js"],
-      { prerequisites: ["browser"], profile: "full", files: ["apps/web/test/app-build-css-contract.test.ts"] },
+      {
+        prerequisites: ["browser"],
+        profile: "full",
+        files: ["apps/web/test/app-build-css-contract.test.ts", ...(await collectTests("test/plugin-ui5", root))],
+      },
     ),
     task("desktop", "desktop", 180, ["apps/desktop"], { prerequisites: ["desktop"] }),
     task("smoke", "smoke", 40, ["packages/presets", "packages/server"]),
@@ -432,7 +439,7 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
   const times = timingInput ?? validateTimings(await Bun.file(path.join(import.meta.dir, "timings.json")).json())
   const counts: Record<string, number> = {
     "packages/harness": 4,
-    "apps/web": 4,
+    "apps/web": 6,
     "packages/presets": 4,
     "packages/ui": 2,
     "packages/local-runtime": 2,

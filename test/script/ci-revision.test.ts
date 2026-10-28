@@ -116,7 +116,12 @@ test("absent task roots remain incomplete but inventory-present unloaded inputs 
       },
     ]
     expect(await taskInputs(snapshot, tasks, [])).toEqual({
-      missing: { files: ["absent.ts"], packages: [], complete: false },
+      missing: {
+        files: ["absent.ts"],
+        packages: [],
+        complete: false,
+        unresolved: ["absent.ts: missing or non-file input"],
+      },
     })
     await expect(workspaceInputs(snapshot)).rejects.toThrow(RevisionInputError)
   } finally {
@@ -188,8 +193,14 @@ test("valid gitlinks remain inventory entries without becoming source or leaf te
         files: ["packages/core/test/consumer.test.ts"],
         packages: [],
         complete: false,
+        unresolved: ["packages/core/test/consumer.test.ts: unresolved import ../src/linked.ts"],
       },
-      root: { files: [linkedTest], packages: [], complete: false },
+      root: {
+        files: [linkedTest],
+        packages: [],
+        complete: false,
+        unresolved: [`${linkedTest}: missing or non-file input`],
+      },
     })
     expect(await selectionInputs(snapshot, snapshot, [linkedTest], workspaces, workspaces)).toEqual({ leafTests: [] })
     expect(await selectionInputs(before, snapshot, [linkedTest], workspaces, workspaces)).toEqual({ leafTests: [] })

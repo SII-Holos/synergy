@@ -7,7 +7,7 @@ import { suiteBatches } from "../../script/ci/suites"
 test("slow package partitions execute every file once without splitting an isolation batch", async () => {
   const tasks = await catalog()
   for (const [owner, count] of [
-    ["apps/web", 4],
+    ["apps/web", 6],
     ["packages/presets", 4],
     ["packages/ui", 2],
     ["packages/harness", 4],

@@ -167,6 +167,53 @@ export async function selectionInputs(
     "repository",
     "license",
   ])
+  const bounded = new Set([
+    ...descriptive,
+    "name",
+    "version",
+    "private",
+    "type",
+    "main",
+    "module",
+    "types",
+    "typings",
+    "exports",
+    "imports",
+    "browser",
+    "bin",
+    "files",
+    "sideEffects",
+    "scripts",
+    "dependencies",
+    "devDependencies",
+    "optionalDependencies",
+    "peerDependencies",
+    "peerDependenciesMeta",
+    "engines",
+    "os",
+    "cpu",
+    "synergy",
+    "publishConfig",
+    "directories",
+    "typesVersions",
+  ])
+  result.scopedManifests = changed
+    .filter((file) => {
+      const owner = baseWorkspaces.find((entry) => file === `${entry.directory}/package.json`)
+      if (!owner || !headWorkspaces.some((entry) => entry.name === owner.name && entry.directory === owner.directory))
+        return false
+      const before = parse(base.read(file)),
+        after = parse(head.read(file))
+      return (
+        record(before) &&
+        record(after) &&
+        before.name === owner.name &&
+        after.name === owner.name &&
+        [...Object.keys(before), ...Object.keys(after)].every((key) => bounded.has(key))
+      )
+    })
+    .sort()
+  if (!result.scopedManifests.length) delete result.scopedManifests
   const metadataOnly = changed.filter((file) => {
     const owner = baseWorkspaces.find((entry) => file === `${entry.directory}/package.json`)
     if (!owner || !headWorkspaces.some((entry) => entry.name === owner.name && entry.directory === owner.directory))

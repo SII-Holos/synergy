@@ -11,6 +11,7 @@ export interface SelectionChanges {
   coverage?: CoverageChanges
   leafTests?: string[]
   metadataOnly?: string[]
+  scopedManifests?: string[]
 }
 
 export interface FullTrigger {
@@ -42,6 +43,7 @@ export function changedFiles(root: string, base: string, head: string): string[]
 }
 
 export function documentation(file: string): boolean {
+  if (file === "docs/decisions/archived/manifest.json") return true
   return /^(README(?:\.[a-zA-Z-]+)?\.md|CONTRIBUTING\.md|LICENSE(?:\.md)?|docs\/.*\.md|\.synergy\/skill\/[^/]+\/(?:SKILL\.md|references\/.*\.md|agents\/openai\.yaml))$/.test(
     file,
   )
@@ -90,9 +92,16 @@ export function selectAffected(
       owners.length &&
       !shared &&
       /\/(?:package\.json|bunfig\.toml|tsconfig[^/]*\.json)$/.test(file) &&
-      !changes.metadataOnly?.includes(file)
+      !changes.metadataOnly?.includes(file) &&
+      !changes.scopedManifests?.includes(file)
     )
       fullTriggers.push({ file, reason: "workspace-configuration" })
+  }
+  const runtimeNames = new Set(names)
+  for (;;) {
+    const before = runtimeNames.size
+    for (const entry of all) if (entry.dependencies.some((name) => runtimeNames.has(name))) runtimeNames.add(entry.name)
+    if (before === runtimeNames.size) break
   }
   for (;;) {
     const before = names.size
@@ -114,7 +123,7 @@ export function selectAffected(
       ),
     ].sort(),
     runtimePackages: [
-      ...new Set(all.filter((entry) => full || names.has(entry.name)).map((entry) => entry.directory)),
+      ...new Set(all.filter((entry) => full || runtimeNames.has(entry.name)).map((entry) => entry.directory)),
     ].sort(),
   }
 }
