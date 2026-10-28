@@ -16,6 +16,8 @@ Use static compiled browser fixtures with independent pages, scoped filesystem s
 
 The file-explorer and source-navigation fixtures retain one prepared Vite server and Chromium process per file but give every case its own browser context and page. Viewport, theme, scroll position, clipboard stubs and page errors belong to that case. Their immutable files require neither watching nor HMR. Source navigation prepares the first editor load within its existing setup deadline using a disposable warm-up page; fault injection and editor state remain fresh in each test. The existing restoration, menu, mutation, source-loading and keyboard assertions retain their deadlines; isolating their state adds no duplicate scenarios.
 
+Library deletion waits for the complete dialog set to disappear within its existing five-second deadline. Both detail and confirmation dialogs legitimately remain mounted until deletion and refetch settle, so a strict single-element disappearance locator races that transition. The neighboring-item and empty-list focus assertions still run after both dialogs close.
+
 ## Alternatives considered
 
 **Increase global timeouts or rerun failed tests automatically.** This hides ordering and ownership defects while raising feedback cost; it does not demonstrate a repaired invariant.
