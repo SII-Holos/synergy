@@ -2,7 +2,7 @@ import { expect, test } from "bun:test"
 import { JSDOM } from "jsdom"
 import { createMarkdownParser } from "../src/context/markdown-parser"
 import { parseMarkdownDocument } from "../src/context/markdown-document"
-import { getGeneratedKatexSource } from "../src/context/marked-math"
+import { getGeneratedKatexSource } from "../src/context/markdown-math-source"
 
 test.each([
   ["ZWJ emoji", 8190, "👩‍🔬"],

@@ -4,7 +4,6 @@ import { For, Show, createEffect, createMemo, createSignal, createUniqueId, onCl
 import { useLingui } from "@lingui/solid"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import {
   browserShortcut,
@@ -245,36 +244,30 @@ export function AddressBar(props: AddressBarProps) {
   return (
     <div ref={root} class="shrink-0">
       <BrowserToolbar loading={props.isLoading()}>
-        <Tooltip value={_(B.navBack)}>
-          <IconButton
-            class="browser-nav-button"
-            icon={getSemanticIcon("navigation.back")}
-            variant="ghost"
-            aria-label={_(B.navBack)}
-            disabled={!history().back}
-            onClick={() => props.onHistory("back")}
-          />
-        </Tooltip>
-        <Tooltip value={_(B.navForward)}>
-          <IconButton
-            class="browser-nav-button"
-            icon={getSemanticIcon("navigation.forward")}
-            variant="ghost"
-            aria-label={_(B.navForward)}
-            disabled={!history().forward}
-            onClick={() => props.onHistory("forward")}
-          />
-        </Tooltip>
-        <Tooltip value={_(props.isLoading() ? B.stop : B.reload)}>
-          <IconButton
-            class="browser-nav-button"
-            icon={getSemanticIcon(props.isLoading() ? "action.stop" : "action.refresh")}
-            variant="ghost"
-            aria-label={_(props.isLoading() ? B.stop : B.reload)}
-            disabled={!props.hasPage()}
-            onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
-          />
-        </Tooltip>
+        <IconButton
+          class="browser-nav-button"
+          icon={getSemanticIcon("navigation.back")}
+          variant="ghost"
+          aria-label={_(B.navBack)}
+          disabled={!history().back}
+          onClick={() => props.onHistory("back")}
+        />
+        <IconButton
+          class="browser-nav-button"
+          icon={getSemanticIcon("navigation.forward")}
+          variant="ghost"
+          aria-label={_(B.navForward)}
+          disabled={!history().forward}
+          onClick={() => props.onHistory("forward")}
+        />
+        <IconButton
+          class="browser-nav-button"
+          icon={getSemanticIcon(props.isLoading() ? "action.stop" : "action.refresh")}
+          variant="ghost"
+          aria-label={_(props.isLoading() ? B.stop : B.reload)}
+          disabled={!props.hasPage()}
+          onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
+        />
         <div class="relative min-w-0 flex-1">
           <div class="browser-address-field">
             <input
@@ -335,16 +328,14 @@ export function AddressBar(props: AddressBarProps) {
               }}
             />
             <Show when={props.onExternal}>
-              <Tooltip value={_(B.openExternal)}>
-                <IconButton
-                  class="browser-nav-button browser-external-button"
-                  icon={getSemanticIcon("action.external")}
-                  variant="ghost"
-                  aria-label={_(B.openExternal)}
-                  disabled={!realPage()}
-                  onClick={props.onExternal}
-                />
-              </Tooltip>
+              <IconButton
+                class="browser-nav-button browser-external-button"
+                icon={getSemanticIcon("action.external")}
+                variant="ghost"
+                aria-label={_(B.openExternal)}
+                disabled={!realPage()}
+                onClick={props.onExternal}
+              />
             </Show>
           </div>
           <Show when={suggestionsOpen()}>
@@ -383,19 +374,17 @@ export function AddressBar(props: AddressBarProps) {
           title={_(B.options)}
           class="browser-options-popover synergy-workbench-canvas"
           triggerAs={(triggerProps) => (
-            <Tooltip value={_(B.options)} inactive={browser.controlsOpen()}>
-              <IconButton
-                {...triggerProps}
-                ref={(element) => {
-                  optionsTrigger = element
-                  if (typeof triggerProps.ref === "function") triggerProps.ref(element)
-                }}
-                icon={getSemanticIcon("action.more")}
-                class="browser-nav-button browser-options-trigger"
-                variant="ghost"
-                aria-label={_(B.options)}
-              />
-            </Tooltip>
+            <IconButton
+              {...triggerProps}
+              ref={(element) => {
+                optionsTrigger = element
+                if (typeof triggerProps.ref === "function") triggerProps.ref(element)
+              }}
+              icon={getSemanticIcon("action.more")}
+              class="browser-nav-button browser-options-trigger"
+              variant="ghost"
+              aria-label={_(B.options)}
+            />
           )}
         >
           <div class="browser-options-menu browser-workspace" onKeyDown={menuKey}>

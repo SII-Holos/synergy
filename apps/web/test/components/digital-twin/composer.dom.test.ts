@@ -12,6 +12,9 @@ type Control = {
   connection(value: string): void
   model(value: string): void
   composing(value: boolean): void
+  mode(value: "normal" | "shell"): void
+  blocked(value: boolean): void
+  submission(value: "pending" | "failed" | "accepted" | "queued"): void
   automatic(value: boolean | undefined): void
   complete(): void
   editSource(): void
@@ -49,6 +52,7 @@ beforeAll(async () => {
     import {createSignal} from "solid-js"
     import {createStore} from "solid-js/store"
     import {setupI18n} from "@lingui/core"
+    import {withOptimisticMessagePending} from "@/context/session-optimistic-message"
     export const [selection,setSelection]=createSignal({features:["digital-twin"]})
     export const [active,setActive]=createSignal(true)
     export const [session,setSession]=createSignal("session")
@@ -57,6 +61,8 @@ beforeAll(async () => {
     export const [model,setModel]=createSignal("model")
     export const [running,setRunning]=createSignal(false)
     export const [composerShown,setComposerShown]=createSignal(true)
+    export const [submission,setSubmission]=createSignal()
+    export const [inbox,setInbox]=createStore({})
     export const [config,setConfig]=createStore({digitalTwin:{automatic:true}})
     const listeners=new Map(), requests=[]
     export const events={on(type,handler){const entries=listeners.get(type)||new Set();entries.add(handler);listeners.set(type,entries);return ()=>entries.delete(handler)}}
@@ -66,13 +72,16 @@ beforeAll(async () => {
       digitalTwin:{predictNextInput:({digitalTwinInput},options)=>new Promise((resolve,reject)=>requests.push({input:digitalTwinInput,signal:options.signal,resolve,reject}))}
     }}
     export const useSDK=()=>sdk
-    export const useSync=()=>({data:{config,session:[{id:session()}]}})
+    export const useSync=()=>({data:{config,inbox,session:[{id:session()}]}})
+    export const messages=()=>[{id:"root",sessionID:session(),role:"user",isRoot:true,time:{created:1}},{id:"reply",sessionID:session(),role:"assistant",rootID:"root",time:{created:2,completed:3},finish:"stop"},
+      ...(submission()&&submission()!=="failed"?[{id:"next",sessionID:session(),role:"user",isRoot:true,time:{created:4},metadata:submission()==="accepted"?undefined:withOptimisticMessagePending(undefined)}]:[])]
     export const useGlobalSDK=()=>({drafts:{hasDraftSession:()=>false}})
     export const useViewActivity=()=>active
     const fixtureI18n=setupI18n({locale:"en",messages:{en:{}}})
     export const useLocale=()=>({i18n:fixtureI18n,fmt:{relative:()=>"now",time:value=>String(value),date:value=>String(value),number:value=>String(value)},controller:{activeLocale:()=>"en",generation:()=>0}})
     export const controls={capability:value=>setSelection(value==="unknown"?undefined:{features:value==="selected"?["digital-twin"]:[]}),active:setActive,session:setSession,scope:setScope,connection:setConnection,model:setModel,running:setRunning,
       composer:setComposerShown,
+      submission:value=>{setSubmission(value);setInbox(session(),value==="queued"?[{id:"queued",messageID:"next"}]:[]);setRunning(value!=="failed")},
       stored:()=>Object.keys(localStorage).filter(key=>key.endsWith(":digital-twin")).map(key=>JSON.parse(localStorage.getItem(key))),
       automatic:value=>setConfig("digitalTwin","automatic",value),
       complete:()=>emit("session.root.completed",{sessionID:session(),rootID:"root",assistantID:"reply"}),
@@ -102,18 +111,18 @@ beforeAll(async () => {
     import {ComposerDocumentController} from "@/components/prompt-input/composer-document"
     import {DefaultComposer} from "@/plugin/default-composer"
     import {ComposerPresentation,bindComposerPresentation} from "@/components/prompt-input/composer-presentation"
-    import {sdk,session,model,running,composerShown,controls,setConfig} from "./services"
+    import {sdk,session,model,running,composerShown,messages,controls,setConfig} from "./services"
     import "@ericsanchezok/synergy-ui/styles"
     import "@/index.css"
     const i18n=setupI18n({locale:"en",messages:{en:{}}})
     const [text,setText]=createSignal(""),[settings,setSettings]=createSignal({automatic:true,model:""})
-    const controller=new ComposerDocumentController({read:()=>({sessionId:session(),text:text(),selection:{start:0,end:0},mode:"normal"}),applyEdits:edits=>{for(const edit of edits)setText(value=>value.slice(0,edit.range.start)+edit.text+value.slice(edit.range.end))}})
+    const [mode,setMode]=createSignal("normal"),[blocked,setBlocked]=createSignal(false)
+    const controller=new ComposerDocumentController({read:()=>({sessionId:session(),text:text(),selection:{start:0,end:0},mode:mode()}),applyEdits:edits=>{for(const edit of edits)setText(value=>value.slice(0,edit.range.start)+edit.text+value.slice(edit.range.end))}})
     const bound=new URLSearchParams(location.search).has("bound")
     const [predictionApi,setPredictionApi]=createSignal()
     const addMenuSections=createMemo(()=>[{id:"prediction",label:"Assist",items:[{id:"predict-next",label:"Predict next input",icon:getSemanticIcon("action.predict"),disabled:!predictionApi()||predictionApi().disabled(),onSelect:()=>predictionApi()?.predict()}]}])
-    window.twinFixture={...controls,composing:value=>controller.setComposing(value),touch:()=>controller.changed(),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion(),prediction:()=>{const api=predictionApi();return api?{busy:api.busy(),disabled:api.disabled()}:undefined}}
+    window.twinFixture={...controls,mode:value=>{setMode(value);controller.changed()},blocked:setBlocked,composing:value=>controller.setComposing(value),touch:()=>controller.changed(),ghost:()=>controller.completion()?.text,dismiss:()=>controller.dismissCompletion(),accept:()=>controller.acceptCompletion(),prediction:()=>{const api=predictionApi();return api?{busy:api.busy(),disabled:api.disabled()}:undefined}}
 
-    const messages=()=>[{id:"root",sessionID:session(),role:"user",isRoot:true,time:{created:1}},{id:"reply",sessionID:session(),role:"assistant",rootID:"root",time:{created:2,completed:3},finish:"stop"}]
     const [completionRevision,setCompletionRevision]=createSignal(0)
     controller.subscribe(()=>setCompletionRevision(value=>value+1))
     let editor
@@ -122,7 +131,7 @@ beforeAll(async () => {
       placeholder:()=>text()?undefined:"Describe a task",
       completion:()=>{completionRevision();const value=controller.completion();return value?{prefix:"",text:value.text}:undefined}
     },render:part=>part==="toolbar"?(bound?<div class="prompt-input-toolbar"><PromptAddMenu sections={addMenuSections()}/></div>:<div class="prompt-input-toolbar flex justify-end"><div class="prompt-input-toolbar-actions flex items-center gap-1.5">
-      <Show when={sdk.capabilities.has("digital-twin")&&composerShown()}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()}/></Show>
+      <Show when={sdk.capabilities.has("digital-twin")&&composerShown()}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={blocked()} modelKey={model()}/></Show>
 
       <button type="button" aria-label="Microphone" class="prompt-input-toolbar-icon-button flex items-center justify-center"><Icon name={getSemanticIcon("prompt.voice")} size="small"/></button>
     </div></div>):null}
@@ -130,7 +139,7 @@ beforeAll(async () => {
     function Contents(){return <>
       <DigitalTwinSettings value={settings()} models={[{providerId:"fixture",providerName:"Fixture",modelId:"large",modelName:"Large"}]} change={value=>{setSettings(value);setConfig("digitalTwin","automatic",value.automatic)}}/>
       <DigitalTwinBackground/>
-      <Show when={bound}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={false} modelKey={model()} bind={setPredictionApi}/></Show>
+      <Show when={bound}><DigitalTwinComposer controller={controller} focusEditor={()=>editor?.focus()} sessionID={session()} messages={messages()} status={{type:running()?"busy":"idle"}} blocked={blocked()} modelKey={model()} bind={setPredictionApi}/></Show>
 
       <DefaultComposer context={{input}}/>
       <textarea aria-label="Draft" value={text()} onInput={event=>{setText(event.currentTarget.value);controller.changed()}}/>
@@ -186,6 +195,8 @@ test("rendered composer requires a fresh completion event and fences drafts, rec
   expect(await button.isDisabled()).toBe(true)
   expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
   await page.getByRole("textbox", { name: "Draft" }).fill("")
+  expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+  expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(1)
   await button.click()
   await page.evaluate(() => window.twinFixture.capability("unknown"))
   expect(await button.count()).toBe(0)
@@ -343,20 +354,68 @@ test("a generated suggestion survives background activity, navigation and reload
   }
 })
 
-test("handled suggestions and suggestions superseded by new work do not return after reload", async () => {
+test("unsent edits and temporary blockers hide saved suggestions without discarding them", async () => {
   const page = await browser.newPage()
   page.setDefaultTimeout(4000)
   page.on("pageerror", (error) => errors.push(error.message))
   try {
-    for (const action of ["dismiss", "edit", "accept", "new-work"] as const) {
+    await page.goto(fixture.url)
+    const draft = page.getByRole("textbox", { name: "Draft" })
+    await page.getByRole("button", { name: "Predict next input", exact: true }).click()
+    await page.evaluate(() => window.twinFixture.resolve(0))
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    const saved = await page.evaluate(() => window.twinFixture.stored())
+    for (const action of ["edit", "accept", "composition", "blocked", "mode", "running"] as const) {
+      if (action === "edit") await draft.fill("自己的草稿")
+      if (action === "accept") expect(await page.evaluate(() => window.twinFixture.accept())).toBe(true)
+      if (action === "composition") await page.evaluate(() => window.twinFixture.composing(true))
+      if (action === "blocked") await page.evaluate(() => window.twinFixture.blocked(true))
+      if (action === "mode") await page.evaluate(() => window.twinFixture.mode("shell"))
+      if (action === "running") await page.evaluate(() => window.twinFixture.running(true))
+      expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+      expect(await page.evaluate(() => window.twinFixture.stored())).toEqual(saved)
+      if (action === "edit" || action === "accept") await draft.fill("")
+      if (action === "composition") await page.evaluate(() => window.twinFixture.composing(false))
+      if (action === "blocked") await page.evaluate(() => window.twinFixture.blocked(false))
+      if (action === "mode") await page.evaluate(() => window.twinFixture.mode("normal"))
+      if (action === "running") await page.evaluate(() => window.twinFixture.running(false))
+      expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+    }
+    await draft.fill("尚未发出的草稿")
+    await page.evaluate(() => window.twinFixture.submission("pending"))
+    await draft.fill("")
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+    expect(await page.evaluate(() => window.twinFixture.stored())).toEqual(saved)
+    await draft.fill("尚未发出的草稿")
+    await page.evaluate(() => window.twinFixture.submission("failed"))
+    await page.evaluate(() => window.twinFixture.composer(false))
+    await page.evaluate(() => window.twinFixture.composer(true))
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
+    await draft.fill("")
+    expect(await page.evaluate(() => window.twinFixture.ghost())).toBe("再检查一下 API 的边界")
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(1)
+    await draft.fill("刷新前的草稿")
+    await page.reload()
+    await page.waitForFunction(() => !!window.twinFixture.ghost())
+    expect(await page.evaluate(() => window.twinFixture.requests())).toHaveLength(0)
+    expect(errors).toEqual([])
+  } finally {
+    await page.close()
+  }
+})
+
+test("dismissed suggestions and suggestions superseded by accepted input do not return after reload", async () => {
+  const page = await browser.newPage()
+  page.setDefaultTimeout(4000)
+  page.on("pageerror", (error) => errors.push(error.message))
+  try {
+    for (const action of ["dismiss", "accepted", "queued"] as const) {
       await page.goto(fixture.url)
       await page.getByRole("button", { name: "Predict next input", exact: true }).click()
       await page.evaluate(() => window.twinFixture.resolve(0))
       await page.waitForFunction(() => !!window.twinFixture.ghost())
       if (action === "dismiss") await page.evaluate(() => window.twinFixture.dismiss())
-      if (action === "edit") await page.getByRole("textbox", { name: "Draft" }).fill("自己的草稿")
-      if (action === "accept") expect(await page.evaluate(() => window.twinFixture.accept())).toBe(true)
-      if (action === "new-work") await page.evaluate(() => window.twinFixture.running(true))
+      else await page.evaluate((state) => window.twinFixture.submission(state), action)
       expect(await page.evaluate(() => window.twinFixture.ghost())).toBeUndefined()
       await page.reload()
       await page.getByRole("button", { name: "Predict next input", exact: true }).waitFor()

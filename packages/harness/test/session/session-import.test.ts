@@ -12,6 +12,7 @@ import { Dag } from "../../src/session/dag"
 import { Todo } from "../../src/session/todo"
 import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
+import { Asset } from "../../src/asset/asset"
 import { SessionNav } from "../../src/session/nav"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
@@ -108,6 +109,76 @@ describe("SessionImport", () => {
           expect(messages[1]!.info).toMatchObject({ mode: "forge", modelID: "test", providerID: "test" })
           expect(messages[0]!.parts).toMatchObject([{ type: "text", text: "synergy-max is historical text" }])
           expect(data.info.cortex.agent).toBe("synergy-flash")
+        },
+      })
+    }))
+
+  test("imports legacy attachment purposes before applying current write defaults", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir()
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const source = await Session.create({})
+          await writeExchange(source.id, "Inspect the attachment")
+          const report = await SessionExport.generate({ sessionID: source.id, mode: "full" })
+          const messages = report.sessions[0]!.messages
+          const message = messages[1]!
+          const asset = await Asset.write(Buffer.from("retained imported image"), "image/png", "fixture.png")
+          const attachment: MessageV2.AttachmentPart = {
+            id: Identifier.ascending("part"),
+            sessionID: source.id,
+            messageID: message.info.id,
+            type: "attachment",
+            mime: "image/png",
+            url: `asset://${asset}`,
+            presentation: { size: "small" },
+          }
+          messages[0]!.parts.push({
+            ...attachment,
+            id: Identifier.ascending("part"),
+            messageID: messages[0]!.info.id,
+          })
+          message.parts.push({
+            id: Identifier.ascending("part"),
+            sessionID: source.id,
+            messageID: message.info.id,
+            type: "tool",
+            tool: "view_image",
+            callID: "fixture_call",
+            state: {
+              status: "completed",
+              input: {},
+              output: "An image",
+              title: "Image",
+              metadata: {},
+              time: { start: 1, end: 2 },
+              attachments: [
+                attachment,
+                {
+                  ...attachment,
+                  id: Identifier.ascending("part"),
+                  presentation: { ...attachment.presentation, purpose: "deliverable" },
+                },
+              ],
+            },
+          })
+          const imported = await SessionImport.fromReport(report)
+          const parts = (await Session.messages({ sessionID: imported.rootSessionID })).flatMap((entry) => entry.parts)
+          const tool = parts.find((part) => part.type === "tool")
+          if (!tool || tool.state.status !== "completed") throw new Error("Expected imported tool")
+          expect(tool.state.attachments?.map((part) => part.presentation)).toEqual([
+            { size: "small", purpose: "evidence" },
+            { size: "small", purpose: "deliverable" },
+          ])
+          expect(parts.find((part) => part.type === "attachment")?.presentation).toEqual({
+            size: "small",
+            purpose: "deliverable",
+          })
+          expect(attachment.presentation).toEqual({ size: "small" })
+          expect(await (await Asset.read(asset))?.text()).toBe("retained imported image")
+          await Session.remove(imported.rootSessionID)
+          await Session.remove(source.id)
         },
       })
     }))

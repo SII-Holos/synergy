@@ -2,6 +2,7 @@ import { SessionTransferState } from "./transfer-state"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { Workspace } from "./workspace-schema"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
+import { attachmentPurpose } from "@ericsanchezok/synergy-util/attachment-presentation"
 import { WorkspaceBinding } from "../workspace/binding"
 import { WorkspaceCatalog } from "../workspace/catalog"
 import { Environment } from "../environment"
@@ -1954,25 +1955,27 @@ export namespace Session {
       part = { ...part, workBrief: await SecretMask.apply(part.workBrief) }
     }
     const scopeID = asScopeID(ownerScopeID ?? (await SessionManager.resolveScopeID(part.sessionID)))
-    const captureAttachmentContext = async (attachment: MessageV2.AttachmentPart) => {
-      const source = attachment.source
-      if (!source || source.type === "resource" || source.workspace) return attachment
+    const prepareAttachment = async (attachment: MessageV2.AttachmentPart) => {
+      const normalized: MessageV2.AttachmentPart = attachment.presentation?.purpose
+        ? attachment
+        : { ...attachment, presentation: { ...attachment.presentation, purpose: attachmentPurpose(attachment) } }
+      const source = normalized.source
+      if (!source || source.type === "resource" || source.workspace) return normalized
       const [message] = await Storage.readMany<MessageV2.Info>([
         StoragePath.messageInfo(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID)),
       ])
       const context = message?.referenceContext
       return context?.state === "bound" && ResourceReference.resolvePath(source.path, context) !== undefined
-        ? { ...attachment, source: { ...source, workspace: context.workspace } }
-        : attachment
+        ? { ...normalized, source: { ...source, workspace: context.workspace } }
+        : normalized
     }
     try {
       const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
-      if (part.type === "attachment")
-        part = await RolloutAttachment.capture(owner, await captureAttachmentContext(part))
+      if (part.type === "attachment") part = await RolloutAttachment.capture(owner, await prepareAttachment(part))
       if (part.type === "tool" && part.state.status === "completed" && part.state.attachments) {
         const attachments = []
         for (const attachment of part.state.attachments)
-          attachments.push(await RolloutAttachment.capture(owner, await captureAttachmentContext(attachment)))
+          attachments.push(await RolloutAttachment.capture(owner, await prepareAttachment(attachment)))
         part = { ...part, state: { ...part.state, attachments } }
       }
       if (part.type === "tool" && part.state.status === "completed" && !part.state.outputArtifact) {

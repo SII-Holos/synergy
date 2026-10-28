@@ -15,9 +15,11 @@
 - **Timeline** — observations.
 - **Root cause**.
 - **Guardrails** — tests, docs, gates.
-- **Lessons** — takeaways.
+- **Lessons**.
 
 ## Index
+
+- [0094](0094-compaction-attachment-default-drift.md)
 
 - [0093](0093-hidden-browser-capture-presentation.md)
 
