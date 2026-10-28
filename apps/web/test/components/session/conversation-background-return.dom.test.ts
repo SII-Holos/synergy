@@ -122,7 +122,10 @@ for (const ended of [false, true]) {
       ).toEqual(Array(64).fill(ended ? 0 : 1))
       expect(result.samples.every((sample) => sample.placeholders === 0)).toBe(true)
       expect(result.samples.every((sample) => sample.rows > 0)).toBe(true)
-      expect(result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2)).toBe(true)
+      expect(
+        result.samples.every((sample) => sample.moving === 0 && Math.abs(sample.gap) <= 2),
+        JSON.stringify(result.samples.map((sample, frame) => ({ frame, ...sample }))),
+      ).toBe(true)
       if (ended) {
         expect(result.answer).toBe(true)
         expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-"))).toEqual([])

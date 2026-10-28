@@ -44,9 +44,16 @@ describe("production conversation history", () => {
       console.info(`[conversation history] ${name}: ${Math.round(performance.now() - started)}ms`)
     const browser = await chromium.launch({ headless: true })
     let diagnostics: { errors: Error[]; dispose(): unknown } | undefined
+    const transport: Array<{ event: string; path: string; at: number }> = []
     try {
       const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
       const page = await context.newPage()
+      for (const event of ["request", "requestfinished", "requestfailed"] as const)
+        page.on(event, (request) => {
+          const path = new URL(request.url()).pathname
+          if (path.includes("/session/") && (path.includes("/part/") || path.includes("/timeline")))
+            transport.push({ event, path, at: Math.round(performance.now() - started) })
+        })
       const cdp = await context.newCDPSession(page)
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
       page.setDefaultTimeout(20000)
@@ -167,7 +174,7 @@ describe("production conversation history", () => {
           }
           return distances
         })
-        expect(Math.max(...distances)).toBeLessThan(10)
+        expect(Math.max(...distances), JSON.stringify({ activation, distances })).toBeLessThan(10)
         phase(`returned to latest with ${activation}`)
       }
       await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 })
@@ -200,6 +207,7 @@ describe("production conversation history", () => {
       phase("reloaded")
       expect(diagnostics.errors.map((error) => error.message)).toEqual([])
     } catch (error) {
+      console.info("[conversation history] transport:", JSON.stringify(transport))
       const page = browser.contexts()[0]?.pages()[0]
       if (page && !page.isClosed())
         console.info(
@@ -213,8 +221,15 @@ describe("production conversation history", () => {
                 top: viewport.scrollTop,
                 height: viewport.scrollHeight,
                 client: viewport.clientHeight,
-                rows: [...viewport.querySelectorAll<HTMLElement>('[data-display-row][data-message-role="user"]')]
+                ready: viewport.dataset.ready,
+                fonts: document.fonts.status,
+                pending: viewport.querySelectorAll("[data-content-pending], [data-markdown-pending]").length,
+                answer: viewport.textContent?.includes("Answer 360"),
+                visibility: getComputedStyle(viewport).visibility,
+                rows: [...viewport.querySelectorAll<HTMLElement>("[data-display-row]")]
                   .map((row) => ({
+                    id: row.dataset.displayRow,
+                    role: row.dataset.messageRole,
                     text: row.textContent?.slice(0, 80),
                     top: row.getBoundingClientRect().top - bounds.top,
                     height: row.getBoundingClientRect().height,
