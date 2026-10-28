@@ -1,7 +1,7 @@
 import { I18nProvider } from "@lingui/solid"
 import { setupI18n } from "@lingui/core"
 import { MarkedProvider } from "@ericsanchezok/synergy-ui/context/marked"
-import type { PluginInputService } from "@ericsanchezok/synergy-plugin"
+import { createComposerFixtureInput } from "../composer-input"
 import { Show, createSignal, onCleanup } from "solid-js"
 import { render } from "solid-js/web"
 import { DefaultComposer } from "../../../src/plugin/default-composer"
@@ -25,7 +25,7 @@ function Fixture() {
   const [conversation, setConversation] = createSignal("first")
   const [ready, setReady] = createSignal(true)
   let editor: HTMLDivElement | undefined
-  const input: PluginInputService = {
+  const input = createComposerFixtureInput({
     editor: {
       label: () => "Message",
       mount(element) {
@@ -49,35 +49,6 @@ function Fixture() {
       placeholder: () => (text() ? undefined : "Describe a task"),
     },
     current: () => ({ revision: revision(), text: text(), selection: { start: 0, end: 0 }, mode: "normal" }),
-    readOnly: () => false,
-    composing: () => false,
-    primaryAction: () => "submit",
-    ready: () => true,
-    canSubmit: () => true,
-    submitting: () => false,
-    stopping: () => false,
-    dragging: () => false,
-    className: () => undefined,
-    async applyEdits() {
-      return input.current()
-    },
-    select() {},
-    setComposing() {},
-    setMode() {},
-    async submit() {},
-    async stop() {},
-    attachments: () => [],
-    async addAttachments() {},
-    removeAttachment() {},
-    agents: () => [],
-    agent: () => undefined,
-    selectAgent() {},
-    models: () => [],
-    model: () => undefined,
-    selectModel() {},
-    variants: () => [],
-    variant: () => undefined,
-    selectVariant() {},
     render(part) {
       if (part === "context")
         return (
@@ -93,10 +64,7 @@ function Fixture() {
           </div>
         )
     },
-    dragOver() {},
-    dragLeave() {},
-    async drop() {},
-  }
+  })
   onCleanup(bindComposerPresentation(input, { state, preview: () => ({ text: text(), references: [] }) }))
   return (
     <I18nProvider

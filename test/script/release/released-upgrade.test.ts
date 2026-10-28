@@ -6,7 +6,10 @@ import { pathToFileURL } from "node:url"
 import { z } from "zod"
 import { compilePluginManifest } from "@ericsanchezok/synergy-plugin"
 import { computeManifestHash, computePermissionsHash } from "@ericsanchezok/synergy-plugin/integrity"
-import { installedProvider } from "../../../packages/presets/test/acceptance/installed-provider"
+import {
+  installedProvider,
+  type InstalledProviderDecision,
+} from "../../../packages/presets/test/acceptance/installed-provider"
 import pluginDefinition from "./upgrade-plugin-fixture"
 import { expectRetainedHistory } from "./upgrade-history"
 
@@ -24,7 +27,8 @@ test.skipIf(!previous || !candidate)(
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "synergy-released-upgrade-")))
     const home = path.join(root, "home")
     const workspace = path.join(root, "workspace")
-    using provider = installedProvider()
+    const decisions: InstalledProviderDecision[] = []
+    using provider = installedProvider((decision) => decisions.push(decision))
     const config = {
       model: "fixture/model",
       provider: {
@@ -283,7 +287,29 @@ test.skipIf(!previous || !candidate)(
               .find((part) => part.type === "attachment" && part.filename === "upgrade.png")?.id,
           )
         expect(await Bun.file(path.join(workspace, "old-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("x")
+        try {
+          expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("x")
+        } catch (error) {
+          console.error(
+            "Released upgrade baseline protocol evidence",
+            JSON.stringify({
+              provider: decisions,
+              history: before.map((message) => ({
+                role: message.info.role,
+                error: Boolean(message.info.error),
+                tools: message.parts
+                  .filter((part) => part.type === "tool")
+                  .map((part) => {
+                    const state = z
+                      .object({ status: z.enum(["pending", "running", "completed", "error"]) })
+                      .safeParse(part.state)
+                    return state.success ? state.data.status : "unknown"
+                  }),
+              })),
+            }),
+          )
+          throw error
+        }
         expect(before.some((message) => message.parts.some((part) => part.type === "tool"))).toBe(true)
         await retainedExtras(old)
       }

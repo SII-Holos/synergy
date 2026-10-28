@@ -148,6 +148,13 @@ async function run() {
         zoom: view.webContents.getZoomFactor(),
       }),
     )
+    const geometryStartedAt = performance.now()
+    const phase = (stage: string) =>
+      console.log(
+        "Native geometry phase",
+        JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - geometryStartedAt) }),
+      )
+    phase("natural-viewport.wait")
     await waitFor(
       async () => {
         const size = await viewportSize()
@@ -156,10 +163,15 @@ async function run() {
       2_000,
       "natural attached viewport",
     )
+    phase("natural-viewport.accepted")
+    phase("fixed-metrics.start")
     await first.execute({ type: "setViewport", mode: "fixed", width: 600, height: 400 })
+    phase("fixed-metrics.completed")
     assert.deepEqual(view.getBounds(), nativeBounds, "Fixed viewport must not resize native presentation")
     assert.deepEqual(await viewportSize(), { width: 600, height: 400 })
+    phase("fixed-capture.start")
     assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    phase("fixed-capture.completed")
     firstManager.resize(input.ownerKey, input.page.id, { x: 256, y: 40, width: 560, height: 360 })
     const resizedBounds = { x: 320, y: 50, width: 700, height: 450 }
     assert.deepEqual(view.getBounds(), resizedBounds)
@@ -168,7 +180,10 @@ async function run() {
       { width: 600, height: 400 },
       "Manager resize cannot clear explicit fixed metrics",
     )
+    phase("fixed-resize.accepted")
+    phase("fit-metrics.start")
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
+    phase("fit-metrics.completed")
     assert.deepEqual(view.getBounds(), resizedBounds, "Fit ignores supplied dimensions for native bounds")
     await waitFor(
       async () => {
@@ -178,7 +193,9 @@ async function run() {
       2_000,
       "fit restores natural viewport after fixed metrics",
     )
+    phase("fit-viewport.accepted")
     firstManager.resize(input.ownerKey, input.page.id, { x: 256, y: 40, width: 512, height: 320 })
+    phase("natural-resize.wait")
     await waitFor(
       async () => {
         const size = await viewportSize()
@@ -188,20 +205,32 @@ async function run() {
       "natural viewport after manager resize",
     )
     assert.deepEqual(view.getBounds(), { x: 320, y: 50, width: 640, height: 400 })
+    phase("natural-resize.accepted")
     const contentId = view.webContents.id
     firstManager.detach(input.ownerKey, input.page.id)
+    phase("detached-fit.viewport")
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit retains the last native size")
+    phase("detached-fit-capture.start")
     assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    phase("detached-fit-capture.completed")
+    phase("detached-fixed-metrics.start")
     await first.execute({ type: "setViewport", width: 500, height: 300 })
+    phase("detached-fixed-metrics.completed")
     await firstManager.attach({ ...firstRequest, bounds: { x: 256, y: 40, width: 512, height: 320 } })
+    phase("fixed-reattachment.completed")
     assert.equal(view.webContents.id, contentId, "Attachment must preserve the browsing context")
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Attachment preserves explicit Agent viewport")
     firstManager.detach(input.ownerKey, input.page.id)
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Detach preserves explicit Agent viewport")
+    phase("detached-fixed-capture.start")
     assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    phase("detached-fixed-capture.completed")
+    phase("detached-fit-metrics.start")
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
+    phase("detached-fit-metrics.completed")
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit restores the last native size")
     await firstManager.attach({ ...firstRequest, bounds: { x: 256, y: 40, width: 512, height: 320 } })
+    phase("fit-reattachment.wait")
     await waitFor(
       async () => {
         const size = await viewportSize()
@@ -210,6 +239,7 @@ async function run() {
       2_000,
       "reattached fit viewport",
     )
+    phase("fit-reattachment.accepted")
     console.log(
       "ACCEPTED: one bounds owner, zoom-scaled natural viewport, detached/attached fixed-fit and roundtrip identity",
     )

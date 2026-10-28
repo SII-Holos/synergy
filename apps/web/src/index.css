@@ -194,11 +194,18 @@ a {
 }
 
 .session-empty-view[data-interactive] {
-  padding: 0 0 var(--prompt-height, 12rem);
+  padding: 0;
   display: block;
+  scrollbar-gutter: stable both-edges;
+}
+.session-empty-view[data-interactive]::after {
+  content: "";
+  display: block;
+  height: var(--prompt-height, 12rem);
 }
 .session-welcome-region {
-  height: 100%;
+  /* Artwork uses a design inset; the separate scroll tail clears the live dock. */
+  height: calc(100% - 12rem);
   min-height: 410px;
   width: 100%;
 }
@@ -834,6 +841,11 @@ a {
 @media (max-width: 767px) {
   .session-empty-view {
     padding-block: 24px;
+  }
+  .session-workbench-pane:has(.session-empty-view[data-interactive]) .session-prompt-dock {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
   }
 }
 

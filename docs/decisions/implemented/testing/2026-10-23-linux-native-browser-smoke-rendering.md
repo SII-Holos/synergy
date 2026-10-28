@@ -12,6 +12,8 @@ The [native Browser smoke runner](../../../../apps/desktop/test/browser-runtime-
 
 The [Browser verification Skill](../../../../.synergy/skill/change-browser-runtime/SKILL.md) identifies Linux/Xvfb evidence as software-rendered native acceptance. This is an environment choice supported by the controlled experiment, not a conclusion that every screenshot stall has the same cause.
 
+The geometry fixture reports static stage labels and elapsed time around viewport waits, metrics commands and capture. An attached bounds/viewport observation alone does not identify the command pending at a later timeout. These markers add no native reads or commands, retain every original assertion and deadline, and contain no page, owner, path or content data. They diagnose command completion; adding observation is not a repair for a stalled command.
+
 ## Alternatives considered
 
 **Retry the unchanged job.** The failure recurred in CI and the unchanged local fixture both failed and passed. Retries do not make the graphics backend deterministic.

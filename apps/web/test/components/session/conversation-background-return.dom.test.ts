@@ -176,33 +176,34 @@ for (const completionFrame of [0, 1, 16]) {
         await settle()
         const hidden = fixture.contentStats()
         fixture.select("session")
-        const samples = []
+        const samples: ReturnType<typeof sample>[] = []
         const firstRender: Array<ReturnType<typeof sample> & { channel: string; time: number }> = []
         const probe = document.createElement("div")
         probe.style.cssText = "position:fixed;left:-100px;top:0;width:1px;height:1px;visibility:hidden;contain:strict"
         document.body.append(probe)
-        let sampling = false
+        let pendingSample: ((value: ReturnType<typeof sample>) => void) | undefined
         const observer = new ResizeObserver(() => {
-          if (!sampling) return
-          firstRender.push({ channel: "resize", time: performance.now(), ...sample() })
-          observer.disconnect()
+          const resolve = pendingSample
+          if (!resolve) return
+          pendingSample = undefined
+          const current = sample()
+          if (samples.length === 0) firstRender.push({ channel: "resize", time: performance.now(), ...current })
+          setTimeout(() => resolve(current), 0)
         })
         observer.observe(probe)
+        const renderSample = () =>
+          new Promise<ReturnType<typeof sample>>((resolve) =>
+            requestAnimationFrame(() => {
+              pendingSample = resolve
+              probe.style.width = probe.style.width === "1px" ? "2px" : "1px"
+            }),
+          )
         try {
           for (let frame = 0; frame < 96; frame++) {
             if (frame === completionFrame) fixture.background(true, false)
-            if (frame === 0) {
-              await new Promise<void>((resolve) =>
-                requestAnimationFrame(() => {
-                  sampling = true
-                  probe.style.width = "2px"
-                  setTimeout(resolve, 0)
-                }),
-              )
-            } else await settle()
-            const current = sample()
+            const current = await renderSample()
             samples.push(current)
-            if (frame === 0) firstRender.push({ channel: "timer", time: performance.now(), ...current })
+            if (frame === 0) firstRender.push({ channel: "timer", time: performance.now(), ...sample() })
           }
         } finally {
           observer.disconnect()
@@ -218,6 +219,7 @@ for (const completionFrame of [0, 1, 16]) {
         }
       }, completionFrame)
       expect(result.hidden).toEqual(result.before)
+      expect(result.samples).toHaveLength(96)
       expect(
         result.samples.every((sample) => sample.rows > 0),
         JSON.stringify({

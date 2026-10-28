@@ -16,7 +16,7 @@ import {
   useSessionPreparation,
 } from "@/components/session/session-preparation"
 import type { PluginComposerLayoutService } from "@ericsanchezok/synergy-plugin"
-import { NewSessionGreeting } from "@/components/session/session-new-view"
+import { NewSessionGreeting, SessionEmptyView } from "@/components/session/session-new-view"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 import { SessionInbox } from "@/components/session/session-inbox"
@@ -2274,6 +2274,20 @@ function SessionPageContent() {
       </Show>
     ),
   }
+  const greeting = () => (
+    <NewSessionGreeting
+      disabled={
+        !composer()?.input.ready() ||
+        composer()?.input.readOnly() ||
+        composer()?.input.submitting() ||
+        composer()?.input.composing() ||
+        composer()?.input.current().mode !== "normal"
+      }
+      onProject={() => command.trigger("project.select")}
+      onFiles={() => composer()?.pickFiles()}
+    />
+  )
+  const emptyContributions = () => <SlotOutlet slot="session.empty" sessionId={params.id} />
   const composerLayout: PluginComposerLayoutService = {
     input: () => composer()?.input,
     mount: dockHeight.mount,
@@ -2314,18 +2328,8 @@ function SessionPageContent() {
       if (part === "greeting")
         return (
           <>
-            <NewSessionGreeting
-              disabled={
-                !composer()?.input.ready() ||
-                composer()?.input.readOnly() ||
-                composer()?.input.submitting() ||
-                composer()?.input.composing() ||
-                composer()?.input.current().mode !== "normal"
-              }
-              onProject={() => command.trigger("project.select")}
-              onFiles={() => composer()?.pickFiles()}
-            />
-            <SlotOutlet slot="session.empty" sessionId={params.id} />
+            {greeting()}
+            {emptyContributions()}
           </>
         )
       if (part === "inbox")
@@ -2471,11 +2475,9 @@ function SessionPageContent() {
               </Switch>
             </Match>
             <Match when={true}>
-              <div class="session-empty-view" data-interactive={!params.id ? "" : undefined}>
-                <div class={!params.id ? "session-welcome-region" : "session-content-column"}>
-                  {composerLayout.render("greeting")}
-                </div>
-              </div>
+              <SessionEmptyView interactive={!params.id} greeting={greeting()}>
+                {emptyContributions()}
+              </SessionEmptyView>
             </Match>
           </Switch>
         </div>
