@@ -25,6 +25,9 @@ export interface TaskResult {
   started: string
   completed: string
   runtime?: { platform: string; arch: string; bun: string }
+  failure?: { phase: "prepare" | "command" | "cleanup" | "reports"; at: string; message: string }
+  preparationSeconds?: number
+  cleanupSeconds?: number
   reports: Report[]
   steps: Array<{ name: string; seconds: number; exitCode: number }>
 }

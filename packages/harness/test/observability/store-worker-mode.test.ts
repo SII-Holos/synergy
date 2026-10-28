@@ -343,6 +343,16 @@ describe("ObservabilityStore worker mode", () => {
         const freshRows = enqueues.mock.calls.map(([row]) => row).filter((row) => row.kind === "issue")
         expect(freshRows).toMatchObject([{ row: { issueId: first.issueId, occurrenceCount: 3 } }])
         await ObservabilityTelemetryClient.flushAndWait()
+        const acknowledged = ObservabilityTelemetryClient.stats()
+        // Queries can flush new observations after the receipt being asserted.
+        ObservabilityMetrics.record({
+          name: "storage.queue.depth",
+          value: 1,
+          unit: "count",
+          module: "storage",
+          labels: { queue: "after-receipt" },
+        })
+        ObservabilityMetrics.flushAggregates(true)
         expect(ObservabilityTelemetryClient.workerProcess()).not.toBe(oldWorker)
         expect(ObservabilityIssues.list({ scopeID: input.scopeID })).toMatchObject([
           {
@@ -355,7 +365,7 @@ describe("ObservabilityStore worker mode", () => {
           },
         ])
         expect(ObservabilityIssues.list({ scopeID: input.scopeID, status: "suppressed" })).toEqual([])
-        expect(ObservabilityTelemetryClient.stats()).toMatchObject({
+        expect(acknowledged).toMatchObject({
           uncertain: beforeFault.uncertain + 7,
           dropped: beforeFault.dropped,
           pending: 0,

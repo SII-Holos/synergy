@@ -128,3 +128,5 @@ The full installation still publishes the same `synergy` executable and complete
 ## Questions?
 
 If something isn't covered here, open a [Discussion](https://github.com/SII-Holos/synergy/discussions) or ask in an issue. There are no bad questions — only missing documentation that your question will help us write.
+
+For flaky failures and expensive fixtures, follow the [stability workflow](.synergy/skill/testing-guide/references/stability.md). Report original-batch reproduction, resource cleanup and cold/warm costs with test changes. `bun run test-policy:check` blocks focused tests and new retry or unisolated module-mock debt.

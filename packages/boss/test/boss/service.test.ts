@@ -11,6 +11,7 @@ import { BossService } from "../../src/boss/boss"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
+import { holdWorkerQueue } from "../support/worker-queues"
 const runtime = await testRuntime()
 
 async function withScope<T>(fn: () => Promise<T>): Promise<T> {
@@ -87,6 +88,7 @@ describe("BossService", () => {
     runtime.run(async () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
+        await using workerQueue = holdWorkerQueue(worker.id)
         const first = await BossService.assign(boss.id, {
           sessionID: worker.id,
           taskID: "task-1",
@@ -95,6 +97,8 @@ describe("BossService", () => {
         })
         expect(first.created).toBe(true)
 
+        await SessionManager.wake(worker.id)
+        await SessionManager.drain()
         const items = await SessionInbox.list(worker.id)
         expect(items).toHaveLength(1)
         expect(items[0].mode).toBe("task")
@@ -141,11 +145,14 @@ describe("BossService", () => {
     runtime.run(async () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
+        await using bossQueue = holdWorkerQueue(boss.id)
         const result = await BossService.report(worker.id, {
           summary: "Done with the widget",
           status: "completed",
           refs: ["file.ts"],
         })
+        await SessionManager.wake(boss.id)
+        await SessionManager.drain()
         const items = await SessionInbox.list(boss.id)
         expect(items).toHaveLength(1)
         expect(items[0].mode).toBe("steer")
@@ -172,6 +179,7 @@ describe("BossService", () => {
     runtime.run(async () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
+        await using workerQueue = holdWorkerQueue(worker.id)
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-1", task: "one" })
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-2", task: "two" })
 
@@ -189,6 +197,7 @@ describe("BossService", () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
         const grandchild = await BossService.spawn(worker.id, { role: "research" })
+        await using workerQueue = holdWorkerQueue(worker.id)
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-1", task: "build feature" })
 
         const tree = await BossService.status(boss.id)
@@ -286,6 +295,7 @@ describe("BossService", () => {
     runtime.run(async () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
+        await using workerQueue = holdWorkerQueue(worker.id)
         // Materialize task A as the running assignment and queue task B.
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-a", task: "A" })
         const items = await SessionInbox.list(worker.id)
@@ -301,6 +311,8 @@ describe("BossService", () => {
         const result = await BossService.cancel(boss.id, { sessionID: worker.id, taskID: "task-b" })
         expect(result.cancelled).toBe(true)
         expect(await SessionInbox.list(worker.id)).toHaveLength(0)
+        expect(workerQueue.lease.signal.aborted).toBe(false)
+        expect(SessionManager.isRunning(worker.id)).toBe(true)
       })
     }))
 
@@ -319,6 +331,8 @@ describe("BossService", () => {
     runtime.run(async () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
+        await using bossQueue = holdWorkerQueue(boss.id)
+        await using workerQueue = holdWorkerQueue(worker.id)
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-1", task: "Do it" })
         const items = await SessionInbox.list(worker.id)
         const stored = await SessionInbox.getStored(worker.id, items[0].id)
@@ -339,6 +353,7 @@ describe("BossService", () => {
     runtime.run(async () => {
       await withScope(async () => {
         const { boss, worker } = await bossAndWorker()
+        await using workerQueue = holdWorkerQueue(worker.id)
         await BossService.assign(boss.id, { sessionID: worker.id, taskID: "task-1", task: "Do it" })
         const workerItems = await SessionInbox.list(worker.id)
         const workerTask = await SessionInbox.getStored(worker.id, workerItems[0].id)
@@ -349,6 +364,7 @@ describe("BossService", () => {
         )
 
         const child = await BossService.spawn(worker.id, { role: "test" })
+        await using childQueue = holdWorkerQueue(child.id)
         await BossService.assign(worker.id, { sessionID: child.id, taskID: "child-task", task: "Check it" })
         const childItems = await SessionInbox.list(child.id)
         const childTask = await SessionInbox.getStored(child.id, childItems[0].id)
@@ -372,4 +388,13 @@ describe("BossService", () => {
     }))
 })
 
-afterRuntimeTests(() => runtime.close())
+afterRuntimeTests(async () => {
+  try {
+    await runtime.run(async () => {
+      await SessionManager.drain()
+      expect(SessionManager.listRunningRuntimes()).toEqual([])
+    })
+  } finally {
+    await runtime.close()
+  }
+})

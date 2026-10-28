@@ -94,6 +94,8 @@ Route main-process broadcasts for the application renderer through `DesktopRende
 - Use Electron Window Controls Overlay geometry for native control exclusion; fullscreen clears the inset. Verify ordinary/fullscreen × expanded/collapsed, then repeat with a side workspace, after reload and at 200% zoom. Do not infer fullscreen from dimensions or replace the geometry with fixed offsets.
 - Keep renderer window-state broadcasts disabled on macOS. Native fullscreen moves the window across Spaces asynchronously and can emit unstable focus/fullscreen transitions; macOS uses native chrome and should query state explicitly when needed.
 
+For intermittent failures, use [the stability workflow](../testing-guide/references/stability.md) before expanding timeouts or CI scope. Reproduce batch order and drain owned work before removing a Home.
+
 ## Verify and Diagnose
 
 Load [testing-guide](../testing-guide/SKILL.md#review-test-value-and-ci-cost) before changing automated verification. Review affected existing tests together with new coverage, and include consolidation or removal when behavior is obsolete or duplicated. Select the smallest relevant check locally; use the [CI cost policy](../../../docs/operations/ci.md#维护验证成本) for measured changes to expensive preparation or full workflows.

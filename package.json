@@ -29,6 +29,7 @@
     "workflow:check": "bun script/workflow-check.ts",
     "skill:check": "bun script/skill-check.ts",
     "package-guide:check": "bun script/package-guide-check.ts",
+    "test-policy:check": "bun script/test-policy-check.ts",
     "test-layout:check": "bun test --config /dev/null test/script/test-layout-check.test.ts && bun script/test-layout-check.ts",
     "localization:source": "bun script/localization-check.ts --strict",
     "localization:check": "bun run --cwd apps/web i18n:check",

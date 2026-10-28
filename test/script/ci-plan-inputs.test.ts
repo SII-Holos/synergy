@@ -115,11 +115,12 @@ function expectedInputs(equal: boolean) {
       files: ["packages/core/test/dynamic.test.ts", "packages/core/test/fixture.json"],
       packages: [],
       complete: false,
+      unresolved: ["packages/core/test/dynamic.test.ts: dynamic import or unsupported TypeScript aliases"],
     },
   })
   return {
     changed: equal ? [] : ["packages/core/package.json", "packages/core/test/complete.test.ts"],
-    selectionChanges: { leafTests: [] },
+    selectionChanges: { leafTests: [], ...(!equal ? { scopedManifests: ["packages/core/package.json"] } : {}) },
     baseWorkspaces: workspaces(false),
     headWorkspaces: workspaces(!equal),
     baseInputs: inputs(false),
@@ -155,9 +156,6 @@ function expectedPlan(fixture: Awaited<ReturnType<typeof revisionFixture>>, equa
     changed: expectedInputs(equal).changed,
     selected,
     proposed: selected,
-    ...(equal
-      ? {}
-      : { fullTriggers: [{ file: "packages/core/package.json", reason: "workspace-configuration" as const }] }),
     reasons: equal
       ? {
           complete: "not affected by this change",
@@ -165,9 +163,10 @@ function expectedPlan(fixture: Awaited<ReturnType<typeof revisionFixture>>, equa
           policy: "affected:  → policy",
         }
       : {
-          complete: "full: shared or unclassified input",
-          dynamic: "full: shared or unclassified input",
-          policy: "full: shared or unclassified input",
+          complete: "affected: packages/core/package.json, packages/core/test/complete.test.ts → packages/core",
+          dynamic:
+            "conservative input fallback: packages/core/test/dynamic.test.ts: dynamic import or unsupported TypeScript aliases",
+          policy: "affected: packages/core/package.json, packages/core/test/complete.test.ts → policy",
         },
     tasks: [fixture.tasks[1]!, fixture.tasks[2]!, fixture.tasks[0]!],
     units: [

@@ -1,22 +1,21 @@
 import { afterAll, afterEach, beforeAll, beforeEach, expect, test } from "bun:test"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { testResources } from "@ericsanchezok/synergy-testing/resources"
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwindcss from "@tailwindcss/vite"
-import { lingui } from "@lingui/vite-plugin"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let fixture: string
 let url: string
 const errors: string[] = []
+const resources = testResources()
 
 beforeAll(async () => {
   fixture = await mkdtemp(path.join(import.meta.dir, ".settings-details-"))
+  resources.defer("settings fixture directory", () => rm(fixture, { recursive: true, force: true }))
   const source = path.resolve(import.meta.dir, "../../../src")
   await Bun.write(
     path.join(fixture, "index.html"),
@@ -62,29 +61,29 @@ beforeAll(async () => {
     import { Button } from "@ericsanchezok/synergy-ui/button"
     import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
     import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
-    import { EmailPanel } from "/@fs/${source}/components/settings/panels/EmailPanel.tsx"
-    import { LearningPanel } from "/@fs/${source}/components/settings/panels/LibraryPanels.tsx"
-    import { BossModePanel } from "/@fs/${source}/components/settings/panels/BossModePanel.tsx"
-    import { ExperimentsPanel } from "/@fs/${source}/components/settings/panels/ExperimentsPanel.tsx"
-    import { createExperimentsController } from "/@fs/${source}/components/settings/panels/experiments-controller.ts"
-    import { ImportPanel } from "/@fs/${source}/components/settings/panels/ImportPanel.tsx"
-    import { LanguageToolsPanel } from "/@fs/${source}/components/settings/panels/LanguageToolsPanel.tsx"
-    import { ControlProfilePanel } from "/@fs/${source}/components/settings/panels/SafetyPanels.tsx"
-    import { McpPanel } from "/@fs/${source}/components/settings/panels/McpPanel.tsx"
-    import { SettingsPathRow, SettingsPage } from "/@fs/${source}/components/settings/components/SettingsPrimitives.tsx"
-    import { SettingRow } from "/@fs/${source}/components/settings/components/SettingsSettingRow.tsx"
-    import { SettingsChoices } from "/@fs/${source}/components/settings/components/SettingsChoices.tsx"
-    import { SegmentPill } from "/@fs/${source}/components/settings/components/SegmentPill.tsx"
-    import { ModelRoleRow } from "/@fs/${source}/components/settings/components/ModelRoleRow.tsx"
-    import { DeclarativeSettingsForm } from "/@fs/${source}/plugin/components/declarative-settings-form.tsx"
-    import { SettingsStepScale } from "/@fs/${source}/components/settings/components/SettingsStepScale.tsx"
-    import { defaultSettingsState, emptyMcp } from "/@fs/${source}/components/settings/types.ts"
-    import { buildPatch } from "/@fs/${source}/components/settings/hooks/useConfigPatch.ts"
-    import { SettingsViewStateContext } from "/@fs/${source}/components/settings/settings-view-state.ts"
-    import "/@fs/${source}/components/settings/settings-panel.css"
+    import { EmailPanel } from "${source}/components/settings/panels/EmailPanel.tsx"
+    import { LearningPanel } from "${source}/components/settings/panels/LibraryPanels.tsx"
+    import { BossModePanel } from "${source}/components/settings/panels/BossModePanel.tsx"
+    import { ExperimentsPanel } from "${source}/components/settings/panels/ExperimentsPanel.tsx"
+    import { createExperimentsController } from "${source}/components/settings/panels/experiments-controller.ts"
+    import { ImportPanel } from "${source}/components/settings/panels/ImportPanel.tsx"
+    import { LanguageToolsPanel } from "${source}/components/settings/panels/LanguageToolsPanel.tsx"
+    import { ControlProfilePanel } from "${source}/components/settings/panels/SafetyPanels.tsx"
+    import { McpPanel } from "${source}/components/settings/panels/McpPanel.tsx"
+    import { SettingsPathRow, SettingsPage } from "${source}/components/settings/components/SettingsPrimitives.tsx"
+    import { SettingRow } from "${source}/components/settings/components/SettingsSettingRow.tsx"
+    import { SettingsChoices } from "${source}/components/settings/components/SettingsChoices.tsx"
+    import { SegmentPill } from "${source}/components/settings/components/SegmentPill.tsx"
+    import { ModelRoleRow } from "${source}/components/settings/components/ModelRoleRow.tsx"
+    import { DeclarativeSettingsForm } from "${source}/plugin/components/declarative-settings-form.tsx"
+    import { SettingsStepScale } from "${source}/components/settings/components/SettingsStepScale.tsx"
+    import { defaultSettingsState, emptyMcp } from "${source}/components/settings/types.ts"
+    import { buildPatch } from "${source}/components/settings/hooks/useConfigPatch.ts"
+    import { SettingsViewStateContext } from "${source}/components/settings/settings-view-state.ts"
+    import "${source}/components/settings/settings-panel.css"
     import "@ericsanchezok/synergy-ui/styles"
-    import { messages as en } from "/@fs/${source}/locales/en/messages.po"
-    import { messages as zh } from "/@fs/${source}/locales/zh-CN/messages.po"
+    import { messages as en } from "${source}/locales/en/messages.po"
+    import { messages as zh } from "${source}/locales/zh-CN/messages.po"
     import { domains, scopes, refresh } from "./sdk"
     const query = new URLSearchParams(location.search)
     const i18n = setupI18n({ locale: query.get("locale") || "en", messages: { en, "zh-CN": zh } })
@@ -159,41 +158,20 @@ beforeAll(async () => {
     render(() => <I18nProvider i18n={i18n}><ThemeProvider><DialogProvider><Fixture /></DialogProvider></ThemeProvider></I18nProvider>, document.getElementById("root"))
   `,
   )
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixture,
-    plugins: [solidPlugin(), tailwindcss(), ...lingui()],
-    cacheDir: path.join(fixture, ".vite"),
-    optimizeDeps: {
-      noDiscovery: true,
-      include: [
-        "solid-js",
-        "solid-js/web",
-        "solid-js/store",
-        "@lingui/core",
-        "@lingui/solid",
-        "jsonc-parser",
-        "fuzzysort",
-        "remeda",
-      ],
-    },
-    resolve: {
-      alias: [
-        { find: "@/context/global-sdk", replacement: path.join(fixture, "sdk.ts") },
-        { find: "@/context/global-sync", replacement: path.join(fixture, "sync.ts") },
-        { find: "@ericsanchezok/synergy-ui/toast", replacement: path.join(fixture, "toast.ts") },
-        { find: "@/", replacement: source + "/" },
-      ],
-    },
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      fs: { allow: [path.resolve(import.meta.dir, "../../../..")] },
-    },
+    styled: true,
+    aliases: [
+      { find: "@/context/global-sdk", replacement: path.join(fixture, "sdk.ts") },
+      { find: "@/context/global-sync", replacement: path.join(fixture, "sync.ts") },
+      { find: "@ericsanchezok/synergy-ui/toast", replacement: path.join(fixture, "toast.ts") },
+      { find: "@/", replacement: source + "/" },
+    ],
   })
-  await server.listen()
-  url = server.resolvedUrls!.local[0]!
+  resources.defer("settings fixture server", () => server.close())
+  url = server.url
   browser = await chromium.launch({ headless: true })
+  resources.defer("settings browser", () => browser.close())
 }, 60000)
 
 beforeEach(async () => {
@@ -207,11 +185,7 @@ beforeEach(async () => {
 afterEach(async () => {
   await page?.close()
 })
-afterAll(async () => {
-  await browser?.close()
-  await server?.close()
-  if (fixture) await rm(fixture, { recursive: true, force: true })
-})
+afterAll(() => resources.close())
 
 type ExperimentsFixture = {
   failLoad: boolean

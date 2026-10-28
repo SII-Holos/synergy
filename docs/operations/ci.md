@@ -10,11 +10,13 @@
 
 PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计算反向依赖闭包，执行 GitHub 合并提交，计划分别记录三个 SHA。Desktop 显式依赖嵌入的 Web 与 Runtime。新增未登记 workspace、根锁文件、工具链、共享测试设施、CI 规则和未知路径升级全量。只有明确白名单中的说明文档与 Skill 描述可选 policy，代码混合改动仍按代码计算影响；包内 Markdown 按程序输入处理。单独的 Pi/OpenCode observer 改动选择公共 benchmark 契约与该 native harness；共享协议、准备与调度改动选择全部 harness。
 
+生产依赖和测试依赖分别传播：两者都保留受影响使用者的完整 suite，只有生产依赖（含构建嵌入关系）扩散 Runtime 集成影响。已有 workspace 的已知 package.json 字段修改选择包与消费者；未知字段、身份或拓扑变化保持全量。根浏览器测试通过 catalog 登记到 Web 集成任务，文档归档 manifest 由 policy 验证，不单独启动运行时矩阵。
+
 变更路径从 base/head 的共同祖先比较到 head；base 独有更新不计作 PR 修改。依赖图使用当前两侧快照，使主线新增使用者仍可被选中。重命名的旧、新路径和删除文件均参与影响分析。
 
 只有在 base/head 两侧证明测试入口不导出、没有被其他文件使用且跨包消费者输入可解析时，测试文件修改才仅向所属完整 suite 传播；显式登记的集成入口与原生平台测试仍保留对应任务，共享 fixture、support、preload 和未解析输入继续传播反向依赖。coverage manifest 的既有包精确文件 exemption 变更按所属包和受影响源文件选择，阈值、命令、结构或未知项修改仍升级全量。Desktop/Web 修改保留 Desktop 构建和 Windows Desktop 验证；Native Runtime 修改保留原生平台检查及其完整覆盖率基线。
 
-普通包运行完整 suite；PostgreSQL 与长流任务另从实际测试入口追踪两侧输入。跨 workspace 输入包含生产和测试依赖；无法解析的别名、动态导入或资源使该任务对代码改动保守选中。输入图完整时才允许跳过未触及的昂贵任务。
+普通包运行完整 suite；PostgreSQL 与长流任务另从实际测试入口追踪两侧输入。跨 workspace 输入包含生产和测试依赖；无法解析的别名、动态导入或资源使该任务对代码改动保守选中。输入图完整时才允许跳过未触及的昂贵任务；计划 reasons 列出不能解析的文件和原因，禁止把未知输入直接视为无影响。
 
 每次 `planInputs` 操作按完整提交 SHA 建立 `RevisionSnapshot`；base/head 相同则复用一次 inventory、一次 OID 寻址 blob batch 和每个源路径的紧凑分析事实，不保留 AST 或跨操作缓存。预读 JS/TS、`package.json`、`tsconfig*.json` 与存在的 coverage manifest，静态资源只保留路径。Git inventory 与 batch 严格校验 framing、对象类型、长度、顺序、数量和 blob SHA-1 后原子准入；inventory 中存在但未准入的请求 blob 输入以 `RevisionInputError` 使计划失败，不能替换为空源码或全量计划。真正缺失的任务入口仍标记不完整，可选配置缺失保持保守选择。取舍见 [revision 准入与分析复用决策](../decisions/implemented/bug-fix/2026-10-07-ci-revision-admission-and-analysis-reuse.md)。
 
@@ -24,7 +26,9 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 Linux browser units retain the hosted image's browser libraries and install `fonts-wqy-zenhei` for Chinese glyph coverage. Localized pixel and geometry assertions run against real glyphs rather than missing-glyph boxes; font readiness alone is not coverage evidence. See [localized browser fonts](../decisions/implemented/testing/2026-10-24-localized-browser-fonts.md).
 
-普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、4、4、2、2 个分区，按稳定批次的历史耗时均衡分配；Web/UI 的批次直接使用各包 `script/test-options.ts` 和执行器共同的 `frontendBatches`；后端使用其共享批次执行器。原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home 和 fixture 根。UI DOM 夹具与 Web 的 Workbench、Agenda、Office、Decision、Settings 浏览器夹具复用经过校验的静态编译；每个测试保留独立 DOM、页面和可变状态，alias/stub 配置参与缓存身份。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。Local Runtime 分区还依赖完整 CLI 与 Presets suite，后两者为 CLI Scope、组件与 worker 注册、Skill 摘要和 Workspace 迁移提供跨包行为覆盖；原生任务间接选中的基线也必须保留这些报告。
+普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、6、4、2、2 个分区，按稳定批次的历史耗时均衡分配；Web/UI 的批次直接使用各包 `script/test-options.ts` 和执行器共同的 `frontendBatches`；后端使用其共享批次执行器。原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home 和 fixture 根。UI DOM 夹具与 Web 的 Workbench、Agenda、Office、Decision、Settings 浏览器夹具复用经过校验的静态编译；每个测试保留独立 DOM、页面和可变状态，alias/stub 配置参与缓存身份。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。Local Runtime 分区还依赖完整 CLI 与 Presets suite，后两者为 CLI Scope、组件与 worker 注册、Skill 摘要和 Workspace 迁移提供跨包行为覆盖；原生任务间接选中的基线也必须保留这些报告。
+
+Linux 普通执行位仍为 6 个。每个执行位最多同时运行两个任务；浏览器、Desktop、安装构建、类型检查和原生 Workspace 等重型任务互斥，轻量任务可填补另一个槽位，完成后立即续跑。计划估时与执行共享准入规则，避免同时运行两个重型任务，也不让轻量工作空等。contracts 与计划作业读取完整 Git 历史，供测试规范检查比较精确 base；其他执行位保持浅克隆。任务结果保留准备和清理耗时，以及首次失败阶段与时间；准备产物失败也必须生成结果。GitHub 作业历史以每页 50 条读取并遍历所有页，保留同一 run/SHA 的最新实际执行证据。仅网络错误和 HTTP 502/503/504 最多尝试三次，每次请求限时 15 秒；鉴权失败不重试。
 
 Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立生产任务；消费者只在需要时等待对应产物。选中 core/full 分发的计划均启用 Linux sandbox helper 准备，将打包所需二进制纳入基础构建与校验清单；单独选中的 Web 集成验证也满足该前置条件。core binary 验证独立启动与真实工具调用，core 包验证实际安装、启动和完成任务；full 保留六类业务结果、一次完整导入导出和组件安装、升级、移除、managed/attach 生命周期。基础准备并行生成一次 Web 生产产物，构建契约和浏览器 smoke 消费经过清单校验的同一产物。消费者验证计划、提交、run、原始计划 attempt、Bun、ABI、完整文件列表、字节摘要和模式；每个场景有独立 Home，结束时验证发行树未变。
 
@@ -42,7 +46,7 @@ Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立�
 
 测试的价值由它保护的业务行为、实际故障和独有覆盖决定。开发变更同时审视新增与已有测试，合并重复覆盖、移除过时场景，保留安装、生命周期、迁移、恢复、平台差异与覆盖率门槛。具体步骤由 [testing-guide](../../.synergy/skill/testing-guide/SKILL.md#review-test-value-and-ci-cost) 拥有，源开发入口 [develop-synergy](../../.synergy/skill/develop-synergy/SKILL.md#verify-and-diagnose) 必须执行这项审视。
 
-全量反馈以约 10 分钟为优化目标，不设仅凭超过 10 分钟就失败的质量门禁。有业务价值的增长可以保留；昂贵夹具、新增组合、准备或关键路径改变需对照相同负载和缓存条件的实际运行，说明新增覆盖与耗时增量，检查能否复用准备或合并重复场景。报告最终耗时、队列、runner 分钟、失败阶段和重跑次数；重跑变绿不能证明 flaky 已修复。超过目标或重复出现长尾时按实测热点优化，不能只新增测试而放任重复和无效断言累积。
+PR 反馈以 P50 ≤ 10 分钟、P90 ≤ 15 分钟为观察目标，全量反馈以约 10 分钟为持续优化目标，不设仅凭超过 10 分钟就失败的质量门禁。有业务价值的增长可以保留；昂贵夹具、新增组合、准备或关键路径改变需对照相同负载和缓存条件的实际运行，说明新增覆盖与耗时增量，检查能否复用准备或合并重复场景。报告最终耗时、队列、runner 分钟、失败阶段和重跑次数；重跑变绿不能证明 flaky 已修复。超过目标或重复出现长尾时按实测热点优化，不能只新增测试而放任重复和无效断言累积。
 
 ## 开发接口
 
@@ -76,4 +80,4 @@ Task Home 成功路径合入 `jit-chat-completions-fixture-one`，验证两次�
 
 规划 job 仅安装 testing workspace 需要的依赖，不恢复整仓下载缓存。四组短协议/JIT 控制和 Task Home 控制使用两次真实工具调用验证首末阶段；完整文件修改循环继续由业务压缩控制和显式 120 轮诊断承担。
 
-计划及本地 `verify plan` 报告列出 `fullTriggers` 的具体文件与原因。只有既有 workspace package.json 的描述性字段变化可缩小为所属包及消费者完整 suite；依赖、版本、导出、脚本和未知字段保持全量。生成的 OpenAPI 契约显式归属 SDK 与 Server，保留二者及消费者验证。Skill 的 references Markdown 按文档选择，执行脚本仍属共享输入。
+计划及本地 `verify plan` 报告列出 `fullTriggers` 的具体文件与原因，workspace manifest 的选择边界见上文执行模式。生成的 OpenAPI 契约显式归属 SDK 与 Server，保留二者及消费者验证。Skill 的 references Markdown 按文档选择，执行脚本仍属共享输入。

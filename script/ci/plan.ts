@@ -40,6 +40,7 @@ export interface TaskInputs {
   files: string[]
   packages: string[]
   complete: boolean
+  unresolved?: string[]
 }
 
 export interface Task {
@@ -137,13 +138,65 @@ export function taskOrder(a: Task, b: Task) {
   return Number(b.kind === "policy") - Number(a.kind === "policy") || b.seconds - a.seconds || a.id.localeCompare(b.id)
 }
 
-function finishTime(tasks: Task[], workers: number) {
-  const lanes = Array.from({ length: workers }, () => 0)
-  for (const task of tasks.toSorted(taskOrder)) {
-    lanes.sort((a, b) => a - b)
-    lanes[0]! += task.seconds
+function heavy(task: Task) {
+  return (
+    task.prerequisites?.includes("browser") ||
+    task.prerequisites?.includes("desktop") ||
+    ["typecheck", "desktop", "artifacts", "native-workspace"].includes(task.kind)
+  )
+}
+
+function nextTask(pending: Task[], running: Task[], workers: number) {
+  if (running.length >= workers) return -1
+  return pending.findIndex((task) => !heavy(task) || !running.some(heavy))
+}
+
+export async function runTaskQueue(tasks: Task[], workers: number, execute: (task: Task) => Promise<void>) {
+  if (!Number.isInteger(workers) || workers < 1) throw new Error("Task queue needs positive worker capacity")
+  const pending = [...tasks]
+  const active = new Map<Task, Promise<{ task: Task; failure?: { error: unknown } }>>()
+  const errors: unknown[] = []
+  while (pending.length || active.size) {
+    for (;;) {
+      const index = nextTask(pending, [...active.keys()], workers)
+      if (index < 0) break
+      const task = pending.splice(index, 1)[0]!
+      active.set(
+        task,
+        Promise.resolve()
+          .then(() => execute(task))
+          .then(
+            () => ({ task }),
+            (error: unknown) => ({ task, failure: { error } }),
+          ),
+      )
+    }
+    const result = await Promise.race(active.values())
+    active.delete(result.task)
+    if (result.failure) errors.push(result.failure.error)
   }
-  return Math.max(...lanes)
+  if (errors.length) throw new AggregateError(errors, "CI task execution failed")
+}
+
+function finishTime(tasks: Task[], workers: number) {
+  const pending = tasks.toSorted(taskOrder)
+  let active: Array<{ task: Task; end: number }> = []
+  let time = 0
+  while (pending.length || active.length) {
+    for (;;) {
+      const index = nextTask(
+        pending,
+        active.map((entry) => entry.task),
+        workers,
+      )
+      if (index < 0) break
+      const task = pending.splice(index, 1)[0]!
+      active.push({ task, end: time + task.seconds })
+    }
+    time = Math.min(...active.map((entry) => entry.end))
+    active = active.filter((entry) => entry.end > time)
+  }
+  return time
 }
 
 export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
@@ -303,8 +356,9 @@ export function createPlan(input: {
   }
   for (const id of ids) visit(id)
   const knownTests = input.tasks
+    .filter((task) => task.kind !== "suite")
     .flatMap((task) => task.files ?? [])
-    .filter((file) => file.startsWith("test/script/") && file.endsWith(".test.ts"))
+    .filter((file) => file.startsWith("test/") && /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file))
   const impact = selectAffected(
     input.changed,
     input.baseWorkspaces,
@@ -363,10 +417,12 @@ export function createPlan(input: {
         impact.full
           ? "full: shared or unclassified input"
           : proposed.has(task.id)
-            ? `affected: ${input.changed
-                .filter((file) => !impact.documentationOnly || file.startsWith("docs/"))
-                .slice(0, 5)
-                .join(", ")} → ${task.owners.filter((owner) => affected.has(owner)).join(", ") || task.id}`
+            ? task.inputs && (!input.baseInputs?.[task.id]?.complete || !input.headInputs?.[task.id]?.complete)
+              ? `conservative input fallback: ${[...new Set([...(input.baseInputs?.[task.id]?.unresolved ?? []), ...(input.headInputs?.[task.id]?.unresolved ?? [])])].join("; ") || "missing input evidence"}`
+              : `affected: ${input.changed
+                  .filter((file) => !impact.documentationOnly || file.startsWith("docs/"))
+                  .slice(0, 5)
+                  .join(", ")} → ${task.owners.filter((owner) => affected.has(owner)).join(", ") || task.id}`
             : selected.has(task.id)
               ? `${input.mode}: complete verification`
               : "not affected by this change",

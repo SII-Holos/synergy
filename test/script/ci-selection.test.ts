@@ -296,7 +296,7 @@ test("the actual catalog keeps Desktop validation separate from native coverage 
   const tasks = await catalog()
   const workspaces: WorkspaceInput[] = [
     { directory: "apps/web", name: "web", dependencies: [], testDependencies: [] },
-    { directory: "apps/desktop", name: "desktop", dependencies: [], testDependencies: ["web", "presets"] },
+    { directory: "apps/desktop", name: "desktop", dependencies: ["web", "presets"], testDependencies: [] },
     { directory: "packages/local-runtime", name: "local-runtime", dependencies: [], testDependencies: [] },
     { directory: "packages/cli", name: "cli", dependencies: ["local-runtime"], testDependencies: [] },
     { directory: "packages/presets", name: "presets", dependencies: ["local-runtime"], testDependencies: [] },

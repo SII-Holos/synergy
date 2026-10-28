@@ -14,10 +14,13 @@ import { runGates } from "./gates"
 import { WorkingSnapshot, changedInputs, missingMeasurements } from "./verification"
 import { createIsolatedTestEnv } from "../packages/testing/src/env"
 
-const HELP = `Usage: bun run verify <plan|local|coverage|pre-push> [options]
+import { runStability, stabilityOptions } from "./stability"
+
+const HELP = `Usage: bun run verify <plan|local|coverage|stability|pre-push> [options]
 plan [--base origin/dev]: explain CI selection for the complete working tree.
 local [--base origin/dev] --test path/to/test.test.ts (repeatable): local static checks, then selected tests and new-source measurements.
 coverage --package packages/name (repeatable): fresh complete package coverage.
+stability --test <path> [--repeat 5] [--seed 1] [--batch] [--name pattern]: reproduce in fresh Homes, optionally with original batch siblings.
 pre-push: required static checks, reusing only identical local inputs.
 Reports: .artifacts/verify/report.json. Local reports cannot satisfy CI.
 No implicit full test suite. Choose behavior tests explicitly when code changes.`
@@ -106,6 +109,10 @@ async function main() {
       test: { type: "string", multiple: true },
       package: { type: "string", multiple: true },
       help: { type: "boolean" },
+      repeat: { type: "string" },
+      seed: { type: "string" },
+      name: { type: "string" },
+      batch: { type: "boolean" },
     },
   })
   if (values.help || !positionals.length) {
@@ -113,8 +120,24 @@ async function main() {
     return
   }
   const operation = positionals[0]
-  if (positionals.length !== 1 || !["plan", "local", "coverage", "pre-push"].includes(operation!)) throw new Error(HELP)
+  if (positionals.length !== 1 || !["plan", "local", "coverage", "stability", "pre-push"].includes(operation!))
+    throw new Error(HELP)
   await command([process.execPath, "script/check-bun-version.ts"])
+  if (operation === "stability") {
+    if (values.package?.length) throw new Error("Use explicit --test paths for stability")
+    if (
+      !(await runStability(ROOT, {
+        tests: values.test ?? [],
+        ...stabilityOptions(values),
+        batch: values.batch,
+        name: values.name,
+      }))
+    )
+      process.exitCode = 1
+    return
+  }
+  if (values.repeat || values.seed || values.name || values.batch)
+    throw new Error("Repeat, seed, name and batch require stability mode")
   if (operation === "pre-push") {
     const result = await runGates("pre-push")
     for (const failure of result.failures) console.error(`${failure.gate}: ${failure.stderr}`)

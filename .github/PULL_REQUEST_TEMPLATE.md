@@ -17,6 +17,7 @@
 ## Checklist
 
 - [ ] `bun run quality:quick` passes
+- [ ] Test or fixture changes explain the protected behavior, batch stability, cleanup and measured cost; `bun run test-policy:check` passes
 - [ ] Relevant narrow tests pass; commands are listed in "How was it tested?"
 - [ ] New or moved tests live under the owning package's `test/` directory (or the root `test/` directory for repository tests)
 - [ ] `bun run package:check` passes if package exports, build output, release logic, or publishable packages changed

@@ -13,7 +13,7 @@ test("every coverage owner has its complete disjoint suite partitions", async ()
     const tasks = suites.filter((task) => task.package === owner)
     const counts: Record<string, number> = {
       "packages/harness": 4,
-      "apps/web": 4,
+      "apps/web": 6,
       "packages/presets": 4,
       "packages/ui": 2,
       "packages/local-runtime": 2,

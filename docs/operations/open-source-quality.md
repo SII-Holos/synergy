@@ -56,7 +56,7 @@ CI runs on every push to `dev` / `main`, pull requests targeting those branches,
 
 Package suites execute once with coverage and JUnit. Harness keeps four stable partitions and its isolated files. `web-integration` owns the production browser smoke and plugin UI contracts; `root-tests` owns script/release contracts; `installed-runtime-core` and `installed-runtime-full` own their compiled distributions and installed package verification on separate Linux workers in required plans. PostgreSQL 16/17/18, Windows, sandbox, Desktop, long rollout and benchmark scenarios remain explicit tasks. Type and package checks each execute once in the Linux graph.
 
-`All checks passed` verifies every selected task, job outcome, exact commit and workflow attempt, report hash, complete test inventory and coverage floor. PR selection starts in shadow mode; dev/main pushes stay full. Diagnostics cannot satisfy the required check. Oryn's independent review queue retains its own governance.
+`All checks passed` verifies every selected task, job outcome, exact commit and workflow attempt, report hash, complete test inventory and coverage floor. PR selection uses affected mode; dev/main pushes stay full. Diagnostics cannot satisfy the required check. Oryn's independent review queue retains its own governance.
 
 ## Tool Responsibilities
 

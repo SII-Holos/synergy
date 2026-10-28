@@ -6,6 +6,7 @@
   "license": "MIT",
   "exports": {
     "./env": "./src/env.ts",
+    "./resources": "./src/resources.ts",
     "./preload": "./src/preload.ts",
     "./fixture": "./src/fixture.ts",
     "./models-api.json": "./fixtures/models-api.json",
