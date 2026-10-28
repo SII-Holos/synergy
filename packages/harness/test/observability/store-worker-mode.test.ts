@@ -5,6 +5,7 @@ import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityContext } from "../../src/observability/context"
 import { ObservabilityIssues } from "../../src/observability/issues"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
+import { ObservabilityResources } from "../../src/observability/resources"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityTelemetryClient } from "../../src/observability/telemetry-client"
 import { TelemetryProtocol } from "../../src/observability/telemetry-protocol"
@@ -263,6 +264,7 @@ describe("ObservabilityStore worker mode", () => {
     "worker loss keeps the old uncertain delta separate from fresh pending observations: %s",
     (outcome) =>
       runtime.run(async () => {
+        await ObservabilityResources.stop()
         ObservabilityStore.open()
         await waitFor(() => ObservabilityTelemetryClient.stats().workerReady, 15_000)
         const input = {
@@ -284,6 +286,8 @@ describe("ObservabilityStore worker mode", () => {
           labels: { queue: "worker-startup" },
         })
         for (const observedValue of [120, 180]) ObservabilityIssues.observeCondition({ ...input, observedValue })
+        // A receipt covers its submitted prefix; unrelated Runtime metrics must stop producing first.
+        ObservabilityMetrics.stop()
         ObservabilityStore.flush(true)
         await ObservabilityTelemetryClient.flushAndWait()
         const [first] = ObservabilityIssues.list({ scopeID: input.scopeID })
@@ -292,11 +296,23 @@ describe("ObservabilityStore worker mode", () => {
         const parseMessage = TelemetryProtocol.parseWorkerToHost
         let loseConfirmations = true
         let confirmationLost = false
+        let metricAttemptedDuringAck = false
         using transport = spyOn(TelemetryProtocol, "parseWorkerToHost").mockImplementation((raw) => {
           const message = parseMessage(raw)
           if (loseConfirmations && (message?.type === "status" || message?.type === "ack")) {
             if (message.type === "status") confirmationLost = true
             return undefined
+          }
+          if (!loseConfirmations && message?.type === "ack") {
+            metricAttemptedDuringAck = true
+            ObservabilityMetrics.record({
+              name: "storage.operation.count",
+              value: 1,
+              unit: "count",
+              module: "storage",
+              labels: { operation: "prepareEvidenceOwners", status: "ok" },
+            })
+            ObservabilityMetrics.flushAggregates(true)
           }
           return message
         })
@@ -344,15 +360,20 @@ describe("ObservabilityStore worker mode", () => {
         expect(freshRows).toMatchObject([{ row: { issueId: first.issueId, occurrenceCount: 3 } }])
         await ObservabilityTelemetryClient.flushAndWait()
         const acknowledged = ObservabilityTelemetryClient.stats()
+        expect(metricAttemptedDuringAck).toBe(true)
         // Queries can flush new observations after the receipt being asserted.
-        ObservabilityMetrics.record({
+        ObservabilityStore.insertMetric({
+          metricId: "after-receipt",
+          time: ObservabilityClock.now(),
           name: "storage.queue.depth",
           value: 1,
           unit: "count",
           module: "storage",
+          source: "backend",
+          sampleRate: 1,
           labels: { queue: "after-receipt" },
         })
-        ObservabilityMetrics.flushAggregates(true)
+        expect(ObservabilityTelemetryClient.stats().pending).toBe(1)
         expect(ObservabilityTelemetryClient.workerProcess()).not.toBe(oldWorker)
         expect(ObservabilityIssues.list({ scopeID: input.scopeID })).toMatchObject([
           {

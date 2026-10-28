@@ -106,7 +106,7 @@ Use [Development reference](../../../../docs/reference/development.md) and [Open
 
 When a timeout is classified as domain state, hold real storage admission beyond that timeout and verify both absent and already-completed owner records. Queue pressure must not manufacture preparation, missing state or a successful pause clear. Keep storage errors observable, and test that a new input cannot inherit an earlier root's terminal result.
 
-Before injecting telemetry acknowledgement loss, force-flush and acknowledge the accepted prefix, including young aggregated gauges. Advance deferred publication explicitly to cover the boundary without sleeps; retain exact uncertain counts and committed versus uncommitted recovery assertions.
+Before injecting telemetry acknowledgement loss, stop and drain unrelated producers through the fixture Runtime's owning APIs, then force-flush and acknowledge the accepted prefix, including young aggregated gauges. Keep the producer under test active. A flush receipt confirms submitted work, not an empty queue while other producers remain active. Trigger a late producer at the receipt boundary to verify its shutdown, and advance deferred publication explicitly without sleeps; retain exact uncertain counts and committed versus uncommitted recovery assertions. Fresh Runtime fixtures must restore normal recording for later tests.
 
 1. Re-run the narrow test alone and capture the first causal failure.
 2. Check isolation leaks, stale generated files, timeouts, open handles, environment restoration, ordering, and platform assumptions.

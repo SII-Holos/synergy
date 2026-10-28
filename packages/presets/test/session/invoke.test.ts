@@ -105,6 +105,7 @@ function installBasicLoopMocks(options?: {
   ) => Promise<void | "stop" | "continue"> | void | "stop" | "continue"
   config?: Record<string, unknown>
   toolDefinitions?: ToolResolver.Definition[]
+  resolvedToolDefinitions?: ToolResolver.Definition[]
   activeToolIDs?: string[]
 }) {
   const originalGetModel = Provider.getModel
@@ -160,7 +161,7 @@ function installBasicLoopMocks(options?: {
     autoExpandable: new Set(),
   }))
   ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
-    definitions: [],
+    definitions: [...(options?.resolvedToolDefinitions ?? options?.toolDefinitions ?? [])],
     executionTools: {},
     executorKinds: {},
     activeToolIDs: options?.activeToolIDs ?? [],
@@ -1007,6 +1008,9 @@ describe("SessionInvoke context usage provenance", () => {
       let toolContributions: Array<{ text: string }> = []
       const restore = installBasicLoopMocks({
         toolDefinitions,
+        resolvedToolDefinitions: [
+          { id: "active_tool", description: "Resolved active tool", inputSchema: { type: "object" } },
+        ],
         activeToolIDs: ["active_tool"],
         onProcess: async (input) => {
           toolContributions = [...(input.contextUsageProvenance?.categories.toolDefinitions ?? [])]
@@ -1023,7 +1027,7 @@ describe("SessionInvoke context usage provenance", () => {
         })
 
         expect(toolContributions.map((contribution) => contribution.text)).toEqual([
-          JSON.stringify({ name: "active_tool", description: "Active tool", inputSchema: { type: "object" } }),
+          JSON.stringify({ name: "active_tool", description: "Resolved active tool", inputSchema: { type: "object" } }),
         ])
       } finally {
         restore()

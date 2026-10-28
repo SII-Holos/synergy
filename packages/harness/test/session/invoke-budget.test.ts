@@ -2,6 +2,8 @@ import { expect, spyOn, test } from "bun:test"
 import { APICallError, simulateReadableStream } from "ai"
 import type { LanguageModelV4, ProviderV4 } from "@ai-sdk/provider"
 import { AgentPromptContributions } from "../../src/agent/prompt-contributions"
+import { Agent } from "../../src/agent/agent"
+import { Provider } from "../../src/provider/provider"
 import { ProviderSdkSource } from "../../src/provider/sdk-source"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
@@ -15,6 +17,8 @@ import { SessionPluginHooks } from "../../src/session/plugin-hooks"
 import { PromptBudgeter } from "../../src/session/prompt-budgeter"
 import { WorkflowKindRegistry } from "../../src/session/workflow-kind-registry"
 import { WorkflowPromptRegistry } from "../../src/session/workflow-prompt-registry"
+import { Tool } from "../../src/tool/tool"
+import { ToolRegistry } from "../../src/tool/registry"
 import { z } from "zod"
 import { testRuntime } from "../support/runtime"
 
@@ -22,10 +26,17 @@ type Request = Pick<Parameters<LanguageModelV4["doStream"]>[0], "prompt" | "tool
 
 async function budgetFixture(
   agentWords: number,
-  options: { budgetWords?: number; output?: number; overflowThreshold?: number; providerOverflow?: boolean } = {},
+  options: {
+    budgetWords?: number
+    output?: number
+    overflowThreshold?: number
+    providerOverflow?: boolean
+    residentTool?: boolean
+  } = {},
 ) {
   const requests: Request[] = []
   const decisions: PromptBudgeter.Decision[] = []
+  const preparedToolIDs: string[][] = []
   let preparations = 0
   let parameters = 0
   let workflowCalls = 0
@@ -120,6 +131,20 @@ async function budgetFixture(
     },
     register() {
       ProviderSdkSource.register({ load: async () => () => sdk, loadSync: () => () => sdk })
+      if (options.residentTool) {
+        const probe = Tool.define(
+          "budget_probe",
+          {
+            description: "Inspect a bounded value without changing the task.",
+            parameters: z.object({ query: z.string() }),
+            async execute() {
+              throw new Error("Budget admission must not execute the probe")
+            },
+          },
+          { requiresWorkspace: false, exposure: { mode: "resident" } },
+        )
+        ToolRegistry.registerToolProvider("budget-probe", () => [probe])
+      }
       WorkflowKindRegistry.register({
         id: "budget-fixture",
         schema: z.object({ kind: z.literal("budget-fixture") }),
@@ -166,7 +191,10 @@ async function budgetFixture(
   const originalDecide = PromptBudgeter.decide
   const decide = spyOn(PromptBudgeter, "decide").mockImplementation(async (...args) => {
     const result = await originalDecide(...args)
-    if (args[0].system.some((part) => part.includes("agent-marker"))) decisions.push(result)
+    if (args[0].system.some((part) => part.includes("agent-marker"))) {
+      decisions.push(result)
+      preparedToolIDs.push(args[0].toolDefinitions.map((definition) => definition.id))
+    }
     return result
   })
   return {
@@ -177,6 +205,7 @@ async function budgetFixture(
       )
     },
     decisions,
+    preparedToolIDs,
     enableWorkflow: (sessionID: string) => WorkflowKindRegistry.get("budget-fixture")!.enable({ sessionID, args: {} }),
     get workflowCalls() {
       return workflowCalls
@@ -269,19 +298,24 @@ test("progressively compacts real history until the complete request fits", asyn
       scope: Scope.home(),
       async fn() {
         const session = await Session.create({ workspace: null, title: "Progressive compaction" })
+        const messageID = Identifier.ascending("message")
         await addHistory(
           session.id,
           Array.from({ length: 6 }, (_, index) => `history-${index} ${"evidence ".repeat(20_000)}`),
         )
         const result = await SessionInvoke.invoke({
           sessionID: session.id,
+          messageID,
           agent: "fixture",
           parts: [{ type: "text", text: "Continue after progressive compaction." }],
         })
         expect(result.info.role === "assistant" && result.info.finish).toBe("stop")
         const messages = await Session.messages({ sessionID: session.id })
         const summaries = messages.filter((message) => message.info.role === "assistant" && message.info.summary)
+        const requests = messages.flatMap((message) => message.parts).filter((part) => part.type === "compaction")
         expect(summaries.length).toBeGreaterThan(1)
+        expect(requests).toHaveLength(summaries.length)
+        for (const request of requests) expect(request).toMatchObject({ auto: true, messageID, sessionID: session.id })
         expect(fixture.requests.filter((request) => request.toolChoice?.type === "none")).toHaveLength(summaries.length)
         expect(fixture.requests.filter((request) => request.toolChoice?.type !== "none")).toHaveLength(1)
         expect(messages.some((message) => message.info.role === "assistant" && message.info.error)).toBe(false)
@@ -381,6 +415,10 @@ for (const auto of [false, true])
           })
           const before = await Session.messages({ sessionID: session.id })
           const savedRoot = await MessageV2.get({ sessionID: session.id, messageID: root.info.id })
+          expect(savedRoot.info.includeInContext).not.toBe(false)
+          expect(
+            savedRoot.parts.some((part) => part.type === "text" && part.text === "There is no history to summarize."),
+          ).toBe(true)
           expect(savedRoot.parts.filter((part) => part.type === "compaction")).toHaveLength(1)
           expect(SessionCompaction.hasPendingCompaction(savedRoot.parts, before, root.info.id)).toBe(false)
           expect(
@@ -411,6 +449,34 @@ for (const auto of [false, true])
           })
           const nextRoot = await MessageV2.get({ sessionID: session.id, messageID: root.info.id })
           expect(SessionCompaction.hasPendingCompaction(nextRoot.parts, [nextRoot], root.info.id)).toBe(true)
+          const messages = await Session.messages({ sessionID: session.id })
+          expect(
+            await SessionCompaction.process({
+              parentID: root.info.id,
+              sessionID: session.id,
+              messages,
+              abort: new AbortController().signal,
+              auto,
+              request: {
+                user: nextRoot.info as MessageV2.User,
+                agent: await Agent.get("fixture"),
+                model: await Provider.getModel("fixture", "fixture"),
+                system: [],
+                toolDefinitions: [],
+                ...(await MessageV2.projectModelMessages(messages)),
+              },
+            }),
+          ).toBe("noop")
+          const settled = await Session.messages({ sessionID: session.id })
+          const settledRoot = settled.find((message) => message.info.id === root.info.id)!
+          expect(SessionCompaction.hasPendingCompaction(settledRoot.parts, settled, root.info.id)).toBe(false)
+          expect(settledRoot.info.metadata?.compactionNoopRequests).toEqual(
+            settledRoot.parts.filter((part) => part.type === "compaction").map((part) => part.id),
+          )
+          expect(settled.filter((message) => message.info.role === "assistant")).toHaveLength(2)
+          expect(fixture.allRequests).toHaveLength(0)
+          expect(fixture.preparations).toBe(2)
+          expect(fixture.workflowCalls).toBe(0)
         },
       }),
     )
@@ -468,12 +534,13 @@ test("rejects a root-only hard overflow before any provider or summary call", as
 }, 20_000)
 
 test("compacts history under prepared soft pressure without a failed preliminary assistant", async () => {
-  await using fixture = await budgetFixture(41_000)
+  await using fixture = await budgetFixture(41_000, { residentTool: true })
   await fixture.run(() =>
     ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
         const session = await Session.create({ workspace: null, title: "Prepared history pressure" })
+        const messageID = Identifier.ascending("message")
         await fixture.enableWorkflow(session.id)
         await createUserMessage({
           sessionID: session.id,
@@ -484,6 +551,7 @@ test("compacts history under prepared soft pressure without a failed preliminary
         })
         const result = await SessionInvoke.invoke({
           sessionID: session.id,
+          messageID,
           agent: "fixture",
           system: "user-system-marker",
           parts: [{ type: "text", text: "Continue the current task." }],
@@ -494,12 +562,25 @@ test("compacts history under prepared soft pressure without a failed preliminary
         expect(fixture.requests[1]!.toolChoice?.type).not.toBe("none")
         const messages = await Session.messages({ sessionID: session.id })
         expect(messages.filter((message) => message.info.role === "assistant" && message.info.summary)).toHaveLength(1)
+        expect(messages.flatMap((message) => message.parts).filter((part) => part.type === "compaction")).toMatchObject(
+          [{ auto: true, messageID, sessionID: session.id }],
+        )
         expect(messages.some((message) => message.info.role === "assistant" && message.info.error)).toBe(false)
-        for (const request of fixture.requests) {
+        for (const [index, request] of fixture.requests.entries()) {
           const prompt = JSON.stringify(request.prompt)
           for (const marker of ["agent-marker", "contribution-marker", "user-system-marker", "final-hook-marker"])
             expect(prompt.split(marker)).toHaveLength(2)
+          const tools = request.tools?.filter((tool) => tool.type === "function") ?? []
+          expect(tools.map((tool) => tool.name)).toEqual(fixture.preparedToolIDs[index]!)
+          expect(tools.find((tool) => tool.name === "budget_probe")).toMatchObject({
+            inputSchema: {
+              type: "object",
+              properties: { query: { type: "string" }, workBrief: { type: "string" } },
+              required: ["query"],
+            },
+          })
         }
+        expect(fixture.requests[0]!.tools).toEqual(fixture.requests[1]!.tools)
         expect(fixture.preparations).toBe(2)
         expect(fixture.parameters).toBe(2)
         expect(fixture.workflowCalls).toBe(1)

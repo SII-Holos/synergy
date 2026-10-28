@@ -2120,34 +2120,48 @@ describe("remote compaction rollout", () => {
       using remote = spyOn(CodexProvider, "requestRemoteCompactionV2")
       const started = Promise.withResolvers<void>()
       const release = Promise.withResolvers<void>()
+      const hookSettled = Promise.withResolvers<void>()
+      const localSettled = Promise.withResolvers<void>()
+      const abort = new AbortController()
+      let localStarted = false
       let released = false
       let returnedBeforeRelease = false
       let hookSignal: AbortSignal | undefined
-      let rescue: ReturnType<typeof setTimeout> | undefined
+      let watchdog: ReturnType<typeof setTimeout> | undefined
+      const failed = new Promise<never>((_resolve, reject) => {
+        watchdog = setTimeout(() => reject(new Error("Remote compaction fixture did not settle")), 15_000)
+      })
+      const pending = runCompactionProcessCase({
+        native: true,
+        auto: true,
+        abort,
+        invokeMs: deadline.invokeMs,
+        providerID: CodexProvider.PROVIDER_ID,
+        beforeHistoryTransform: async (signal) => {
+          hookSignal = signal
+          started.resolve()
+          try {
+            await release.promise
+          } finally {
+            hookSettled.resolve()
+          }
+        },
+        beforeLocal: () => {
+          localStarted = true
+          return started.promise
+        },
+        onProcessorSettled: () => localSettled.resolve(),
+        text: "Committed before remote preparation cancellation",
+        afterSummaryCommit: () => setTimeout(() => deadline.expire(), 0),
+        afterProcess: async () => {
+          returnedBeforeRelease = !released
+          released = true
+          release.resolve()
+          if (hookSignal) await hookSettled.promise
+        },
+      })
       try {
-        const observed = await runCompactionProcessCase({
-          native: true,
-          auto: true,
-          invokeMs: deadline.invokeMs,
-          providerID: CodexProvider.PROVIDER_ID,
-          beforeHistoryTransform: (signal) => {
-            rescue = setTimeout(() => {
-              released = true
-              release.resolve()
-            }, 1_000)
-            hookSignal = signal
-            started.resolve()
-            return release.promise
-          },
-          beforeLocal: () => started.promise,
-          text: "Committed before remote preparation cancellation",
-          afterSummaryCommit: () => setTimeout(() => deadline.expire(), 0),
-          afterProcess: async () => {
-            returnedBeforeRelease = !released
-            release.resolve()
-            await Bun.sleep(0)
-          },
-        })
+        const observed = await Promise.race([pending, failed])
         expect(returnedBeforeRelease).toBe(true)
         expect(observed.thrown).toMatchObject({ name: "AbortError" })
         expect(hookSignal?.aborted).toBe(true)
@@ -2160,8 +2174,14 @@ describe("remote compaction rollout", () => {
         })
         expect(observed.messages).toHaveLength(3)
       } finally {
-        clearTimeout(rescue)
+        clearTimeout(watchdog)
+        abort.abort(new Error("Compaction fixture cleanup"))
+        started.resolve()
+        released = true
         release.resolve()
+        await pending
+        if (localStarted) await localSettled.promise
+        if (hookSignal) await hookSettled.promise
       }
     }))
 

@@ -824,10 +824,10 @@ export namespace SessionCompaction {
           const pending = root.parts
             .filter((part) => part.type === "compaction" && !noops.has(part.id))
             .slice(fulfilled)
-          await Session.mergeMessageMetadata({
-            sessionID: input.sessionID,
-            messageID: input.parentID,
-            metadata: { compactionNoopRequests: [...noops, ...pending.map((part) => part.id)] },
+          await Session.updateMessage({
+            ...root.info,
+            ...(root.info.metadata?.compactionBoundary === true ? { includeInContext: false } : {}),
+            metadata: { ...root.info.metadata, compactionNoopRequests: [...noops, ...pending.map((part) => part.id)] },
           })
           msg.finish = "stop"
           msg.time.completed = Date.now()
