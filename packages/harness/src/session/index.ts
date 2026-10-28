@@ -877,6 +877,15 @@ export namespace Session {
         const jobs = selected.flatMap((msg, messageIndex) =>
           msg.parts.map((part) => ({ part, messageIndex, id: Identifier.ascending("part") })),
         )
+        const partMap = new Map(jobs.map(({ part, id }) => [part.id, id]))
+        for (const message of prepared) {
+          const noops = z.array(z.string()).safeParse(message.info.metadata?.compactionNoopRequests)
+          if (!noops.success) continue
+          message.info.metadata = {
+            ...message.info.metadata,
+            compactionNoopRequests: noops.data.flatMap((id) => (partMap.has(id) ? [partMap.get(id)!] : [])),
+          }
+        }
         const from = { kind: "session" as const, scopeID: source.scope.id, sessionID: source.id }
         const to = { ...from, sessionID }
         // One part queue bounds all artifact copies; workMap drains started writes before staging cleanup.

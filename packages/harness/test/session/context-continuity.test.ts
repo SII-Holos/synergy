@@ -244,7 +244,12 @@ for (const backend of storageTestBackends()) {
                 scope: Scope.home(),
                 async fn() {
                   const session = await Session.create({ workspace: null })
-                  if (mode === "initial-compaction" || mode === "manual-compaction" || mode === "overflow-compaction")
+                  if (
+                    mode === "initial-compaction" ||
+                    mode === "manual-compaction" ||
+                    mode === "overflow-compaction" ||
+                    mode === "compaction-hook-failure"
+                  )
                     await createUserMessage({
                       sessionID: session.id,
                       messageID: Identifier.ascending("message"),
