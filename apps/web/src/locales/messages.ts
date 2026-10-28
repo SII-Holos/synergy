@@ -306,6 +306,10 @@ export const fileWorkbench = {
   zoomIn: { id: "app.file.image.zoomIn", message: "Zoom in" },
   fit: { id: "app.file.image.fit", message: "Fit" },
   loadingSourceViewer: { id: "app.file.loading.sourceViewer", message: "Loading source viewer…" },
+  sourceLoadFailedHint: {
+    id: "app.file.error.sourceLoadFailedHint",
+    message: "Retry, or reload this page if the source viewer still cannot load.",
+  },
   edit: { id: "app.file.toolbar.edit", message: "Edit" },
   save: { id: "app.file.toolbar.save", message: "Save" },
   saving: { id: "app.file.toolbar.saving", message: "Saving…" },
@@ -368,6 +372,8 @@ export const fileEntries = {
   createDirectory: { id: "app.fileEntries.createDirectory", message: "New folder" },
   move: { id: "app.fileEntries.move", message: "Move or rename" },
   copy: { id: "app.fileEntries.copy", message: "Copy" },
+  copyName: { id: "app.fileEntries.copyName", message: "{name} copy" },
+  copyNameNumbered: { id: "app.fileEntries.copyNameNumbered", message: "{name} copy {number}" },
   remove: { id: "app.fileEntries.remove", message: "Delete permanently" },
   path: { id: "app.fileEntries.path", message: "Path within Workspace" },
   deleteWarning: {
@@ -383,6 +389,21 @@ export const fileEntries = {
   cancel: { id: "app.fileEntries.cancel", message: "Cancel" },
   apply: { id: "app.fileEntries.apply", message: "Apply" },
   working: { id: "app.fileEntries.working", message: "Working…" },
+  name: { id: "app.fileEntries.name", message: "Name" },
+  rename: { id: "app.fileEntries.rename", message: "Rename" },
+  cut: { id: "app.fileEntries.cut", message: "Cut" },
+  paste: { id: "app.fileEntries.paste", message: "Paste" },
+  copyPath: { id: "app.fileEntries.copyPath", message: "Copy relative path" },
+  invalidName: {
+    id: "app.fileEntries.invalidName",
+    message: "Enter a valid file or folder name without path separators.",
+  },
+  alreadyExists: {
+    id: "app.fileEntries.alreadyExists",
+    message: "An entry with this name already exists in this folder.",
+  },
+  invalidDestination: { id: "app.fileEntries.invalidDestination", message: "Choose a different destination folder." },
+  copyPathFailed: { id: "app.fileEntries.copyPathFailed", message: "The relative path could not be copied." },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 export const fileExplorer = {
@@ -391,6 +412,7 @@ export const fileExplorer = {
   showHidden: { id: "app.fileExplorer.action.showHidden", message: "Show hidden and ignored files" },
   refresh: { id: "app.fileExplorer.action.refresh", message: "Refresh files" },
   collapseAll: { id: "app.fileExplorer.action.collapseAll", message: "Collapse all folders" },
+  expandAll: { id: "app.fileExplorer.action.expandAll", message: "Expand all folders" },
   closeTree: { id: "app.fileExplorer.action.closeTree", message: "Close file tree" },
   resize: { id: "app.fileExplorer.resize", message: "Resize file explorer" },
   searchPlaceholder: { id: "app.fileExplorer.search.placeholder", message: "Search files" },

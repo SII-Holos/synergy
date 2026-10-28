@@ -1,22 +1,22 @@
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
-import { fileWorkspaceLabel } from "@/context/file/workspace"
 import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
+import { MenuField } from "@ericsanchezok/synergy-ui/menu-field"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { resourceMenuKeyDown } from "../workspace/resource-menu"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { FileWorkspaceProvider, useFile } from "@/context/file"
+import { FileWorkspaceProvider, useFile, useProjectFiles } from "@/context/file"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { useSDK } from "@/context/sdk"
-import { workspaceFileOwner, workspaceFilePath } from "@/context/file/workspace"
+import { fileWorkspaceLabel, workspaceFileOwner, workspaceFilePath, type FileWorkspace } from "@/context/file/workspace"
 import { fileWriteErrorMessage, isFileWriteConflictError, isFileWriteDeniedError } from "@/context/file/errors"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { FileExplorer } from "./explorer"
@@ -332,6 +332,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
 function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   const active = useViewActivity()
   const file = useFile()
+  const project = useProjectFiles()
   const platform = usePlatform()
   const sdk = useSDK()
   const prompt = usePrompt()
@@ -374,6 +375,30 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   })
   const selectedLines = createMemo(() => file.view.selectedLines(path()))
   const breadcrumb = createMemo(() => path().split("/").filter(Boolean))
+  const parents = createMemo(() => breadcrumb().slice(0, -1))
+  const origins = createMemo(() => {
+    const seen = new Set<string>()
+    const options: { value: string; label: string; workspace: FileWorkspace }[] = []
+    for (const workspace of [file.workspace, ...project.roots()]) {
+      if (!workspace) continue
+      const value = JSON.stringify([workspace.id, workspace.generation])
+      if (seen.has(value)) continue
+      seen.add(value)
+      options.push({ value, label: fileWorkspaceLabel(workspace), workspace })
+    }
+    return options
+  })
+  const originLabel = createMemo(() => {
+    const workspace = file.workspace
+    if (!workspace) return ""
+    if (typeof workspace.name === "string" && workspace.name.trim()) return workspace.name.trim()
+    if (workspace.type === "worktree") {
+      return lingui._({ id: "fileWorkbench.origin.workingCopy", message: "Working copy" })
+    }
+    return workspace.path.split(/[\\/]/).filter(Boolean).at(-1) ?? fileWorkspaceLabel(workspace)
+  })
+  const wordWrap = createMemo(() => file.view.wordWrap(path()))
+  const canWrap = createMemo(() => mode() === "source" && !!textContent())
   const [editing, setEditing] = createSignal(!!file.draft.get(path()))
   const dirty = createMemo(() => file.draft.dirty(path()))
   const [saving, setSaving] = createSignal(false)
@@ -443,6 +468,10 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
     setEditing(false)
   }
 
+  function toggleWrap() {
+    if (canWrap()) file.view.setWordWrap(path(), !wordWrap())
+  }
+
   createEffect(() => {
     if (!path()) return
     void file.load(path())
@@ -452,11 +481,25 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   createEffect(() => {
     if (!active()) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!active() || event.defaultPrevented || event.isComposing || event.altKey) return
+      if (!active() || event.defaultPrevented || event.isComposing) return
       const focused = document.activeElement
       if (!(focused instanceof HTMLElement) || !host.contains(focused)) return
-      if (!(event.metaKey || event.ctrlKey)) return
       const input = focused.closest("input, textarea, select, [contenteditable]:not([contenteditable='false'])")
+      if (event.altKey) {
+        if (
+          (event.code !== "KeyZ" && event.key.toLowerCase() !== "z") ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          !canWrap() ||
+          (input && !focused.closest(".file-source-view"))
+        )
+          return
+        event.preventDefault()
+        toggleWrap()
+        return
+      }
+      if (!(event.metaKey || event.ctrlKey)) return
       if (event.key.toLowerCase() === "s" && !event.shiftKey) {
         if (!editing() || (input && !focused.closest(".file-source-view"))) return
         event.preventDefault()
@@ -474,53 +517,69 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
   return (
     <div ref={host} class="file-workbench">
       <div class="file-workbench-toolbar">
-        <nav
-          class="file-breadcrumb"
-          title={path()}
-          aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}
-        >
-          <Show when={file.workspace && fileWorkspaceLabel(file.workspace)}>
-            {(root) => (
-              <button
-                type="button"
-                class="file-breadcrumb-root"
-                title={root()}
-                aria-label={root()}
-                onClick={() => {
-                  file.explorer.setOpen(true)
-                  void file.explorer.reveal("__reveal__")
+        <div class="file-toolbar-location">
+          <IconButton
+            icon={getSemanticIcon("workspace.files")}
+            variant="ghost"
+            class="file-tree-toggle"
+            aria-label={
+              navigator()?.opened()
+                ? lingui._({ id: "fileWorkbench.navigation.hide", message: "Hide files list" })
+                : lingui._({ id: "fileWorkbench.navigation.show", message: "Show files list" })
+            }
+            aria-expanded={navigator()?.opened() ?? false}
+            aria-controls={navigator()?.id}
+            data-workspace-navigation-toggle
+            onClick={() => navigator()?.toggle()}
+          />
+          <Show when={file.workspace}>
+            {(workspace) => (
+              <MenuField
+                ariaLabel={lingui._({ id: "fileWorkbench.origin.label", message: "Workspace" })}
+                icon={getSemanticIcon(workspace().type === "worktree" ? "workspace.worktree" : "workspace.main")}
+                triggerLabel={originLabel()}
+                triggerClass="file-origin-picker"
+                surfaceClass="file-origin-options"
+                value={JSON.stringify([workspace().id, workspace().generation])}
+                options={origins()}
+                onChange={(value) => {
+                  const origin = origins().find((option) => option.value === value)
+                  if (origin) void project.open(origin.workspace, "", { directory: true })
                 }}
-              >
-                {root().split(/[\\/]/).filter(Boolean).at(-1) ?? root()}
-              </button>
+              />
             )}
           </Show>
-          <For each={breadcrumb()}>
-            {(part, index) => {
-              const target = () =>
-                breadcrumb()
-                  .slice(0, index() + 1)
-                  .join("/")
-              const current = () => index() === breadcrumb().length - 1
-              return (
-                <>
-                  <span class="file-breadcrumb-separator">/</span>
-                  <button
-                    type="button"
-                    classList={{ "file-breadcrumb-current": current() }}
-                    disabled={current()}
-                    onClick={() => {
-                      file.explorer.setOpen(true)
-                      void file.explorer.reveal(`${target()}/__reveal__`)
-                    }}
-                  >
-                    {part}
-                  </button>
-                </>
-              )
-            }}
-          </For>
-        </nav>
+          <Show when={parents().length > 0}>
+            <nav
+              class="file-breadcrumb"
+              title={parents().join("/")}
+              aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}
+            >
+              <For each={parents()}>
+                {(part, index) => (
+                  <>
+                    <span class="file-breadcrumb-separator" aria-hidden="true">
+                      /
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        file.explorer.setOpen(true)
+                        void file.explorer.reveal(
+                          `${parents()
+                            .slice(0, index() + 1)
+                            .join("/")}/__reveal__`,
+                        )
+                      }}
+                    >
+                      {part}
+                    </button>
+                  </>
+                )}
+              </For>
+            </nav>
+          </Show>
+        </div>
         <div class="file-toolbar-actions">
           <Show when={capability().dual}>
             <div
@@ -554,6 +613,8 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                     class="file-edit-pill file-edit-pill--save"
                     disabled={saving() || !dirty()}
                     onClick={() => void runSave()}
+                    aria-label={saving() ? lingui._(F.saving) : lingui._(F.save)}
+                    title={saving() ? lingui._(F.saving) : lingui._(F.save)}
                   >
                     <Icon name={getSemanticIcon("state.success")} size="small" />
                     <span>
@@ -568,8 +629,10 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                     disabled={saving()}
                     onClick={cancelEdit}
                     aria-label={lingui._({ id: F.discard.id, message: F.discard.message })}
+                    title={lingui._(F.discard)}
                   >
                     <Icon name={getSemanticIcon("action.clear")} size="small" />
+                    <span>{lingui._(F.discard)}</span>
                   </button>
                 </>
               }
@@ -579,12 +642,24 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                 class="file-edit-pill"
                 classList={{ "file-edit-pill--active": editing() }}
                 onClick={startEdit}
+                aria-label={lingui._(F.edit)}
+                title={lingui._(F.edit)}
               >
-                <Icon name={getSemanticIcon("action.rename")} size="small" />
+                <Icon name={getSemanticIcon("action.edit")} size="small" />
                 <span>{lingui._({ id: F.edit.id, message: F.edit.message })}</span>
               </button>
             </Show>
           </Show>
+          <IconButton
+            icon={getSemanticIcon("review.wrap")}
+            variant="ghost"
+            class="file-wrap-toggle"
+            aria-label={lingui._({ id: "fileWorkbench.wordWrap", message: "Word wrap" })}
+            aria-keyshortcuts="Alt+Z"
+            aria-pressed={wordWrap()}
+            disabled={!canWrap()}
+            onClick={toggleWrap}
+          />
           <Show when={path()}>
             <Popover
               open={moreOpen()}
@@ -673,20 +748,6 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
               </div>
             </Popover>
           </Show>
-          <IconButton
-            icon={getSemanticIcon("workspace.files")}
-            variant="ghost"
-            class="file-tree-toggle"
-            aria-label={
-              navigator()?.opened()
-                ? lingui._({ id: "fileWorkbench.navigation.hide", message: "Hide files list" })
-                : lingui._({ id: "fileWorkbench.navigation.show", message: "Show files list" })
-            }
-            aria-expanded={navigator()?.opened() ?? false}
-            aria-controls={navigator()?.id}
-            data-workspace-navigation-toggle
-            onClick={() => navigator()?.toggle()}
-          />
         </div>
       </div>
       <div class="file-workbench-main">
@@ -762,6 +823,7 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
                   path={path()}
                   content={value().content}
                   editable={editing()}
+                  wordWrap={wordWrap()}
                   onRegister={(api) => {
                     sourceApi = api
                   }}

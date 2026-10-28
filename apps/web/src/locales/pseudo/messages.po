@@ -2855,6 +2855,10 @@ msgid "app.file.empty.openAFile"
 msgstr "⟦Open a file⟧"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.error.sourceLoadFailedHint"
+msgstr "⟦Retry, or reload this page if the source viewer still cannot load.⟧"
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.error.unableToOpen"
 msgstr "⟦Unable to open file⟧"
 
@@ -2955,6 +2959,10 @@ msgid "app.file.workspace.missing"
 msgstr "⟦Reopen this file from its Workspace to continue.⟧"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.alreadyExists"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.apply"
 msgstr "⟦Apply⟧"
 
@@ -2967,12 +2975,32 @@ msgid "app.fileEntries.copy"
 msgstr "⟦Copy⟧"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyName"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyNameNumbered"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPath"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPathFailed"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createDirectory"
 msgstr "⟦New folder⟧"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createFile"
 msgstr "⟦New file⟧"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cut"
+msgstr ""
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.deleteWarning"
@@ -2987,12 +3015,28 @@ msgid "app.fileEntries.failed"
 msgstr "⟦The file operation failed.⟧"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidDestination"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidName"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.move"
 msgstr "⟦Move or rename⟧"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.name"
+msgstr ""
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.operation"
 msgstr "⟦Operation⟧"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.paste"
+msgstr ""
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.path"
@@ -3005,6 +3049,10 @@ msgstr "⟦Refresh the file list before changing this entry.⟧"
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.remove"
 msgstr "⟦Delete permanently⟧"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.rename"
+msgstr ""
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.title"
@@ -3021,6 +3069,10 @@ msgstr "⟦Close file tree⟧"
 #. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr "⟦Collapse all folders⟧"
+
+#. js-lingui-explicit-id
+msgid "app.fileExplorer.action.expandAll"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
@@ -13394,6 +13446,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "fileWorkbench.options"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.workingCopy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.wordWrap"
 msgstr ""
 
 #. js-lingui-explicit-id

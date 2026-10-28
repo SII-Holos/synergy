@@ -2855,6 +2855,10 @@ msgid "app.file.empty.openAFile"
 msgstr "Open a file"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
+msgid "app.file.error.sourceLoadFailedHint"
+msgstr "Retry, or reload this page if the source viewer still cannot load."
+
+#. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.error.unableToOpen"
 msgstr "Unable to open file"
 
@@ -2955,6 +2959,10 @@ msgid "app.file.workspace.missing"
 msgstr "Reopen this file from its Workspace to continue."
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.alreadyExists"
+msgstr "An entry with this name already exists in this folder."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.apply"
 msgstr "Apply"
 
@@ -2967,12 +2975,32 @@ msgid "app.fileEntries.copy"
 msgstr "Copy"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyName"
+msgstr "{name} copy"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyNameNumbered"
+msgstr "{name} copy {number}"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPath"
+msgstr "Copy relative path"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.copyPathFailed"
+msgstr "The relative path could not be copied."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createDirectory"
 msgstr "New folder"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.createFile"
 msgstr "New file"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.cut"
+msgstr "Cut"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.deleteWarning"
@@ -2987,12 +3015,28 @@ msgid "app.fileEntries.failed"
 msgstr "The file operation failed."
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidDestination"
+msgstr "Choose a different destination folder."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.invalidName"
+msgstr "Enter a valid file or folder name without path separators."
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.move"
 msgstr "Move or rename"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.name"
+msgstr "Name"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.operation"
 msgstr "Operation"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.paste"
+msgstr "Paste"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.path"
@@ -3005,6 +3049,10 @@ msgstr "Refresh the file list before changing this entry."
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.remove"
 msgstr "Delete permanently"
+
+#. ── File explorer ────────────────────────────────────────────────────────────
+msgid "app.fileEntries.rename"
+msgstr "Rename"
 
 #. ── File explorer ────────────────────────────────────────────────────────────
 msgid "app.fileEntries.title"
@@ -3021,6 +3069,10 @@ msgstr "Close file tree"
 #. js-lingui-explicit-id
 msgid "app.fileExplorer.action.collapseAll"
 msgstr "Collapse all folders"
+
+#. js-lingui-explicit-id
+msgid "app.fileExplorer.action.expandAll"
+msgstr "Expand all folders"
 
 #. js-lingui-explicit-id
 msgid "app.fileExplorer.action.refresh"
@@ -13395,6 +13447,18 @@ msgstr "Show files list"
 #. js-lingui-explicit-id
 msgid "fileWorkbench.options"
 msgstr "File options"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.label"
+msgstr "Workspace"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.origin.workingCopy"
+msgstr "Working copy"
+
+#. js-lingui-explicit-id
+msgid "fileWorkbench.wordWrap"
+msgstr "Word wrap"
 
 #. js-lingui-explicit-id
 msgid "list.for-label"

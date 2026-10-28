@@ -19,13 +19,13 @@ beforeAll(async () => {
   await Bun.write(
     stubs,
     `
-    const h=window.fixture={calls:[],fail:true,hold:false,release:()=>{}}
+    const h=window.fixture={calls:[],fail:true}
     export const actions={
       async createFile(path){h.calls.push({kind:"createFile",path}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
-      async createDirectory(path){h.calls.push({kind:"createDirectory",path});if(h.hold)await new Promise(resolve=>h.release=resolve)},
+      async createDirectory(path){h.calls.push({kind:"createDirectory",path})},
       async move(input){h.calls.push({kind:"move",...input}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
       async copy(input){h.calls.push({kind:"copy",...input})},
-      async remove(input){h.calls.push({kind:"remove",...input})},
+      async remove(input){h.calls.push({kind:"remove",...input}); if(h.fail)throw {data:{message:"Workspace is busy"}}},
     }
 
   `,
@@ -41,10 +41,13 @@ beforeAll(async () => {
     import {I18nProvider} from "@lingui/solid"
     import {setupI18n} from "@lingui/core"
     import {DialogProvider,useDialog} from "@ericsanchezok/synergy-ui/context/dialog"
-    import {FileEntryDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
+    import {FileDeleteDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/entry-dialog.tsx`)}
     import {FileCloseDialog} from ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/close-dialog.tsx`)}
-    import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
     import {actions} from "./stubs"
+    import {MetaProvider} from "@solidjs/meta"
+    import {Font} from "@ericsanchezok/synergy-ui/font"
+    import {ThemeProvider} from "@ericsanchezok/synergy-ui/theme"
+    import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
     const i18n=setupI18n({locale:"en",messages:{en:{},"zh-CN":{"app.fileEntries.title":"文件操作","app.fileEntries.operation":"操作","app.fileEntries.move":"移动或重命名","app.fileEntries.remove":"永久删除","app.fileEntries.apply":"执行","app.fileEntries.cancel":"取消"}}})
     window.fixture.locale=()=>i18n.activate("zh-CN")
     window.fixture.closeResults=[]
@@ -62,12 +65,12 @@ beforeAll(async () => {
         window.fixture.closeResults.push(choice)
       }
       return <>
-        <button id="open" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} operation="move" dirty={true}/>)}>Open</button>
-        <button id="unversioned" onClick={()=>dialog.show(()=><FileEntryDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",type:"file",name:"source.txt"}}/>)}>Open unversioned</button>
+        <button id="open" onClick={()=>dialog.show(()=><FileDeleteDialog actions={actions} workspacePath="/workspace" node={{path:"folder/source.txt",entryVersion:"entry:observed",type:"file",name:"source.txt"}} dirty={true}/>)}>Open</button>
+        <button id="create" onClick={()=>dialog.show(()=><FileDeleteDialog actions={actions} workspacePath="/workspace" node={{path:"unknown.txt",type:"file",name:"unknown.txt"}}/>)}>Unavailable entry</button>
         <button id="leave" onClick={leave}>Leave file</button>
       </>
     }
-    render(()=><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider>,document.getElementById("root"))
+    render(()=><MetaProvider><Font/><ThemeProvider><I18nProvider i18n={i18n}><DialogProvider><App/></DialogProvider></I18nProvider></ThemeProvider></MetaProvider>,document.getElementById("root"))
 
   `,
   )
@@ -100,34 +103,21 @@ afterAll(async () => {
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
 
-interface EntryFixtureWindow extends Window {
-  fixture: { calls: unknown[]; hold: boolean; release: () => void }
-}
-
-async function open(selector = "#open") {
-  errors.length = 0
-  await page.goto(base)
-  await page.locator(selector).click()
-  await page.getByRole("dialog", { name: "File actions", exact: true }).waitFor()
-  expect(errors).toEqual([])
-}
-
-test("entry actions retain captured versions, errors and entered paths until success", async () => {
+test("delete retains the captured entry version and errors until success", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByLabel("Path within Workspace").fill("folder/renamed.txt")
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click()
   await page.getByRole("alert").filter({ hasText: "Workspace is busy" }).waitFor()
-  expect(await page.getByLabel("Path within Workspace").inputValue()).toBe("folder/renamed.txt")
+  expect(await page.getByText("folder/source.txt", { exact: true }).isVisible()).toBe(true)
   await page.evaluate(() => {
-    ;(window as any).fixture.fail = false
+    Reflect.get(window, "fixture").fail = false
   })
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
+  await page.getByRole("button", { name: "Delete permanently", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
-  const calls = await page.evaluate(() => (window as any).fixture.calls)
+  const calls = await page.evaluate(() => Reflect.get(window, "fixture").calls)
   expect(calls).toEqual([
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
+    { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
+    { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
   ])
   await page.waitForFunction(() => document.activeElement?.id === "open")
   expect(errors).toEqual([])
@@ -136,85 +126,33 @@ test("entry actions retain captured versions, errors and entered paths until suc
 test("delete is explicit, localized and preserves the selected filesystem identity", async () => {
   await page.goto(base)
   await page.locator("#open").click()
-  await page.getByRole("button", { name: /^Operation:/ }).click()
-  await page.getByRole("option", { name: "Delete permanently", exact: true }).click()
-  expect(await page.evaluate(() => (window as unknown as EntryFixtureWindow).fixture.calls)).toEqual([])
-  await page.evaluate(() => (window as any).fixture.locale())
-  await page.getByRole("dialog", { name: "文件操作" }).waitFor()
+  await page.evaluate(() => {
+    const fixture = Reflect.get(window, "fixture")
+    fixture.fail = false
+    fixture.locale()
+  })
+  await page.getByRole("dialog", { name: "永久删除" }).waitFor()
   expect(await page.getByText("folder/source.txt", { exact: false }).count()).toBeGreaterThan(0)
   await page.getByRole("button", { name: "永久删除", exact: true }).click()
   await page.getByRole("dialog").waitFor({ state: "hidden" })
-  expect(await page.evaluate(() => (window as any).fixture.calls)).toEqual([
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([
     { kind: "remove", path: "folder/source.txt", expectedVersion: "entry:observed", recursive: false },
   ])
   expect(errors).toEqual([])
 }, 30_000)
 
-test("operation menu stages choices, resets errors and paths, and locks while applying", async () => {
-  await open()
-  const trigger = page.getByRole("button", { name: /^Operation:/ })
-  const pathField = page.getByLabel("Path within Workspace")
-  await pathField.fill("folder/renamed.txt")
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
-  await page.getByRole("alert").filter({ hasText: "Workspace is busy" }).waitFor()
-  await trigger.press("ArrowDown")
-  const move = page.getByRole("option", { name: "Move or rename", exact: true })
-  await page.waitForFunction((element) => document.activeElement === element, await move.elementHandle())
-  expect(await move.getAttribute("aria-selected")).toBe("true")
-  await page.keyboard.press("Home")
-  expect(await pathField.inputValue()).toBe("folder/renamed.txt")
-  await page.keyboard.press("Escape")
-  await page.getByRole("listbox").waitFor({ state: "detached" })
-  await page.waitForFunction((element) => document.activeElement === element, await trigger.elementHandle())
-  expect(await page.getByRole("dialog", { name: "File actions", exact: true }).isVisible()).toBe(true)
-  expect(await page.getByRole("alert").isVisible()).toBe(true)
-  await trigger.press("Space")
-  await move.click()
-  expect(await pathField.inputValue()).toBe("folder/renamed.txt")
-  expect(await page.getByRole("alert").isVisible()).toBe(true)
-  await trigger.click()
-  await page.getByRole("option", { name: "Copy", exact: true }).click()
-  expect(await pathField.inputValue()).toBe("folder/source.txt")
-  expect(await page.getByRole("alert").count()).toBe(0)
-  expect(await page.evaluate(() => (window as unknown as EntryFixtureWindow).fixture.calls)).toHaveLength(1)
-  await trigger.click()
-  await page.getByRole("option", { name: "New folder", exact: true }).click()
-  expect(await pathField.inputValue()).toBe("folder/")
-  expect(await page.getByRole("alert").count()).toBe(0)
-  expect(await page.evaluate(() => (window as unknown as EntryFixtureWindow).fixture.calls)).toHaveLength(1)
-  expect(await page.getByRole("button", { name: "Apply", exact: true }).isDisabled()).toBe(true)
-  await pathField.fill("folder/new-directory")
-  await page.evaluate(() => ((window as unknown as EntryFixtureWindow).fixture.hold = true))
-  await page.getByRole("button", { name: "Apply", exact: true }).click()
-  await page.locator('form[aria-busy="true"]').waitFor()
-  expect(await trigger.isDisabled()).toBe(true)
-  expect(await pathField.isDisabled()).toBe(true)
-  expect(await page.evaluate(() => (window as unknown as EntryFixtureWindow).fixture.calls)).toEqual([
-    { kind: "move", from: "folder/source.txt", to: "folder/renamed.txt", expectedVersion: "entry:observed" },
-    { kind: "createDirectory", path: "folder/new-directory" },
-  ])
-  await page.evaluate(() => (window as unknown as EntryFixtureWindow).fixture.release())
-  await page.getByRole("dialog").waitFor({ state: "hidden" })
-  expect(errors).toEqual([])
-}, 30_000)
-
-test("unversioned entries expose disabled mutations and keyboard selection skips them", async () => {
-  await open("#unversioned")
-  const trigger = page.getByRole("button", { name: /^Operation:/ })
-  await trigger.press("Enter")
-  const createFile = page.getByRole("option", { name: "New file", exact: true })
-  await page.waitForFunction((element) => document.activeElement === element, await createFile.elementHandle())
-  for (const name of ["Move or rename", "Copy", "Delete permanently"]) {
-    expect(await page.getByRole("option", { name, exact: true }).getAttribute("aria-disabled")).toBe("true")
-  }
-  await page.keyboard.press("End")
-  const createDirectory = page.getByRole("option", { name: "New folder", exact: true })
-  expect(await createDirectory.evaluate((element) => element === document.activeElement)).toBe(true)
-  await page.keyboard.press("Enter")
-  await page.getByRole("listbox").waitFor({ state: "detached" })
-  expect(await trigger.textContent()).toContain("New folder")
-  expect(await page.getByLabel("Path within Workspace").inputValue()).toBe("folder/")
-  expect(await page.evaluate(() => (window as unknown as EntryFixtureWindow).fixture.calls)).toEqual([])
+test("delete requires an observed entry version and exposes no operation selector", async () => {
+  errors.length = 0
+  await page.goto(base)
+  await page.locator("#create").click()
+  const dialog = page.getByRole("dialog", { name: "Delete permanently", exact: true })
+  await page.waitForFunction((element) => element?.contains(document.activeElement), await dialog.elementHandle())
+  expect(await dialog.getByRole("button", { name: "Delete permanently", exact: true }).isDisabled()).toBe(true)
+  expect(await dialog.getByText("Refresh the file list before changing this entry.", { exact: true }).isVisible()).toBe(
+    true,
+  )
+  expect(await dialog.getByRole("combobox").count()).toBe(0)
+  expect(await page.evaluate(() => Reflect.get(window, "fixture").calls)).toEqual([])
   expect(errors).toEqual([])
 }, 30_000)
 
