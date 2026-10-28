@@ -403,7 +403,9 @@ export namespace SessionSummary {
 
   type UserSummary = NonNullable<MessageV2.User["summary"]>
 
-  export function publishLive(input: { sessionID: string; messageID: string; valid(): boolean } & UserSummary) {
+  export function publishLive(
+    input: { sessionID: string; messageID: string; valid(): boolean } & Partial<UserSummary>,
+  ) {
     const { sessionID, messageID, valid, ...summary } = input
     return updateSummary({ sessionID, messageID }, summary, undefined, valid)
   }
@@ -443,7 +445,9 @@ export namespace SessionSummary {
         ...patch,
         diffIssues: SnapshotSchema.summarizeIssues(patch.diffIssues ?? fresh.summary?.diffIssues),
         ...(patch.diffState?.status === "live"
-          ? { diffHasChanges: fresh.summary?.diffHasChanges || !!patch.diffTotals?.files }
+          ? {
+              diffHasChanges: fresh.summary?.diffHasChanges || !!(patch.diffTotals ?? fresh.summary?.diffTotals)?.files,
+            }
           : {}),
       }
       return (await Session.updateMessage(fresh)) as MessageV2.User
