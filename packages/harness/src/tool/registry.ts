@@ -288,6 +288,7 @@ export namespace ToolRegistry {
     providerID: string,
     agent?: Agent.Info,
     workspaceID?: string | null,
+    model?: { providerID: string; modelID: string },
   ): Promise<CatalogEntry[]> {
     const allTools = await all()
     const fileToolGroup = (await Config.current()).fileToolGroup ?? "patch"
@@ -314,7 +315,7 @@ export namespace ToolRegistry {
         const resolve = async (): Promise<Initialized> => ({
           ...metadata,
           inputSchema: t.inputSchema,
-          ...(await t.init({ agent, fileToolGroup })),
+          ...(await t.init({ agent, fileToolGroup, model })),
         })
         return t.catalogDescription === undefined
           ? resolve()
