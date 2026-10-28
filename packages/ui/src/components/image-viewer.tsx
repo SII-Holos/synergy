@@ -122,6 +122,7 @@ export function ImageViewer(props: ImageViewerProps) {
   const views = new Map<string, ImageViewerState>()
   const pointers = new Map<number, ImageViewerOffset>()
   let action: AbortController | undefined
+  let fullscreenEntry: { cancelled: boolean } | undefined
   let selectedKey = ""
   const ready = () => status() === "ready"
   const bounds = () => imageViewerScaleBounds(view())
@@ -189,7 +190,9 @@ export function ImageViewer(props: ImageViewerProps) {
     setContextOpen(false)
     action?.abort()
     setBusy(false)
-    if (document.fullscreenElement === root) void document.exitFullscreen().catch(() => {})
+    const entered = fullscreen()
+    if (fullscreenEntry) fullscreenEntry.cancelled = true
+    else if (entered && document.fullscreenElement === root) void document.exitFullscreen().catch(() => {})
   })
   createEffect(() => {
     if (!active()) return
@@ -236,6 +239,7 @@ export function ImageViewer(props: ImageViewerProps) {
   })
   onCleanup(() => {
     action?.abort()
+    if (fullscreenEntry) fullscreenEntry.cancelled = true
     resetInput()
   })
   const point = (event: { clientX: number; clientY: number }) => {
@@ -285,11 +289,23 @@ export function ImageViewer(props: ImageViewerProps) {
     }
   }
   async function toggleFullscreen() {
+    if (!active()) return
+    if (fullscreenEntry) {
+      fullscreenEntry.cancelled = true
+      return
+    }
+    const request = { cancelled: false }
     try {
       if (document.fullscreenElement === root) await document.exitFullscreen()
-      else await root.requestFullscreen()
+      else if (document.fullscreenEnabled) {
+        fullscreenEntry = request
+        await root.requestFullscreen()
+        if (request.cancelled && document.fullscreenElement === root) await document.exitFullscreen()
+      }
     } catch (error) {
       setNotice({ text: error instanceof Error ? error.message : _(copy.actionFailed), error: true })
+    } finally {
+      if (fullscreenEntry === request) fullscreenEntry = undefined
     }
   }
   const commands: ImageViewerCommand[] = [
@@ -404,9 +420,14 @@ export function ImageViewer(props: ImageViewerProps) {
     },
   ]
   function keyboard(event: KeyboardEvent) {
+    if (event.defaultPrevented || !active()) return
+    if (event.key === "Escape" && !event.isComposing && fullscreenEntry) {
+      event.preventDefault()
+      event.stopPropagation()
+      fullscreenEntry.cancelled = true
+      return
+    }
     if (
-      event.defaultPrevented ||
-      !active() ||
       menuOpen() ||
       contextOpen() ||
       (event.target as HTMLElement).closest(

@@ -658,6 +658,101 @@ test("fullscreen portals stay inside the image viewer", async () => {
   expect(await page.getByRole("dialog").count()).toBe(1)
 })
 
+test("Escape cancels pending fullscreen entry before the preview can close", async () => {
+  await page.evaluate(() => {
+    const exit = Document.prototype.exitFullscreen
+    Document.prototype.exitFullscreen = function () {
+      Document.prototype.exitFullscreen = exit
+      return exit.call(this).then(() => {
+        Object.assign(window, { fullscreenExitResult: "fulfilled" })
+      })
+    }
+    const original = Element.prototype.requestFullscreen
+    Element.prototype.requestFullscreen = function (options) {
+      Element.prototype.requestFullscreen = original
+      return new Promise<void>((resolve, reject) => {
+        Object.assign(window, {
+          finishFullscreen: () =>
+            original.call(this, options).then(() => {
+              Object.assign(window, { fullscreenResult: "fulfilled" })
+              resolve()
+            }, reject),
+        })
+      })
+    }
+  })
+  await page.getByRole("button", { name: "Enter fullscreen", exact: true }).click()
+  await page.keyboard.press("Escape")
+  await page.keyboard.press("Escape")
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  await page.evaluate(() => Reflect.get(window, "finishFullscreen")())
+  expect(await page.evaluate(() => Reflect.get(window, "fullscreenResult"))).toBe("fulfilled")
+  await page.waitForFunction(
+    () => !document.fullscreenElement && Reflect.get(window, "fullscreenExitResult") === "fulfilled",
+  )
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  await page.locator('[data-slot="image-viewer-stage"]').focus()
+  await page.mouse.move(0, 0)
+  await page.getByRole("tooltip").waitFor({ state: "hidden" })
+  await page.keyboard.press("Escape")
+  await page.getByRole("dialog").waitFor({ state: "hidden" })
+})
+
+test("a repeated fullscreen gesture shares the pending request and rejection permits a retry", async () => {
+  await page.evaluate(() => {
+    const original = Element.prototype.requestFullscreen
+    Object.assign(window, { fullscreenRequests: 0 })
+    Element.prototype.requestFullscreen = function () {
+      Reflect.set(window, "fullscreenRequests", Reflect.get(window, "fullscreenRequests") + 1)
+      return new Promise<void>((_resolve, reject) => {
+        Object.assign(window, {
+          rejectFullscreen: () => {
+            Element.prototype.requestFullscreen = original
+            reject(new Error("Fullscreen request denied"))
+          },
+        })
+      })
+    }
+  })
+  await page.getByRole("button", { name: "Enter fullscreen", exact: true }).dblclick()
+  await page.keyboard.press("Escape")
+  expect(await page.evaluate(() => Reflect.get(window, "fullscreenRequests"))).toBe(1)
+  expect(await page.getByRole("dialog").count()).toBe(1)
+  await page.evaluate(() => Reflect.get(window, "rejectFullscreen")())
+  await page.getByRole("status").filter({ hasText: "Fullscreen request denied" }).waitFor()
+  await page.getByRole("button", { name: "Enter fullscreen", exact: true }).click()
+  await page.waitForFunction(() => !!document.fullscreenElement)
+  await page.getByRole("button", { name: "Exit fullscreen", exact: true }).click()
+  await page.waitForFunction(() => !document.fullscreenElement)
+  expect(await page.getByRole("dialog").count()).toBe(1)
+})
+
+test("unsupported fullscreen hides the command and ignores its keyboard shortcut", async () => {
+  const unsupported = await browser.newPage()
+  try {
+    await unsupported.addInitScript(() => {
+      Object.defineProperty(Document.prototype, "fullscreenEnabled", { get: () => false })
+      Object.assign(window, { fullscreenRequests: 0 })
+      Element.prototype.requestFullscreen = function () {
+        Reflect.set(window, "fullscreenRequests", Reflect.get(window, "fullscreenRequests") + 1)
+        return Promise.reject(new Error("Fullscreen is unavailable"))
+      }
+    })
+    await unsupported.goto(`${server.url}viewer.html`)
+    await unsupported.getByRole("button", { name: "Open images", exact: true }).click()
+    const viewer = unsupported.locator('[data-component="image-viewer"]')
+    await viewer.locator('[data-slot="image-viewer-stage"]').focus()
+    await unsupported.keyboard.press("f")
+    expect(await unsupported.getByRole("button", { name: "Enter fullscreen", exact: true }).count()).toBe(0)
+    expect(await unsupported.evaluate(() => Reflect.get(window, "fullscreenRequests"))).toBe(0)
+    expect(await unsupported.evaluate(() => document.fullscreenElement)).toBeNull()
+    await unsupported.keyboard.press("Escape")
+    await unsupported.getByRole("dialog").waitFor({ state: "hidden" })
+  } finally {
+    await unsupported.close()
+  }
+})
+
 test("shrinking a gallery clamps its position, selection and next navigation together", async () => {
   await page.getByRole("button", { name: "small.svg", exact: true }).click()
   await page.evaluate(() => {
@@ -721,6 +816,34 @@ test("late copy completion cannot overwrite the next image feedback", async () =
   await page.evaluate("window.imageFixture.finishCopy()")
   expect(await page.getByText("Image copied", { exact: true }).count()).toBe(0)
   expect(await page.getByRole("button", { name: "Save image", exact: true }).isEnabled()).toBe(true)
+})
+
+test("an inactive viewer exits a fullscreen request that finishes after deactivation", async () => {
+  await page.goto(`${server.url}viewer.html?inline`)
+  await page.locator('[data-slot="image-viewer-image"]').evaluate((element: HTMLImageElement) => element.decode())
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { imageFixture: { setActive: (active: boolean) => void } }).imageFixture
+    const original = Element.prototype.requestFullscreen
+    Object.assign(window, { fullscreenHandoff: "pending" })
+    Element.prototype.requestFullscreen = function (options) {
+      Element.prototype.requestFullscreen = original
+      fixture.setActive(false)
+      const request = original.call(this, options)
+      request.then(
+        () => Object.assign(window, { fullscreenHandoff: "fulfilled" }),
+        () => Object.assign(window, { fullscreenHandoff: "rejected" }),
+      )
+      return request
+    }
+  })
+  await page.getByRole("button", { name: "Enter fullscreen", exact: true }).click()
+  await page.waitForFunction(() => Reflect.get(window, "fullscreenHandoff") === "fulfilled")
+  await page.waitForFunction(() => !document.fullscreenElement, undefined, { timeout: 3000 })
+  await page.evaluate("window.imageFixture.setActive(true)")
+  await page.getByRole("button", { name: "Enter fullscreen", exact: true }).click()
+  await page.waitForFunction(() => !!document.fullscreenElement)
+  await page.getByRole("button", { name: "Exit fullscreen", exact: true }).click()
+  await page.waitForFunction(() => !document.fullscreenElement)
 })
 
 test("inactive viewers close their menu without losing the accepted transform", async () => {
