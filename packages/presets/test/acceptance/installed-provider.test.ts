@@ -60,14 +60,22 @@ test("installed provider exposes redacted decisions without suppressing repeated
     userIndex: 1,
     toolCount: 1,
     outputCount: 0,
+    outputCallHashes: [],
+    toolCallHash: new Bun.CryptoHasher("sha256").update(first.tool_calls![0]!.id).digest("hex"),
     emitsToolCall: true,
   })
-  expect(decisions[1]).toEqual({ ...decisions[0]!, sequence: 2 })
+  expect(decisions[1]).toEqual({
+    ...decisions[0]!,
+    sequence: 2,
+    toolCallHash: new Bun.CryptoHasher("sha256").update(repeated.tool_calls![0]!.id).digest("hex"),
+  })
   expect(decisions[2]).toMatchObject({
     sequence: 3,
     roles: ["system", "user", "assistant", "tool"],
     userIndex: 1,
     outputCount: 1,
+    outputCallHashes: [decisions[0]!.toolCallHash],
+    toolCallHash: null,
     emitsToolCall: false,
   })
   expect(decisions[3]).toMatchObject({ sequence: 4, toolCount: 0, emitsToolCall: false })

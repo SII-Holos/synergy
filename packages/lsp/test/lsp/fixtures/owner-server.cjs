@@ -22,10 +22,8 @@ function handle(message) {
   let result = null
   if (message.method === "initialize") {
     result = { capabilities: { textDocumentSync: 1, hoverProvider: true, definitionProvider: true } }
-    const delay = Number(process.env.LSP_FIXTURE_INIT_DELAY_MS)
-    if (delay) {
-      require("node:fs").writeFileSync("initializing", "ready")
-      setTimeout(() => send({ id: message.id, result }), delay)
+    if (process.env.LSP_FIXTURE_HOLD_INIT === "1" && !require("node:fs").existsSync("initialize-release")) {
+      send({ method: "fixture/initializing" })
       return
     }
   } else if (message.method === "textDocument/hover") {

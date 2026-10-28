@@ -201,42 +201,70 @@ test("first overflowing row follows its measured height without a rebound", asyn
   ).toBeLessThanOrEqual(1)
 })
 
-test("a tool entrance preserves an in-flight following offset instead of snapping the transcript", async () => {
+test("content growth and a tool entrance stay pinned without transcript motion or rebound", async () => {
   await page.goto(`${url}keyed.html?following`)
-  await page.waitForFunction(() => window.keyedLayout?.viewport().scrollTop > 1000)
-  await page.waitForFunction(() => !document.getAnimations().length)
-  await page.evaluate(() => {
-    document.querySelector<HTMLElement>('[data-row="history-11"] > div')!.style.height = "412px"
+  await page.waitForFunction(() => {
+    const view = window.keyedLayout?.viewport()
+    return view && view.scrollTop > 1000 && view.scrollHeight - view.clientHeight - view.scrollTop < 1
   })
-  await page.waitForFunction(() => !!document.querySelector("[data-follow-motion]")?.getAnimations().length)
+  await page.waitForFunction(() => !document.getAnimations().length)
   const result = await page.evaluate(async () => {
-    const animation = document.querySelector("[data-follow-motion]")!.getAnimations()[0]
-    animation.pause()
-    animation.currentTime = 40
+    const viewport = window.keyedLayout.viewport()
+    const motion = document.querySelector<HTMLElement>("[data-follow-motion]")!
     const anchor = document.querySelector('[data-row="history-11"]')!
     const before = anchor.getBoundingClientRect().top
+    const samples: { y: number; gap: number; offset: number }[] = []
+    const observer = new ResizeObserver(() => {
+      const transform = getComputedStyle(motion).transform
+      samples.push({
+        y: anchor.getBoundingClientRect().top,
+        gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
+        offset: transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m42,
+      })
+    })
+    observer.observe(motion)
     const animate = Element.prototype.animate
+    let followingAnimations = 0
     Element.prototype.animate = function (...args) {
-      const next = animate.apply(this, args)
-      if (this.hasAttribute("data-follow-motion")) {
-        next.pause()
-        next.currentTime = 0
-      }
-      return next
+      if (this === motion) followingAnimations++
+      return animate.apply(this, args)
     }
-    window.keyedLayout.append()
-    const samples = []
     try {
-      for (let frame = 0; frame < 8; frame++) {
+      document.querySelector<HTMLElement>('[data-row="history-11"] > div')!.style.height = "412px"
+      window.keyedLayout.append()
+      const deadline = performance.now() + 3000
+      let settled = false
+      while (performance.now() < deadline) {
         await new Promise(requestAnimationFrame)
-        samples.push(anchor.getBoundingClientRect().top)
+        const rows = window.keyedLayout.measure()
+        if (
+          rows.find((row) => row.id === "history-11")?.size === 412 &&
+          rows.at(-1)?.size === 33 &&
+          !document.querySelector("[data-motion-resizing]") &&
+          !document.getAnimations().length
+        ) {
+          settled = true
+          break
+        }
       }
+      await new Promise(requestAnimationFrame)
+      return { before, samples, followingAnimations, settled }
     } finally {
+      observer.disconnect()
       Element.prototype.animate = animate
     }
-    return { before, samples }
   })
-  expect(Math.max(...result.samples.map((y) => Math.abs(result.before - y))), JSON.stringify(result)).toBeLessThan(1)
+  expect(result.settled).toBe(true)
+  expect(result.followingAnimations).toBe(0)
+  expect(result.samples.length).toBeGreaterThan(1)
+  expect(result.samples.at(-1)!.y).toBeCloseTo(result.before - 233, 0)
+  for (let index = 0; index < result.samples.length; index++) {
+    const sample = result.samples[index]
+    expect(Math.abs(sample.gap), JSON.stringify(result)).toBeLessThanOrEqual(1)
+    expect(Math.abs(sample.offset), JSON.stringify(result)).toBeLessThan(1)
+    expect(sample.y, JSON.stringify(result)).toBeGreaterThanOrEqual(result.before - 234)
+    expect(sample.y - (result.samples[index - 1]?.y ?? result.before), JSON.stringify(result)).toBeLessThanOrEqual(1)
+  }
 }, 30000)
 
 test("terminal process collection preserves the visible answer while following its painted position", async () => {

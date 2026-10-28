@@ -6,6 +6,8 @@ export interface InstalledProviderDecision {
   userIndex: number
   toolCount: number
   outputCount: number
+  outputCallHashes: string[]
+  toolCallHash: string | null
   emitsToolCall: boolean
 }
 
@@ -18,7 +20,7 @@ export function installedProvider(observe?: (decision: InstalledProviderDecision
       const input = (await request.json()) as {
         stream?: boolean
         tools?: Array<{ function?: { name?: string; parameters?: { properties?: Record<string, unknown> } } }>
-        messages: Array<{ role: string; content: unknown }>
+        messages: Array<{ role: string; content: unknown; tool_call_id?: string }>
       }
       const user = input.messages.findLast(
         (message) => message.role === "user" && JSON.stringify(message.content).includes("Installed acceptance task"),
@@ -39,13 +41,14 @@ export function installedProvider(observe?: (decision: InstalledProviderDecision
       const markers = JSON.stringify(input.messages).match(/(?:FILE|ATTACHMENT)_[a-f0-9]{32}/g) ?? []
       const content = [...new Set(markers)].join(" ") || "Installed task"
       const usage = { prompt_tokens: 10, completion_tokens: 4, total_tokens: 14 }
+      const callID = call ? `call_${crypto.randomUUID()}` : undefined
       const delta = call
         ? {
             role: "assistant",
             tool_calls: [
               {
                 index: 0,
-                id: `call_${crypto.randomUUID()}`,
+                id: callID!,
                 type: "function",
                 function: {
                   name: "bash",
@@ -63,6 +66,14 @@ export function installedProvider(observe?: (decision: InstalledProviderDecision
         userIndex,
         toolCount: input.tools?.length ?? 0,
         outputCount: output.length,
+        outputCallHashes: output
+          .slice(0, 32)
+          .flatMap((message) =>
+            typeof message.tool_call_id === "string"
+              ? [new Bun.CryptoHasher("sha256").update(message.tool_call_id).digest("hex")]
+              : [],
+          ),
+        toolCallHash: input.stream && callID ? new Bun.CryptoHasher("sha256").update(callID).digest("hex") : null,
         emitsToolCall: Boolean(input.stream && call),
       })
       if (!input.stream)

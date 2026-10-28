@@ -675,16 +675,32 @@ test("model and thinking menus use the same borderless triggers and quiet pointe
   await page.getByRole("button", { name: "Models page", exact: true }).click()
   const model = page.locator(".settings-model-trigger")
   const thinking = page.getByRole("button", { name: "Select thinking effort: Default", exact: true })
-  for (const trigger of [model, thinking]) {
+  for (const { trigger, selected, alternative, indicator } of [
+    {
+      trigger: model,
+      selected: page.locator('[data-slot="list-item"][data-selected="true"]'),
+      alternative: page.locator('[data-slot="list-item"][data-selected="false"]').last(),
+      indicator: '[data-slot="list-item-selected-icon"]',
+    },
+    {
+      trigger: thinking,
+      selected: page.getByRole("option", { selected: true }),
+      alternative: page.getByRole("option", { selected: false }).last(),
+      indicator: '[data-slot="menu-field-indicator"]',
+    },
+  ]) {
     await page.mouse.move(0, 0)
     expect(await trigger.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe("0px")
     expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
     await trigger.click()
-    const selected = page.locator('[data-slot="list-item"][data-selected="true"]')
-    const alternative = page.locator('[data-slot="list-item"][data-selected="false"]').last()
+    await page.getByRole("dialog").locator(":focus").waitFor()
     await alternative.hover()
-    expect(await selected.locator('[data-slot="list-item-selected-icon"]').isVisible()).toBe(true)
-    const feedback = await alternative.evaluate((element) => getComputedStyle(element).backgroundColor)
+    expect(await selected.locator(indicator).isVisible()).toBe(true)
+    expect(await alternative.locator(indicator).count()).toBe(0)
+    const feedback = await alternative.evaluate(async (element) => {
+      await Promise.allSettled(element.getAnimations().map((animation) => animation.finished))
+      return getComputedStyle(element).backgroundColor
+    })
     const swatch = await alternative.evaluate((element) => {
       const reference = document.createElement("span")
       reference.style.backgroundColor = "var(--surface-raised-stronger-hover)"

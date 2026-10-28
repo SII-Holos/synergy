@@ -91,7 +91,7 @@ Coverage has a floor. `bun run coverage:check` enforces per-package line/functio
 - Cover product logic with real behavioral tests before exempting anything.
 - Assert the complete asynchronous state being tested, not the first intermediate event. For time-budgeted maintenance, drive deferred passes through the public maintenance operation before asserting the final cap; preserve a bounded overall deadline.
 - Register each new workspace package in `script/coverage-exempt.json` with a coverage command and thresholds. When adding nested test directories, verify that the package's coverage command includes them as well as its ordinary test command.
-- Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation.
+- Every exemption entry carries a `reason`; entries that match nothing, overlap, or cover more than 25% of a package fail validation. Remove or relocate an exact-file exemption with its source and run `bun test --config /dev/null test/script/coverage-check.test.ts` to validate the complete manifest.
 - Declare exclusions through the reviewed manifest; do not use inline coverage-ignore comments as an alternate policy.
 - A source file never loaded by any test counts as 0% and fails the package — add a real test that loads it rather than exempting blindly.
 - Subprocess behavior tests do not automatically contribute child coverage to the parent report. Pair real IPC acceptance with direct behavioral tests of worker-safe helpers in the instrumented process; keep both ownership and coverage evidence.

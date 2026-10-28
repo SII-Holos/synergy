@@ -12,6 +12,8 @@ Automatic bottom maintenance performed from the resize observer uses an immediat
 
 The regression contract belongs to `createAutoScroll`: a pinned viewport that grows by a small amount keeps the motion target unanimated. The browser diagnostic also records the production-shaped `translateY(14px)` failure and verifies that the target remains unanimated after the fix.
 
+The composed virtualized-tool fixture follows this same boundary. Its previous wait for a growth-created following animation described the removed behavior and could never complete. It now samples actual resize deliveries through content growth and tool entrance, requiring a pinned bottom edge, no transcript translation, monotonic anchor movement and the exact final displacement. Completion follows accepted row measurements and finished disclosure motion. Restoring growth smoothing makes this regression fail on newly created transcript animations; explicit smooth navigation retains its separate hook coverage.
+
 ## Alternatives considered
 
 **Keep restarting the smooth animation for every resize.** Rejected: streaming content can resize more frequently than the animation duration, so the painted content repeatedly moves away from and back toward its final position.

@@ -12,6 +12,7 @@ import {
 } from "../../../packages/presets/test/acceptance/installed-provider"
 import pluginDefinition from "./upgrade-plugin-fixture"
 import { expectRetainedHistory } from "./upgrade-history"
+import { upgradeProtocolEvidence } from "./upgrade-protocol"
 
 const previous = process.env.SYNERGY_UPGRADE_PREVIOUS
 const candidate = process.env.SYNERGY_UPGRADE_CANDIDATE
@@ -27,8 +28,9 @@ test.skipIf(!previous || !candidate)(
     const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "synergy-released-upgrade-")))
     const home = path.join(root, "home")
     const workspace = path.join(root, "workspace")
-    const decisions: InstalledProviderDecision[] = []
-    using provider = installedProvider((decision) => decisions.push(decision))
+    let phase = "setup"
+    const decisions: (InstalledProviderDecision & { phase: string })[] = []
+    using provider = installedProvider((decision) => decisions.push({ phase, ...decision }))
     const config = {
       model: "fixture/model",
       provider: {
@@ -101,6 +103,7 @@ test.skipIf(!previous || !candidate)(
       return stdout.trim()
     }
     async function start(directory: string, label: string) {
+      phase = label
       const reservation = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null) })
       const port = reservation.port!
       await reservation.stop(true)
@@ -147,19 +150,29 @@ test.skipIf(!previous || !candidate)(
         await stop().catch(() => {})
         throw error
       }
-      async function response(route: string, body?: unknown, method = body === undefined ? "GET" : "POST") {
+      async function response(
+        route: string,
+        body?: unknown,
+        method = body === undefined ? "GET" : "POST",
+        timeout = 120000,
+      ) {
         const endpoint = new URL(route, url)
         endpoint.searchParams.set("directory", workspace)
         const response = await fetch(endpoint, {
           method,
           headers: body instanceof FormData ? {} : { "content-type": "application/json" },
           ...(body === undefined ? {} : { body: body instanceof FormData ? body : JSON.stringify(body) }),
-          signal: AbortSignal.timeout(120000),
+          signal: AbortSignal.timeout(timeout),
         })
         return response
       }
-      async function request(route: string, body?: unknown, method = body === undefined ? "GET" : "POST") {
-        const result = await response(route, body, method)
+      async function request(
+        route: string,
+        body?: unknown,
+        method = body === undefined ? "GET" : "POST",
+        timeout = 120000,
+      ) {
+        const result = await response(route, body, method, timeout)
         const text = await result.text()
         if (!result.ok) {
           const diagnostics = route.startsWith("/plugin/")
@@ -180,6 +193,30 @@ test.skipIf(!previous || !candidate)(
         },
       ],
     })
+    async function expectEffects(server: Awaited<ReturnType<typeof start>>, sessionID: string, expected: string) {
+      let actual: string | undefined
+      try {
+        actual = await Bun.file(path.join(workspace, "effects.txt")).text()
+        expect(actual).toBe(expected)
+      } catch (error) {
+        const history = await server
+          .request(`/session/${sessionID}/message?raw=true`, undefined, "GET", 5000)
+          .catch(() => undefined)
+        console.error(
+          "Released upgrade protocol evidence",
+          JSON.stringify({
+            phase,
+            expectedEffects: expected.length,
+            actualEffects: actual?.length ?? null,
+            providerCount: decisions.length,
+            provider: decisions.slice(-128),
+            historyCount: Array.isArray(history) ? history.length : null,
+            history: Array.isArray(history) ? upgradeProtocolEvidence(history) : null,
+          }),
+        )
+        throw error
+      }
+    }
     let passed = false
     try {
       expect(await version(installations.previous)).toBe("3.0.22")
@@ -287,29 +324,7 @@ test.skipIf(!previous || !candidate)(
               .find((part) => part.type === "attachment" && part.filename === "upgrade.png")?.id,
           )
         expect(await Bun.file(path.join(workspace, "old-result.txt")).text()).toBe(marker)
-        try {
-          expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("x")
-        } catch (error) {
-          console.error(
-            "Released upgrade baseline protocol evidence",
-            JSON.stringify({
-              provider: decisions,
-              history: before.map((message) => ({
-                role: message.info.role,
-                error: Boolean(message.info.error),
-                tools: message.parts
-                  .filter((part) => part.type === "tool")
-                  .map((part) => {
-                    const state = z
-                      .object({ status: z.enum(["pending", "running", "completed", "error"]) })
-                      .safeParse(part.state)
-                    return state.success ? state.data.status : "unknown"
-                  }),
-              })),
-            }),
-          )
-          throw error
-        }
+        await expectEffects(old, sessionID, "x")
         expect(
           before
             .flatMap((message) => message.parts)
@@ -368,7 +383,7 @@ test.skipIf(!previous || !candidate)(
         )
         await upgraded.request(`/session/${sessionID}/message`, prompt("continued-result.txt"))
         expect(await Bun.file(path.join(workspace, "continued-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xx")
+        await expectEffects(upgraded, sessionID, "xx")
         await retainedExtras(upgraded)
         continuedHistory = z
           .array(messageSchema)
@@ -388,14 +403,14 @@ test.skipIf(!previous || !candidate)(
         await using restarted = await start(installations.candidate, "restarted")
         const messages = z.array(messageSchema).parse(await restarted.request(`/session/${sessionID}/message?raw=true`))
         expectRetainedHistory(continuedHistory, messages)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xx")
+        await expectEffects(restarted, sessionID, "xx")
         await retainedExtras(restarted)
         const fresh = z
           .object({ id: z.string() })
           .parse(await restarted.request("/session", { title: "Post-upgrade work", controlProfile: "full_access" }))
         await restarted.request(`/session/${fresh.id}/message`, prompt("fresh-result.txt"))
         expect(await Bun.file(path.join(workspace, "fresh-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xxx")
+        await expectEffects(restarted, fresh.id, "xxx")
       }
       await fs.rename(home, path.join(root, "post-upgrade-home"))
       await fs.cp(path.join(root, "pre-upgrade-backup"), home, { recursive: true })
@@ -404,10 +419,10 @@ test.skipIf(!previous || !candidate)(
         const messages = z.array(messageSchema).parse(await restored.request(`/session/${sessionID}/message?raw=true`))
         expectRetainedHistory(before, messages)
         await retainedExtras(restored)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xxx")
+        await expectEffects(restored, sessionID, "xxx")
         await restored.request(`/session/${sessionID}/message`, prompt("restored-result.txt"))
         expect(await Bun.file(path.join(workspace, "restored-result.txt")).text()).toBe(marker)
-        expect(await Bun.file(path.join(workspace, "effects.txt")).text()).toBe("xxxx")
+        await expectEffects(restored, sessionID, "xxxx")
       }
       passed = true
     } finally {
