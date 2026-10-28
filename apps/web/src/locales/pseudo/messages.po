@@ -19997,38 +19997,6 @@ msgid "settings.channels.page.title"
 msgstr "⟦Channels⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.channels.status.connected"
-msgstr "⟦Connected⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.connecting"
-msgstr "⟦Connecting…⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.disabled"
-msgstr "⟦Disabled⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.disconnected"
-msgstr "⟦Disconnected⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.failed"
-msgstr "⟦Connection failed⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.syncing"
-msgstr "⟦Syncing…⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.unavailable"
-msgstr "⟦Status unavailable⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.waitingForTransport"
-msgstr "⟦Waiting for transport⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
 msgstr "⟦Include errors and warnings found after Synergy changes a file.⟧"
 

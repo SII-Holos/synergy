@@ -18,7 +18,7 @@ Installation selection v3 removes the retired component roots from already upgra
 
 The shared Personal space control replaces account identity in desktop and mobile navigation. It exposes only Settings, Providers and Repository. Its desktop footer remains outside the collapsed panel so keyboard access survives sidebar collapse; menu actions restore focus before opening a nested settings dialog. No organization state or placeholder actions are introduced. The control retains the established footer sizing, hover feedback, menu alignment and expanded/collapsed placement; identity retirement does not require a new menu style. Sidebar headers contain only navigation controls across Web and Desktop, keeping product identity in the footer.
 
-The retired runtime packages, schemas, routes, CLI, tools, UI and packaged companion assets are removed together. Legacy Agenda owner detection remains to keep retired deadline jobs inert; history imports and migration receipts remain readable.
+The retired runtime packages, schemas, routes, CLI, tools, UI and packaged companion assets are removed together. The account settings card, action state helpers and status copy whose sole production consumer was the retired channel are removed with their tests. Feishu account model and variant selection and generic managed-project navigation retain their focused coverage. Legacy Agenda owner detection remains to keep retired deadline jobs inert; history imports and migration receipts remain readable.
 
 ## Alternatives considered
 

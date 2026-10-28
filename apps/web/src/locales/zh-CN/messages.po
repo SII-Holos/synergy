@@ -19997,38 +19997,6 @@ msgid "settings.channels.page.title"
 msgstr "频道"
 
 #. js-lingui-explicit-id
-msgid "settings.channels.status.connected"
-msgstr "已连接"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.connecting"
-msgstr "正在连接…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.disabled"
-msgstr "已关闭"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.disconnected"
-msgstr "未连接"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.failed"
-msgstr "连接失败"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.syncing"
-msgstr "正在同步…"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.unavailable"
-msgstr "状态暂不可用"
-
-#. js-lingui-explicit-id
-msgid "settings.channels.status.waitingForTransport"
-msgstr "等待传输连接"
-
-#. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"
 msgstr "返回 Synergy 修改文件后发现的错误和警告。"
 

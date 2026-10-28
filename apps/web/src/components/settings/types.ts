@@ -231,11 +231,6 @@ export type EmailSettings = {
   imapPassword: string
 }
 
-export type BasicAccountToggle = {
-  key: string
-  enabled: boolean
-}
-
 export type AccountToggle = {
   key: string
   enabled: boolean
