@@ -28,7 +28,7 @@ Linux browser units retain the hosted image's browser libraries and install `fon
 
 普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、6、4、2、2 个分区，按稳定批次的历史耗时均衡分配；Web/UI 的批次直接使用各包 `script/test-options.ts` 和执行器共同的 `frontendBatches`；后端使用其共享批次执行器。原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home 和 fixture 根。UI DOM 夹具与 Web 的 Workbench、Agenda、Office、Decision、Settings 浏览器夹具复用经过校验的静态编译；每个测试保留独立 DOM、页面和可变状态，alias/stub 配置参与缓存身份。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。Local Runtime 分区还依赖完整 CLI 与 Presets suite，后两者为 CLI Scope、组件与 worker 注册、Skill 摘要和 Workspace 迁移提供跨包行为覆盖；原生任务间接选中的基线也必须保留这些报告。
 
-Linux 普通执行位仍为 6 个。每个执行位有两个轻量任务槽；浏览器、Desktop、安装构建、类型检查和原生 Workspace 任务独占执行位，避免同机争抢 CPU/内存形成长尾。计划估时和执行使用同一个分组函数。任务结果保留准备和清理耗时，以及首次失败阶段与时间；准备产物失败也必须生成结果。GitHub 作业历史以每页 50 条读取并遍历所有页，保留同一 run/SHA 的最新实际执行证据。仅网络错误和 HTTP 502/503/504 最多尝试三次，每次请求限时 15 秒；鉴权失败不重试。
+Linux 普通执行位仍为 6 个。每个执行位最多同时运行两个任务；浏览器、Desktop、安装构建、类型检查和原生 Workspace 等重型任务互斥，轻量任务可填补另一个槽位，完成后立即续跑。计划估时与执行共享准入规则，避免同时运行两个重型任务，也不让轻量工作空等。contracts 与计划作业读取完整 Git 历史，供测试规范检查比较精确 base；其他执行位保持浅克隆。任务结果保留准备和清理耗时，以及首次失败阶段与时间；准备产物失败也必须生成结果。GitHub 作业历史以每页 50 条读取并遍历所有页，保留同一 run/SHA 的最新实际执行证据。仅网络错误和 HTTP 502/503/504 最多尝试三次，每次请求限时 15 秒；鉴权失败不重试。
 
 Linux 基础准备、core 分发、full 分发和 benchmark 准备各有独立生产任务；消费者只在需要时等待对应产物。选中 core/full 分发的计划均启用 Linux sandbox helper 准备，将打包所需二进制纳入基础构建与校验清单；单独选中的 Web 集成验证也满足该前置条件。core binary 验证独立启动与真实工具调用，core 包验证实际安装、启动和完成任务；full 保留六类业务结果、一次完整导入导出和组件安装、升级、移除、managed/attach 生命周期。基础准备并行生成一次 Web 生产产物，构建契约和浏览器 smoke 消费经过清单校验的同一产物。消费者验证计划、提交、run、原始计划 attempt、Bun、ABI、完整文件列表、字节摘要和模式；每个场景有独立 Home，结束时验证发行树未变。
 

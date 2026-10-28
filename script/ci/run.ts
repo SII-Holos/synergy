@@ -5,7 +5,7 @@ import { createIsolatedTestEnv } from "../../packages/testing/src/env"
 import { loadManifest } from "../coverage-check"
 import { fileHash, filesIn } from "./artifacts"
 import { OUTPUT, ROOT } from "./catalog"
-import { validatePlan, taskOrder, executionWaves, unitWorkers, type Plan, type Task } from "./plan"
+import { validatePlan, taskOrder, runTaskQueue, unitWorkers, type Plan, type Task } from "./plan"
 import { type Report, type TaskResult } from "./evidence"
 import { collectTests } from "../../packages/testing/script/batches"
 
@@ -601,14 +601,8 @@ export async function executeUnit(
     if (result.status !== "success") failures.push(taskID)
   }
   const tasks = ordered.map((id) => plan.tasks.find((task) => task.id === id)!)
-  const errors: unknown[] = []
-  for (const wave of executionWaves(
-    tasks,
-    unit ? unitWorkers(unit.pool, plan.mode, unit.id === "linux-contracts") : 1,
-  )) {
-    const results = await Promise.allSettled(wave.map((task) => execute(task.id)))
-    for (const result of results) if (result.status === "rejected") errors.push(result.reason)
-  }
-  if (errors.length) throw new AggregateError(errors, "CI task execution failed")
+  await runTaskQueue(tasks, unit ? unitWorkers(unit.pool, plan.mode, unit.id === "linux-contracts") : 1, (task) =>
+    execute(task.id),
+  )
   return failures.sort()
 }

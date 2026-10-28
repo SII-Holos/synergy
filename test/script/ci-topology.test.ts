@@ -20,6 +20,11 @@ const workflow = Bun.YAML.parse(await readFile(path.join(root, ".github/workflow
 }
 
 describe("required CI topology", () => {
+  test("policy checkout admits the exact base revision even after a multi-commit push", () => {
+    const checkout = workflow.jobs.contracts!.steps!.find((step) => step.uses?.startsWith("actions/checkout@"))
+    expect(checkout?.with?.["fetch-depth"]).toBe(0)
+  })
+
   test("package rebuilding runs apart from consumers of workspace artifacts", async () => {
     const tasks = await catalog()
     const plan = createPlan({

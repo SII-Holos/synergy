@@ -138,36 +138,65 @@ export function taskOrder(a: Task, b: Task) {
   return Number(b.kind === "policy") - Number(a.kind === "policy") || b.seconds - a.seconds || a.id.localeCompare(b.id)
 }
 
-export function executionWaves(tasks: Task[], workers: number): Task[][] {
-  const waves: Task[][] = []
-  for (const task of tasks) {
-    const exclusive =
-      task.prerequisites?.includes("browser") ||
-      task.prerequisites?.includes("desktop") ||
-      ["typecheck", "desktop", "artifacts", "native-workspace"].includes(task.kind)
-    const last = waves.at(-1)
-    if (
-      !exclusive &&
-      last &&
-      last.length < workers &&
-      last.every(
-        (entry) =>
-          !entry.prerequisites?.includes("browser") &&
-          !entry.prerequisites?.includes("desktop") &&
-          !["typecheck", "desktop", "artifacts", "native-workspace"].includes(entry.kind),
+function heavy(task: Task) {
+  return (
+    task.prerequisites?.includes("browser") ||
+    task.prerequisites?.includes("desktop") ||
+    ["typecheck", "desktop", "artifacts", "native-workspace"].includes(task.kind)
+  )
+}
+
+function nextTask(pending: Task[], running: Task[], workers: number) {
+  if (running.length >= workers) return -1
+  return pending.findIndex((task) => !heavy(task) || !running.some(heavy))
+}
+
+export async function runTaskQueue(tasks: Task[], workers: number, execute: (task: Task) => Promise<void>) {
+  if (!Number.isInteger(workers) || workers < 1) throw new Error("Task queue needs positive worker capacity")
+  const pending = [...tasks]
+  const active = new Map<Task, Promise<{ task: Task; failure?: { error: unknown } }>>()
+  const errors: unknown[] = []
+  while (pending.length || active.size) {
+    for (;;) {
+      const index = nextTask(pending, [...active.keys()], workers)
+      if (index < 0) break
+      const task = pending.splice(index, 1)[0]!
+      active.set(
+        task,
+        Promise.resolve()
+          .then(() => execute(task))
+          .then(
+            () => ({ task }),
+            (error: unknown) => ({ task, failure: { error } }),
+          ),
       )
-    )
-      last.push(task)
-    else waves.push([task])
+    }
+    const result = await Promise.race(active.values())
+    active.delete(result.task)
+    if (result.failure) errors.push(result.failure.error)
   }
-  return waves
+  if (errors.length) throw new AggregateError(errors, "CI task execution failed")
 }
 
 function finishTime(tasks: Task[], workers: number) {
-  return executionWaves(tasks.toSorted(taskOrder), workers).reduce(
-    (seconds, wave) => seconds + Math.max(...wave.map((task) => task.seconds)),
-    0,
-  )
+  const pending = tasks.toSorted(taskOrder)
+  let active: Array<{ task: Task; end: number }> = []
+  let time = 0
+  while (pending.length || active.length) {
+    for (;;) {
+      const index = nextTask(
+        pending,
+        active.map((entry) => entry.task),
+        workers,
+      )
+      if (index < 0) break
+      const task = pending.splice(index, 1)[0]!
+      active.push({ task, end: time + task.seconds })
+    }
+    time = Math.min(...active.map((entry) => entry.end))
+    active = active.filter((entry) => entry.end > time)
+  }
+  return time
 }
 
 export function buildUnits(tasks: Task[], mode: Mode): Unit[] {
