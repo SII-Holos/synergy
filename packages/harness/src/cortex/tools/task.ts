@@ -9,6 +9,7 @@ import { AgentDelegation } from "../../agent/delegation"
 import { defer } from "../../util/defer"
 import { PermissionNext } from "../../permission/next"
 import { Category } from "../category"
+import { DelegationModel } from "../delegation-model"
 import { Provider } from "../../provider/provider"
 import { ScopeContext } from "../../scope/context"
 import { Dag } from "../../session/dag"
@@ -47,9 +48,15 @@ const parameters = z.object({
     .string()
     .optional()
     .describe(
-      "Category preset to override model and inject context:\n" +
+      "Category preset that injects context. Overrides the model only when model is omitted:\n" +
         Category.descriptions() +
-        "\nDefault: none (uses subagent's original model and prompt)",
+        "\nDefault: none",
+    ),
+  model: z
+    .string()
+    .optional()
+    .describe(
+      "Model for this subagent. Omit to inherit this turn's model. Pass a role (parent, default, thinking, mid, creative, mini, nano, long) or provider/model. A role uses the user's configured model for that role when it is connected and selectable. An explicit provider/model must also be connected and selectable. Unavailable choices fail instead of falling back. When this tool is exposed, its description lists the currently available choices.",
     ),
   output: CortexTypes.OutputConfig.optional().describe(
     "Optional output contract for the delegated task. Use structured mode with a JSON Schema when the caller needs machine-readable output.",
@@ -101,7 +108,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>(
       accessibleAgents
         .map((a) => `- ${a.name}: ${a.description ?? "This subagent should only be called manually by the user."}`)
         .join("\n"),
-    )
+    ).concat("\n\n", await DelegationModel.descriptionMenu(ctx?.model))
     return {
       description,
       parameters,
@@ -134,27 +141,30 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>(
           providerID: msg.info.providerID,
         }
 
-        // Keep the parent's provider choice while that model remains available.
-        let model =
-          ctx.extra?.subtaskModel ??
-          ((await Provider.isModelAvailable(parentModel))
-            ? parentModel
-            : ((await Agent.getAvailableModel(agent)) ?? parentModel))
         let promptAppend = ""
+        let categoryModel: DelegationModel.Ref | undefined
 
         const categoryConfig = await Category.resolve(params.category)
         if (categoryConfig) {
-          if (categoryConfig.model) {
+          if (!params.model && categoryConfig.model) {
             const parsed = Provider.parseModel(categoryConfig.model)
             if (!parsed.providerID.trim() || !parsed.modelID.trim()) {
               throw new Error(
                 `Model must be in provider/model format for category ${params.category}: ${categoryConfig.model}`,
               )
             }
-            model = { providerID: parsed.providerID, modelID: parsed.modelID }
+            categoryModel = { providerID: parsed.providerID, modelID: parsed.modelID }
           }
           promptAppend = categoryConfig.promptAppend ?? ""
         }
+
+        const model = await DelegationModel.select({
+          requested: params.model,
+          parent: parentModel,
+          categoryModel,
+          subtaskModel: ctx.extra?.subtaskModel,
+          agentModel: await Agent.getAvailableModel(agent),
+        })
 
         const fullPrompt = promptAppend ? `${params.taskInstructions}\n\n${promptAppend}` : params.taskInstructions
 

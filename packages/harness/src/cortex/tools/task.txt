@@ -13,4 +13,5 @@ Launch independent tasks concurrently only when inputs and write/resource owners
 - task_output(block: true) is valid only with full/default mode and waits up to 300 seconds. Do not schedule extra completion wake-ups.
 - session_id continues an idle session owned by this parent with retained context. Busy or differently owned sessions are rejected; provide only new information when continuing.
 - output accepts summary, final_response, or structured with schema and maxRepairTurns. Structured schemas support objects, arrays, primitives, anyOf and oneOf; results include rendered JSON and structured metadata.
+- model selects this subagent's model. Omit it to inherit this turn. Prefer a role from the delegation model list below (parent, default, thinking, mid, creative, mini, nano, long). provider/model is accepted only when that model is connected and selectable. An unavailable model fails instead of falling back.
 - For a DAG node pass dag_node_id; completion/failure updates the node automatically.

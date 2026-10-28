@@ -2200,7 +2200,10 @@ export namespace ToolResolver {
       })
     }
 
-    for (const item of await ToolRegistry.catalog(input.model.providerID, input.agent, input.session?.workspaceID)) {
+    for (const item of await ToolRegistry.catalog(input.model.providerID, input.agent, input.session?.workspaceID, {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+    })) {
       result.push(
         "resolve" in item
           ? {
