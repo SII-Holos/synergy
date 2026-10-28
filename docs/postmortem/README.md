@@ -13,11 +13,13 @@
 - **Executive summary** — failure, cause, lesson.
 - **Summary**.
 - **Timeline** — observations.
-- **Root cause** — missing safeguards.
+- **Root cause**.
 - **Guardrails** — tests, docs, gates.
 - **Lessons** — takeaways.
 
 ## Index
+
+- [0093](0093-hidden-browser-capture-presentation.md)
 
 - [0092](0092-cortex-notification-targeted-completed-root.md)
 

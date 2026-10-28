@@ -7,6 +7,7 @@ import solid from "vite-plugin-solid"
 
 type Fixture = {
   detach(): void
+  rebindContent(): void
   prepend(): void
   resize(): void
   fold(): void
@@ -62,6 +63,7 @@ beforeAll(async () => {
     let viewport,marker,fold,img,auto
     const h=window.fixture={
       detach(){auto.handleInteraction();viewport.scrollTop+=marker.getBoundingClientRect().top-viewport.getBoundingClientRect().top-50;auto.handleScroll()},
+      rebindContent(){auto.contentRef(undefined);auto.contentRef(viewport.firstElementChild)},
       prepend(){auto.handleInteraction();const older=document.createElement("div");older.style.height="320px";older.textContent="Earlier accepted fallback messages";viewport.firstElementChild.prepend(older)},
       resize(){setWidth(350)},fold(){setFolded(true)},image(){setImage(200)},replaceOwner(){setOwner(owner()+1)},
       latest(){setWorking(false);auto.forceScrollToBottom({untilInteraction:true})},
@@ -180,6 +182,62 @@ test("detached reading survives workspace reflow, structural animation and a lat
   expect(Math.abs((await facts()).offset - original)).toBeLessThan(1)
   expect(errors).toEqual([])
 }, 30_000)
+
+test("acquiring a reading owner during resize does not restart ancestor notifications", async () => {
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await frames()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.detach())
+  await frames()
+  const before = await facts()
+  const resizeErrors = await page.evaluate(async () => {
+    const errors: string[] = []
+    const record = (event: ErrorEvent) => errors.push(event.message)
+    window.addEventListener("error", record)
+    try {
+      ;(window as unknown as { fixture: Fixture }).fixture.rebindContent()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      return errors
+    } finally {
+      window.removeEventListener("error", record)
+    }
+  })
+  expect(resizeErrors).toEqual([])
+  expect((await facts()).userScrolled).toBe(true)
+  expect(Math.abs((await facts()).offset - before.offset)).toBeLessThan(1)
+})
+
+test("native scrollend releases reading movement before later layout compensation", async () => {
+  type State = Window & { sequence: Promise<number> }
+  await page.goto(base)
+  await page.getByText("Current reading paragraph", { exact: true }).waitFor()
+  await frames()
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.detach())
+  await frames()
+  const viewport = page.locator("#root > div")
+  await viewport.evaluate((element) => {
+    element.tabIndex = 0
+    element.focus()
+    const before = element.scrollTop
+    ;(window as unknown as State).sequence = new Promise((resolve) => {
+      element.addEventListener("scrollend", () => resolve(element.scrollTop - before), { once: true })
+    })
+  })
+  await page.keyboard.press("PageDown")
+  expect(await page.evaluate(() => (window as unknown as State).sequence)).toBeGreaterThan(100)
+  const before = (await facts()).offset
+  await viewport.evaluate((element) => {
+    const tail = document.createElement("div")
+    tail.style.height = "100px"
+    element.firstElementChild!.append(tail)
+  })
+  await frames()
+  await viewport.evaluate((element) => {
+    element.scrollTop += 80
+  })
+  await frames()
+  expect(Math.abs((await facts()).offset - before)).toBeLessThan(1)
+})
 
 test("removing a recovered content error preserves the visible body paragraph", async () => {
   await page.goto(base)

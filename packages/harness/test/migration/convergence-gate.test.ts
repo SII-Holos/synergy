@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test"
 import { migrationFixture } from "./fixture"
 import { MigrationRegistry } from "../../src/migration/registry"
-import { runMigrations, getMigrationStatus } from "../../src/migration"
+import { completeDeferredMigrations, runMigrations, getMigrationStatus } from "../../src/migration"
+import { SessionCompat } from "../../src/session/compat-import"
+import { StorageCompat } from "../../src/storage/compat"
 import { Storage } from "../../src/storage/storage"
 
 test("each convergence migration observes the preceding migration's durable import state", async () => {
@@ -42,5 +44,49 @@ test("each convergence migration observes the preceding migration's durable impo
     expect(first).toBe(1)
     expect(second).toBe(1)
     expect((await getMigrationStatus(domain))[domain].pending).toEqual([])
+  })
+})
+
+test("readable history requires migration settlement before an idle rerun", async () => {
+  await using fixture = await migrationFixture()
+  await fixture.run(async () => {
+    const domain = "test-convergence-settlement"
+    const sessionID = "ses_00000000000000000000000001"
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    let executions = 0
+    MigrationRegistry.register(domain, [
+      {
+        id: "settle",
+        description: "Finish a published historical owner",
+        execution: "after-convergence",
+        async up() {
+          executions++
+          entered.resolve()
+          await release.promise
+        },
+      },
+    ])
+    await StorageCompat.writeLocator(Storage.current().store, { sessionID, scopeID: "home", status: "imported" })
+    const converging = completeDeferredMigrations()
+    void converging.catch(entered.reject)
+    try {
+      await entered.promise
+      expect((await SessionCompat.preparation(sessionID)).state).toBe("ready")
+      expect((await getMigrationStatus(domain))[domain].pending.map((value) => value.id)).toEqual(["settle"])
+      const settlement = completeDeferredMigrations()
+      release.resolve()
+      await settlement
+      const summary = await runMigrations({
+        targetDomain: domain,
+        output: "silent",
+      })
+      expect(summary).toMatchObject({ completed: 0, failed: 0 })
+      expect(executions).toBe(1)
+      expect((await getMigrationStatus(domain))[domain].pending).toEqual([])
+    } finally {
+      release.resolve()
+      await converging
+    }
   })
 })

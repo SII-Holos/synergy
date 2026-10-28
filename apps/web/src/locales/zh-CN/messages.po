@@ -3323,6 +3323,22 @@ msgstr "智能体切换失败"
 msgid "app.home.start"
 msgstr "开始"
 
+#. js-lingui-explicit-id
+msgid "app.imageActions.clipboardUnavailable"
+msgstr "当前环境无法复制图片，请保存图片。"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.linkCopyFailed"
+msgstr "无法复制链接，请重试。"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.readFailed"
+msgstr "无法读取图片，请重试或打开源文件。"
+
+#. js-lingui-explicit-id
+msgid "app.imageActions.unavailable"
+msgstr "图片数据不可用，请重试或打开源文件。"
+
 #. ── Kanban page ─────────────────────────────────────────────────────────────
 msgid "app.kanban.addPane"
 msgstr "添加会话"
@@ -27489,16 +27505,64 @@ msgid "ui.execution.waiting"
 msgstr "等待输入"
 
 #. js-lingui-explicit-id
+msgid "ui.imagePreview.actionFailed"
+msgstr "操作失败，请重试。"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.actual"
+msgstr "实际大小（1:1）"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.background"
+msgstr "透明背景网格"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
 msgid "ui.imagePreview.close"
 msgstr "关闭图片预览"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.download"
-msgstr "下载图片"
+msgid "ui.imagePreview.copied"
+msgstr "图片已复制"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.copy"
+msgstr "复制图片"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.copyLink"
+msgstr "复制图片链接"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.downloadStarted"
+msgstr "已开始下载"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.exitFullscreen"
+msgstr "退出全屏"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fit"
+msgstr "适应窗口"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fitLabel"
+msgstr "适应"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.fullscreen"
+msgstr "进入全屏"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.imageActions"
 msgstr "图片操作"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.linkCopied"
+msgstr "链接已复制"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.loadFailed"
@@ -27517,8 +27581,12 @@ msgid "ui.imagePreview.noImageSelected"
 msgstr "未选择图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.openNewWindow"
-msgstr "在新窗口打开图片"
+msgid "ui.imagePreview.opened"
+msgstr "正在系统浏览器中打开"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openExternal"
+msgstr "在系统浏览器中打开"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openSource"
@@ -27529,20 +27597,28 @@ msgid "ui.imagePreview.previous"
 msgstr "上一张图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.resetView"
-msgstr "重置图片视图"
+msgid "ui.imagePreview.retry"
+msgstr "重试"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.rotateClockwise"
 msgstr "顺时针旋转图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.unavailable"
-msgstr "图片预览不可用。"
+msgid "ui.imagePreview.save"
+msgstr "保存图片"
 
 #. js-lingui-explicit-id
-msgid "ui.imagePreview.zoomControls"
-msgstr "缩放控件"
+msgid "ui.imagePreview.saved"
+msgstr "图片已保存"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.thumbnails"
+msgstr "缩略图"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.working"
+msgstr "正在处理…"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.zoomIn"

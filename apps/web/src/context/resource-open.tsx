@@ -53,6 +53,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { createSessionDataView } from "@ericsanchezok/synergy-ui/context/session-data-view"
 import { useFile, useProjectFiles } from "@/context/file"
 import { useSDK } from "@/context/sdk"
+import { useImageActions } from "@/hooks/use-image-actions"
 import { useWorkbenchPanels } from "@/context/workbench"
 import { attachmentWorkbenchPanelInit } from "@/components/attachment-workbench/model"
 import { classifyResourcePreview } from "@/components/resource-preview"
@@ -135,6 +136,7 @@ export function ResourceOpenProvider(props: ParentProps) {
   const platform = usePlatform()
   let resourceRequest: AbortController | undefined
   const sdk = useSDK()
+  const imageActions = useImageActions(() => sdk.url)
   const globalSDK = useGlobalSDK()
   const sync = useSync()
   const canonicalView = createSessionDataView(sync.data)
@@ -569,7 +571,7 @@ export function ResourceOpenProvider(props: ParentProps) {
         downloadUrl: src,
       }
       showResourceDialog(
-        () => <ImagePreview images={[image]} />,
+        () => <ImagePreview images={[image]} actions={imageActions} />,
         () => options.focusTarget?.()?.focus({ preventScroll: true }),
       )
       return true
@@ -980,7 +982,7 @@ export function ResourceOpenProvider(props: ParentProps) {
     if (input.mime?.startsWith("image/")) {
       const image = previewImageForUrl(input)
       if (!image) return { status: "cancelled" }
-      showResourceDialog(() => <ImagePreview images={[image]} />)
+      showResourceDialog(() => <ImagePreview images={[image]} actions={imageActions} />)
       return { status: "opened" }
     }
     if (ResourceReference.parse(input.url).kind !== "url") return { status: "cancelled" }
@@ -1171,6 +1173,7 @@ export function ResourceOpenProvider(props: ParentProps) {
       showResourceDialog(
         () => (
           <ImagePreview
+            actions={imageActions}
             images={
               options?.imagePreview?.images.map((item) => ({
                 ...item,

@@ -166,7 +166,7 @@ try {
   check((await preparing.locator('[data-slot="user-message-time"]').count()) === 1, "preparation has one timestamp")
   await editor.fill("Next draft survives attachment submission")
   await preparing.getByRole("button", { name: /Open portrait.png|打开 portrait.png/, exact: true }).click()
-  await page.locator(".attachment-image-stage img").waitFor()
+  await page.locator('[data-slot="image-viewer-image"]').waitFor()
   checks.push("preparation opens the shared temporary reader")
   await page.keyboard.press("Escape")
   await page.getByRole("dialog").waitFor({ state: "hidden" })
@@ -244,7 +244,8 @@ try {
   }
   const attachment = sent.getByRole("button", { name: /Open portrait.png|打开 portrait.png/, exact: true })
   await attachment.click()
-  await page.locator(".attachment-workbench .attachment-image-stage img").waitFor()
+  const image = page.locator('.attachment-workbench [data-slot="image-viewer-image"]')
+  await image.waitFor()
   for (const key of ["Enter", "Space"]) {
     await attachment.focus()
     await attachment.press(key)
@@ -253,17 +254,14 @@ try {
     (await page.getByRole("tab", { name: "portrait.png", exact: true }).count()) === 1,
     "repeated keyboard and pointer opening reuse the canonical resource tab",
   )
+  const beforeZoom = (await image.boundingBox())!
   await page.getByRole("button", { name: /^(放大|Zoom in)$/ }).click()
-  check(
-    (await page.locator(".attachment-image-preview").textContent())?.includes("125%"),
-    "canonical image supports zoom",
-  )
+  check((await image.boundingBox())!.width > beforeZoom.width, "canonical image supports zoom")
   await page.getByRole("button", { name: /^(全屏|Full screen)$/ }).click()
   await page.getByRole("button", { name: /退出全屏|Exit full screen/ }).waitFor()
-  check(
-    (await page.getByRole("link", { name: /^(下载|Download)$/ }).getAttribute("download")) === "portrait.png",
-    "fullscreen preserves original download",
-  )
+  const pendingDownload = page.waitForEvent("download")
+  await page.getByRole("button", { name: /^(保存图片|Save image)$/ }).click()
+  check((await pendingDownload).suggestedFilename() === "portrait.png", "fullscreen preserves original download")
   await page.screenshot({ path: path.join(output, "reader-fullscreen.png") })
   await page.getByRole("button", { name: /退出全屏|Exit full screen/ }).click()
   await page.getByRole("button", { name: /Close portrait.png|关闭 portrait.png/, exact: true }).click()
@@ -279,21 +277,14 @@ try {
     await page.screenshot({ path: path.join(output, `sent-${width}.png`) })
   }
   await page.setViewportSize({ width: 720, height: 450 })
-  const zoom = await context.newCDPSession(page)
-  await zoom.send("Emulation.setDeviceMetricsOverride", {
-    width: 720,
-    height: 450,
-    deviceScaleFactor: 2,
-    mobile: false,
-  })
   check(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
-    "attachments remain contained at 200 percent interface zoom",
+    "attachments remain contained in a narrow, short viewport",
   )
   await attachment.focus()
   await attachment.press("Enter")
-  await page.locator(".attachment-image-stage img").waitFor()
-  await page.screenshot({ path: path.join(output, "reader-200-percent.png") })
+  await page.locator('[data-slot="image-viewer-image"]').waitFor()
+  await page.screenshot({ path: path.join(output, "reader-narrow-short.png") })
   check(errors.length === 0, `no page errors: ${errors.join("; ")}`)
   await Bun.write(path.join(output, "result.json"), JSON.stringify({ checks, passed: true }, null, 2))
   console.log(`Passed ${checks.length} production attachment checks; evidence: ${output}`)

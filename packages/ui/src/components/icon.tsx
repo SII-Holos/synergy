@@ -279,6 +279,8 @@ import {
   Rocket,
   RotateCcw,
   RotateCw,
+  RotateCwSquare,
+  Grid2X2,
   Route,
   Satellite,
   Scale,
@@ -355,6 +357,8 @@ const Github = (props: LucideProps) => (
 )
 
 const icons = {
+  "rotate-cw-square": RotateCwSquare,
+  "grid-2x2": Grid2X2,
   "tabler-photo-edit": PhotoEdit,
   "brand-notion": Notion,
   "brain-circuit": BrainCircuit,

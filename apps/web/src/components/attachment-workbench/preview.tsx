@@ -1,3 +1,4 @@
+import { ImageViewer, type ImageViewerActions } from "@ericsanchezok/synergy-ui/image-viewer"
 import {
   lazy,
   Suspense,
@@ -49,11 +50,12 @@ export interface AttachmentPreviewProps {
   file: AttachmentFile
   serverUrl: string
   fetcher?: typeof fetch
+  imageActions?: ImageViewerActions
   sourceUrl?: string
   referenceContext?: ResourceReference.Context
   location?: ResourceReference.Location
   navigation?: number
-  onOpenSource?: () => void
+  onOpenSource?: (signal?: AbortSignal) => Promise<void> | void
   onOpenBrowser?: (url: string) => void
   onOpenExternal?: (url: string) => void
 }
@@ -70,12 +72,30 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
     const value = props.file
     return props.sourceUrl ?? (value ? resolveAttachmentUrl(props.serverUrl, value) : undefined)
   })
+  const isImage = () => capability()?.kind === "image" || capability()?.kind === "svg"
+  const images = createMemo(() => [
+    {
+      id: props.file.id ?? props.file.filename ?? url() ?? "image",
+      src: url() ?? "",
+      filename: props.file.filename ?? "image",
+      mime: props.file.mime,
+      size: attachmentBytes(props.file),
+      sourcePath: props.onOpenSource ? props.file.filename : undefined,
+    },
+  ])
   const sourcePath = () => props.onOpenSource
+  const displayMode = createMemo(() => {
+    const preview = capability()
+    if (!preview) return "preview"
+    if (!preview.dual) return preview.defaultMode
+    return mode()
+  })
+  const imageMode = () => isImage() && displayMode() === "preview"
   const previewRequest = createMemo(() => {
     const value = props.file
     const preview = capability()
     const href = url()
-    if (!value || !preview?.maxBytes || !href) return undefined
+    if (!value || !preview?.maxBytes || !href || imageMode()) return undefined
     const size = attachmentBytes(value)
     if (size !== undefined && size > preview.maxBytes) {
       return { href, maxBytes: preview.maxBytes, tooLarge: true as const }
@@ -107,13 +127,6 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
     return cause ? ("failed" as const) : undefined
   })
 
-  const displayMode = createMemo(() => {
-    const preview = capability()
-    if (!preview) return "preview"
-    if (!preview.dual) return preview.defaultMode
-    return mode()
-  })
-
   return (
     <div class="attachment-workbench">
       <div class="attachment-workbench-toolbar">
@@ -137,72 +150,81 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               </button>
             </div>
           </Show>
-          <Show when={sourcePath()}>
-            {(path) => (
-              <Tooltip value={lingui._(A.viewSourceFile)} placement="top">
-                <button
-                  type="button"
-                  class="attachment-workbench-action"
-                  aria-label={lingui._(A.viewSourceFile)}
-                  onClick={() => props.onOpenSource?.()}
-                >
-                  <Icon name={getSemanticIcon("workspace.files")} size="small" />
-                  <span>{lingui._(A.viewSourceFile)}</span>
-                </button>
-              </Tooltip>
-            )}
-          </Show>
-          <Show when={props.onOpenBrowser && attachmentOpenInBrowserUrl(capability()?.kind, url())}>
-            {(href) => (
-              <Tooltip value={lingui._(A.openInBrowser)} placement="top">
-                <button
-                  type="button"
-                  class="attachment-workbench-action"
-                  aria-label={lingui._(A.openInBrowser)}
-                  onClick={() => props.onOpenBrowser?.(href())}
-                >
-                  <Icon name={getSemanticIcon("action.open")} size="small" />
-                  <span>{lingui._(A.openInBrowser)}</span>
-                </button>
-              </Tooltip>
-            )}
-          </Show>
-          <Show when={props.onOpenExternal && url()}>
-            {(href) => (
-              <Tooltip value={lingui._(A.openFullPage)} placement="top">
-                <button
-                  type="button"
-                  class="attachment-workbench-action"
-                  aria-label={lingui._(A.openFullPage)}
-                  onClick={() => props.onOpenExternal?.(href())}
-                >
-                  <Icon name={getSemanticIcon("action.external")} size="small" />
-                  <span>{lingui._(A.openFullPage)}</span>
-                </button>
-              </Tooltip>
-            )}
-          </Show>
-          <Show when={url()}>
-            {(href) => (
-              <Tooltip value={lingui._(A.download)} placement="top">
-                <a
-                  class="attachment-workbench-action"
-                  aria-label={lingui._(A.download)}
-                  href={href()}
-                  download={props.file.filename}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Icon name={getSemanticIcon("action.download")} size="small" />
-                  <span>{lingui._(A.download)}</span>
-                </a>
-              </Tooltip>
-            )}
+          <Show when={!imageMode()}>
+            <Show when={sourcePath()}>
+              {(path) => (
+                <Tooltip value={lingui._(A.viewSourceFile)} placement="top">
+                  <button
+                    type="button"
+                    class="attachment-workbench-action"
+                    aria-label={lingui._(A.viewSourceFile)}
+                    onClick={() => props.onOpenSource?.()}
+                  >
+                    <Icon name={getSemanticIcon("workspace.files")} size="small" />
+                    <span>{lingui._(A.viewSourceFile)}</span>
+                  </button>
+                </Tooltip>
+              )}
+            </Show>
+            <Show when={props.onOpenBrowser && attachmentOpenInBrowserUrl(capability()?.kind, url())}>
+              {(href) => (
+                <Tooltip value={lingui._(A.openInBrowser)} placement="top">
+                  <button
+                    type="button"
+                    class="attachment-workbench-action"
+                    aria-label={lingui._(A.openInBrowser)}
+                    onClick={() => props.onOpenBrowser?.(href())}
+                  >
+                    <Icon name={getSemanticIcon("action.open")} size="small" />
+                    <span>{lingui._(A.openInBrowser)}</span>
+                  </button>
+                </Tooltip>
+              )}
+            </Show>
+            <Show when={props.onOpenExternal && url()}>
+              {(href) => (
+                <Tooltip value={lingui._(A.openFullPage)} placement="top">
+                  <button
+                    type="button"
+                    class="attachment-workbench-action"
+                    aria-label={lingui._(A.openFullPage)}
+                    onClick={() => props.onOpenExternal?.(href())}
+                  >
+                    <Icon name={getSemanticIcon("action.external")} size="small" />
+                    <span>{lingui._(A.openFullPage)}</span>
+                  </button>
+                </Tooltip>
+              )}
+            </Show>
+            <Show when={url()}>
+              {(href) => (
+                <Tooltip value={lingui._(A.download)} placement="top">
+                  <a
+                    class="attachment-workbench-action"
+                    aria-label={lingui._(A.download)}
+                    href={href()}
+                    download={props.file.filename}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Icon name={getSemanticIcon("action.download")} size="small" />
+                    <span>{lingui._(A.download)}</span>
+                  </a>
+                </Tooltip>
+              )}
+            </Show>
           </Show>
         </div>
       </div>
       <main class="attachment-workbench-viewer">
         <Switch>
+          <Match when={imageMode() && url()}>
+            <ImageViewer
+              images={images()}
+              actions={props.imageActions}
+              onOpenSource={(_, signal) => props.onOpenSource?.(signal)}
+            />
+          </Match>
           <Match when={previewError() === "too-large"}>
             <AttachmentState kind="warning" title={lingui._(A.tooLarge)} />
           </Match>
@@ -244,9 +266,6 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
               </Suspense>
             )}
           </Match>
-          <Match when={capability()?.kind === "image" && url()}>
-            {(href) => <AttachmentImagePreview url={href()} filename={props.file.filename} />}
-          </Match>
           <Match when={capability()?.kind === "pdf" ? safePayload() : undefined}>
             {(bytes) => (
               <AttachmentPdfPreview bytes={bytes()} location={props.location} navigation={props.navigation} />
@@ -277,9 +296,6 @@ export function AttachmentPreview(props: AttachmentPreviewProps) {
                 <RenderHtml html={sanitizeAttachmentHtml(content())} />
               </div>
             )}
-          </Match>
-          <Match when={capability()?.kind === "svg" && url()}>
-            {(href) => <AttachmentImagePreview url={href()} filename={props.file.filename} />}
           </Match>
           <Match when={capability()?.kind === "source" ? text() : undefined}>
             {(content) => (
@@ -335,58 +351,6 @@ function AttachmentState(props: { kind: "warning" | "file"; title: string; detai
         <button type="button" class="attachment-workbench-action" onClick={() => props.onRetry?.()}>
           {_({ id: "app.workspace.panel.retry", message: "Retry" })}
         </button>
-      </Show>
-    </div>
-  )
-}
-
-function AttachmentImagePreview(props: { url: string; filename?: string }) {
-  const lingui = useLingui()
-  const [scale, setScale] = createSignal(1)
-  const [failed, setFailed] = createSignal(false)
-  createEffect(() => {
-    props.url
-    setScale(1)
-    setFailed(false)
-  })
-  return (
-    <div class="attachment-image-preview">
-      <div class="attachment-pdf-toolbar">
-        <button
-          type="button"
-          aria-label={lingui._(A.zoomOut)}
-          disabled={scale() <= 0.25}
-          onClick={() => setScale((v) => Math.max(0.25, v - 0.25))}
-        >
-          <Icon name={getSemanticIcon("action.zoomOut")} size="small" />
-        </button>
-        <span>{Math.round(scale() * 100)}%</span>
-        <button type="button" onClick={() => setScale(1)}>
-          {lingui._(A.fitWidth)}
-        </button>
-        <button
-          type="button"
-          aria-label={lingui._(A.zoomIn)}
-          disabled={scale() >= 4}
-          onClick={() => setScale((v) => Math.min(4, v + 0.25))}
-        >
-          <Icon name={getSemanticIcon("action.zoomIn")} size="small" />
-        </button>
-      </div>
-      <Show
-        when={!failed()}
-        fallback={
-          <AttachmentState kind="warning" title={lingui._(A.unableToPreview)} onRetry={() => setFailed(false)} />
-        }
-      >
-        <div class="attachment-image-stage">
-          <img
-            src={props.url}
-            alt={props.filename ?? ""}
-            style={{ width: `${scale() * 100}%` }}
-            onError={() => setFailed(true)}
-          />
-        </div>
       </Show>
     </div>
   )

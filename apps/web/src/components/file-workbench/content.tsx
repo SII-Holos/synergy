@@ -1,3 +1,5 @@
+import { ImageViewer } from "@ericsanchezok/synergy-ui/image-viewer"
+import { useImageActions } from "@/hooks/use-image-actions"
 import { ResourceReference } from "@ericsanchezok/synergy-util/resource-reference"
 import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup } from "solid-js"
@@ -78,7 +80,7 @@ function SvgPreview(props: { path: string; content: string }) {
     setUrl(next)
     onCleanup(() => URL.revokeObjectURL(next))
   })
-  return <Show when={url()}>{(src) => <img class="file-svg-preview" src={src()} alt={props.path} />}</Show>
+  return <Show when={url()}>{(src) => <FileImagePreview path={props.path} src={src()} mime="image/svg+xml" />}</Show>
 }
 
 // Served through the workspace raw-file route: relative resources resolve, and
@@ -142,90 +144,26 @@ function HtmlPreview(props: { path: string; version?: { mtime: number; size: num
   )
 }
 
-function ImagePreview(props: {
-  path: string
-  mimeType: string
-  content: string
-  lingui: ReturnType<typeof useLingui>
-}) {
+function FileImagePreview(props: { path: string; mime: string; src: string }) {
   const file = useFile()
-  const [scale, setScale] = createSignal(file.view.imageScaleMode(props.path) === "actual" ? 1 : 0)
-  const [pan, setPan] = createSignal({ x: 0, y: 0 })
-  const [drag, setDrag] = createSignal<{ id: number; x: number; y: number; startX: number; startY: number }>()
-  const actualScale = () => (scale() === 0 ? 1 : scale())
-  const fit = () => scale() === 0
-  const resetPan = () => setPan({ x: 0, y: 0 })
-
+  const sdk = useSDK()
+  const actions = useImageActions(() => sdk.url)
+  const images = createMemo(() => [
+    {
+      id: props.path,
+      src: props.src,
+      filename: props.path.split("/").at(-1) ?? props.path,
+      mime: props.mime,
+      downloadUrl: buildWorkspaceFileBrowserUrl(sdk.url, props.path, { scopeID: sdk.scopeID, ...file.reference() }),
+    },
+  ])
   return (
-    <div class="file-image-preview">
-      <div class="file-image-controls">
-        <button
-          type="button"
-          classList={{ active: fit() }}
-          onClick={() => {
-            setScale(0)
-            resetPan()
-            file.view.setImageScaleMode(props.path, "fit")
-          }}
-        >
-          {props.lingui._({ id: F.fit.id, message: F.fit.message })}
-        </button>
-        <button
-          type="button"
-          classList={{ active: scale() === 1 }}
-          onClick={() => {
-            setScale(1)
-            resetPan()
-            file.view.setImageScaleMode(props.path, "actual")
-          }}
-        >
-          100%
-        </button>
-        <button
-          type="button"
-          aria-label={props.lingui._({ id: F.zoomOut.id, message: F.zoomOut.message })}
-          onClick={() => setScale((value) => Math.max(0.25, (value || 1) - 0.25))}
-        >
-          −
-        </button>
-        <button
-          type="button"
-          aria-label={props.lingui._({ id: F.zoomIn.id, message: F.zoomIn.message })}
-          onClick={() => setScale((value) => Math.min(8, (value || 1) + 0.25))}
-        >
-          +
-        </button>
-      </div>
-      <div
-        class="file-image-stage"
-        onWheel={(event) => {
-          if (!event.ctrlKey && !event.metaKey) return
-          event.preventDefault()
-          setScale((value) => Math.max(0.25, Math.min(8, (value || 1) + (event.deltaY < 0 ? 0.25 : -0.25))))
-        }}
-        onPointerDown={(event) => {
-          if (fit() || event.button !== 0) return
-          event.currentTarget.setPointerCapture(event.pointerId)
-          const current = pan()
-          setDrag({ id: event.pointerId, x: event.clientX, y: event.clientY, startX: current.x, startY: current.y })
-        }}
-        onPointerMove={(event) => {
-          const current = drag()
-          if (!current || current.id !== event.pointerId) return
-          setPan({ x: current.startX + event.clientX - current.x, y: current.startY + event.clientY - current.y })
-        }}
-        onPointerUp={() => setDrag(undefined)}
-        onPointerCancel={() => setDrag(undefined)}
-      >
-        <img
-          src={`data:${props.mimeType};base64,${props.content}`}
-          alt={props.path}
-          classList={{ "file-image--fit": fit(), "file-image--actual": !fit() }}
-          style={{ transform: fit() ? undefined : `translate(${pan().x}px, ${pan().y}px) scale(${actualScale()})` }}
-          draggable={false}
-        />
-      </div>
-    </div>
+    <ImageViewer
+      images={images()}
+      initialScaleMode={file.view.imageScaleMode(props.path)}
+      onScaleModeChange={(mode) => file.view.setImageScaleMode(props.path, mode)}
+      actions={actions}
+    />
   )
 }
 
@@ -841,7 +779,11 @@ function WorkspaceFileContent(props: WorkbenchPanelContentProps) {
             </Match>
             <Match when={imageContent()}>
               {(value) => (
-                <ImagePreview path={path()} mimeType={value().mimeType} content={value().content} lingui={lingui} />
+                <FileImagePreview
+                  path={path()}
+                  mime={value().mimeType}
+                  src={`data:${value().mimeType};base64,${value().content}`}
+                />
               )}
             </Match>
             <Match when={capability().kind === "pdf"}>

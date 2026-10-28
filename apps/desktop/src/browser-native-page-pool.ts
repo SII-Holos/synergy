@@ -164,13 +164,20 @@ export class BrowserNativePagePool {
   attach(window: BrowserWindow, ownerKey: string, pageId: string): WebContentsView {
     const entry = this.find(ownerKey, pageId)
     if (!entry || entry.failed) throw restartingError(pageId, entry?.failed ? "failed" : "restarting")
-    window.contentView.addChildView(entry.generation.view)
+    this.mountView(window, entry.generation)
     if (!entry.attached) {
       entry.attached = true
       this.recordStage(entry.input, entry.generation, "mounted")
       this.updateNativeViewport(entry)
     }
     return entry.generation.view
+  }
+
+  private mountView(window: BrowserWindow, generation: Generation): void {
+    window.contentView.addChildView(generation.view)
+    // Reapply to the mounted widget: constructor preferences alone do not activate hidden painting.
+    // https://github.com/electron/electron/blob/v44.9.0/shell/browser/api/electron_api_web_contents.cc#L2851-L2935
+    generation.contents.setBackgroundThrottling(false)
   }
 
   detach(window: BrowserWindow, ownerKey: string, pageId: string): void {
@@ -267,7 +274,7 @@ export class BrowserNativePagePool {
       const visible = generation.view.getVisible()
       if (!entry.attached) {
         generation.view.setVisible(false)
-        window.contentView.addChildView(generation.view)
+        this.mountView(window, generation)
       }
       generation.capture = { window, users: 0, visible }
     }

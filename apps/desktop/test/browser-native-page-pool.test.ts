@@ -74,6 +74,10 @@ class MockWebContents extends EventEmitter {
     return false
   }
 
+  setBackgroundThrottling(allowed: boolean) {
+    this.emit("background-throttling", allowed)
+  }
+
   focus() {}
 
   stop() {
@@ -203,6 +207,46 @@ async function until(predicate: () => boolean, timeoutMs = 500): Promise<void> {
 }
 
 describe("Browser native page pool", () => {
+  test("activates drawing in the mounted renderer without changing its background policy", async () => {
+    const children = new Set<MockWebContentsView>()
+    let drawable = false
+    const window = {
+      isDestroyed: () => false,
+      contentView: {
+        addChildView: (view: MockWebContentsView) => children.add(view),
+        removeChildView: (view: MockWebContentsView) => {
+          drawable = false
+          children.delete(view)
+        },
+      },
+    }
+    const pool = new BrowserNativePagePool({ captureWindow: () => window as never })
+    const initial = input("mounted-renderer")
+    const page = await pool.create(initial)
+    const view = views.at(-1)!
+    view.webContents.on("background-throttling", (allowed: boolean) => {
+      expect(allowed).toBe(false)
+      drawable = children.has(view)
+    })
+    captureOperation = async () => {
+      if (!drawable) throw new Error("The mounted renderer cannot paint")
+    }
+    try {
+      await page.execute({ type: "screenshot" })
+      expect(children.size).toBe(0)
+      pool.attach(window as never, initial.ownerKey, initial.page.id)
+      expect(drawable).toBe(true)
+      await page.execute({ type: "screenshot" })
+      expect(children.has(view)).toBe(true)
+      pool.detach(window as never, initial.ownerKey, initial.page.id)
+      await page.execute({ type: "screenshot" })
+      expect(children.size).toBe(0)
+    } finally {
+      captureOperation = undefined
+      await pool.destroy()
+    }
+  })
+
   test("leases one hidden native attachment for concurrent captures without undoing a human selection", async () => {
     const children = new Set<MockWebContentsView>()
     const window = {

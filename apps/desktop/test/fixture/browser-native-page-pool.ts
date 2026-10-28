@@ -1,6 +1,8 @@
-import { app, BrowserWindow, screen } from "electron"
+import { app, BrowserWindow, nativeImage, screen } from "electron"
 import assert from "node:assert/strict"
 import fs from "node:fs/promises"
+import { once } from "node:events"
+import { createServer } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { loadWindowState } from "../../src/window-state.js"
@@ -15,6 +17,9 @@ void run().catch((error) => {
 
 async function run() {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-native-page-pool-"))
+  const website = createServer((_request, response) =>
+    response.end("<!doctype html><body>Native capture navigation</body>"),
+  )
   await app.whenReady()
   console.log("Native Browser geometry smoke: ready")
   try {
@@ -56,9 +61,67 @@ async function run() {
       { width: 1280, height: 720 },
       "Detached pages need a usable default viewport",
     )
+    let captures = 0
+    const assertFullPageCapture = async (width: number, handle = first, page = input) => {
+      const light = captures++ % 2 === 1
+      const density = await handle.execute({ type: "evaluate", mode: "readonly", expression: "devicePixelRatio" })
+      assert.ok(density.type === "evaluation" && typeof density.value === "number" && density.value > 0)
+      const pixels = { width: Math.round(width * density.value), height: Math.round(2048 * density.value) }
+      await handle.execute({
+        type: "evaluate",
+        mode: "trusted",
+        expression: `document.body.style.cssText = 'margin:0;width:${width}px;height:2048px;background:linear-gradient(${light ? "#ffffff" : "#000000"} 0 50%,${light ? "#000000" : "#ffffff"} 50% 100%)'; true`,
+      })
+      await handle.execute({
+        type: "evaluate",
+        mode: "trusted",
+        expression: `globalThis.__captureEvents = []; if (!globalThis.__captureListening) { globalThis.__captureListening = true; for (const event of ['visibilitychange', 'focus', 'blur']) addEventListener(event, () => globalThis.__captureEvents.push(event)); } true`,
+      })
+      const captureView = pool.find(page.ownerKey, page.page.id)!.generation.view
+      const children = [...window.contentView.children]
+      const attached = children.includes(captureView)
+      const visible = captureView.getVisible()
+      const focused = window.webContents.isFocused()
+      assert.equal(window.isVisible(), true, "Capture has a visible native host")
+      assert.equal(window.isMinimized(), false, "Capture host is not minimized")
+      const capture = handle.execute({ type: "screenshot", fullPage: true })
+      assert.equal(window.contentView.children.includes(captureView), true, "Capture uses the same native view")
+      assert.equal(captureView.getVisible(), attached && visible, "Detached capture does not show its native view")
+      const result = await capture
+      assert.equal(pool.find(page.ownerKey, page.page.id)!.generation.view, captureView)
+      assert.deepEqual(window.contentView.children, children, "Capture restores native parent membership")
+      assert.equal(captureView.getVisible(), visible, "Capture restores native visibility")
+      assert.equal(window.webContents.isFocused(), focused, "Capture does not steal native focus")
+      const pageEvents = await handle.execute({
+        type: "evaluate",
+        mode: "trusted",
+        expression: "globalThis.__captureEvents",
+      })
+      assert.equal(pageEvents.type, "evaluation")
+      assert.deepEqual(
+        pageEvents.type === "evaluation" ? pageEvents.value : undefined,
+        [],
+        "Capture does not dispatch visibility or focus events",
+      )
+      assert.equal(result.type, "screenshot")
+      if (result.type !== "screenshot") throw new Error("Expected a full-page screenshot")
+      assert.deepEqual({ width: result.width, height: result.height }, { width, height: 2048 })
+      const image = nativeImage.createFromDataURL(result.dataUrl)
+      assert.deepEqual(image.getSize(), pixels, "PNG contains the full CSS page at the actual device pixel ratio")
+      assert.deepEqual(
+        [...image.crop({ x: 0, y: 0, width: 1, height: 1 }).toBitmap()],
+        light ? [255, 255, 255, 255] : [0, 0, 0, 255],
+        "Capture contains the latest document paint, not a stale surface",
+      )
+      assert.deepEqual(
+        [...image.crop({ x: 0, y: pixels.height - 1, width: 1, height: 1 }).toBitmap()],
+        light ? [0, 0, 0, 255] : [255, 255, 255, 255],
+        "Full-page capture retains pixels below the viewport",
+      )
+    }
     const initialChildren = [...window.contentView.children]
     const initialFocus = window.webContents.isFocused()
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    await assertFullPageCapture(1280)
     assert.deepEqual(
       window.contentView.children,
       initialChildren,
@@ -71,7 +134,7 @@ async function run() {
       { width: 900, height: 600 },
       "Legacy explicit viewport remains fixed when detached",
     )
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    await assertFullPageCapture(900)
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
     assert.deepEqual(await viewportSize(), { width: 1280, height: 720 }, "Detached fit restores the native viewport")
     for (const answer of ["Edited draft", "", null]) {
@@ -170,7 +233,7 @@ async function run() {
     assert.deepEqual(view.getBounds(), nativeBounds, "Fixed viewport must not resize native presentation")
     assert.deepEqual(await viewportSize(), { width: 600, height: 400 })
     phase("fixed-capture.start")
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    await assertFullPageCapture(600)
     phase("fixed-capture.completed")
     firstManager.resize(input.ownerKey, input.page.id, { x: 256, y: 40, width: 560, height: 360 })
     const resizedBounds = { x: 320, y: 50, width: 700, height: 450 }
@@ -211,7 +274,7 @@ async function run() {
     phase("detached-fit.viewport")
     assert.deepEqual(await viewportSize(), { width: 640, height: 400 }, "Detached fit retains the last native size")
     phase("detached-fit-capture.start")
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    await assertFullPageCapture(640)
     phase("detached-fit-capture.completed")
     phase("detached-fixed-metrics.start")
     await first.execute({ type: "setViewport", width: 500, height: 300 })
@@ -223,7 +286,7 @@ async function run() {
     firstManager.detach(input.ownerKey, input.page.id)
     assert.deepEqual(await viewportSize(), { width: 500, height: 300 }, "Detach preserves explicit Agent viewport")
     phase("detached-fixed-capture.start")
-    assert.equal((await first.execute({ type: "screenshot", fullPage: true })).type, "screenshot")
+    await assertFullPageCapture(500)
     phase("detached-fixed-capture.completed")
     phase("detached-fit-metrics.start")
     await first.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
@@ -324,6 +387,7 @@ async function run() {
       { width: 640, height: 400 },
       "Recovery preserves manager-owned natural viewport",
     )
+    await assertFullPageCapture(640)
     unsubscribe()
     firstManager.destroy()
     await first.destroy()
@@ -339,6 +403,11 @@ async function run() {
     if (second.state().id !== secondInput.page.id || secondView.webContents.isDestroyed()) {
       throw new Error("Workspace-first native page creation did not produce a usable stable page.")
     }
+    website.listen(0, "127.0.0.1")
+    await once(website, "listening")
+    const address = website.address()
+    assert.ok(address && typeof address !== "string")
+    await second.execute({ type: "navigate", url: `http://a.localhost:${address.port}/`, source: "agent" })
     const manager = new BrowserNativeViewManager(window, pool, () => {})
     const request = {
       protocolVersion: BROWSER_PROTOCOL_VERSION,
@@ -354,6 +423,13 @@ async function run() {
     await manager.attach({ ...request, visible: false })
     if (secondView.getVisible() || secondView.webContents.isDestroyed())
       throw new Error("Native overlay did not hide a live view.")
+    const humanFrame = new Promise<void>((resolve) =>
+      secondView.webContents.beginFrameSubscription(false, (image) => {
+        assert.equal(image.isEmpty(), false, "Human presentation has produced an actual frame")
+        secondView.webContents.endFrameSubscription()
+        resolve()
+      }),
+    )
     await manager.attach({ ...request, visible: true })
     const retained = await second.execute({
       type: "evaluate",
@@ -367,6 +443,35 @@ async function run() {
       second.state().id !== secondInput.page.id
     )
       throw new Error("Native overlay changed the page or its input state.")
+
+    await humanFrame
+    await second.execute({ type: "setViewport", mode: "fixed", width: 450, height: 320 })
+    manager.detach(secondInput.ownerKey, secondInput.page.id)
+    console.log("Native capture: first screenshot after human presentation and fixed detach")
+    await assertFullPageCapture(450, second, secondInput)
+    await second.execute({ type: "setViewport", mode: "fit", width: 1, height: 1 })
+
+    const generation = pool.find(secondInput.ownerKey, secondInput.page.id)!.generation
+    for (const [index, host] of ["b.localhost", "c.localhost"].entries()) {
+      const previousProcess = secondView.webContents.mainFrame.processId
+      await second.execute({ type: "navigate", url: `http://${host}:${address.port}/`, source: "agent" })
+      assert.notEqual(
+        secondView.webContents.mainFrame.processId,
+        previousProcess,
+        "Cross-site navigation replaces the primary renderer",
+      )
+      assert.equal(
+        pool.find(secondInput.ownerKey, secondInput.page.id)!.generation,
+        generation,
+        "Navigation keeps the pool generation and native view",
+      )
+      if (index === 1) {
+        await manager.attach(request)
+        manager.detach(secondInput.ownerKey, secondInput.page.id)
+      }
+      console.log(`Native capture: process swap ${index + 1}, ${index === 0 ? "never shown" : "shown then detached"}`)
+      await assertFullPageCapture(750, second, secondInput)
+    }
 
     await second.execute({
       type: "evaluate",
@@ -382,8 +487,17 @@ async function run() {
     const windowFocused = window.isFocused()
     let clicks = 0
     for (const presentation of ["visible", "covered", "detached"] as const) {
+      if (presentation === "visible") await manager.attach({ ...request, visible: true })
       if (presentation === "covered") await manager.attach({ ...request, visible: false })
       if (presentation === "detached") manager.detach(secondInput.ownerKey, secondInput.page.id)
+      assert.equal(
+        window.contentView.children.includes(secondView),
+        presentation !== "detached",
+        `${presentation} Agent input has the expected native parent membership`,
+      )
+      if (presentation !== "detached") {
+        assert.equal(secondView.getVisible(), presentation === "visible", `${presentation} native view visibility`)
+      }
       await second.execute(
         { type: "action", action: { type: "click", target: { kind: "css", value: "#count" } } },
         "background-agent",
@@ -431,6 +545,8 @@ async function run() {
     window.destroy()
     await pool.destroy()
   } finally {
+    website.closeAllConnections()
+    website.close()
     await fs.rm(directory, { recursive: true, force: true })
     app.quit()
   }

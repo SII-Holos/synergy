@@ -129,6 +129,7 @@ const playwrightIsolated = [
   "test/components/attachment-workbench/office-preview.dom.test.ts",
   "test/components/attachment-workbench/content.dom.test.ts",
   "test/components/attachment-workbench/message.dom.test.ts",
+  "test/components/attachment-workbench/image-viewer.dom.test.ts",
   "test/components/attachment-workbench/file-cards.dom.test.ts",
   "test/components/attachment-workbench/office-integration.dom.test.ts",
   "test/components/prompt-input/composer-resize.dom.test.ts",

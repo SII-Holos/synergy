@@ -3,6 +3,7 @@ import type { AttachmentFile } from "@ericsanchezok/synergy-ui/attachment-card"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useLingui } from "@lingui/solid"
 import { usePlatform } from "@/context/platform"
+import { useImageActions } from "@/hooks/use-image-actions"
 import { AttachmentPreview } from "./preview"
 
 export function DraftAttachmentPreview(props: {
@@ -12,6 +13,7 @@ export function DraftAttachmentPreview(props: {
   onInvalid: () => void
 }) {
   const platform = usePlatform()
+  const imageActions = useImageActions(() => props.serverUrl)
   const lingui = useLingui()
   createEffect(() => {
     if (!props.isValid()) props.onInvalid()
@@ -26,6 +28,7 @@ export function DraftAttachmentPreview(props: {
         file={props.file}
         serverUrl={props.serverUrl}
         fetcher={platform.fetch}
+        imageActions={imageActions}
         onOpenExternal={platform.openLink}
       />
     </Dialog>

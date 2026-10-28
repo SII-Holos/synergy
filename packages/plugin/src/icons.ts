@@ -218,6 +218,11 @@ export const SemanticIconToken = {
   "review.files": "folders",
   "review.comments": "message-square-text",
 
+  "image.actual": "scan",
+  "image.rotate": "rotate-cw-square",
+  "image.background": "grid-2x2",
+  "image.thumbnails": "gallery-vertical-end",
+
   // Generic actions and state
   "action.expand": surfaceSizingIcons.expand,
   "action.collapse": surfaceSizingIcons.collapse,

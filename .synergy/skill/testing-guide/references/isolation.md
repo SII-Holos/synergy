@@ -37,6 +37,10 @@ Do not run `quality:quick` alongside browser suites or development builds in the
 
 ## Use Real Isolation
 
+For native filesystem fault injection, prefer a test-scoped call-through spy on the shared module object over `mock.module`. Re-registering a saved namespace is not proof that cached default imports regain their original identity. Verify the failure-injection suite before its downstream consumer and after a consumer has preloaded the production module; confirm the runner's actual file order rather than assuming positional arguments determine it. See the [native filesystem isolation decision](../../../../docs/decisions/implemented/testing/2026-10-28-native-filesystem-spy-isolation.md).
+
+Queue-observation fixtures that call a production API which schedules execution must own a real Session lease while inspecting or manually materializing its input. Drive the real wake before assertions, then remove owned pending input, release without requesting more work, and drain before closing the Runtime. Keep execution tests on real model protocol fixtures instead; see [queue-fixture ownership](../../../../docs/decisions/implemented/testing/2026-09-27-own-session-wakes-in-queue-fixtures.md).
+
 Create controllable deferreds before starting work that can emit observable progress. Verify release-before-wait ordering with a barrier; an optional callback assigned after publishing can discard an early signal and leave a fixture waiting until timeout.
 
 Vite fixtures pass a nonzero loopback port from the shared `fixturePort()` helper; Vite's `port: 0` selects its default port and collides across otherwise isolated package processes. Verify port-isolation changes with the default and former fixed ports occupied while running the actual affected browser suites; hold and release only task-owned listeners. Close the owning server before deleting its fixture. Keep correctness waits tied to the configured behavior and observable settlement; the test framework bounds a hung test, while an additional short race can reject valid completion under instrumentation.
