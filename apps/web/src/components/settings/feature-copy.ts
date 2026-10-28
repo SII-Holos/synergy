@@ -101,16 +101,6 @@ export const featureCopy: Record<string, { name: MessageDescriptor; description:
       message: "Provide agenda capabilities.",
     },
   },
-  "channel-clarus": {
-    name: {
-      id: "features.channel-clarus.name",
-      message: "Channel Clarus",
-    },
-    description: {
-      id: "features.channel-clarus.description",
-      message: "Provide channel clarus capabilities.",
-    },
-  },
   workbench: {
     name: {
       id: "features.workbench.name",
@@ -129,16 +119,6 @@ export const featureCopy: Record<string, { name: MessageDescriptor; description:
     description: {
       id: "features.kanban.description",
       message: "View and organize tasks on a board.",
-    },
-  },
-  holos: {
-    name: {
-      id: "features.holos.name",
-      message: "Holos",
-    },
-    description: {
-      id: "features.holos.description",
-      message: "Provide holos capabilities.",
     },
   },
   github: {

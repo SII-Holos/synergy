@@ -35,3 +35,8 @@ export const legacyComponentSelections: Readonly<Record<string, readonly string[
 export function expandLegacyComponentSelection(roots: readonly string[]) {
   return [...new Set(roots.flatMap((name) => legacyComponentSelections[name] ?? [name]))]
 }
+
+export const retiredIdentityPackages = new Set([
+  "@ericsanchezok/synergy-holos",
+  "@ericsanchezok/synergy-channel-clarus",
+])

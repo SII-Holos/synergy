@@ -131,7 +131,7 @@ export async function checkInstalledComposition(
         assert.ok(selected.some((pkg) => pkg.id === preset && pkg.explicit))
         for (const id of preset === "workflows"
           ? ["agenda", "light-loop", "blueprint", "lattice", "boss", "anima"]
-          : ["channels", "channel-feishu", "channel-github", "channel-clarus", "holos", "email"])
+          : ["channels", "channel-feishu", "channel-github", "email"])
           assert.ok(
             selected.some((pkg) => pkg.id === id),
             `${preset} is missing ${id}`,

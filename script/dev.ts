@@ -226,7 +226,6 @@ function appProcess(input: {
     cwd: dirs.app,
     env: {
       VITE_SYNERGY_SERVER_URL: server,
-      VITE_SYNERGY_CALLBACK_URL: `${server}/holos/callback`,
     },
     waitUrl: appUrl(input.hostname, input.appPort),
   }

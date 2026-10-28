@@ -131,35 +131,7 @@ describe("settings config patch", () => {
     expect(patch).not.toHaveProperty("theme")
   })
 
-  test("persists Clarus account enablement without adding model fields", () => {
-    const state = defaultSettingsState("enter")
-    state.channels.clarusAccounts = [{ key: "agent-id", enabled: true }]
-
-    const patch = buildPatch({
-      cfg: {
-        channel: {
-          clarus: {
-            type: "clarus",
-            accounts: {
-              "agent-id": {
-                enabled: false,
-                agent: TEST_AGENT_NAME,
-              },
-            },
-          },
-        },
-      } as Config,
-      state,
-      originalMcps: {},
-    })
-
-    expect((patch.channel as Config["channel"])?.clarus?.accounts["agent-id"]).toEqual({
-      enabled: true,
-      agent: TEST_AGENT_NAME,
-    })
-  })
-
-  test("preserves Clarus accounts while updating a Feishu model variant", () => {
+  test("preserves other channel accounts while updating a Feishu model variant", () => {
     const state = defaultSettingsState("enter")
     state.channels.feishuAccounts = [
       {
@@ -169,12 +141,13 @@ describe("settings config patch", () => {
         variant: "high",
       },
     ]
-    const clarus = {
-      type: "clarus" as const,
+    const github = {
+      type: "github" as const,
       accounts: {
         agent: {
           enabled: true,
           agent: SECONDARY_TEST_AGENT_NAME,
+          workspaceDir: "/tmp/channel-fixture",
         },
       },
     }
@@ -191,7 +164,7 @@ describe("settings config patch", () => {
               },
             },
           },
-          clarus,
+          github,
         },
       } as Config,
       state,
@@ -203,7 +176,7 @@ describe("settings config patch", () => {
       model: "openai-codex/gpt-5.6-sol",
       variant: "high",
     })
-    expect(channel.clarus).toEqual(clarus)
+    expect(channel.github).toEqual(github)
   })
 
   test("model role drafts only materialize as server patch fields", () => {

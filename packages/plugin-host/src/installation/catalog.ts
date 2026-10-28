@@ -30,8 +30,6 @@ export const FULL_COMPONENTS = [
   "channel-feishu",
   "github",
   "channel-github",
-  "holos",
-  "channel-clarus",
   "email",
   "agenda-blueprint",
   "agenda-light-loop",

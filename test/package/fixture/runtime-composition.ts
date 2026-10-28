@@ -202,10 +202,8 @@ try {
         ["email", "email"],
         ["channels", "channels"],
         ["github", "github"],
-        ["holos", "holos"],
         ["channel-feishu", "channel-feishu"],
         ["channel-github", "channel-github"],
-        ["channel-clarus", "channel-clarus"],
         ["full", "presets"],
       ]) {
         const installed = await fs.access(path.join(process.cwd(), "node_modules", prefix + pkg)).then(

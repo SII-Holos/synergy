@@ -33,8 +33,6 @@ test("navigation keeps its toggle while moving new-task access into the collapse
   const [notice, setNotice] = createSignal<string | undefined>("Update available")
   const actions: string[] = []
   const root = document.createElement("div")
-  const brand = document.createElement("span")
-  brand.textContent = "Synergy"
   document.body.append(root)
   const dispose = render(
     () =>
@@ -52,7 +50,6 @@ test("navigation keeps its toggle while moving new-task access into the collapse
         },
         onSearch: () => actions.push("search"),
         onNew: () => actions.push("new"),
-        children: brand,
       }),
     root,
   )
@@ -69,7 +66,6 @@ test("navigation keeps its toggle while moving new-task access into the collapse
     expect(toggle.querySelector("svg")).toBe(icon)
     expect(toggle.getAttribute("aria-expanded")).toBe("false")
     expect(root.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe("Update available")
-    expect(brand.isConnected).toBe(true)
     button("New task")!.click()
     button("Search")!.click()
     setNotice(undefined)

@@ -68,9 +68,9 @@ test("exclusive configuration migrates credentials without stamping local file u
       MigrationRegistry.list()
         .get("config")
         ?.map((item) => item.id),
-    ).toEqual(["20260625-provider-auth-v2"])
+    ).toEqual(["20261026-retire-network-credentials", "20260625-provider-auth-v2"])
     const [log] = await Storage.readMany<Record<string, number>>([["meta", "migration", "log-config"]])
-    expect(Object.keys(log ?? {})).toEqual(["20260625-provider-auth-v2"])
+    expect(Object.keys(log ?? {})).toEqual(["20261026-retire-network-credentials", "20260625-provider-auth-v2"])
     // Storage and Session upgrades still run; configuration authority does not
     // exempt historical data from its migrations.
     expect(MigrationRegistry.list().has("session")).toBe(true)
@@ -90,7 +90,7 @@ test("configuration ownership is independent of registration order and Runtime",
           MigrationRegistry.list()
             .get("config")
             ?.map((item) => item.id),
-        ).toEqual(["20260625-provider-auth-v2"])
+        ).toEqual(["20261026-retire-network-credentials", "20260625-provider-auth-v2"])
       })
     } finally {
       instance.dispose()

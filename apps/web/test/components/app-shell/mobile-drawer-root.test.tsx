@@ -26,15 +26,13 @@ beforeAll(async () => {
         import { render } from "solid-js/web"
         import {
           MobileDrawerAddProjectButton,
-          MobileDrawerAccountRow,
+
           MobileDrawerRecent,
-          MobileDrawerSettingsButton,
+
         } from ${JSON.stringify(`/@fs/${componentPath}`)}
 
         const actions: string[] = []
         const selected: string[] = []
-        const [accountAvailable, setAccountAvailable] = createSignal(true)
-        window.setAccountAvailable = setAccountAvailable
         let loadMoreCalls = 0
         ;(window as any).__mobileDrawerState = {
           actions,
@@ -47,10 +45,6 @@ beforeAll(async () => {
             createComponent(MobileDrawerAddProjectButton, {
               label: "Add project",
               onClick: () => actions.push("project"),
-            }),
-            createComponent(MobileDrawerSettingsButton, {
-              label: "Settings",
-              onClick: () => actions.push("settings"),
             }),
           ],
           document.querySelector("#actions")!,
@@ -228,16 +222,7 @@ beforeAll(async () => {
           document.querySelector("#mixed")!,
         )
 
-        render(
-          () =>
-            createComponent(MobileDrawerAccountRow, {
-              name: "Eric",
-              description: "Connected to Holos",
-              avatarSrc: "/avatar.png",
-              get onClick() { return accountAvailable() ? () => actions.push("account") : undefined },
-            }),
-          document.querySelector("#account")!,
-        )
+
       `,
     ),
   ])
@@ -276,12 +261,11 @@ async function withFixture(run: (page: Page) => Promise<void>) {
 }
 
 describe("mobile drawer root navigation", () => {
-  test("keeps Add project and Settings reachable as labeled actions", async () => {
+  test("keeps Add project reachable as a labeled action", async () => {
     await withFixture(async (page) => {
       await page.getByRole("button", { name: "Add project" }).click()
-      await page.getByRole("button", { name: "Settings" }).click()
       const actions = await page.evaluate(() => (window as any).__mobileDrawerState.actions)
-      expect(actions).toEqual(["project", "settings"])
+      expect(actions).toEqual(["project"])
     })
   })
 
@@ -370,49 +354,6 @@ describe("mobile drawer root navigation", () => {
         .locator("[data-session-id]")
         .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-session-id")))
       expect(order).toEqual(["ses_pinned_old", "ses_today_two", "ses_earlier_two"])
-    })
-  })
-
-  test("renders the account row with its identity and opens account settings", async () => {
-    await withFixture(async (page) => {
-      const account = page.locator("#account")
-      await expect(account.getByText("Eric", { exact: true }).count()).resolves.toBe(1)
-      await expect(account.getByText("Connected to Holos", { exact: true }).count()).resolves.toBe(1)
-      expect(await account.locator("img").getAttribute("src")).toBe("/avatar.png")
-      await account.getByRole("button").click()
-      const actions = await page.evaluate(() => (window as any).__mobileDrawerState.actions)
-      expect(actions).toContain("account")
-    })
-  })
-
-  test("renders identity without a focus target or chevron when no account action is available", async () => {
-    await withFixture(async (page) => {
-      const account = page.locator("#account")
-      await account.getByRole("button").waitFor()
-      await page.evaluate(() =>
-        (window as unknown as { setAccountAvailable(value: boolean): void }).setAccountAvailable(false),
-      )
-      expect(await account.getByRole("button").count()).toBe(0)
-      expect(await account.locator('[data-component="icon"]').count()).toBe(0)
-      expect(await account.locator('[data-action="account"], a, [tabindex]').count()).toBe(0)
-      expect(await account.getByText("Eric", { exact: true }).count()).toBe(1)
-      expect(await account.getByText("Connected to Holos", { exact: true }).count()).toBe(1)
-      expect(await account.locator("img").getAttribute("src")).toBe("/avatar.png")
-      await account.getByText("Eric", { exact: true }).click()
-      expect(
-        await page.evaluate(
-          () => (window as unknown as { __mobileDrawerState: { actions: string[] } }).__mobileDrawerState.actions,
-        ),
-      ).toEqual([])
-      await page.evaluate(() =>
-        (window as unknown as { setAccountAvailable(value: boolean): void }).setAccountAvailable(true),
-      )
-      await account.getByRole("button").click()
-      expect(
-        await page.evaluate(
-          () => (window as unknown as { __mobileDrawerState: { actions: string[] } }).__mobileDrawerState.actions,
-        ),
-      ).toEqual(["account"])
     })
   })
 })

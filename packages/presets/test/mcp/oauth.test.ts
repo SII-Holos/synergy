@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll, beforeEach, afterAll, afterEach, mock } from "bun:test"
+import { describe, expect, test, beforeEach, afterEach, mock } from "bun:test"
 import fs from "fs/promises"
 import { McpOAuthProvider, OAUTH_CALLBACK_PATH, getOAuthCallbackPort } from "@ericsanchezok/synergy-mcp/oauth-provider"
 import { McpAuth } from "@ericsanchezok/synergy-mcp/auth"
@@ -21,11 +21,9 @@ import { testRuntime } from "../support/runtime"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ env: { SYNERGY_OAUTH_CALLBACK_PORT: String(await reserveCallbackPort()) } })
 
 runtime.run(() => Log.init({ print: false }))
-
-let originalOAuthCallbackPort: string | undefined
 
 async function reserveCallbackPort(): Promise<number> {
   const server = Bun.serve({
@@ -42,23 +40,6 @@ async function reserveCallbackPort(): Promise<number> {
   server.stop(true)
   return port
 }
-
-beforeAll(() =>
-  runtime.run(async () => {
-    originalOAuthCallbackPort = process.env.SYNERGY_OAUTH_CALLBACK_PORT
-    process.env.SYNERGY_OAUTH_CALLBACK_PORT = String(await reserveCallbackPort())
-  }),
-)
-
-afterAll(() =>
-  runtime.run(() => {
-    if (originalOAuthCallbackPort === undefined) {
-      delete process.env.SYNERGY_OAUTH_CALLBACK_PORT
-      return
-    }
-    process.env.SYNERGY_OAUTH_CALLBACK_PORT = originalOAuthCallbackPort
-  }),
-)
 
 function dispatchCallback(path: string): Response {
   return McpOAuthCallback.handleRequest(new Request(`http://127.0.0.1:${getOAuthCallbackPort()}${path}`))
@@ -115,7 +96,7 @@ describe.serial("McpOAuthProvider", () => {
       const metadata = provider.clientMetadata
 
       expect(metadata.redirect_uris).toEqual([provider.redirectUrl])
-      expect(metadata.client_name).toBe("Holos Synergy")
+      expect(metadata.client_name).toBe("Synergy")
       expect(metadata.client_uri).toBe("https://synergy.holosai.io")
       expect(metadata.grant_types).toContain("authorization_code")
       expect(metadata.grant_types).toContain("refresh_token")

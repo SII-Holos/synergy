@@ -81,7 +81,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   get clientMetadata(): OAuthClientMetadata {
     return {
       redirect_uris: [this.redirectUrl],
-      client_name: "Holos Synergy",
+      client_name: "Synergy",
       client_uri: "https://synergy.holosai.io",
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],

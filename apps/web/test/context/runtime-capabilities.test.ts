@@ -141,7 +141,7 @@ describe("runtime capabilities", () => {
     const capabilities = createRuntimeCapabilities(async () => snapshot("mcp", "library", "agenda"))
     await capabilities.load()
     expect(runtimeFeatureAvailable("settings", "mcp", capabilities.has)).toBe(true)
-    expect(runtimeFeatureAvailable("settings", "account", capabilities.has)).toBe(false)
+    expect(runtimeFeatureAvailable("settings", "channels", capabilities.has)).toBe(false)
     expect(runtimeFeatureAvailable("settings", "permissions", capabilities.has)).toBe(true)
     expect(runtimeFeatureAvailable("settings", "voice", capabilities.has)).toBe(false)
     expect(runtimeFeatureAvailable("navigation", "library", capabilities.has)).toBe(true)

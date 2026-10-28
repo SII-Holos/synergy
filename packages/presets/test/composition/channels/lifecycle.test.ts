@@ -19,11 +19,11 @@ import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionEndpoint } from "@ericsanchezok/synergy-harness/session/endpoint"
 import { channelFeishu } from "@ericsanchezok/synergy-channel-feishu/component"
 import { FeishuProvider } from "@ericsanchezok/synergy-channel-feishu/channel/provider/feishu"
-import { ClarusProvider } from "@ericsanchezok/synergy-channel-clarus/channel/provider/clarus"
+
 import { Scope } from "@ericsanchezok/synergy-harness/scope"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
-import { FakeNativeTunnelPort } from "../../../../channel-clarus/test/channel/clarus-fixture"
+
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "./runtime"
 const runtime = await testRuntime({ register: () => channelFeishu().register() })
@@ -312,116 +312,6 @@ describe("Channel provider lifecycle capability", () => {
       expect(await inHome(() => Channel.status())).toMatchObject({
         [`${type}:account`]: { status: "connecting" },
       })
-    }))
-
-  test("real ClarusProvider reconnects after transport replacement during initial subscription", () =>
-    runtime.run(async () => {
-      const originalFetch = globalThis.fetch
-      const fake = new FakeNativeTunnelPort()
-      fake.setAgentID("account")
-      let transportStatus: "connected" | "disconnected" = "connected"
-      let generation = 1
-      const provider = new ClarusProvider({
-        auth: {
-          getStoredCredential: async () => ({
-            agentId: "account",
-            agentSecret: "secret",
-            maskedSecret: "test-secret",
-          }),
-          getCredentialOrThrow: async () => ({
-            agentId: "account",
-            agentSecret: "secret",
-            maskedSecret: "test-secret",
-          }),
-        },
-        runtime: {
-          status: async () => ({ status: transportStatus }),
-          getNativeIdentity: async () => ({
-            agentID: "account",
-            sessionID: `session-${generation}`,
-            generation,
-            epoch: generation,
-          }),
-          getNativeTunnel: async () => fake,
-        },
-      })
-      Channel.registerProvider(provider)
-      ConfigRuntime.current = mock(async () => ({
-        channel: {
-          clarus: {
-            type: "clarus",
-            accounts: { account: { enabled: true, apiUrl: "https://clarus-api.test" } },
-          },
-        },
-      })) as typeof ConfigRuntime.current
-      globalThis.fetch = Object.assign(
-        mock(async (input: RequestInfo | URL) => {
-          const request = input instanceof Request ? input : new Request(input)
-          const status = new URL(request.url).searchParams.get("status")
-          return new Response(
-            JSON.stringify({
-              code: 0,
-              data: {
-                items: status === "active" ? [{ project_id: "project-a", title: "Project A", status: "active" }] : [],
-                next_cursor: null,
-              },
-            }),
-            { status: 200, headers: { "content-type": "application/json" } },
-          )
-        }),
-        { preconnect: originalFetch.preconnect },
-      )
-
-      try {
-        await inHome(async () => {
-          await Channel.reload()
-          await Channel.init()
-        })
-        await waitFor(() => fake.pending.size === 1)
-
-        transportStatus = "disconnected"
-        await inHome(() =>
-          fake.emitConnection({
-            type: "disconnected",
-            agentID: "account",
-            sessionID: "session-1",
-            generation: 1,
-            epoch: 1,
-            reason: "transport replaced during initial subscription",
-          }),
-        )
-        await waitFor(
-          async () => (await inHome(() => Channel.status()))["clarus:account"]?.status === "waiting_for_transport",
-        )
-
-        generation = 2
-        fake.setGeneration(2)
-        fake.setEpoch(2)
-        transportStatus = "connected"
-        await inHome(() =>
-          fake.emitConnection({
-            type: "connected",
-            agentID: "account",
-            sessionID: "session-2",
-            generation: 2,
-            epoch: 2,
-          }),
-        )
-        await waitFor(() => fake.pending.size === 2)
-        await inHome(() => {
-          for (const requestID of [...fake.pending.keys()]) {
-            fake.fulfill(requestID, {
-              type: "clarus.project.subscribed",
-              requestID,
-              payload: { project_id: "project-a", subscribed: true },
-            })
-          }
-        })
-
-        await waitFor(async () => (await inHome(() => Channel.status()))["clarus:account"]?.status === "connected")
-      } finally {
-        globalThis.fetch = originalFetch
-      }
     }))
 
   test("disabled accounts are not connected", () =>

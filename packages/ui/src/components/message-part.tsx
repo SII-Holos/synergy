@@ -787,7 +787,7 @@ function getToolDescription(tool: string, input: any = {}, metadata: any = {}): 
           }
       }
     }
-    // research — holos-research plugin
+    // Research plugin
     case "research_init": {
       const args: string[] = []
       pushArg(args, input.venue)
@@ -964,14 +964,6 @@ function getToolDescription(tool: string, input: any = {}, metadata: any = {}): 
       return {
         title: TOOL_TITLE_DESC["email_send"],
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
-      }
-    case "clarus_submit_task_result":
-      return {
-        title: TOOL_TITLE_DESC["clarus_submit_task_result"],
-      }
-    case "clarus_extend_task":
-      return {
-        title: TOOL_TITLE_DESC["clarus_extend_task"],
       }
     case "github_deliver_fix":
       return {

@@ -14,7 +14,7 @@ export const StartCommand = cmd({
     withNetworkOptions(yargs).option("non-interactive", {
       type: "boolean",
       default: false,
-      describe: "skip Holos login prompts before starting the background service",
+      describe: "skip initial configuration prompts before starting the background service",
     }),
   handler: async (args) => {
     const status = await Daemon.status()

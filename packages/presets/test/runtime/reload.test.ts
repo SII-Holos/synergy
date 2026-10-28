@@ -499,7 +499,8 @@ describe("runtime.reload", () => {
           expect(result.changedFields).toEqual(["channel"])
           expect(result.cascaded).toContain("channel")
           expect(channelReload).toHaveBeenCalledTimes(1)
-          expect(Channel.getProvider("clarus")).toBeDefined()
+          expect(Channel.getProvider("clarus")).toBeUndefined()
+          expect(Channel.getProvider("github")).toBeDefined()
           const reloadedEvent = events.find((event) => event.payload?.type === RuntimeReload.Event.Reloaded.type)
           expect(reloadedEvent?.payload?.properties?.changedFields).toEqual(["channel"])
         },
@@ -514,7 +515,8 @@ describe("runtime.reload", () => {
         fn: async () => {
           await RuntimeReload.reload({ targets: ["channel"], scope: "global", reason: "provider registration" })
 
-          expect(Channel.getProvider("clarus")).toBeDefined()
+          expect(Channel.getProvider("clarus")).toBeUndefined()
+          expect(Channel.getProvider("github")).toBeDefined()
           expect(Channel.getProvider("feishu")).toBeDefined()
         },
       })

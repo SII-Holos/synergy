@@ -1,3 +1,0 @@
-[test]
-preload = ["../harness/test/support/preload.ts"]
-timeout = 10000

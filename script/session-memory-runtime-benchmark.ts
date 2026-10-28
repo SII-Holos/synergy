@@ -606,7 +606,6 @@ function benchmarkConfig(mockUrl: string, mcpPath: string) {
     project_doc_max_bytes: 0,
     instructions: [],
     sandbox: { enabled: false },
-    holos: { enabled: false },
     library: {
       memory: { enabled: false },
       experience: { encode: false, retrieve: false },

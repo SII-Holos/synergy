@@ -14,14 +14,12 @@ import { note } from "@ericsanchezok/synergy-note/component"
 import { agenda } from "@ericsanchezok/synergy-agenda/component"
 import { anima } from "@ericsanchezok/synergy-anima/component"
 import { boss } from "@ericsanchezok/synergy-boss/component"
-import { holos } from "@ericsanchezok/synergy-holos/component"
 import { mcp } from "@ericsanchezok/synergy-mcp/component"
 import { plugins } from "@ericsanchezok/synergy-plugin-host/component"
 
 const owners = {
   library: "20261012-library-config-owner",
   anima: "20261012-anima-config-owner",
-  holos: "20261012-holos-config-owner",
   "mcp-config": "20261012-mcp-execution-config-owner",
   "boss-config": "20261012-boss-execution-config-owner",
   "plugin-config": "20261012-plugin-config-owner",
@@ -47,7 +45,6 @@ for (const sourceFirst of [false, true]) {
         agenda(),
         anima(),
         boss(),
-        holos(),
         plugins(),
         mcp(),
       ])
@@ -91,7 +88,7 @@ for (const sourceFirst of [false, true]) {
         const value = await Config.globalRaw()
         expect(value.library?.memory?.enabled).toBe(false)
         expect(value.anima?.enabled).toBe(false)
-        expect(value.holos?.enabled).toBe(false)
+        expect(value).not.toHaveProperty("holos")
         expect(value.mcpDefaults?.callTimeout).toBe(4567)
         expect(value.boss?.enabled).toBe(false)
         expect(value.pluginConfig?.inspire).toEqual({ enable: false, future: { retained: true } })

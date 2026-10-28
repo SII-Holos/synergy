@@ -586,14 +586,6 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
       account.variant = entry.model ? entry.variant || undefined : undefined
     }
   }
-  const clarus = "clarus" in newChannel && newChannel.clarus?.type === "clarus" ? newChannel.clarus : undefined
-  if (clarus) {
-    for (const entry of state.channels.clarusAccounts) {
-      const account = clarus.accounts[entry.key]
-      if (!account) continue
-      account.enabled = entry.enabled
-    }
-  }
   const github = "github" in newChannel && newChannel.github?.type === "github" ? newChannel.github : undefined
   if (github) {
     for (const entry of state.channels.githubAccounts) {

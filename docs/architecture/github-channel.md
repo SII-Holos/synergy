@@ -1,6 +1,6 @@
 # GitHub Channel
 
-The GitHub channel turns a GitHub account (a GitHub App installation) into a Synergy Channel, like Feishu or Clarus. It polls the GitHub REST API outbound using GitHub App installation tokens, synthesizes repository events into conversation messages, and runs an agentic loop that reviews pull requests, answers questions, and fixes issues — posting results back as GitHub comments.
+The GitHub channel turns a GitHub account (a GitHub App installation) into a Synergy Channel, like Feishu. It polls the GitHub REST API outbound using GitHub App installation tokens, synthesizes repository events into conversation messages, and runs an agentic loop that reviews pull requests, answers questions, and fixes issues — posting results back as GitHub comments.
 
 The channel reuses the standard Channel runtime: providers register through `Channel.registerProvider()`, inbound events flow through `ChannelHost.conversations.receive()`, sessions are persisted per issue/PR thread under the Channel navigation section, and replies are delivered by `ChannelOutbound` through the provider's `replyMessage`/`pushMessage`.
 

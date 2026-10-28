@@ -18,7 +18,6 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 | `lsp` | Language server connections | (none) |
 | `formatter` | Code formatter definitions | (none) |
 | `watcher` | File watcher configuration | (none) |
-| `holos` | Holos runtime connection | (none) |
 | `all` | Everything above | All cascades |
 
 ## Which target for each change
@@ -44,7 +43,6 @@ After writing config changes, use `runtime_reload` to apply without restarting.
 | Custom command (.md) | `command` | |
 | Experimental config | `config` | Detects `experimental` field → cascades to `tool_registry` |
 | `enabled_providers` / `disabled_providers` | `config` | Cascades to `provider` → `agent` |
-| Holos config | `config` or `holos` | Config detects `holos` field → cascades |
 | `timeout` in runtime | `config` | Triggers `provider` cascade |
 | Multiple unrelated changes | `all` | Safe fallback |
 
@@ -63,7 +61,6 @@ When you reload `config`, Synergy diffs the previous and reloaded config and cas
 | `mcp` | `mcp` → `command` |
 | `plugin` | `plugin` → `tool_registry` |
 | `channel` | `channel` |
-| `holos` | `holos` |
 | `lsp` | `lsp` |
 | `formatter` | `formatter` |
 | `watcher` | `watcher` |

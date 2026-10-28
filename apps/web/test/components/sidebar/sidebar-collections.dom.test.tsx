@@ -84,7 +84,6 @@ beforeAll(async () => {
     })
     export const useGlobalSync = () => ({data:{scope:[],provider:{all:[],authHealth:{}}},sessionStatus:{},permissions:{},questions:{},cortex:[]})
     export const useGlobalSDK = () => ({url:"fixture",connected:()=>true,capabilities:{has:id=>query.get("core")!=="1"||["local-runtime","plugin-host"].includes(id),load:async()=>{}},event:{listen:()=>()=>{}},drafts:{hasDraftSession:()=>false},client:{global:{nav:{recent:async({tag})=>({data:{items:[entry("tag-result","home","History matching "+tag)],total:1,nextCursor:null}})}}}})
-    export const useHolos = () => ({loaded:query.get("holos")==="1",state:{social:{},identity:{loggedIn:false},connection:{status:"disabled"}}})
     export const useProductUpdate = () => ({notice:()=>({visible:false})})
     export const usePlatform = () => ({platform:"web"})
     export const useTheme = () => ({mode:()=>query.get("mode")||"dark"})
@@ -95,7 +94,6 @@ beforeAll(async () => {
     export const usePrompt = () => ({})
     export const useServer = () => ({url:"fixture"})
     export const useConfirm = () => async()=>false
-    export const useHolosAgentActions = () => ({})
     export const useProjectDirectoryPicker = () => ({pickProjectDirectories:async()=>undefined})
     export const useExtensionOutlet = () => {}
     export const DialogScopeEdit = () => null
@@ -125,7 +123,7 @@ beforeAll(async () => {
     const i18n=setupI18n({locale,messages:{en,"zh-CN":zh}})
     window.sidebarI18n=i18n
     const selector = new URLSearchParams(location.search).get("selector")
-    render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar onSearchOpen={()=>{}} onCreateProject={createProject}/>{selector&&<ProjectTaskButton label="No project" disabled={selector==="disabled"} uploading={selector==="uploading"}/>} {creating()&&<div role="dialog" aria-label="New project">Project creation</div>}</div>}/></Router></I18nProvider>,document.getElementById("root"))
+    render(()=> <I18nProvider i18n={i18n}><Router><Route path="*all" component={()=> <div style="height:100vh"><Sidebar integrated={new URLSearchParams(location.search).has("integrated")} onSearchOpen={()=>{}} onCreateProject={createProject}/>{selector&&<ProjectTaskButton label="No project" disabled={selector==="disabled"} uploading={selector==="uploading"}/>} {creating()&&<div role="dialog" aria-label="New project">Project creation</div>}</div>}/></Router></I18nProvider>,document.getElementById("root"))
   `,
   )
   // Keep the real registry and built-in ordering without loading page implementations.
@@ -140,7 +138,6 @@ beforeAll(async () => {
     "@/context/layout",
     "@/context/global-sync",
     "@/context/global-sdk",
-    "@/context/holos",
     "@/context/platform",
     "@/context/command",
     "@/context/sdk",
@@ -148,7 +145,6 @@ beforeAll(async () => {
     "@/context/prompt",
     "@/context/server",
     "@/context/product-update",
-    "@/components/holos/agent-actions",
     "@/components/dialog/project-directory-picker",
     "@/components/dialog/dialog-scope-edit",
     "../dialog/dialog-create-project",
@@ -262,7 +258,7 @@ function recordProjectMotion() {
           const row = document.querySelector('[data-scope-id="project-one"] .sb-project-row')!
           const list = document.querySelector(".sb-scroll")!
           const heading = document.querySelector(".sb-projects-header-actions")!
-          const account = document.querySelector(".sidebar-account-hub")!
+          const account = document.querySelector(".sb-space-footer")!
           const frames: Array<{ top: number; scroll: number; heading: number; account: number; transforms: string[] }> =
             []
           const started = performance.now()
@@ -543,13 +539,10 @@ test("a core composition retains local navigation without optional channel surfa
   expect(errors).toEqual([])
 })
 
-test("signed-out account menus retain local settings with and without Holos", async () => {
+test("personal-space menus retain local settings in core and full compositions", async () => {
   for (const core of [false, true]) {
     await open("?locale=en" + (core ? "&core=1" : ""))
-    await page
-      .locator(".sidebar-account-hub > button, .sidebar-account-hub button[aria-haspopup='menu']")
-      .first()
-      .click()
+    await page.getByRole("button", { name: "Current space", exact: true }).click()
     const menu = page.getByRole("menu").first()
     await menu.waitFor({ state: "visible" })
     for (const name of ["Settings", "Providers", "Repository"]) {
@@ -557,32 +550,44 @@ test("signed-out account menus retain local settings with and without Holos", as
       expect(await item.isVisible()).toBe(true)
       expect(await item.isEnabled()).toBe(true)
     }
-    expect(await menu.getByRole("menuitem", { name: "Create Agent", exact: true }).count()).toBe(core ? 0 : 1)
-    expect(await menu.getByRole("menuitem", { name: "Import Agent", exact: true }).count()).toBe(core ? 0 : 1)
+    expect(await menu.getByRole("menuitem", { name: "Create Agent", exact: true }).count()).toBe(0)
+    expect(await menu.getByRole("menuitem", { name: "Import Agent", exact: true }).count()).toBe(0)
     expect(errors).toEqual([])
   }
 })
 
-// The account row derives its name and description from translated labels. If
-// those labels are evaluated once while the component is created, the row keeps
-// the mount-time language after a switch while every other string updates. Both
-// assertions therefore read the row and a neighbouring control after the same
-// in-page activation, without a reload.
-test("the account row follows a locale switch without remounting", async () => {
-  await open("?locale=en&holos=1")
-  const subtitle = page.locator(".sidebar-account-subtitle")
-  await subtitle.waitFor()
-  expect(await page.locator(".sidebar-account-name").innerText()).toBe("HOLOS account")
-  expect(await subtitle.innerText()).toBe("Not signed in · local workspace")
-  expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
+test("sidebar headers retain only navigation controls in standalone and integrated layouts", async () => {
+  for (const integrated of [false, true]) {
+    await open("?locale=en" + (integrated ? "&integrated=1" : ""))
+    const header = page.locator(integrated ? ".sb-navigation" : ".sb-header")
+    expect(await header.locator("img").count()).toBe(0)
+    expect(await header.innerText()).toBe("")
+    const collapse = header.getByRole("button", { name: "Collapse sidebar", exact: true })
+    const search = header.getByRole("button", { name: "Search sessions", exact: true })
+    expect((await collapse.boundingBox())!.x).toBeLessThan((await search.boundingBox())!.x)
+    await collapse.click()
+    expect(await header.getByRole("button", { name: "Expand sidebar", exact: true }).isVisible()).toBe(true)
+    expect(await header.locator("img").count()).toBe(0)
+    await page.getByRole("button", { name: "Current space", exact: true }).click()
+    await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    expect(errors).toEqual([])
+  }
+})
 
+test("the personal-space row follows a locale switch without remounting", async () => {
+  await open("?locale=en")
+  const name = page.locator(".space-switcher-name")
+  await name.waitFor()
+  const row = await name.elementHandle()
+  expect(await name.innerText()).toBe("Personal space")
+  expect(await page.getByRole("button", { name: "Search sessions", exact: true }).count()).toBe(1)
   await page.evaluate(() =>
     (window as unknown as { sidebarI18n: { activate(locale: string): void } }).sidebarI18n.activate("zh-CN"),
   )
-  await page.waitForFunction(
-    () => document.querySelector(".sidebar-account-subtitle")?.textContent === "未登录 · 本地工作台",
-  )
-  expect(await page.locator(".sidebar-account-name").innerText()).toBe("HOLOS 账号")
+  await page.waitForFunction(() => document.querySelector(".space-switcher-name")?.textContent === "个人空间")
+  expect(await row!.evaluate((element) => element.isConnected)).toBe(true)
+  expect(await page.getByRole("button", { name: "当前空间", exact: true }).count()).toBe(1)
   expect(await page.getByRole("button", { name: "搜索会话", exact: true }).count()).toBe(1)
   expect(errors).toEqual([])
 })
@@ -595,7 +600,7 @@ test("tools precede tags and vertical categories while the list scrolls independ
       tools: rect(".sb-globals").bottom,
       tags: rect(".sb-session-tag-filter").bottom,
       recent: rect(".sb-recent-header").top,
-      account: rect(".sidebar-account-hub").top,
+      account: rect(".sb-space-footer").top,
     }
   })
   expect(before.tools).toBeLessThan(before.tags)
@@ -608,7 +613,7 @@ test("tools precede tags and vertical categories while the list scrolls independ
   expect(await page.locator(".sb-globals").evaluate((element) => element.getBoundingClientRect().bottom)).toBe(
     before.tools,
   )
-  expect(await page.locator(".sidebar-account-hub").evaluate((element) => element.getBoundingClientRect().top)).toBe(
+  expect(await page.locator(".sb-space-footer").evaluate((element) => element.getBoundingClientRect().top)).toBe(
     before.account,
   )
   expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBe(800)

@@ -8,7 +8,7 @@ describe("MigrationRegistry", () => {
   test("registers all domains", () =>
     runtime.run(() => {
       const domainCount = MigrationRegistry.list().size
-      expect(domainCount).toBe(37)
+      expect(domainCount).toBe(35)
       expect(MigrationRegistry.list().get("session")).toContainEqual(
         expect.objectContaining({
           domain: "rollout-journal",
@@ -30,11 +30,9 @@ describe("MigrationRegistry", () => {
         "boss-config",
         "browser",
         "channel",
-        "channel-clarus",
         "config",
         "digital-twin",
         "environment",
-        "holos",
         "installation",
         "lattice",
         "lattice-session",

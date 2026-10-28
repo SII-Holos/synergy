@@ -91,8 +91,6 @@ const toolIcons: Record<string, string> = {
   channel_reaction_only: getSemanticIcon("channels.main"),
   email_send: getSemanticIcon("email.main"),
   email_read: getSemanticIcon("email.main"),
-  clarus_submit_task_result: "send",
-  clarus_extend_task: "timer-reset",
   agent_config: getSemanticIcon("agent.identity"),
   runtime_reload: "repeat-2",
   agenda_schedule: "calendar-clock",

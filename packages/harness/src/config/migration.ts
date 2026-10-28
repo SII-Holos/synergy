@@ -19,6 +19,8 @@ import { ProviderProfile } from "../provider/profile"
 import { LegacyExecutionConfig } from "./legacy-execution"
 import { retireFeaturePreferences } from "./feature-migration"
 import { Features } from "../lifecycle/features"
+import { identityRetirement } from "./identity-retirement"
+import { retireNetworkCredentials } from "../provider/auth-retirement"
 
 const log = Log.create({ service: "config.migration" })
 
@@ -471,6 +473,17 @@ export async function migrateExecutionConfigFile(filepath: string): Promise<bool
 }
 
 export const migrations: Migration[] = [
+  identityRetirement,
+  {
+    id: "20261026-retire-network-credentials",
+    description: "Remove retired identity credentials while retaining other providers",
+    scope: "global",
+    execution: "startup",
+    async up(progress) {
+      await retireNetworkCredentials()
+      progress(1, 1)
+    },
+  },
   {
     scope: "global",
     execution: "startup",
@@ -639,6 +652,7 @@ export const migrations: Migration[] = [
   {
     scope: "global",
     id: "20260625-provider-auth-v2",
+    dependsOn: ["20261026-retire-network-credentials"],
     description: "Migrate provider credentials to the v2 provider auth store",
     async up(progress) {
       progress(0, 1)
@@ -677,7 +691,9 @@ export const migrations: Migration[] = [
 ]
 // An exclusive configuration source replaces files, not provider credentials.
 // Retain the credential upgrade under its existing durable domain and ID.
-const hostSourceMigrations = migrations.filter((migration) => migration.id === "20260625-provider-auth-v2")
+const hostSourceMigrations = migrations.filter((migration) =>
+  ["20260625-provider-auth-v2", "20261026-retire-network-credentials"].includes(migration.id),
+)
 
 export function registerConfigMigrations() {
   if (ConfigSource.get()) {

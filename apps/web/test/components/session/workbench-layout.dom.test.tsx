@@ -222,10 +222,10 @@ async function bounds(selector: string) {
 
 test("compact input reserves responsive bottom space in the dock and available height", async () => {
   for (const size of [
-    { width: 1440, height: 900, gap: 24 },
-    { width: 1024, height: 600, gap: 16 },
-    { width: 768, height: 812, gap: 24 },
-    { width: 375, height: 812, gap: 12 },
+    { width: 1440, height: 900, gap: 12 },
+    { width: 1024, height: 600, gap: 8 },
+    { width: 768, height: 812, gap: 12 },
+    { width: 375, height: 812, gap: 6 },
   ]) {
     await open(size.width, size.height)
     const input = await bounds(".prompt-input-shell")

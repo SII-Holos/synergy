@@ -18,7 +18,7 @@ Test infrastructure changes must follow [the stability workflow](../testing-guid
    - HTTP route, OpenAPI, SDK, or Web API client: `change-server-api`
    - durable state, schema, index, or migration: `change-persistence`
    - capabilities, permissions, control profiles, enforcement, or sandboxing: `change-execution-boundaries`
-   - Channel targets, providers, managed Projects, or Native Clarus: `change-channel-runtime`
+   - Channel targets, providers, managed Projects: `change-channel-runtime`
    - Browser pages/identities, authorization or Desktop native presentation: `change-browser-runtime`
    - native Computer observation, action admission, image delivery or Cua packaging: `change-computer-runtime`
    - plugin manifest, installation, runtime, bridge, marketplace, or UI host: `change-plugin-runtime`

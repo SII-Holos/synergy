@@ -31,7 +31,6 @@ describe("dev orchestrator planner", () => {
     expect(plan.processes[0]?.waitTimeoutMs).toBeNull()
     expect(plan.processes[1]?.env).toMatchObject({
       VITE_SYNERGY_SERVER_URL: "http://127.0.0.1:4096",
-      VITE_SYNERGY_CALLBACK_URL: "http://127.0.0.1:4096/holos/callback",
     })
     expect(plan.processes[1]?.command).toContain("--strictPort")
     expect(plan.processes[0]?.env?.SYNERGY_DESKTOP_BROWSER).toBeUndefined()

@@ -1058,7 +1058,7 @@ test("conversation display and notification preferences survive a production-hos
     await page.goto(conversation.url)
     await page.getByText("Answer 1", { exact: true }).waitFor()
     async function settings() {
-      await page.locator(".sidebar-account-trigger").click()
+      await page.getByRole("button", { name: "Current space", exact: true }).click()
       await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
       const dialog = page.getByRole("dialog", { name: "Settings", exact: true })
       await dialog.waitFor()

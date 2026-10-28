@@ -710,10 +710,6 @@ export namespace Server {
 
             if (isLoopbackOrigin(input)) return input
 
-            // *.holosai.io (https only)
-            if (/^https:\/\/([a-z0-9-]+\.)*holosai\.io$/.test(input)) {
-              return input
-            }
             if (instanceState._corsWhitelist.has(input)) {
               return input
             }

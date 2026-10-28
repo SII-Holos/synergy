@@ -258,7 +258,6 @@ export type GithubAccountToggle = {
 
 export type ChannelSettings = {
   feishuAccounts: AccountToggle[]
-  clarusAccounts: BasicAccountToggle[]
   githubAccounts: GithubAccountToggle[]
 }
 
@@ -579,7 +578,6 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
     },
     channels: {
       feishuAccounts: [],
-      clarusAccounts: [],
       githubAccounts: [],
     },
     github: {

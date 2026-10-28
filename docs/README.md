@@ -25,7 +25,7 @@ Product documents explain what users work with and how the major capabilities re
 - [Knowledge](product/knowledge.md) — Library memories and experiences, Notes, Blueprints, recall, and search
 - [Activity and statistics](product/activity-and-statistics.md) — usage, tokens, costs, agents, tools, code changes, trends, and derived-data freshness
 - [Automation](product/automation.md) — Agenda triggers, session modes, delivery, recovery, and failure behavior
-- [Connections](product/connections.md) — providers, MCP, Channels, Email, Holos, and plugins
+- [Connections](product/connections.md) — providers, MCP, Channels, Email, and plugins
 - [Browser workspace](product/browser.md) — Desktop pages, persistent identities, permissions and recovery
 - [Web product contract](../apps/web/PRODUCT.md) — durable interaction, visual, and accessibility rules
 

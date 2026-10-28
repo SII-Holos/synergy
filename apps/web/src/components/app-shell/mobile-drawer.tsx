@@ -9,8 +9,6 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useNotification } from "@/context/notification"
 import { useWorkbenchPanels } from "@/context/workbench"
-import { holosLogoPath } from "@/utils/brand-assets"
-import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { getScopeLabel, isHomeScope, resolveProjectScope } from "@/utils/scope"
 import { isWorkingStatus } from "@/utils/session-status"
 import { ActiveZone } from "@/components/scopes/active-zone"
@@ -27,19 +25,12 @@ import { appShell, sidebar } from "@/locales/messages"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { SettingsDialog } from "@/components/settings"
 import { useProjectDirectoryPicker } from "@/components/dialog/project-directory-picker"
-import {
-  MobileDrawerAddProjectButton,
-  MobileDrawerAccountRow,
-  MobileDrawerRecent,
-  MobileDrawerSettingsButton,
-  type MobileDrawerRecentVisual,
-} from "./mobile-drawer-root"
+import { MobileDrawerAddProjectButton, MobileDrawerRecent, type MobileDrawerRecentVisual } from "./mobile-drawer-root"
 import { resolveSessionVisualState } from "@/components/sidebar/session-visual-state"
-import { resolveAccountIdentity, type AccountIdentityLabels } from "@/components/holos/account-identity"
-import { useHolos } from "@/context/holos"
-import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { useNewTaskNavigation } from "@/components/session/welcome/context"
 import { Tabs } from "@ericsanchezok/synergy-ui/tabs"
+import { SpaceSwitcher } from "@/components/sidebar/space-switcher"
+import { usePlatform } from "@/context/platform"
 import { MobileDrawerDialog } from "./mobile-drawer-dialog"
 
 export function MobileDrawer(props: { onSearchOpen: () => void }) {
@@ -48,7 +39,6 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
   const newTask = useNewTaskNavigation(navigate)
   const params = useParams()
   const notification = useNotification()
-  const theme = useTheme()
   const { _ } = useLingui()
 
   const [drilldown, setDrilldown] = createSignal<LocalScope | null>(null)
@@ -80,19 +70,6 @@ export function MobileDrawer(props: { onSearchOpen: () => void }) {
       onClosed={() => setDrilldown(null)}
     >
       <div class="mobile-drawer-header safe-top">
-        <A href="/" class="mobile-drawer-brand" onClick={close}>
-          <img
-            src={holosLogoPath(theme.mode())}
-            alt={_({ id: "brand.logo.alt", message: "Holos" })}
-            class="size-5 shrink-0"
-          />
-          <div class="flex flex-col">
-            <span class="mobile-drawer-label text-text-strong">{_(sidebar.logoAlt)}</span>
-            <span class="text-10-regular text-text-weak">
-              {_({ id: "brand.workbench.synergy", message: "Synergy workspace" })}
-            </span>
-          </div>
-        </A>
         <button
           type="button"
           data-action="search"
@@ -176,38 +153,14 @@ function ScopeListView(props: {
   const layout = useLayout()
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
-  const holos = useHolos()
   const navigate = useNavigate()
   const location = useLocation()
   const params = useParams()
   const workbench = useWorkbenchPanels()
   const { _ } = useLingui()
   const dialog = useDialog()
+  const platform = usePlatform()
   const { pickProjectDirectories } = useProjectDirectoryPicker()
-  const accountLabels = (): AccountIdentityLabels => ({
-    product: _({ id: "brand.workbench.synergy", message: "Synergy workspace" }),
-    holosAccount: _({ id: "sidebar.account.holos", message: "HOLOS account" }),
-    loading: _(sidebar.loadingIdentity),
-    signedOut: _({ id: "sidebar.account.signedOut", message: "Not signed in · local workspace" }),
-    profileUnavailable: _(sidebar.profileUnavailable),
-    connectedToHolos: _(sidebar.connectedToHolos),
-    connecting: _(sidebar.connecting),
-    failed: _(sidebar.connectionFailed),
-    disconnected: _(sidebar.disconnected),
-    disabled: _(sidebar.disabled),
-    unavailable: _(sidebar.notAvailable),
-  })
-  // Derived strings are produced inside the reactive accessor; building them
-  // once at mount pins the mount-time locale and the row stops following a
-  // locale switch while the rest of the drawer updates.
-  const account = () =>
-    resolveAccountIdentity({
-      hasHolos: globalSDK.capabilities.has("holos"),
-      loaded: holos.loaded,
-      state: holos.state,
-      labels: accountLabels(),
-    })
-  const accountAvatar = () => account().avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon)
   const toolLabel = (id: DrawerDestinationID | DrawerPanelID) => {
     if (id === "agenda") return _(appShell.agenda)
     if (id === "library") return _(appShell.library)
@@ -258,7 +211,7 @@ function ScopeListView(props: {
     void addProjects()
   }
 
-  const openSettings = (initialTab: "general" | "account") => {
+  const openSettings = (initialTab: "general" | "providers") => {
     dialog.push(() => <SettingsDialog initialTab={initialTab} />)
   }
 
@@ -429,13 +382,11 @@ function ScopeListView(props: {
         </div>
       </div>
       <div class="mobile-drawer-account">
-        <MobileDrawerAccountRow
-          name={account().name}
-          description={account().description}
-          avatarSrc={accountAvatar()}
-          onClick={globalSDK.capabilities.has("holos") ? () => openSettings("account") : undefined}
+        <SpaceSwitcher
+          expanded
+          onSettings={openSettings}
+          onRepository={() => platform.openLink("https://github.com/SII-Holos/synergy")}
         />
-        <MobileDrawerSettingsButton label={_(sidebar.settings)} onClick={() => openSettings("general")} />
       </div>
     </div>
   )

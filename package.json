@@ -107,8 +107,6 @@
       "packages/channel-feishu",
       "packages/github",
       "packages/channel-github",
-      "packages/holos",
-      "packages/channel-clarus",
       "packages/email",
       "packages/agenda-blueprint",
       "packages/agenda-light-loop",

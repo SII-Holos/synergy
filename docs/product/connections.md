@@ -1,6 +1,6 @@
 # Connections
 
-Synergy can connect to model and tool services through providers and MCP, messaging systems through Channels, mail servers through SMTP and IMAP, and the Holos agent network. These boundaries serve different purposes and should not be conflated.
+Synergy can connect to model and tool services through providers and MCP, messaging systems through Channels, mail servers through SMTP and IMAP. These boundaries serve different purposes and should not be conflated.
 
 ## Channels
 
@@ -130,57 +130,9 @@ Because the Feishu streaming card is created before the model runs, the reaction
 
 `SessionInvoke` propagates channel delivery metadata through continuation steps. When a steer message injected by Cortex (or another source) carries `channelPush`, `channelReply`, and `channelReplyToMessageId`, every assistant message produced in that continuation round inherits them. An unrelated user message that starts a new task root does not inherit the delivery metadata. If one continuation contains conflicting reply anchors, it keeps reply intent but omits the target so outbound delivery fails closed instead of replying to the wrong topic.
 
-### Native Clarus tasks
-
-Clarus is the built-in Project and Task provider and does not emit conversation ingress. A Holos identity creates its matching Channel account disabled by default; existing active identities receive the same account through the Holos migration runner. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus reports `waiting_for_transport` and waits without failing the Channel start.
-
-Project refresh discovers all visible non-archived remote Projects and provisions one deterministic managed Project Scope per `(provider, account, external Project)` identity, including Projects that currently have no Tasks. These are normal Project Scopes with files, Git, LSP, configuration, and Sessions, but the Sidebar shows them only under their Channel account rather than duplicating them in the generic Projects section.
-
-Remote Project state is displayed separately as active, paused, stale, or archived. Remote pause does not interrupt already accepted local work. Remote archive stops new assignment delivery but preserves the managed Scope, files, Sessions, task state, and result history. Active or remotely paused managed Projects cannot be locally archived; stale or remote-archived Projects use the normal local archive workflow.
-
-Only a Clarus task assignment creates or wakes a Session. One external Task ID has one stable unattended Session in its managed Project Scope; another run of that Task reuses the Session, while a retry represented by a new Task ID creates a new Session and preserves lineage. Clarus Task Sessions use the configured non-interactive control profile, which defaults to `autonomous`, so remote work cannot stall on an approval dialog visible only elsewhere.
-
-Task deadlines use durable Agenda guidance in the same Task Session. One hidden system-authored reminder steers the agent exactly three minutes before the current deadline, or as soon as safely possible when less than three minutes remain. It is not a visible user prompt or a second Agenda Session, and no reminder is sent after the deadline has passed. An acknowledged or authoritative extension reschedules the same reminder for the new deadline, result acknowledgement cancels it, and the standard Session Abort action stops local execution.
-
-Result submission and deadline extension persist their outbound record before dispatch. Only a request known not to have been sent can retry automatically; rejected or ambiguous requests do not. Account actions expose coalesced **Refresh Projects** and bounded, redacted diagnostics download when the provider supports them.
-
-See [Channels](../architecture/channels.md) for target identity, ownership, lifecycle, recovery, and diagnostics invariants.
-
-## Holos Identity
-
-Holos is an optional identity and agent-network layer. Synergy can create or import a Holos agent, store multiple local account credentials, select the active identity, and remove an identity from the local account store. The selected agent ID is the network identity used by the connection.
-
-The agent's public profile is read from and written to Holos. Local storage retains only the credentials and account metadata needed to reconnect; switching identities reloads the runtime around the newly active account.
-
-Authentication and network readiness are separate states. A valid saved identity can exist while its tunnel is connecting, disconnected, or failed. Product surfaces should check readiness before offering a network action rather than treating "logged in" as equivalent to "connected."
-
-## Holos Connection Lifecycle
-
-When Holos is enabled, the global runtime exchanges the active agent secret for a short-lived WebSocket token and opens an authenticated agent tunnel. Its observable states are `disabled`, `connecting`, `connected`, `disconnected`, and `failed`.
-
-The tunnel sends a heartbeat every 30 seconds and uses a 90-second missed-pong deadline. That deadline is checked inside the existing heartbeat interval; the first check after the threshold is reached closes the stale socket and enters the same bounded reconnect flow as an ordinary disconnect. Reconnection uses exponential backoff bounded at 30 seconds, stops after 50 failed attempts, and exposes a failed status rather than retrying invisibly forever.
-
-Disconnecting or losing heartbeat liveness removes the live provider. Saved account credentials, contacts, and message history remain local and are available again after reconnection. Any native Clarus request already dispatched when liveness is lost has an unknown remote result and is settled as ambiguous; mutating work must not be retried automatically.
-
-## Contacts, Reachability, and Blocking
-
-Contacts are a user-managed local address book of Holos agent IDs and display names. Adding a contact does not change the remote agent's account. A contact can be removed or marked blocked locally.
-
-Presence represents recent network reachability as `online`, `offline`, or `unknown`. It is an in-memory observation with a five-minute freshness bound, not a durable promise that an agent will accept or complete work.
-
-Inbound handling checks contact blocking before accepting a direct message. Blocking is therefore a local receive policy, while presence remains informational.
-
-## Agent Messaging
-
-Agents exchange direct messages through the authenticated Holos tunnel. Synergy stores inbound and outbound messages locally as per-contact threads.
-
-Each message records its direction, timestamp, contact, text, optional reply relationship, and source. Outbound entries progress through `sent`, `delivered`, or `failed`, retain a failure reason, and can be retried with the same message identity after connectivity returns. Removing a message or thread affects the local mailbox record.
-
-The mailbox is not a Synergy session transcript. It is network correspondence that can be surfaced to users or used to initiate other work without becoming part of an unrelated model context automatically.
-
 ## MCP and Model Providers
 
-MCP connections add external tools and resources to the agent runtime; model providers supply language and embedding models. Both are configured independently of Holos and Channels. A Holos identity does not provide model billing or API credentials, and a Channel account is not a model provider.
+MCP connections add external tools and resources to the agent runtime; model providers supply language and embedding models. Both are configured independently of Channels. A Channel account is not a model provider.
 
 Provider authentication health changes only in response to real model, usage, or model-discovery requests; Synergy does not periodically probe third-party accounts. A rejected OAuth request can refresh and retry once, with concurrent refreshes coalesced. Rate limits remain quota state, while timeouts, network failures, server failures, and unclassified forbidden responses leave credential health unchanged. A first unclassified 401 rejection places the credential in a bounded cooldown instead of marking it dead — the cooldown honors the response's retry hints capped at ten minutes, a successful request returns the credential to service immediately, and only a rejection that repeats after the cooldown elapses within a thirty-minute window marks the credential dead and requires reconnecting. When an account needs intervention, Sidebar, Providers, Usage, and related Settings surfaces present only the fact that action is required without exposing credential contents or third-party account identifiers.
 
@@ -198,11 +150,11 @@ Email is an optional direct integration configured in `110-email.jsonc`. SMTP ow
 
 `email_read` search evaluates date (`since`/`before`) and read/flag state filters on the mail server, and applies sender, subject, and body-text filters locally over a bounded newest-first window of recent mail (some servers, such as 163 Coremail, ignore IMAP header/body search keys). Results are returned newest-first, and results are flagged `truncated` when a local scan window is exhausted — narrow by date to scan older mail. Read results contain decoded text/HTML bodies plus attachment metadata (file name, size, content type); attachment contents are not downloaded. Messages larger than the 10 MB size cap return envelope data only and are flagged `truncated`.
 
-The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Holos account or Channel provider.
+The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Channel provider.
 
 ## GitHub Channel
 
-The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
+The GitHub Channel connects a GitHub App installation as a Channel (like Feishu). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
 
 - **Automatic PR review**: when `autoReview` is on, newly opened and updated pull requests are reviewed against their base, with actionable findings posted as comments.
 - **Bot summoning**: when `autoRespond` is on, comments that mention the bot handle (the GitHub App slug by default) wake the agent to answer questions about the repository or the change; newly opened issues are diagnosed and, when clearly actionable, fixed.
@@ -216,11 +168,10 @@ Agents never receive the token and cannot run `gh`, `git push`, or `git remote` 
 ## Boundaries
 
 - Channels translate external conversations and remote task assignments into canonical Synergy Sessions and managed Project Scopes.
-- Holos supplies optional network identity, reachability, contacts, and direct agent messaging.
 - MCP supplies callable external tools; providers supply models.
-- Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
+- Email supplies direct SMTP/IMAP operations and are independent of Channel endpoints.
 - GitHub is a Channel endpoint: it connects a GitHub App installation through outbound API polling (no inbound webhook), translating repository events into agentic Sessions and comments.
-- Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.
+- Local projects, sessions, configuration, Library, Notes, and provider credentials work independently of external identities.
 
 ## Testing a model account
 

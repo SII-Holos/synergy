@@ -239,10 +239,6 @@
           "reason": "UI component not rendered by the unit suite; exercised through the dev app board view"
         },
         {
-          "glob": "src/components/holos/agent-actions.tsx",
-          "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
-        },
-        {
           "glob": "src/components/lattice/lattice-config-dialog.tsx",
           "reason": "UI component not rendered by the unit suite; covered by dom/browser suites"
         },
@@ -585,10 +581,6 @@
         {
           "glob": "src/components/settings/panels/SecretsPanel.tsx",
           "reason": "Settings JSX composes authenticated SDK lifecycle actions and locale/dialog providers; draft and policy behavior is covered by secrets-panel-model.test.ts"
-        },
-        {
-          "glob": "src/components/settings/panels/AccountPanel.tsx",
-          "reason": "settings panels render through the app shell; unit suite covers hooks/models"
         },
         {
           "glob": "src/components/settings/panels/ArchivedSessionsPanel.tsx",
@@ -948,10 +940,6 @@
         },
         {
           "glob": "src/context/global-sync.tsx",
-          "reason": "global context requires full app bootstrap"
-        },
-        {
-          "glob": "src/context/holos.tsx",
           "reason": "global context requires full app bootstrap"
         },
         {
@@ -1541,6 +1529,10 @@
         {
           "glob": "src/components/settings/panels/ExperimentsPanel.tsx",
           "reason": "apps/web/test/components/settings/settings-details.dom.test.tsx renders the real panel and controller in Chromium, covering unavailable choices, retained failed drafts, retry, restart status and empty catalogs. The controller remains measured directly; browser rendering does not contribute Bun source LCOV."
+        },
+        {
+          "glob": "src/components/sidebar/space-switcher.tsx",
+          "reason": "Rendered in Chromium by test/components/sidebar/space-switcher.dom.test.tsx and test/components/app-shell/mobile-drawer-drag-region.test.tsx, including keyboard focus, localized labels and nested settings; browser-bundled execution does not contribute Bun coverage."
         }
       ]
     },
@@ -1696,22 +1688,6 @@
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
-          "glob": "src/compat/channel/provider/clarus/agent-tunnel-port.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/provider/clarus/assignment-runtime.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/provider/clarus/assignment-store.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/provider/clarus.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
           "glob": "src/compat/channel/provider/feishu/svg-raster-runtime.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
@@ -1733,10 +1709,6 @@
         },
         {
           "glob": "src/compat/channel/tools/channel-push.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/channel/tools/clarus-submit-task-result.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
@@ -1777,34 +1749,6 @@
         },
         {
           "glob": "src/compat/github/routes.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/cli/holos.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/migration.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/routes/holos.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/runtime.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/security.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/holos/util.ts",
-          "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
-        },
-        {
-          "glob": "src/compat/script/holos-cli-assets.ts",
           "reason": "Pure public-path barrel re-export; behavior is covered in the owning leaf package."
         },
         {
@@ -3102,37 +3046,6 @@
           "reason": "channel providers require live external services"
         }
       ]
-    },
-    "packages/holos": {
-      "command": "bun run test:coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 75,
-        "functions": 75
-      },
-      "exempt": [
-        {
-          "glob": "src/holos/cli/holos.ts",
-          "reason": "CLI command surface; exercised through integration flows, not the unit suite"
-        },
-        {
-          "glob": "src/holos/index.ts",
-          "reason": "barrel re-export"
-        },
-        {
-          "glob": "src/holos/startup.ts",
-          "reason": "requires live Holos control plane"
-        }
-      ]
-    },
-    "packages/channel-clarus": {
-      "command": "bun run test:coverage",
-      "lcov": "coverage/lcov.info",
-      "thresholds": {
-        "lines": 75,
-        "functions": 75
-      },
-      "exempt": []
     },
     "packages/email": {
       "command": "bun run test:coverage",

@@ -1,5 +1,4 @@
 import { createMemo, For, Show } from "solid-js"
-import { Dynamic } from "solid-js/web"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
@@ -34,46 +33,6 @@ function MobileDrawerActionButton(props: { label: string; icon: SemanticIconToke
 
 export function MobileDrawerAddProjectButton(props: { label: string; onClick: () => void }) {
   return <MobileDrawerActionButton label={props.label} icon="workspace.add" onClick={props.onClick} />
-}
-
-export function MobileDrawerSettingsButton(props: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      aria-label={props.label}
-      class="mobile-drawer-action mobile-drawer-icon-action"
-      onClick={props.onClick}
-    >
-      <Icon name={getSemanticIcon("settings.general")} size="normal" />
-    </button>
-  )
-}
-
-export function MobileDrawerAccountRow(props: {
-  name: string
-  description: string
-  avatarSrc: string
-  onClick?: () => void
-}) {
-  return (
-    <Dynamic
-      component={props.onClick ? "button" : "div"}
-      type={props.onClick ? "button" : undefined}
-      data-action={props.onClick ? "account" : undefined}
-      class="mobile-drawer-label flex min-h-11 min-w-0 flex-1 items-center gap-2.5 p-2"
-      classList={{ "mobile-drawer-action": !!props.onClick }}
-      onClick={props.onClick}
-    >
-      <img src={props.avatarSrc} alt="" class="size-8 shrink-0 rounded-full" />
-      <span class="flex min-w-0 flex-1 flex-col justify-center">
-        <span class="truncate text-text-strong">{props.name}</span>
-        <span class="truncate text-11-regular text-text-weak">{props.description}</span>
-      </span>
-      <Show when={props.onClick}>
-        <Icon name={getSemanticIcon("navigation.expand")} size="small" class="shrink-0 text-icon-weak-base" />
-      </Show>
-    </Dynamic>
-  )
 }
 
 export interface MobileDrawerRecentVisual {

@@ -273,13 +273,12 @@ describe("desktop packaging", () => {
     )
   })
 
-  test("rejects a runtime without the packaged Holos CLI", async () => {
+  test("accepts a sealed runtime without retired account tooling", async () => {
     const runtimeDir = await createRuntimeFixture()
-    await fs.rm(path.join(runtimeDir, "runtime/node_modules/@sii-holos/holos-cli/dist/vendor/clarus-shared/index.js"))
-
-    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).toThrow(
-      /holos-cli\/dist\/vendor\/clarus-shared\/index\.js/,
-    )
+    expect(
+      await Bun.file(path.join(runtimeDir, "runtime/node_modules/@sii-holos/holos-cli/package.json")).exists(),
+    ).toBe(false)
+    expect(() => afterPack.assertRuntimeAssets(runtimeDir, "darwin")).not.toThrow()
   })
 
   test("rejects a runtime that cannot serve the Desktop application", async () => {

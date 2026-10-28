@@ -109,7 +109,6 @@ describe("generated catalog completeness", () => {
       "commands",
       "permissions",
       "channels",
-      "holos",
       "email",
       "runtime",
       "skills",

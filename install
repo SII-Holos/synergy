@@ -85,8 +85,7 @@ has_bundled_assets_at() {
     [ -f "$root/lib/resvg-wasm/THIRD_PARTY_NOTICES.txt" ] && \
     [ -f "$root/lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt" ] && \
     [ -f "$root/lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2" ] && \
-    [ -f "$root/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" ] && \
-    [ -f "$root/lib/holos-cli/index.js" ]
+    [ -f "$root/lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" ]
 }
 
 has_legacy_bundled_assets_at() {
@@ -285,11 +284,7 @@ verify_runtime_manifest_contract() {
         "lib/resvg-wasm/THIRD_PARTY_NOTICES.txt" \
         "lib/resvg-wasm/fonts/LICENSE-OFL-1.1.txt" \
         "lib/resvg-wasm/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2" \
-        "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2" \
-        "lib/holos-cli/index.js" \
-        "lib/holos-cli/vendor/clarus-shared/index.js" \
-        "lib/holos-cli/node_modules/ws/package.json" \
-        "lib/holos-cli/node_modules/zod/package.json"; do
+        "lib/resvg-wasm/fonts/noto-sans-sc-latin-400-normal.woff2"; do
         if ! runtime_manifest_has_entry "$manifest" "$required"; then
             print_message error "runtime manifest is missing required entry: $required"
             return 1

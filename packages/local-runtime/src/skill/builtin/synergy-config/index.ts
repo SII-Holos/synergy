@@ -11,7 +11,7 @@ import RELOAD from "./references/reload.txt"
 export const synergyConfig = {
   name: "synergy-config",
   description:
-    "Manage Synergy configuration for MCP servers, providers, models, agents, Skills, commands, plugins, Library, permissions, Channels, Holos, and runtime reload. Use this before changing Synergy settings or converting configuration from another tool; it documents the canonical domain files, schemas, credentials boundaries, model roles, and reload behavior.",
+    "Manage Synergy configuration for MCP servers, providers, models, agents, Skills, commands, plugins, Library, permissions, Channels, and runtime reload. Use this before changing Synergy settings or converting configuration from another tool; it documents the canonical domain files, schemas, credentials boundaries, model roles, and reload behavior.",
   content: CONTENT,
   builtin: true as const,
   references: {

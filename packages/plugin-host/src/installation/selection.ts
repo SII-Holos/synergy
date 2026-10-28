@@ -3,7 +3,7 @@ import path from "node:path"
 import { z } from "zod"
 import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { withInstallationLock } from "./lock"
-import { expandLegacyComponentSelection } from "./selection-upgrade"
+import { expandLegacyComponentSelection, retiredIdentityPackages } from "./selection-upgrade"
 
 const Selection = z.object({ version: z.literal(1), roots: z.array(z.string().min(1)) }).strict()
 const SelectionV2 = Selection.extend({ version: z.literal(2) })
@@ -36,7 +36,7 @@ export function initializeInstallationSelection(root: string, defaults: string[]
   return withInstallationLock(root, async () => (await initialSelection(root, defaults)).roots)
 }
 
-export function upgradeInstallationSelection(root: string, defaults: string[] = [], authoritative?: string[]) {
+export function upgradeInstallationSelectionV2(root: string, defaults: string[] = [], authoritative?: string[]) {
   return withInstallationLock(root, async () => {
     const initial = await initialSelection(root, defaults)
     const file = path.join(root, "installations", "selection-v2.json")
@@ -51,5 +51,20 @@ export function upgradeInstallationSelection(root: string, defaults: string[] = 
       private: true,
     })
     return selected
+  })
+}
+
+export async function upgradeInstallationSelection(root: string, defaults: string[] = [], authoritative?: string[]) {
+  const previous = await upgradeInstallationSelectionV2(root, defaults, authoritative)
+  return withInstallationLock(root, async () => {
+    const file = path.join(root, "installations", "selection-v3.json")
+    const existing = await fs.readFile(file, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return undefined
+      throw error
+    })
+    if (existing !== undefined) return Selection.extend({ version: z.literal(3) }).parse(JSON.parse(existing)).roots
+    const roots = previous.filter((name) => !retiredIdentityPackages.has(name))
+    await AtomicFile.writeJsonAtomic(file, JSON.stringify({ version: 3, roots }), { durable: true, private: true })
+    return roots
   })
 }

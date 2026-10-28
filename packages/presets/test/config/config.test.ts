@@ -493,36 +493,6 @@ test("validates Cortex concurrency as a positive integer", () =>
     expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 2.5 } })).toThrow()
   }))
 
-test("Clarus account defaults disabled", () =>
-  runtime.run(() => {
-    expect(ConnectionsConfigSchema.ChannelClarusAccount.parse({}).enabled).toBe(false)
-    expect(ConnectionsConfigSchema.ChannelClarusAccount.parse({ enabled: true }).enabled).toBe(true)
-  }))
-
-test("Clarus account accepts secure base paths and rejects unsafe endpoint structures", () =>
-  runtime.run(() => {
-    expect(
-      ConnectionsConfigSchema.ChannelClarusAccount.parse({
-        apiUrl: "https://clarus.example.test/environment",
-        agent: "primary",
-      }),
-    ).toEqual({ apiUrl: "https://clarus.example.test/environment", agent: "primary", enabled: false })
-    expect(
-      ConnectionsConfigSchema.ChannelClarusAccount.parse({ apiUrl: "http://127.0.0.1:8080/environment" }).apiUrl,
-    ).toBe("http://127.0.0.1:8080/environment")
-    for (const apiUrl of [
-      "https://user:secret@clarus.example.test/environment",
-      "https://clarus.example.test/environment?tenant=one",
-      "https://clarus.example.test/environment#section",
-      "ftp://clarus.example.test/environment",
-      "https://clarus.example.test/environment?",
-      "https://clarus.example.test/environment#",
-      "http://clarus.example.test/environment",
-    ]) {
-      expect(() => ConnectionsConfigSchema.ChannelClarusAccount.parse({ apiUrl })).toThrow()
-    }
-  }))
-
 test("throws error for invalid JSON", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir({
@@ -1421,7 +1391,7 @@ test("permission config preserves key order", () =>
     })
   }))
 
-test("migrates legacy channel holos config to top-level holos", () =>
+test("retires legacy channel identity config", () =>
   runtime.run(async () => {
     const home = path.join(os.tmpdir(), `synergy-config-holos-migration-${Math.random().toString(36).slice(2)}`)
     try {
@@ -1450,17 +1420,12 @@ test("migrates legacy channel holos config to top-level holos", () =>
 }`,
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("holos"))
+        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
         resetMigrations()
-        await runMigrations({ targetDomain: "holos" })
+        await runMigrations({ targetDomain: "config" })
 
         const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
-        expect(migrated.holos).toEqual({
-          enabled: true,
-          apiUrl: "https://api.holosai.io",
-          wsUrl: "wss://api.holosai.io",
-          portalUrl: "https://www.holosai.io",
-        })
+        expect(migrated.holos).toBeUndefined()
         expect(migrated.channel).toBeUndefined()
       })
     } finally {
@@ -1503,17 +1468,12 @@ test("removes legacy channel holos config when top-level holos already exists", 
 }`,
         )
 
-        await Storage.remove(StoragePath.metaMigrationLogDomain("holos"))
+        await Storage.remove(StoragePath.metaMigrationLogDomain("config"))
         resetMigrations()
-        await runMigrations({ targetDomain: "holos" })
+        await runMigrations({ targetDomain: "config" })
 
         const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
-        expect(migrated.holos).toEqual({
-          enabled: true,
-          apiUrl: "https://api.holosai.io",
-          wsUrl: "wss://api.holosai.io",
-          portalUrl: "https://www.holosai.io",
-        })
+        expect(migrated.holos).toBeUndefined()
         expect(migrated.channel).toBeUndefined()
       })
     } finally {

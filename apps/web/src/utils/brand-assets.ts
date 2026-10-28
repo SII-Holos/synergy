@@ -5,10 +5,6 @@ export const BRAND_ASSETS = {
     productIcon: "/brand/synergy-product-icon.png",
     notificationIcon: "/favicon-96x96.png",
   },
-  holos: {
-    logo: "/brand/holos-logo.svg",
-    logoDark: "/brand/holos-logo-white.svg",
-  },
   sii: {
     logo: "/brand/sii-logo.png",
     name: "Shanghai Innovation Institute",
@@ -18,8 +14,4 @@ export const BRAND_ASSETS = {
 
 export function brandAssetPath(path: string) {
   return assetPath(path)
-}
-
-export function holosLogoPath(mode: string | undefined) {
-  return brandAssetPath(mode === "dark" ? BRAND_ASSETS.holos.logoDark : BRAND_ASSETS.holos.logo)
 }

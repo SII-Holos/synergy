@@ -706,7 +706,6 @@ export const sidebar = {
   projects: { id: "app.sidebar.projects", message: "Projects" },
   addProject: { id: "app.sidebar.addProject", message: "Add project" },
   collapseAllProjects: { id: "app.sidebar.collapseAllProjects", message: "Collapse all projects" },
-  agentMenu: { id: "app.sidebar.account.menu", message: "HOLOS account menu" },
   agent: { id: "app.sidebar.agent", message: "Agent" },
   // Sections
   collections: { id: "app.sidebar.collections", message: "Session collections" },
@@ -747,23 +746,7 @@ export const sidebar = {
   reconnect: { id: "app.sidebar.menu.reconnect", message: "Reconnect" },
   usage: { id: "app.sidebar.menu.usage", message: "Usage" },
   logout: { id: "app.sidebar.menu.logout", message: "Log out" },
-  holosConnection: { id: "app.sidebar.holos.connection", message: "Holos Connection" },
-  holosLogin: { id: "app.sidebar.holos.login", message: "Login" },
-  holosService: { id: "app.sidebar.holos.service", message: "Service" },
-  notLoggedIn: { id: "app.sidebar.holos.notLoggedIn", message: "Not logged in" },
-  notAvailable: { id: "app.sidebar.holos.notAvailable", message: "Not available" },
-  profileUnavailable: { id: "app.sidebar.holos.profileUnavailable", message: "Profile unavailable" },
-  savedOnDevice: { id: "app.sidebar.holos.savedOnDevice", message: "Saved on this device" },
   // Connection status labels
-  connected: { id: "app.sidebar.holos.connected", message: "Connected" },
-  connecting: { id: "app.sidebar.holos.connecting", message: "Connecting…" },
-  connectionFailed: { id: "app.sidebar.holos.connectionFailed", message: "Connection failed" },
-  disconnected: { id: "app.sidebar.holos.disconnected", message: "Disconnected" },
-  disabled: { id: "app.sidebar.holos.disabled", message: "Disabled" },
-  signIn: { id: "app.sidebar.holos.signIn", message: "Sign in" },
-  loadingIdentity: { id: "app.sidebar.holos.loadingIdentity", message: "Loading identity..." },
-  localWorkspace: { id: "app.sidebar.holos.localWorkspace", message: "Local workspace" },
-  connectedToHolos: { id: "app.sidebar.holos.connectedToHolos", message: "Connected to Holos" },
   // Attention notice
   busy: { id: "app.sidebar.attention.busy", message: "Working..." },
   // Orphan group
@@ -771,8 +754,6 @@ export const sidebar = {
   // Session fallback
   untitled: { id: "app.sidebar.session.untitled", message: "Untitled" },
   draftBadge: { id: "app.sidebar.session.draftBadge", message: "Draft" },
-  // Brand / logo
-  logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
   channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
   channelGithub: { id: "app.sidebar.channel.github", message: "GitHub" },
   addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },
@@ -797,29 +778,6 @@ export const sidebar = {
 // ── Status Bar ───────────────────────────────────────────────────────────────
 
 export const statusBar = {
-  // Holos labels
-  holosLoading: { id: "app.statusBar.holos.loading", message: "Holos loading" },
-  holosSignedOut: { id: "app.statusBar.holos.signedOut", message: "Holos signed out" },
-  holosConnected: { id: "app.statusBar.holos.connected", message: "Holos connected" },
-  holosConnecting: { id: "app.statusBar.holos.connecting", message: "Holos connecting" },
-  holosFailed: { id: "app.statusBar.holos.failed", message: "Holos failed" },
-  holosDisconnected: { id: "app.statusBar.holos.disconnected", message: "Holos disconnected" },
-  holosDisabled: { id: "app.statusBar.holos.disabled", message: "Holos disabled" },
-  holosUnknown: { id: "app.statusBar.holos.unknown", message: "Holos unknown" },
-  holosTitle: { id: "app.statusBar.holos.title", message: "Holos" },
-  holosLoginLabel: { id: "app.statusBar.holos.login", message: "Login" },
-  holosServiceLabel: { id: "app.statusBar.holos.service", message: "Service" },
-  notLoggedIn: { id: "app.statusBar.holos.notLoggedIn", message: "Not logged in" },
-  reconnect: { id: "app.statusBar.holos.reconnect", message: "Reconnect" },
-  holosAgent: { id: "app.statusBar.holos.agent", message: "Agent {id}" },
-  holosStateLoading: { id: "app.statusBar.holos.state.loading", message: "Loading" },
-  holosStateSignedOut: { id: "app.statusBar.holos.state.signedOut", message: "Signed out" },
-  holosStateConnected: { id: "app.statusBar.holos.state.connected", message: "Connected" },
-  holosStateConnecting: { id: "app.statusBar.holos.state.connecting", message: "Connecting" },
-  holosStateFailed: { id: "app.statusBar.holos.state.failed", message: "Failed" },
-  holosStateDisconnected: { id: "app.statusBar.holos.state.disconnected", message: "Disconnected" },
-  holosStateDisabled: { id: "app.statusBar.holos.state.disabled", message: "Disabled" },
-  holosStateUnknown: { id: "app.statusBar.holos.state.unknown", message: "Unknown" },
   // Workspace
   mainCheckout: { id: "app.statusBar.workspace.main", message: "Main checkout" },
   worktreeLabel: { id: "app.statusBar.workspace.worktree", message: "Worktree: {name}" },

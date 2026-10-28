@@ -38,7 +38,6 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
   AgentWorkerCapacityStatus,
-  ChannelStatus,
   ConfigDomainSummary,
   ControlProfileSummary,
   CortexConcurrencyStatus,
@@ -55,7 +54,6 @@ import { useLocale } from "@/context/locale"
 import { usePlatform, type DesktopUpdateMode } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useFontPreference } from "@/context/font-preference"
-import { useHolos } from "@/context/holos"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import {
   getSettingsSections,
@@ -107,7 +105,6 @@ import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { createProviderSetupDrafts } from "@/components/provider/provider-setup-drafts"
 import { isSelectableModel } from "@/components/provider/model-catalog"
-import { AccountPanel } from "./panels/AccountPanel"
 import { PersonalizePanel } from "./panels/PersonalizePanel"
 import { createPersonalizeController } from "./panels/personalize-controller"
 import { UsagePanel } from "./panels/UsagePanel"
@@ -137,13 +134,6 @@ import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-
 import { createDesktopZoomController } from "./desktop-zoom-model"
 import { createDesktopPowerController } from "./desktop-power-model"
 import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
-import {
-  canRefreshChannelAccount,
-  channelRuntimeStatusLabel,
-  clarusAccountDisplayName,
-  clarusDiagnosticsFilename,
-  shouldRefreshChannelStatuses,
-} from "./channel-account-model"
 import { recordThemeSelection, settleThemeSelection } from "@/plugin/theme-selection"
 import { SlotOutlet } from "@/plugin/slot-outlet"
 
@@ -160,9 +150,7 @@ const BrowserPanel = lazy(() => import("./panels/BrowserPanel").then((module) =>
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
   appearance: "general",
-  holos: "account",
   library: "learning",
-  profile: "account",
 }
 
 const copy = {
@@ -239,11 +227,6 @@ const copy = {
     id: "settings.panel.save.partialFailure.description",
     message: "Review the failed settings and try again.",
   },
-  clarusRefreshFailed: { id: "settings.channels.clarus.refreshFailed", message: "Failed to refresh Clarus projects" },
-  clarusDiagnosticsFailed: {
-    id: "settings.channels.clarus.diagnosticsFailed",
-    message: "Failed to download Clarus diagnostics",
-  },
   configDiagnosticsTitle: {
     id: "settings.panel.configDiagnostics.title",
     message: "Configuration issues found",
@@ -312,7 +295,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     (id !== "browser" || browserCapability.visible())
   const theme = useTheme()
   const font = useFontPreference()
-  const holos = useHolos()
   const navigate = useNavigate()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get({}, { throwOnError: true })).data!,
@@ -491,19 +473,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data!
   }, configSections)
   const refetchConfig = configResource.refetch
-
-  const [channelStatuses, channelStatusesResource] = sectionResource(async () => {
-    await globalSDK.capabilities.load()
-    if (!globalSDK.capabilities.has("channels")) return {} as Record<string, ChannelStatus>
-    const res = await globalSDK.client.channel.status({}, { throwOnError: true })
-    return (res.data ?? {}) as Record<string, ChannelStatus>
-  }, ["channels"])
-  const refetchChannelStatuses = channelStatusesResource.refetch
-
-  const unsubscribeChannelStatuses = globalSDK.event.listen((event) => {
-    if (shouldRefreshChannelStatuses(event.details?.type)) void refetchChannelStatuses()
-  })
-  onCleanup(unsubscribeChannelStatuses)
 
   const [mcpStatuses, mcpStatusesResource] = sectionResource(async () => {
     await globalSDK.capabilities.load()
@@ -793,7 +762,6 @@ export function SettingsPanel(props: SettingsPanelProps) {
         ...(agentFields.some((field) => changed.has(field)) ? [refetchAgents()] : []),
         ...(changed.has("cortex") ? [refetchCortexConcurrencyStatus()] : []),
         ...(changed.has("execution") ? [refetchAgentWorkerCapacityStatus()] : []),
-        ...(changed.has("channel") ? [refetchChannelStatuses()] : []),
         ...(changed.has("mcp") ? [refetchBuiltinMcps()] : []),
         ...(changed.has("skills") ? [refetchSkillSources()] : []),
       ])
@@ -1190,63 +1158,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       personalize: personalizeController.status(),
     }),
   )
-  const canRefreshClarusProjects = (accountID: string) =>
-    canRefreshChannelAccount(channelStatuses()?.[`clarus:${accountID}`])
-  const refreshClarusProjects = async (accountID: string) => {
-    if (!canRefreshClarusProjects(accountID)) return
-    try {
-      await globalSDK.client.channel.refreshProjects(
-        { channelType: "clarus", accountId: accountID },
-        { throwOnError: true },
-      )
-    } catch (error) {
-      showToast({
-        type: "error",
-        title: _(copy.clarusRefreshFailed),
-        description: requestErrorMessage(error, _(copy.clarusRefreshFailed)),
-      })
-    } finally {
-      await Promise.resolve(refetchChannelStatuses()).catch(() => undefined)
-    }
-  }
-
-  const downloadClarusDiagnostics = async (accountID: string) => {
-    try {
-      const response = await globalSDK.client.channel.downloadDiagnostics({
-        channelType: "clarus",
-        accountId: accountID,
-      })
-      const data = response.data
-      if (!data) return
-      const blob =
-        data instanceof Blob
-          ? data
-          : new Blob([typeof data === "string" ? data : JSON.stringify(data, null, 2)], {
-              type: "application/x-ndjson",
-            })
-      const url = URL.createObjectURL(blob)
-      const anchor = document.createElement("a")
-      anchor.href = url
-      anchor.download = clarusDiagnosticsFilename()
-      document.body.appendChild(anchor)
-      anchor.click()
-      document.body.removeChild(anchor)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      showToast({
-        type: "error",
-        title: _(copy.clarusDiagnosticsFailed),
-        description: error instanceof Error ? error.message : _(copy.clarusDiagnosticsFailed),
-      })
-    }
-  }
-
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
     browser: BrowserPanel,
     experiments: () => (
       <ExperimentsPanel controller={experimentsController} onRetrySave={() => void saveExplicitChanges()} />
     ),
-    account: AccountPanel,
     personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
       <GeneralPanel
@@ -1449,21 +1365,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
           setFocusedConfigDomain("channels")
           selectSection("config-files")
         }}
-        onAccount={() => selectSection("account")}
         channels={settings.channels}
         providers={providerGroups()}
         popoverLayer={settingsPopoverLayer()}
-        clarusAccountName={(accountID) => clarusAccountDisplayName(accountID, holos.state.identity.accounts)}
-        clarusAccountDescription={(accountID) =>
-          translateDescriptor(channelRuntimeStatusLabel(channelStatuses()?.[`clarus:${accountID}`]), i18n())
-        }
-        canRefreshClarusAccount={canRefreshClarusProjects}
         onFeishuToggle={(index, value) => setSettings("channels", "feishuAccounts", index, "enabled", value)}
         onFeishuModelChange={(index, model) => setSettings("channels", "feishuAccounts", index, "model", model)}
         onFeishuVariantChange={(index, variant) => setSettings("channels", "feishuAccounts", index, "variant", variant)}
-        onClarusToggle={(index, value) => setSettings("channels", "clarusAccounts", index, "enabled", value)}
-        onClarusRefresh={refreshClarusProjects}
-        onClarusDiagnostics={downloadClarusDiagnostics}
         onGithubToggle={(index, value) => setSettings("channels", "githubAccounts", index, "enabled", value)}
         onGithubFieldChange={(index, field, value) =>
           setSettings("channels", "githubAccounts", index, field, value as never)

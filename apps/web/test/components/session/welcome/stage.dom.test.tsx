@@ -65,7 +65,7 @@ beforeAll(async () => {
         const dpr = Math.min(devicePixelRatio || 1, 2)
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
         const random = sceneRandom(8)
-         const masks = [...[sprites.star, sprites.ring, sprites.bolt, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0"))), sprites.ribbon]
+         const masks = [...[sprites.star, sprites.ring, sprites.sprout, sprites.crate, sprites.drone, sprites.heart].map(mask => mask.map(row => row.replaceAll("2", "0"))), sprites.ribbon]
         for (let index = 0; index < 240; index++) {
           const column = index % 20, row = Math.floor(index / 20)
           const offset = random(), depth = 0.35 + random() * 0.65
@@ -843,7 +843,7 @@ test("ambient frames reuse pixel motifs instead of repainting their cells", asyn
     const moving = await readCounts()
     expect(moving.cells - initial.cells).toBe(0)
     expect(moving.images).toBeGreaterThan(initial.images)
-    expect(moving.buffers).toHaveLength(9)
+    expect(moving.buffers).toHaveLength(8)
     await page.emulateMedia({ reducedMotion: "reduce" })
     const ambient = page.locator(".welcome-ambient")
     const frame = () => ambient.evaluate((el) => (el as HTMLCanvasElement).toDataURL())
@@ -866,7 +866,7 @@ test("ambient frames reuse pixel motifs instead of repainting their cells", asyn
     )
     expect((await readCounts()).cells).toBe(themed.cells)
     await page.getByRole("button", { name: "Mount", exact: true }).click()
-    expect((await readCounts()).buffers).toEqual(Array.from({ length: 9 }, () => ({ width: 0, height: 0 })))
+    expect((await readCounts()).buffers).toEqual(Array.from({ length: 8 }, () => ({ width: 0, height: 0 })))
     expect(await page.locator(".welcome-ambient").count()).toBe(0)
     expect(errors).toEqual([])
   } finally {

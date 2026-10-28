@@ -44,7 +44,6 @@ const navigation = [
   ["Plugins", "plugin-host", "/plugins/marketplace"],
 ] as const
 const settings = [
-  ["Account", "holos"],
   ["Voice", "media"],
   ["GitHub", "github"],
   ["Learning", "library"],
@@ -71,7 +70,6 @@ const routeOwners: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/anima(?:\/|$)/, "anima"],
   [/^\/channel(?:\/|$)/, "channels"],
   [/^\/email(?:\/|$)/, "email"],
-  [/^\/holos(?:\/|$)/, "holos"],
   [/^\/(?:provider\/auth\/)?github(?:\/|$)/, "github"],
   [/^\/(?:plugin|api\/(?:plugins|registry))(?:\/|$)/, "plugin-host"],
   [/^\/mcp(?:\/|$)/, "mcp"],
@@ -262,7 +260,7 @@ try {
     await inspectWorkflows(features, checks)
     await page.screenshot({ path: path.join(home, `${selection}-desktop.png`), animations: "disabled" })
     phase = "settings-desktop"
-    await page.locator(".sidebar-account-trigger").click()
+    await page.getByRole("button", { name: /当前空间|Current space/ }).click()
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
     await page.getByRole("button", { name: "Close settings", exact: true }).waitFor()
     await visibleFeatures(settings, features, checks, page.locator(".settings-panel-navigation"))
@@ -362,7 +360,7 @@ try {
         { throwOnError: true },
       )
       const openExperiments = async (loaded = true) => {
-        await page.locator(".sidebar-account-trigger").click()
+        await page.getByRole("button", { name: /当前空间|Current space/ }).click()
         await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
         await page
           .locator(".settings-panel-navigation")

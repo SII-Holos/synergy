@@ -60,26 +60,6 @@ For an S3 or OSS store, use `provider: "s3"` or `"oss"` with `bucket`, `region`,
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
-Clarus accounts live in the Channel domain and reuse Holos credentials:
-
-```jsonc
-{
-  "channel": {
-    "clarus": {
-      "type": "clarus",
-      "accounts": {
-        "<holos-agent-id>": {
-          "enabled": false,
-          "agent": "synergy",
-        },
-      },
-    },
-  },
-}
-```
-
-Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. A versioned Holos migration provisions the same disabled account for an existing active identity. There is no top-level `clarus` domain or Clarus workspace-root setting.
-
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs. Startup migrates legacy global and project files into domain files and archives the originals once every field has a registered owner. A reduced composition defers a migration containing unregistered fields, retains the original file, and reads its core values beneath canonical domain overrides until the complete owner set is available.
 
 ### Assistant and Tool deadlines
@@ -246,7 +226,7 @@ String values support two substitutions:
 - `{env:NAME}` inserts an environment variable; an unset variable becomes an empty string with a warning
 - `{file:path}` inserts trimmed file content, resolved relative to the config file (or `~/` / absolute paths)
 
-Use file or environment references for secrets instead of checking credentials into project config. Provider, MCP, Holos, and plugin auth stores remain separate from ordinary JSONC configuration.
+Use file or environment references for secrets instead of checking credentials into project config. Provider, MCP, and plugin auth stores remain separate from ordinary JSONC configuration.
 
 Substitution happens at read time only. Domain writes — Settings saves, `synergy config` writes, and config import — edit the raw fragment with targeted JSONC edits: `{env:}`/`{file:}` reference text stays a reference, `//` comments survive, untouched entries remain byte-identical, and a save that changes nothing does not rewrite the file at all. A patch value that merely echoes a reference's resolved value (for example a redacted Settings round-trip) restores the reference instead of writing the literal; a genuinely new value replaces the reference with the literal. Domain fragments are written user-only (`0600`). Only export resolves references into its payload — see the export caveat in [Config export](#config-export).
 
@@ -592,7 +572,7 @@ Boss is an experimental component. Opt in through the global features domain and
 
 ## GitHub Channel
 
-The GitHub Channel connects a GitHub App installation as a Channel (like Feishu or Clarus). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
+The GitHub Channel connects a GitHub App installation as a Channel (like Feishu). Synergy polls configured repositories outbound using GitHub App installation tokens — no public inbound listener is required. Repository events are synthesized into conversation messages that run the agentic `github-channel-agent` inside a per-thread checkout, and results are posted back as GitHub comments.
 
 Configuration lives in the Channels domain (`90-channels.jsonc`) under `channel.github`:
 

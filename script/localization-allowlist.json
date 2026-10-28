@@ -18,14 +18,6 @@
   {
     "path": "packages/ui/src/components/logo.tsx",
     "kind": "jsx-text",
-    "literal": "HOLOS",
-    "occurrence": 1,
-    "category": "brand",
-    "reason": "Product brand name — not translated."
-  },
-  {
-    "path": "packages/ui/src/components/logo.tsx",
-    "kind": "jsx-text",
     "literal": "SYNERGY",
     "occurrence": 1,
     "category": "brand",
@@ -486,14 +478,6 @@
     "occurrence": 2,
     "category": "code",
     "reason": "Read-retry feedback uses the same statically typed settings-catalog label as the original save result."
-  },
-  {
-    "path": "apps/web/src/components/settings/panels/AccountPanel.tsx",
-    "kind": "invalid-message-descriptor",
-    "literal": "labels[status]",
-    "occurrence": 1,
-    "category": "code",
-    "reason": "The connection-status map contains explicit static message IDs and defaults for every typed status."
   },
   {
     "path": "apps/web/src/components/settings/panels/CodeChecksPanel.tsx",

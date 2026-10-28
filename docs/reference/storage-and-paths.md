@@ -16,7 +16,7 @@ File restoration receipts live below each Session’s `file_restore` namespace i
 | `config/`                                                 | Global domain configuration, agents, commands, skills and instructions                     |
 | `workspaces/home/`                                        | Persistent shared default working files for new local Home sessions                        |
 | `data/storage/`                                           | Agent database bootstrap identity, SQLite database, migration backups and transfer records |
-| `data/auth/`                                              | Provider, Holos, MCP and other account credentials                                         |
+| `data/auth/`                                              | Provider, MCP and other account credentials                                                |
 | `data/library.db`                                         | Library's independently owned SQLite knowledge database                                    |
 | `data/plugin/<plugin-id>/auth.json`                       | Plugin credentials                                                                         |
 | `data/plugin-install-artifacts/`                          | Private installation recovery snapshots and directory backups                              |
@@ -66,7 +66,6 @@ Installation generations retain code-version floors and explicit package selecti
 | `permissions`, `permission-rules`                                                                   | Persistent permission state                                                                                                                               |
 | `agenda`, `blueprint_loops`, `superplan`, `lattice`, `notes`                                        | Workflow and Note domain records                                                                                                                          |
 | `channel`                                                                                           | Ownership indexes, response cards, thread bindings, provider dedup, outboxes and bounded diagnostics                                                      |
-| `holos`                                                                                             | Routing, contacts and mailbox metadata; credentials stay separate                                                                                         |
 | `browser`                                                                                           | Browser Session/page metadata; profiles stay on the filesystem                                                                                            |
 | `plugin-lock`, `plugin-approvals`, `plugin-incompatible`, `registry`                                | Plugin installation, grants and registry records                                                                                                          |
 | `plugin-audit`, `plugin-runtime-state`, `plugin-install-intents`                                    | Plugin audit, health and installation recovery                                                                                                            |
@@ -106,7 +105,7 @@ Trusted Home relocation verifies each source binding against its native director
 
 ## Credentials and independent hosts
 
-Holos account storage at `data/auth/holos-accounts.json` is the canonical multi-account credential store. Synergy serializes updates with `data/auth/.locks/`, using the `holos-accounts:write` lock key and atomic file replacement. `api-key.json` is historical migration input, not the steady-state Holos source.
+Retired network credentials are removed by a versioned startup migration. Historical contacts, mailbox records and Session metadata remain stored without a live identity service.
 
 Physical private writes use flushed temporary files, atomic rename and directory sync where supported. Transient Windows sharing violations retry up to four attempts. Database durability uses the database engine's commit protocol; it is not controlled by a per-record JSON formatting or durability option.
 

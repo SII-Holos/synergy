@@ -22,7 +22,6 @@ Generated from `packages/harness/src/config/domain.ts` and the domain-owned conf
 | `commands` | `70-commands.jsonc` | merge |
 | `permissions` | `80-permissions.jsonc` | merge |
 | `channels` | `90-channels.jsonc` | merge |
-| `holos` | `100-holos.jsonc` | merge |
 | `email` | `110-email.jsonc` | merge |
 | `github` | `115-github.jsonc` | merge |
 | `runtime` | `120-runtime.jsonc` | merge |
@@ -188,15 +187,6 @@ File: `90-channels.jsonc` · Merge: merge
 | Key | Type | Description |
 | --- | --- | --- |
 | `channel` | record (optional) | Channel configurations for selected messaging providers |
-
-## Holos
-
-File: `100-holos.jsonc` · Merge: merge
-
-| Key | Type | Description |
-| --- | --- | --- |
-| `holos` | Holos.optional (optional) |  |
-| `enterprise` | object (optional) |  |
 
 ## Email
 

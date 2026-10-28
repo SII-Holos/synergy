@@ -71,12 +71,11 @@ export function relocateCoverage(source: string, from: string, to: string) {
  *   returning an empty current job, and dimension-drift failures in shared
  *   batches);
  * - storage-retry spies global fs rename/unlink, storage-silent-not-found
- *   asserts metrics on a shared observability store, clarus-invite-accept
- *   reads shared channel/Clarus state, feishu-provider races SVG raster
+ *   asserts metrics on a shared observability store, feishu-provider races SVG raster
  *   fallbacks, session-search scans live session stores under the shared
  *   home, and test-home-guard runs the subprocess contract around the
  *   real-home guard, so each also runs alone;
- * - holos/proxy/registry/retry/import/catalog/MCP-OAuth suites start
+ * - proxy/registry/retry/import/catalog/MCP-OAuth suites start
  *   local servers or assert network timing and flake under a full shared
  *   process on CI (see postmortem 0001 coverage failures); each passes in
  *   its own process.
@@ -85,8 +84,7 @@ export function relocateCoverage(source: string, from: string, to: string) {
  *   channel state that sibling files can pollute under a full shared process;
  *   each passes in its own process (verified 2026-09-03 after repeated
  *   identical CI coverage failures on unrelated branches).
- * - library/database, library/experience-recall, channel/clarus-* and
- *   daemon/* suites assert module-level SQLite/vec, Clarus project, and
+ * - library/database, library/experience-recall, daemon/* suites assert module-level SQLite/vec and
  *   managed-service env state that sibling files pollute under a full shared
  *   process; each passes in its own process (verified 2026-09-04 at pristine
  *   HEAD: the same shard-0 signature fails with or without the enforcement
@@ -102,12 +100,9 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/migration/terminal-progress.test.ts",
   // Config projection registration is permanent for the process composition.
   "packages/harness/test/config/extensions-field.test.ts",
-  // Mailbox owns the process-wide native provider resolver.
-  "packages/holos/test/holos/mailbox.test.ts",
   // GitHub transport redirects global fetch to its loopback server and owns auth caches.
   "packages/channel-github/test/channel/provider/github/api-transport.test.ts",
   "packages/mcp/test/mcp/owner-lifecycle.test.ts",
-  "packages/holos/test/holos/legacy-data-migration.test.ts",
   // Integration fixtures own subprocess singletons; migration fixtures temporarily select their own home.
   "packages/formatter/test/format/formatter.test.ts",
   "packages/external-agents/test/external-agent/openclaw.test.ts",
@@ -126,7 +121,6 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   // teardown; the Linux paired fixture passes in a separate process.
   "packages/presets/test/agent/agent.test.ts",
   "packages/presets/test/project/worktree.test.ts",
-  "packages/channel-clarus/test/channel/clarus-invite-accept.test.ts",
   "packages/channel-feishu/test/channel/feishu-provider.test.ts",
   "packages/channel-feishu/test/channel/feishu-reaction-only.test.ts",
   // Real Channel drain fixture observes the process-wide invoke boundary while owning its Runtime composition.
@@ -143,7 +137,6 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/harness/test/global/test-home-guard.test.ts",
   "packages/harness/test/lifecycle/runtime.test.ts",
   "packages/local-runtime/test/sandbox/helper-source.test.ts",
-  "packages/holos/test/holos/runtime.test.ts",
   "packages/library/test/database.test.ts",
   "packages/library/test/embedding.test.ts",
   "packages/library/test/embedding-local.test.ts",
@@ -167,7 +160,6 @@ export const ISOLATED_BATCH_FILES: ReadonlySet<string> = new Set([
   "packages/presets/test/plugin/routes/plugin-registry-routes.test.ts",
   "packages/presets/test/server/skill-route.test.ts",
   "packages/harness/test/session/retry.test.ts",
-  "packages/channel-clarus/test/channel/clarus-assignment.test.ts",
   "packages/presets/test/cli/daemon-entry.test.ts",
   // Daemon fixtures mutate the test home, platform identity and OS subprocess boundary.
   "packages/cli/test/daemon/lifecycle.test.ts",

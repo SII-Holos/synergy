@@ -97,7 +97,7 @@ export function normalizeFeishuReactionEmoji(value: string | undefined): FeishuR
 
 /**
  * Account and channel config are typed `unknown` because callers hold the
- * whole channel config union (feishu | clarus | github), which is not
+ * whole channel config union (feishu | github), which is not
  * assignable to a weak all-optional parameter type. Narrowing happens here,
  * the same way `resolveChannelAccountInvocation` and
  * `resolveChannelAccountAgent` read account config.

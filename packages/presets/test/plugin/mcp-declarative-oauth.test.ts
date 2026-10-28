@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
@@ -17,13 +17,11 @@ import { createOAuthMcpServerFixture } from "@ericsanchezok/synergy-testing/oaut
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ env: { SYNERGY_OAUTH_CALLBACK_PORT: String(await reserveCallbackPort()) } })
 
 const PLUGIN_ID = "plugin-id"
 const SERVER_NAME = `${PLUGIN_ID}::figma`
 const MCP_TOOL_ID = "mcp__plugin-id__figma__fixture_ping"
-
-let originalOAuthCallbackPort: string | undefined
 
 async function reserveCallbackPort(): Promise<number> {
   const server = Bun.serve({
@@ -46,20 +44,6 @@ async function route(pathname: string, init: RequestInit = {}): Promise<Response
     headers: { origin: "http://127.0.0.1", ...init.headers },
   })
 }
-
-beforeAll(() =>
-  runtime.run(async () => {
-    originalOAuthCallbackPort = process.env.SYNERGY_OAUTH_CALLBACK_PORT
-    process.env.SYNERGY_OAUTH_CALLBACK_PORT = String(await reserveCallbackPort())
-  }),
-)
-
-afterAll(() =>
-  runtime.run(() => {
-    if (originalOAuthCallbackPort === undefined) delete process.env.SYNERGY_OAUTH_CALLBACK_PORT
-    else process.env.SYNERGY_OAUTH_CALLBACK_PORT = originalOAuthCallbackPort
-  }),
-)
 
 describe.serial("declarative plugin OAuth MCP integration", () => {
   test("installs, authenticates, discovers, and atomically uninstalls a runtime-free MCP contribution", () =>

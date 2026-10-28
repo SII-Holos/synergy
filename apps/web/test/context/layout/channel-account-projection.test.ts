@@ -294,11 +294,11 @@ describe("ChannelAccountActions gating", () => {
     expect(feishuActions.canRefreshProjects).toBe(false)
     expect(feishuActions.canDownloadDiagnostics).toBe(false)
 
-    // Clarus: supports both
+    // Retired providers expose no current actions
     const clarusActions = deriveChannelAccountActions("clarus")
-    expect(clarusActions.canRefreshProjects).toBe(true)
-    expect(clarusActions.canDownloadDiagnostics).toBe(true)
-    expect(clarusActions.hiddenActions).toEqual([])
+    expect(clarusActions.canRefreshProjects).toBe(false)
+    expect(clarusActions.canDownloadDiagnostics).toBe(false)
+    expect(clarusActions.hiddenActions).toEqual(["refreshProjects", "downloadDiagnostics"])
   })
 
   test("unsupported provider explicitly lists its hidden actions", () => {
