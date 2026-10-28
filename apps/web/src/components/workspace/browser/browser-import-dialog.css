@@ -31,26 +31,9 @@
   color: var(--text-weak);
 }
 .browser-import-source-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   flex: 1;
   min-width: 0;
-  min-height: 38px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: var(--surface-inset-base);
-  border: 1px solid var(--border-weak-base);
-  text-align: start;
-}
-.browser-import-source-trigger > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.browser-import-source-trigger:disabled {
-  opacity: 0.5;
+  min-height: 36px;
 }
 .browser-import-source-menu {
   min-width: var(--kb-popper-anchor-width);

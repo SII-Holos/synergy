@@ -33,14 +33,14 @@ async function readMenuStyles(colorScheme: "light" | "dark") {
       <style>${themeCss}\n${libraryCss}\n${menuFieldCss}\n.menu-field-item { transition: none; }</style>
       <div class="library-workbench"></div>
       <div class="menu-field-surface">
-        <button class="menu-field-item is-active">Selected</button>
+        <button class="menu-field-item" data-selected>Selected</button>
         <button class="menu-field-item menu-hover-target">Hover</button>
       </div>
     `)
     await page.locator(".menu-hover-target").hover()
     return await page.locator(".menu-field-surface").evaluate((menu) => {
       const menuStyle = getComputedStyle(menu)
-      const activeStyle = getComputedStyle(menu.querySelector(".is-active")!)
+      const activeStyle = getComputedStyle(menu.querySelector("[data-selected]")!)
       const hoverStyle = getComputedStyle(menu.querySelector(".menu-hover-target")!)
       return {
         menuBackground: menuStyle.backgroundColor,
@@ -62,15 +62,13 @@ describe("Library filter menu surface", () => {
 
     for (const styles of [light, dark]) {
       expect(styles.menuBackground).not.toBe("rgba(0, 0, 0, 0)")
-      expect(styles.activeBackground).not.toBe("rgba(0, 0, 0, 0)")
+      expect(styles.activeBackground).toBe("rgba(0, 0, 0, 0)")
       expect(styles.hoverBackground).not.toBe("rgba(0, 0, 0, 0)")
       expect(styles.borderStyle).toBe("solid")
       expect(styles.borderWidth).toBe("1px")
     }
 
     expect(relativeLuminance(light.hoverBackground)).toBeLessThan(relativeLuminance(light.menuBackground))
-    expect(relativeLuminance(light.activeBackground)).toBeLessThan(relativeLuminance(light.menuBackground))
     expect(relativeLuminance(dark.hoverBackground)).toBeGreaterThan(relativeLuminance(dark.menuBackground))
-    expect(relativeLuminance(dark.activeBackground)).toBeGreaterThan(relativeLuminance(dark.menuBackground))
   })
 })

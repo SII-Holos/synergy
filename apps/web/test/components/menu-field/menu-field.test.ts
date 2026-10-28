@@ -39,7 +39,8 @@ beforeAll(async () => {
         import { DeclarativeSettingsForm } from ${JSON.stringify(`/@fs/${declarativeFormPath}`)}
         import "@ericsanchezok/synergy-ui/styles"
         function App() {
-          const [value, setValue] = createSignal("a")
+          const query = new URLSearchParams(location.search)
+          const [value, setValue] = createSignal(query.get("initial") ?? "a")
           const [changes, setChanges] = createSignal<string[]>([])
           window.__changes = () => changes()
           return createComponent(MenuField, {
@@ -51,6 +52,7 @@ beforeAll(async () => {
               { value: "a", label: "Alpha" },
               { value: "b", label: "Beta" },
               { value: "c", label: "Gamma" },
+              ...(query.has("initial") ? [{ value: "locked", label: "Unavailable", disabled: true }] : []),
             ],
             onChange: (v: string) => {
               setValue(v)
@@ -77,8 +79,30 @@ beforeAll(async () => {
           return <MenuField ariaLabel="Project" value={value()} onChange={setValue} options={Array.from({length:30},(_,index)=>({value:"item-"+index,label:index===29 ? longLabel : "Project "+index}))}/>
         }
 
+        function ControlledFixture() {
+          const [open, setOpen] = createSignal(false)
+          const [value, setValue] = createSignal("a")
+          const [pending, setPending] = createSignal("")
+          const [changes, setChanges] = createSignal<string[]>([])
+          window.__changes = () => changes()
+          window.__finish = (accepted: boolean) => {
+            if (accepted) {
+              setValue(pending())
+              setOpen(false)
+            }
+            setPending("")
+          }
+          return <div style="padding-top:180px"><MenuField
+            ariaLabel="Controlled choice" value={value()} open={open()} onOpenChange={setOpen}
+            disabled={!!pending()} closeOnChange={false} placement="top-start"
+            triggerAs={props => <button {...props} class="custom-trigger">Custom {value()}</button>}
+            options={[{value:"a",label:"Alpha"},{value:"b",label:"Beta"},{value:"c",label:"Gamma"}]}
+            onChange={next => {setChanges(items => [...items, next]); setPending(next)}}
+          /></div>
+        }
+
         const i18n = setupI18n({locale:"en",messages:{en:{}}})
-        render(() => <I18nProvider i18n={i18n}><DialogProvider>{location.search.includes("plugin") ? <PluginFixture/> : location.search.includes("multiple") ? <MultipleFixture/> : location.search.includes("long") ? <LongListFixture/> : createComponent(App)}</DialogProvider></I18nProvider>, document.querySelector("#root"))
+        render(() => <I18nProvider i18n={i18n}><DialogProvider>{location.search.includes("plugin") ? <PluginFixture/> : location.search.includes("multiple") ? <MultipleFixture/> : location.search.includes("long") ? <LongListFixture/> : location.search.includes("controlled") ? <ControlledFixture/> : createComponent(App)}</DialogProvider></I18nProvider>, document.querySelector("#root"))
       `,
     ),
   ])
@@ -116,12 +140,34 @@ afterAll(async () => {
 })
 
 describe("MenuField interaction contract", () => {
+  test("focuses an enabled choice without changing a disabled or unknown saved value", async () => {
+    for (const initial of ["locked", "missing"]) {
+      await page.goto(new URL(`?initial=${initial}`, server.resolvedUrls!.local[0]).href)
+      const trigger = page.getByRole("button", { name: /Pick an option/ })
+      await trigger.press("ArrowDown")
+      const alpha = page.getByRole("option", { name: "Alpha", exact: true })
+      await page.waitForFunction((element) => document.activeElement === element, await alpha.elementHandle())
+      const unavailable = page.getByRole("option", { name: "Unavailable", exact: true })
+      expect(await unavailable.getAttribute("aria-disabled")).toBe("true")
+      expect(await unavailable.getAttribute("aria-selected")).toBe(initial === "locked" ? "true" : "false")
+      expect(await page.evaluate(() => (window as unknown as { __changes: () => string[] }).__changes())).toEqual([])
+      await page.keyboard.press("End")
+      const gamma = page.getByRole("option", { name: "Gamma", exact: true })
+      expect(await gamma.evaluate((element) => element === document.activeElement)).toBe(true)
+      await page.keyboard.press("Enter")
+      await page.getByRole("listbox").waitFor({ state: "detached" })
+      expect(await page.evaluate(() => (window as unknown as { __changes: () => string[] }).__changes())).toEqual(["c"])
+    }
+    await page.goto(server.resolvedUrls!.local[0])
+  })
+
   test("exposes listbox semantics, selects once, guards repeated picks, and supports keyboard", async () => {
     const trigger = page.getByRole("button", { name: /Pick an option/ })
     await trigger.waitFor()
     await expect(trigger.count()).resolves.toBe(1)
     expect(await trigger.getAttribute("aria-haspopup")).toBe("dialog")
     expect(await trigger.getAttribute("aria-expanded")).toBe("false")
+    expect(await trigger.evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none")
 
     // 1. Listbox/option semantics with the current value announced.
     await trigger.click()
@@ -197,7 +243,7 @@ describe("MenuField interaction contract", () => {
     await listbox.waitFor()
     const colors: string[] = []
     for (const colorScheme of ["light", "dark"] as const) {
-      await page.emulateMedia({ colorScheme })
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" })
       await beta.hover()
       const appearance = await surface.evaluate((element) => {
         const css = getComputedStyle(element)
@@ -215,6 +261,8 @@ describe("MenuField interaction contract", () => {
       expect(appearance.fits).toBe(true)
       expect(await gamma.locator('[data-slot="menu-field-indicator"]').count()).toBe(1)
       expect(await beta.locator('[data-slot="menu-field-indicator"]').count()).toBe(0)
+      expect(await gamma.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgba(0, 0, 0, 0)")
+      expect(await beta.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)")
     }
     expect(colors[0]).not.toBe(colors[1])
     await page.emulateMedia({ reducedMotion: "reduce" })
@@ -242,6 +290,12 @@ describe("MenuField interaction contract", () => {
     await page.getByRole("option", { name: "Beta", exact: true }).click()
     expect(await list.isVisible()).toBe(true)
     expect(await page.locator('[data-slot="menu-field-indicator"]').count()).toBe(2)
+    await page.getByRole("option", { name: "Beta", exact: true }).hover()
+    expect(
+      await page
+        .getByRole("option", { name: "Alpha", exact: true })
+        .evaluate((element) => getComputedStyle(element).backgroundColor),
+    ).toBe("rgba(0, 0, 0, 0)")
     await page.getByRole("option", { name: "Alpha", exact: true }).focus()
     await page.keyboard.press("End")
     expect(await page.getByRole("option", { name: "Beta", exact: true }).getAttribute("data-highlighted")).toBe("")
@@ -302,6 +356,39 @@ describe("MenuField interaction contract", () => {
       delivery: "direct",
       note: "Retained field",
     })
+  })
+
+  test("controlled toolbar choices keep pending and rejected changes open until the owner accepts", async () => {
+    await page.setViewportSize({ width: 375, height: 640 })
+    await page.goto(server.resolvedUrls!.local[0]! + "?controlled")
+    await page.emulateMedia({ reducedMotion: "reduce" })
+    const trigger = page.getByRole("button", { name: "Controlled choice: Alpha", exact: true })
+    await trigger.press("ArrowDown")
+    const list = page.getByRole("listbox", { name: "Controlled choice", exact: true })
+    await list.waitFor()
+    const field = await trigger.boundingBox()
+    const menu = await list.boundingBox()
+    expect(menu!.y + menu!.height).toBeLessThanOrEqual(field!.y)
+    await list.getByRole("option", { name: "Beta", exact: true }).click()
+    expect(await list.isVisible()).toBe(true)
+    expect(await trigger.isDisabled()).toBe(true)
+    expect(await list.getByRole("option", { name: "Gamma", exact: true }).getAttribute("aria-disabled")).toBe("true")
+    await page.evaluate(() => (window as unknown as { __finish: (accepted: boolean) => void }).__finish(false))
+    expect(await list.isVisible()).toBe(true)
+    expect(await list.getByRole("option", { name: "Alpha", exact: true }).getAttribute("aria-selected")).toBe("true")
+    await list.getByRole("option", { name: "Gamma", exact: true }).click()
+    await page.evaluate(() => (window as unknown as { __finish: (accepted: boolean) => void }).__finish(true))
+    await list.waitFor({ state: "detached" })
+    const changed = page.getByRole("button", { name: "Controlled choice: Gamma", exact: true })
+    expect(await changed.textContent()).toBe("Custom c")
+    await page.waitForFunction((element) => element === document.activeElement, await changed.elementHandle())
+    await changed.click()
+    await list.getByRole("option", { name: "Gamma", exact: true }).click()
+    await list.waitFor({ state: "detached" })
+    expect(await page.evaluate(() => (window as unknown as { __changes: () => string[] }).__changes())).toEqual([
+      "b",
+      "c",
+    ])
   })
 
   test("long labels wrap and keyboard navigation scrolls a bounded list in short viewports", async () => {

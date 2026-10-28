@@ -8660,7 +8660,7 @@ msgstr "会话已分叉"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.forked.desc"
-msgstr "已将该消息之前的对话复制到新会话。"
+msgstr "已将对话复制到新会话。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -17833,25 +17833,9 @@ msgstr "跳过本次提问"
 msgid "session.decision.submitting"
 msgstr "正在提交…"
 
-#. js-lingui-explicit-id
-msgid "session.dock.back"
-msgstr "后退"
-
 #. prompt-dock.tsx
 msgid "session.dock.backToParent"
 msgstr "返回父级"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkedFrom"
-msgstr "分叉自"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkSource"
-msgstr "分叉来源"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkSourceTooltip"
-msgstr "分叉来源"
 
 #. prompt-dock.tsx — remaining hardcoded
 msgid "session.dock.loadingPrompt"
@@ -18046,6 +18030,10 @@ msgid "session.fork.confirm.description"
 msgstr "将此回复及其之前的对话复制到一个新会话中。"
 
 #. js-lingui-explicit-id
+msgid "session.fork.confirm.description.current"
+msgstr "将对话复制到一个新会话中。"
+
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.description.preview"
 msgstr "将对话复制到「{preview}」这条回复为止，并放入一个新会话中。"
 
@@ -18063,7 +18051,43 @@ msgstr "请求失败"
 
 #. dialog-fork-confirm.tsx
 msgid "session.fork.confirm.title"
-msgstr "从此消息分叉会话"
+msgstr "分叉会话"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.create"
+msgstr "新建工作树"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.current"
+msgstr "同一个工作区"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.failed"
+msgstr "无法加载工作位置，请重试。"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.loading"
+msgstr "正在加载工作位置…"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.main"
+msgstr "主目录"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.none"
+msgstr "无工作区"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.title"
+msgstr "工作位置"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.worktree"
+msgstr "同一个工作树"
 
 #. js-lingui-explicit-id
 msgid "session.history.copied"

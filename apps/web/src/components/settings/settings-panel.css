@@ -4637,9 +4637,6 @@
   opacity: 0.5;
   cursor: default;
 }
-:is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer) .menu-field-item[data-selected] {
-  background: transparent;
-}
 :is(.settings-panel-frame, .settings-dialog-panel, .settings-popover-layer)
   [data-slot="list-item"][data-active="true"] {
   background: var(--surface-raised-stronger-hover);

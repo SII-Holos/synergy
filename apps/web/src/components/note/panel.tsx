@@ -2,7 +2,7 @@ import { loopCopy } from "../prompt-input/loop-status-copy"
 import { useViewActivity } from "@/context/view-residency"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
-import { resourceMenuKeyDown } from "../workspace/resource-menu"
+import { resourceMenuKeyDown, resourceMenuPointerMove } from "../workspace/resource-menu"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import {
   createMemo,
@@ -1186,6 +1186,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               <Popover
                 open={newNoteOpen()}
                 onOpenChange={setNewNoteOpen}
+                variant="menu"
                 placement="bottom-end"
                 class="note-toolbar-popover"
                 triggerAs={(triggerProps) => (
@@ -1203,6 +1204,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   role="menu"
                   aria-label={lingui._(N.newNote)}
                   onKeyDown={resourceMenuKeyDown}
+                  onPointerMove={resourceMenuPointerMove}
                 >
                   <For each={[...scopeLookup().values()]}>
                     {(scope) => (
@@ -1229,6 +1231,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               <Popover
                 open={listOptionsOpen()}
                 onOpenChange={setListOptionsOpen}
+                variant="menu"
                 placement="bottom-end"
                 class="note-toolbar-popover"
                 triggerAs={(triggerProps) => (
@@ -1241,7 +1244,12 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   />
                 )}
               >
-                <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
+                <div
+                  class="note-toolbar-menu"
+                  role="menu"
+                  onKeyDown={resourceMenuKeyDown}
+                  onPointerMove={resourceMenuPointerMove}
+                >
                   <For each={filterOptions()}>
                     {(option) => (
                       <button
@@ -1255,6 +1263,11 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                       >
                         <span>{option.label}</span>
                         <small>{option.count}</small>
+                        <span class="note-toolbar-check" aria-hidden="true">
+                          <Show when={kindFilter() === option.value}>
+                            <Icon name={getSemanticIcon("state.success")} size="small" />
+                          </Show>
+                        </span>
                       </button>
                     )}
                   </For>
@@ -1268,7 +1281,12 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                     }}
                   >
                     <Icon name={getSemanticIcon("notes.archive")} size="small" />
-                    <span>{lingui._(showArchived() ? N.showActive : N.showArchived)}</span>
+                    <span class="flex-1">{lingui._(showArchived() ? N.showActive : N.showArchived)}</span>
+                    <span class="note-toolbar-check" aria-hidden="true">
+                      <Show when={showArchived()}>
+                        <Icon name={getSemanticIcon("state.success")} size="small" />
+                      </Show>
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -2052,7 +2070,12 @@ function NoteEditor(props: {
                 disabled={!noteLoaded()}
               />
             </div>
-            <div class="note-toolbar-menu" role="menu" onKeyDown={resourceMenuKeyDown}>
+            <div
+              class="note-toolbar-menu"
+              role="menu"
+              onKeyDown={resourceMenuKeyDown}
+              onPointerMove={resourceMenuPointerMove}
+            >
               <For
                 each={[
                   { label: lingui._(N.downloadNote), icon: getSemanticIcon("action.download"), run: downloadNote },

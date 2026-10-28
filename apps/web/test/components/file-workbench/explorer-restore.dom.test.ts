@@ -4,6 +4,8 @@ import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solidPlugin from "vite-plugin-solid"
+import tailwind from "@tailwindcss/vite"
+import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
 
 let browser: Browser
 let page: Page
@@ -22,12 +24,23 @@ beforeAll(async () => {
   await Promise.all([
     Bun.write(
       path.join(fixtureDirectory, "index.html"),
-      '<div id="root"></div><script type="module" src="/main.tsx"></script>',
+      '<!doctype html><html style="overflow:hidden"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root" style="display:flex;height:100dvh;overflow:hidden;container-type:inline-size"></div><script type="module" src="/main.tsx"></script></body></html>',
     ),
     Bun.write(
       fileStubPath,
       `
+        import { createComponent, createContext, useContext } from "solid-js"
         import { createStore } from "solid-js/store"
+
+        const candidates = [
+          {id:"wsp_main",generation:1,scopeID:"home",type:"directory",path:"/workspace/main",name:"Ignored path alias"},
+          {id:"wsp_shared",generation:1,scopeID:"home",type:"directory",path:"",name:"Shared assets"},
+          {id:"wsp_unlabeled",generation:1,scopeID:"home",type:"directory",path:""},
+        ]
+        const params = new URLSearchParams(location.search)
+        const folders = params.has("folders") ? candidates : params.has("single") ? candidates.slice(0,1) : []
+        const WorkspaceContext = createContext()
+        const fixture = window.fixture = {loads:[]}
 
         // Deterministic in-memory tree shaped like the real Synergy
         // file-explorer model: loadChildren("docs") populates the child
@@ -75,9 +88,12 @@ beforeAll(async () => {
           }
         }
 
-        export const FileWorkspaceProvider = (props) => props.children
-        export const useProjectFiles = () => ({ roots: () => [], search: async () => [], open: async () => {} })
-        export const useFile = () => ({
+        export const FileWorkspaceProvider = (props) => createComponent(WorkspaceContext.Provider, {value:props.workspace,get children(){return props.children}})
+        export const useProjectFiles = () => ({ roots: () => folders, search: async () => [], open: async () => {} })
+        export const useFile = () => {
+          const workspace = useContext(WorkspaceContext) ?? folders[0]
+          return {
+          workspace,
           activePath: () => undefined,
           get: () => undefined,
           openWorkspaceFile: async () => {},
@@ -99,12 +115,12 @@ beforeAll(async () => {
             collapseAll: () => setStore("expanded", []),
             node,
             directory,
-            loadChildren,
+            loadChildren: async path => {fixture.loads.push({workspaceID:workspace?.id,path});await loadChildren(path)},
             reveal: async () => {},
             refresh: async () => {},
           },
           searchFiles: async () => ({ items: [] }),
-        })
+        }}
       `,
     ),
     Bun.write(
@@ -134,21 +150,17 @@ beforeAll(async () => {
     Bun.write(
       path.join(fixtureDirectory, "main.tsx"),
       `
-        import { createComponent } from "solid-js"
         import { DialogProvider } from "@ericsanchezok/synergy-ui/context/dialog"
         import { render } from "solid-js/web"
         import { setupI18n } from "@lingui/core"
         import { I18nProvider } from "@lingui/solid"
         import { FileExplorer } from ${JSON.stringify(`/@fs/${explorerPath}`)}
+        import ${JSON.stringify(`/@fs/${appSrc}/index.css`)}
+        import ${JSON.stringify(`/@fs/${appSrc}/components/file-workbench/styles.css`)}
 
         const i18n = setupI18n({ locale: "en" })
         render(
-          () =>
-            createComponent(I18nProvider, {
-              i18n,
-              children: () =>
-                createComponent(DialogProvider, { get children() { return createComponent(FileExplorer, { onClose: () => {} }) } }),
-            }),
+          () => <I18nProvider i18n={i18n}><DialogProvider><FileExplorer onClose={() => {}} /></DialogProvider></I18nProvider>,
           document.querySelector("#root"),
         )
       `,
@@ -158,7 +170,7 @@ beforeAll(async () => {
   server = await createServer({
     configFile: false,
     root: fixtureDirectory,
-    plugins: [solidPlugin()],
+    plugins: [solidPlugin(), tailwind()],
     resolve: {
       alias: [
         { find: /^@\/context\/file$/, replacement: fileStubPath },
@@ -178,7 +190,7 @@ beforeAll(async () => {
     cacheDir: path.join(fixtureDirectory, ".vite"),
     server: {
       host: "127.0.0.1",
-      port: 5217,
+      port: await fixturePort(),
       strictPort: true,
       fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
     },
@@ -192,6 +204,7 @@ beforeAll(async () => {
 
   browser = await chromium.launch({ headless: true })
   page = await browser.newPage({ viewport: { width: 420, height: 600 } })
+  page.setDefaultTimeout(5000)
   page.on("pageerror", (error) => pageErrors.push(error))
   page.on("console", (message) => {
     if (message.type() === "error") pageErrors.push(new Error(message.text()))
@@ -225,3 +238,68 @@ describe("file explorer expanded-state restore", () => {
     expect(await page.locator('[data-path="docs/guide.md"]').isVisible()).toBe(true)
   }, 60000)
 })
+
+interface ExplorerFixtureWindow extends Window {
+  fixture: { loads: { workspaceID?: string; path: string }[] }
+}
+
+test("folder menu preserves workspace IDs and labels without selecting while navigating", async () => {
+  pageErrors.length = 0
+  await page.setViewportSize({ width: 375, height: 600 })
+  await page.goto(baseUrl + "?folders")
+  const trigger = page.getByRole("button", { name: /^Folders:/ })
+  await trigger.press("ArrowDown")
+  const main = page.getByRole("option", { name: "/workspace/main", exact: true })
+  await page.waitForFunction((element) => document.activeElement === element, await main.elementHandle())
+  expect(await main.getAttribute("aria-selected")).toBe("true")
+  expect(await page.getByRole("option").allTextContents()).toEqual([
+    "/workspace/main",
+    "Shared assets",
+    "wsp_unlabeled",
+  ])
+  await page.keyboard.press("ArrowDown")
+  const shared = page.getByRole("option", { name: "Shared assets", exact: true })
+  expect(await shared.evaluate((element) => document.activeElement === element)).toBe(true)
+  expect(await main.getAttribute("aria-selected")).toBe("true")
+  await page.keyboard.press("Escape")
+  await page.getByRole("listbox").waitFor({ state: "detached" })
+  await page.waitForFunction((element) => document.activeElement === element, await trigger.elementHandle())
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as ExplorerFixtureWindow).fixture.loads.map((call) => call.workspaceID),
+    ),
+  ).toEqual(["wsp_main", "wsp_main"])
+  await trigger.press("Space")
+  await page.waitForFunction((element) => document.activeElement === element, await main.elementHandle())
+  await page.keyboard.press("ArrowDown")
+  await page.keyboard.press("Enter")
+  await page.getByRole("button", { name: "Folders: Shared assets", exact: true }).waitFor()
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as ExplorerFixtureWindow).fixture.loads.slice(-2).map((call) => call.workspaceID),
+    ),
+  ).toEqual(["wsp_shared", "wsp_shared"])
+  await trigger.click()
+  expect(await shared.getAttribute("aria-selected")).toBe("true")
+  await page.getByRole("option", { name: "wsp_unlabeled", exact: true }).click()
+  await page.getByRole("button", { name: "Folders: wsp_unlabeled", exact: true }).waitFor()
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as ExplorerFixtureWindow).fixture.loads.slice(-2).map((call) => call.workspaceID),
+    ),
+  ).toEqual(["wsp_unlabeled", "wsp_unlabeled"])
+  expect(pageErrors).toEqual([])
+}, 30_000)
+
+test("a single workspace keeps the folder chooser hidden", async () => {
+  pageErrors.length = 0
+  await page.goto(baseUrl + "?single")
+  await page.getByRole("tree").waitFor()
+  expect(await page.getByRole("button", { name: /^Folders:/ }).count()).toBe(0)
+  expect(
+    await page.evaluate(() =>
+      (window as unknown as ExplorerFixtureWindow).fixture.loads.map((call) => call.workspaceID),
+    ),
+  ).toEqual(["wsp_main", "wsp_main"])
+  expect(pageErrors).toEqual([])
+}, 30_000)

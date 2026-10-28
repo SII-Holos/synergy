@@ -8660,7 +8660,7 @@ msgstr "Session forked"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.forked.desc"
-msgstr "Forked the conversation up to this message."
+msgstr "Copied the conversation into a new session."
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -17833,25 +17833,9 @@ msgstr "Skip this question"
 msgid "session.decision.submitting"
 msgstr "Submitting…"
 
-#. js-lingui-explicit-id
-msgid "session.dock.back"
-msgstr "Back"
-
 #. prompt-dock.tsx
 msgid "session.dock.backToParent"
 msgstr "Back to parent"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkedFrom"
-msgstr "Forked from"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkSource"
-msgstr "Fork source"
-
-#. js-lingui-explicit-id
-msgid "session.dock.forkSourceTooltip"
-msgstr "Fork source"
 
 #. prompt-dock.tsx — remaining hardcoded
 msgid "session.dock.loadingPrompt"
@@ -18046,6 +18030,10 @@ msgid "session.fork.confirm.description"
 msgstr "Copy the conversation through this reply into a new session."
 
 #. js-lingui-explicit-id
+msgid "session.fork.confirm.description.current"
+msgstr "Copy the conversation into a new session."
+
+#. js-lingui-explicit-id
 msgid "session.fork.confirm.description.preview"
 msgstr "Copy the conversation through \"{preview}\" into a new session."
 
@@ -18063,7 +18051,43 @@ msgstr "Request failed"
 
 #. dialog-fork-confirm.tsx
 msgid "session.fork.confirm.title"
-msgstr "Fork session from this message"
+msgstr "Fork session"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.create"
+msgstr "New worktree"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.current"
+msgstr "Same workspace"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.failed"
+msgstr "Couldn’t load working locations. Try again."
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.loading"
+msgstr "Loading working locations…"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.main"
+msgstr "Main directory"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.none"
+msgstr "No workspace"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.title"
+msgstr "Working location"
+
+#. js-lingui-explicit-id
+msgid "session.fork.location.worktree"
+msgstr "Same worktree"
 
 #. js-lingui-explicit-id
 msgid "session.history.copied"

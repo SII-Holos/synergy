@@ -85,6 +85,8 @@ Synergy records two different relationships:
 
 A fork is not a child task. It copies the source session's effective history and records `forkedFrom`; it does not use `parentID` to imitate delegation.
 
+Default fork titles inherit the source name with an available numbered suffix, allocated in the same transaction as publication using the Scope navigation index. `forkedFrom.generatedTitle` identifies an unchanged automatic name for nested numbering; renaming clears it, and absent historical markers are not inferred. The destination Workspace is selected independently through the existing Workspace selection API. Fork does not restore or copy code. See [session-fork destinations and naming](../decisions/implemented/feature/2026-10-26-session-fork-working-location.md).
+
 Child sessions inherit the parent Scope, nullable workspace and interaction context by default, even when creation runs under another ambient Scope. Their effective control profile is resolved through the parent chain rather than copied as an independent root profile.
 
 ## One Active Loop

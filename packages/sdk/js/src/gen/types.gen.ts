@@ -3660,6 +3660,7 @@ export type Session = {
     sessionID: string
     messageID?: string
     title?: string
+    generatedTitle?: string
   }
   category?: "project" | "home" | "channel" | "background" | "github"
   tags?: SessionTags

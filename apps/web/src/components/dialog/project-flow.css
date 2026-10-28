@@ -384,6 +384,12 @@
   width: min(360px, calc(100vw - 24px));
   max-width: min(360px, calc(100vw - 24px));
 }
+.project-select-popover .project-flow-row {
+  background: transparent;
+}
+.project-select-popover .project-flow-row:not(:disabled):is(:hover, :focus-visible) {
+  background: var(--menu-field-item-hover-bg, var(--surface-raised-stronger-hover));
+}
 .project-menu-content {
   display: flex;
   flex-direction: column;
