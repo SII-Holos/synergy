@@ -39,14 +39,17 @@ function createModel(limit?: Provider.Model["limit"]): Provider.Model {
 }
 
 describe("prompt-budgeter budget", () => {
-  test("reserves long output capacity for shared-context models", () =>
+  test("triggers at the visible input window instead of reserving the declared output maximum", () =>
     runtime.run(() => {
-      const result = PromptBudgeter.budget({ context: 1_048_576, output: 384_000 })
-      expect(result.usable).toBe(1_048_576)
-      expect(result.output).toBe(384_000)
-      expect(result.margin).toBe(32_000)
-      expect(result.inputEnvelope).toBe(632_576)
-      expect(result.soft).toBe(537_689)
+      for (const [limits, soft] of [
+        [{ context: 1_048_576, output: 384_000 }, 891_289],
+        [{ context: 1_000_000, output: 128_000 }, 850_000],
+        [{ context: 200_000, output: 64_000 }, 170_000],
+      ] as const) {
+        const result = PromptBudgeter.budget(limits)
+        expect(result.inputEnvelope).toBe(limits.context)
+        expect(result.soft).toBe(soft)
+      }
     }))
 
   test("keeps explicit input partitions as the compaction budget", () =>
@@ -74,7 +77,7 @@ describe("prompt-budgeter budget", () => {
   test("respects overflow threshold override", () =>
     runtime.run(() => {
       const result = PromptBudgeter.budget({ context: 100_000, output: 8_192 }, { overflowThreshold: 0.95 })
-      expect(result.soft).toBe(Math.floor((100_000 - 8_192 - 5_000) * 0.95))
+      expect(result.soft).toBe(95_000)
     }))
 })
 
@@ -110,7 +113,7 @@ describe("prompt-budgeter decision", () => {
       expect(result.shouldCompact).toBe(false)
     }))
 
-  test("compacts DeepSeek-sized prompts before they consume the long-output reserve", () =>
+  test("keeps a long-context prompt below the visible threshold and fits output to the remaining window", () =>
     runtime.run(async () => {
       const model = createModel({ context: 1_048_576, output: 384_000 })
       const plan: PromptBudgeter.PromptPlan = {
@@ -119,12 +122,18 @@ describe("prompt-budgeter decision", () => {
         toolDefinitions: [],
       }
 
-      const result = await PromptBudgeter.decide(plan, model.limit, model.id, {
+      const below = await PromptBudgeter.decide(plan, model.limit, model.id, {
         calibration: { actualInput: 683_111, outputTokens: 0, deltaTokens: 0 },
       })
+      const atThreshold = await PromptBudgeter.decide(plan, model.limit, model.id, {
+        calibration: { actualInput: 891_289, outputTokens: 0, deltaTokens: 0 },
+      })
 
-      expect(result.shouldCompact).toBe(true)
-      expect(result.maxOutputTokens).toBe(333_465)
+      expect(below.shouldCompact).toBe(false)
+      expect(below.maxOutputTokens).toBe(333_465)
+      expect(atThreshold.shouldCompact).toBe(true)
+      expect(atThreshold.contextExceeded).toBe(false)
+      expect(atThreshold.maxOutputTokens).toBe(125_287)
     }))
 
   test("preserves full GPT output at the explicit-input compaction threshold", () =>
@@ -213,6 +222,38 @@ describe("prompt-budgeter decision", () => {
 
       expect(result.contextExceeded).toBe(false)
       expect(result.maxOutputTokens).toBe(4_000)
+    }))
+
+  test("does not charge Anthropic reasoning that the SDK cannot replay", () =>
+    runtime.run(async () => {
+      const model = {
+        ...createModel({ context: 200_000, output: 64_000 }),
+        api: { npm: "@ai-sdk/anthropic", id: "claude-opus" },
+      } as Provider.Model
+      const plan = (reasoning?: { anthropic?: { signature: string } }) =>
+        PromptBudgeter.buildPlan({
+          sessionID: "session",
+          agent: "agent",
+          model,
+          system: [],
+          toolDefinitions: [],
+          messages: [
+            {
+              role: "assistant" as const,
+              content: [
+                ...(reasoning
+                  ? [{ type: "reasoning" as const, text: "private chain ".repeat(5_000), providerOptions: reasoning }]
+                  : []),
+                { type: "text" as const, text: "Visible answer" },
+              ],
+            },
+          ],
+        })
+      const unsigned = await PromptBudgeter.measure(await plan({}), model.id)
+      const visible = await PromptBudgeter.measure(await plan(), model.id)
+      const signed = await PromptBudgeter.measure(await plan({ anthropic: { signature: "sig" } }), model.id)
+      expect(unsigned.total).toBe(visible.total)
+      expect(signed.total).toBeGreaterThan(visible.total + 5_000)
     }))
 
   test("larger assembled prompts produce larger measured totals", () =>
@@ -325,7 +366,7 @@ describe("prompt-budgeter decision", () => {
 
   test("uses producer reasoning usage instead of ciphertext size for uncalibrated replay", () =>
     runtime.run(async () => {
-      const model = createModel({ context: 50_000, output: 32_000 })
+      const model = createModel({ context: 36_000, output: 32_000 })
       ;(Token.estimateModelJSON as any) = mock(async (_modelID: string, value: unknown) => String(value).length)
       const item = (id: string, ciphertext: string) => ({
         type: "reasoning" as const,
@@ -348,6 +389,13 @@ describe("prompt-budgeter decision", () => {
         ]),
       })
       expect(measured.messages - baseline.messages).toBe(32_000 - 2 * 1_024)
+      const reportedSmall = await PromptBudgeter.measure(plan, model.id, {
+        encryptedReasoningTokens: new Map([
+          [reasoningItemKey({ openai: { itemId: "rs_first" } })!, 165],
+          [reasoningItemKey({ openai: { itemId: "rs_second" } })!, 32],
+        ]),
+      })
+      expect(reportedSmall.messages - baseline.messages).toBe(165 + 32 - 2 * 1_024)
       const decision = await PromptBudgeter.decide(plan, model.limit, model.id, {
         encryptedReasoningTokens: new Map([
           [reasoningItemKey({ openai: { itemId: "rs_first" } })!, 28_000],
@@ -407,7 +455,7 @@ describe("prompt-budgeter decision", () => {
     { namespace: "xai", profileID: "grok" },
   ])("uses stored $profileID reasoning usage in a replay budget", ({ namespace, profileID }) =>
     runtime.run(async () => {
-      const model = createModel({ context: 50_000, output: 32_000 })
+      const model = createModel({ context: 36_000, output: 32_000 })
       const history: MessageV2.WithParts[] = [
         {
           info: {

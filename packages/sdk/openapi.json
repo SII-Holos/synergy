@@ -58351,7 +58351,7 @@
               "overflowThreshold": {
                 "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
                 "type": "number",
-                "minimum": 0.5,
+                "minimum": 0.2,
                 "maximum": 1
               },
               "maxHistoryImages": {
@@ -63981,7 +63981,7 @@
               "overflowThreshold": {
                 "description": "Fraction of usable context that triggers auto-compaction (default: 0.85)",
                 "type": "number",
-                "minimum": 0.5,
+                "minimum": 0.2,
                 "maximum": 1
               },
               "maxHistoryImages": {

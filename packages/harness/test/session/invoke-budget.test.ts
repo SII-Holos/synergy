@@ -261,7 +261,7 @@ async function addHistory(sessionID: string, chunks: string[]) {
 }
 
 test("admits a root-only soft-pressure request after complete preparation without a summary", async () => {
-  await using fixture = await budgetFixture(48_000)
+  await using fixture = await budgetFixture(48_000, { overflowThreshold: 0.7 })
   await fixture.run(() =>
     ScopeContext.provide({
       scope: Scope.home(),
@@ -534,7 +534,7 @@ test("rejects a root-only hard overflow before any provider or summary call", as
 }, 20_000)
 
 test("compacts history under prepared soft pressure without a failed preliminary assistant", async () => {
-  await using fixture = await budgetFixture(41_000, { residentTool: true })
+  await using fixture = await budgetFixture(41_000, { residentTool: true, overflowThreshold: 0.7 })
   await fixture.run(() =>
     ScopeContext.provide({
       scope: Scope.home(),

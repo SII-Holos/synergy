@@ -105,6 +105,11 @@ const codexRemoteRowDesc = {
 }
 
 const overflowOpts = [
+  { value: "0.20", label: { id: "settings.runtime.compaction.overflow.20", message: "20%" } },
+  { value: "0.30", label: { id: "settings.runtime.compaction.overflow.30", message: "30%" } },
+  { value: "0.40", label: { id: "settings.runtime.compaction.overflow.40", message: "40%" } },
+  { value: "0.50", label: { id: "settings.runtime.compaction.overflow.50", message: "50%" } },
+  { value: "0.60", label: { id: "settings.runtime.compaction.overflow.60", message: "60%" } },
   { value: "0.70", label: { id: "settings.runtime.compaction.overflow.70", message: "70%" } },
   { value: "0.80", label: { id: "settings.runtime.compaction.overflow.80", message: "80%" } },
   { value: "0.85", label: { id: "settings.runtime.compaction.overflow.85", message: "85%" } },

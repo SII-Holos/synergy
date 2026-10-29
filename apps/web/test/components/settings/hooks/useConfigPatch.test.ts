@@ -7,6 +7,13 @@ import { ensureInit } from "../../../../src/components/settings/hooks/useSetting
 import { defaultSettingsState } from "../../../../src/components/settings/types"
 
 describe("settings config patch", () => {
+  test("compaction threshold saves values down to 20%", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.compactionOverflowThreshold = "0.20"
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} }).compaction).toMatchObject({ overflowThreshold: 0.2 })
+    state.runtime.compactionOverflowThreshold = "0.10"
+    expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("compaction")
+  })
   test("file group draft defaults to patch and saves independently of default Agent", () => {
     const state = defaultSettingsState("enter")
     expect(state.agents.fileToolGroup).toBe("patch")
