@@ -362,6 +362,12 @@ export namespace Config {
     if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
     if (result.question === undefined) result.question = { timeout: 3600 }
     else if (result.question.timeout === undefined) result.question.timeout = 3600
+    if (result.retry === undefined) {
+      result.retry = { maxAttempts: Schema.DEFAULT_SESSION_RETRY_MAX_ATTEMPTS, unlimited: false }
+    } else {
+      if (result.retry.maxAttempts === undefined) result.retry.maxAttempts = Schema.DEFAULT_SESSION_RETRY_MAX_ATTEMPTS
+      if (result.retry.unlimited === undefined) result.retry.unlimited = false
+    }
     if (result.compaction === undefined) {
       result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8, codexRemote: false }
     } else {

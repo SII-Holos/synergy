@@ -1090,6 +1090,23 @@
       },
       "additionalProperties": false
     },
+    "retry": {
+      "description": "Automatic session model retry configuration",
+      "type": "object",
+      "properties": {
+        "maxAttempts": {
+          "description": "Additional model attempts after retryable provider failures (0 = disabled, default: 10)",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "unlimited": {
+          "description": "Retry eligible session model failures without an attempt cap (default: false)",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
     "compaction": {
       "type": "object",
       "properties": {

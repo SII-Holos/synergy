@@ -54,6 +54,11 @@
     color: var(--text-base);
   }
 
+  [data-component="input"][data-disabled] [data-slot="input-wrapper"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   :is(
     [data-component="input"][data-invalid] [data-slot="input-wrapper"],
     input[aria-invalid="true"],

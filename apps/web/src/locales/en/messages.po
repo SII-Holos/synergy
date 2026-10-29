@@ -19830,7 +19830,7 @@ msgstr "Agent runtime"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.searchTerms"
-msgstr "agent | worker | pool | parallel | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt"
+msgstr "agent | worker | pool | parallel | subagent | concurrency | retry | recovery | timeout | provider | tool | coauthor | commit | git | prompt"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.usage.description"
@@ -23597,6 +23597,22 @@ msgid "settings.runtime.agents.provider.title"
 msgstr "Provider"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryMaxAttempts.desc"
+msgstr "Additional attempts after transient model request failures. Set 0 to disable automatic retries."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryMaxAttempts.title"
+msgstr "Automatic model retries"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryUnlimited.desc"
+msgstr "Continue retrying eligible model failures until the request is cancelled or its deadline expires."
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryUnlimited.title"
+msgstr "Unlimited automatic retries"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.tools.title"
 msgstr "Tools"
 
@@ -24755,6 +24771,10 @@ msgstr "Enter a whole number greater than zero."
 #. js-lingui-explicit-id
 msgid "settings.validation.nonNegative"
 msgstr "Enter zero or a positive number."
+
+#. js-lingui-explicit-id
+msgid "settings.validation.nonNegativeInteger"
+msgstr "Enter a whole number greater than or equal to zero."
 
 #. js-lingui-explicit-id
 msgid "settings.validation.positive"

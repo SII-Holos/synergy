@@ -81,6 +81,8 @@ test("execution snapshots retain winning configuration layers and experiment pre
         expect(snapshot.sources["compaction.prune"]).toBe("project_config")
         expect(snapshot.sources["compaction.auto"]).toBe("experiment")
         expect(snapshot.sources["compaction.overflowThreshold"]).toBe("default")
+        expect(resolved.config.retry).toEqual({ maxAttempts: 10, unlimited: false })
+        expect(resolved.sources["retry.maxAttempts"]).toBe("default")
       },
     })
   }))

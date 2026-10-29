@@ -7,6 +7,7 @@ import { providerRetryable } from "../provider/retry"
 import { RuntimeContext } from "../lifecycle/context"
 import type { StatusInfo } from "./types"
 import type { ProviderRecoveryWait } from "../provider/retry-coordinator"
+import { DEFAULT_SESSION_RETRY_MAX_ATTEMPTS } from "../config/schema"
 
 // Authoritative storage pressure rejects the request without corrupting it:
 // the queue drains and the same turn succeeds. The persisted error is a
@@ -14,14 +15,14 @@ import type { ProviderRecoveryWait } from "../provider/retry-coordinator"
 // prefix is what identifies the condition here.
 const STORAGE_BUSY_PREFIX = /^(?:Error: )?StorageBusyError(?::|$)/
 
-export type RetryDecision = { message: string; maxAttempts: number }
+export type RetryDecision = { message: string; maxAttempts: number | "unlimited" }
 
 export namespace SessionRetry {
   type State = Extract<StatusInfo, { type: "retry" }>
   const controls = RuntimeContext.state(() => new Map<string, { messageID: string; retry(): boolean }>())
   const RETRY_DELAY_CEILINGS = [2_000, 4_000, 8_000, 16_000, 30_000, 60_000, 120_000] as const
   export const RETRY_MAX_DELAY = 2_147_483_647 // max 32-bit signed integer for setTimeout
-  export const RETRY_MAX_ATTEMPTS = 10
+  export const RETRY_MAX_ATTEMPTS = DEFAULT_SESSION_RETRY_MAX_ATTEMPTS
   export const RETRY_TLS_VERIFICATION_MESSAGE = "Secure connection could not be verified; retrying"
 
   export const sleep = retrySleep
@@ -147,28 +148,30 @@ export namespace SessionRetry {
     return maximum * (0.5 + random() / 2)
   }
 
-  export function retryable(error: ReturnType<NamedError["toObject"]>): RetryDecision | undefined {
+  export function retryable(
+    error: ReturnType<NamedError["toObject"]>,
+    maxAttempts: RetryDecision["maxAttempts"] = RETRY_MAX_ATTEMPTS,
+  ): RetryDecision | undefined {
     if (RolloutRecordingError.isInstance(error)) return undefined
     if (error.name !== "UnknownError" && !MessageV2.APIError.isInstance(error)) return undefined
     const rawMessage = typeof error?.data?.message === "string" ? error.data.message : ""
     if (error.name === "UnknownError" && /^(?:Error: )?Agent worker exited(?: \(|$)/.test(rawMessage))
-      return { message: "Agent worker restarted", maxAttempts: RETRY_MAX_ATTEMPTS }
+      return { message: "Agent worker restarted", maxAttempts }
     if (error.name === "UnknownError" && STORAGE_BUSY_PREFIX.test(rawMessage))
-      return { message: "Authoritative storage is busy; retrying", maxAttempts: RETRY_MAX_ATTEMPTS }
+      return { message: "Authoritative storage is busy; retrying", maxAttempts }
 
     if (MessageV2.APIError.isInstance(error)) {
       if (!error.data.isRetryable) return undefined
-      if (isTlsVerification(error)) return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts: RETRY_MAX_ATTEMPTS }
+      if (isTlsVerification(error)) return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts }
       return {
         message: error.data.message.includes("Overloaded") ? "Provider is overloaded" : error.data.message,
-        maxAttempts: RETRY_MAX_ATTEMPTS,
+        maxAttempts,
       }
     }
 
     if (classifyNetworkError(rawMessage)?.category === "tls-verification")
-      return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts: RETRY_MAX_ATTEMPTS }
-    if (providerRetryable(rawMessage) === true)
-      return { message: "Provider is temporarily unavailable", maxAttempts: RETRY_MAX_ATTEMPTS }
+      return { message: RETRY_TLS_VERIFICATION_MESSAGE, maxAttempts }
+    if (providerRetryable(rawMessage) === true) return { message: "Provider is temporarily unavailable", maxAttempts }
     return undefined
   }
 }

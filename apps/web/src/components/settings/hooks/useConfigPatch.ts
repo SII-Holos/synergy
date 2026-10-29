@@ -378,6 +378,21 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.cortex = { maxConcurrentTasks: cortexConcurrency }
   }
 
+  const retryMaxAttempts = nonNegativeInteger(runtime.retryMaxAttempts)
+  const currentRetryMaxAttempts = cfg.retry?.maxAttempts ?? Number(UI_DEFAULTS.retryMaxAttempts)
+  const retryUnlimited = runtime.retryUnlimited === "true"
+  const currentRetryUnlimited = cfg.retry?.unlimited === true
+  const retry: Record<string, unknown> = {}
+  if (retryMaxAttempts !== undefined && retryMaxAttempts !== currentRetryMaxAttempts) {
+    retry.maxAttempts = retryMaxAttempts
+  }
+  if (retryUnlimited !== currentRetryUnlimited) {
+    retry.unlimited = retryUnlimited
+  }
+  if (Object.keys(retry).length) {
+    patch.retry = { ...(cfg.retry ?? {}), ...retry }
+  }
+
   // A cleared field must send null, not undefined: the SDK JSON serializer
   // drops undefined keys, so undefined would leave the stored ceiling in
   // place and the runtime would keep the explicit value instead of deriving.

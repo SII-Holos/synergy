@@ -158,6 +158,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
     ),
     compactionCodexRemote: cfg.compaction?.codexRemote === true ? "true" : UI_DEFAULTS.compactionCodexRemote,
+    retryMaxAttempts: String(cfg.retry?.maxAttempts ?? Number(UI_DEFAULTS.retryMaxAttempts)),
+    retryUnlimited: cfg.retry?.unlimited === true ? "true" : UI_DEFAULTS.retryUnlimited,
     cortexConcurrency:
       cfg.cortex?.maxConcurrentTasks !== undefined
         ? String(cfg.cortex.maxConcurrentTasks)

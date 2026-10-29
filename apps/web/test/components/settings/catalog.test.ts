@@ -60,7 +60,10 @@ describe("settings catalog", () => {
     expect(timeouts.keywords).toContain("agent")
     expect(timeouts.keywords).toContain("worker")
     expect(timeouts.keywords).toContain("concurrency")
+    expect(timeouts.keywords).toContain("retry")
     expect(timeouts.rowLabels).toContain("Parallel model requests")
+    expect(timeouts.rowLabels).toContain("Automatic model retries")
+    expect(timeouts.rowLabels).toContain("Unlimited automatic retries")
     expect(timeouts.rowLabels).toContain("Parallel collaborator tasks")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")

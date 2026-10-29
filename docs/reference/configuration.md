@@ -216,6 +216,7 @@ File: `120-runtime.jsonc` · Merge: merge
 | `execution` | object (optional) | Process isolation, worker recycling, and bounded execution scheduling |
 | `watcher` | object (optional) |  |
 | `question` | object (optional) |  |
+| `retry` | object (optional) | Automatic session model retry configuration |
 | `compaction` | object (optional) |  |
 | `observability` | ObservabilityConfig.optional (optional) | Local logs, indexed telemetry, and diagnostics settings |
 | `boss` | object (optional) |  |

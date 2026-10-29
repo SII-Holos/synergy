@@ -40,6 +40,8 @@ export const settingsFieldCopy = {
   compactionOverflow: { id: "settings.runtime.compaction.overflow.title", message: "Overflow Threshold" },
   compactionImages: { id: "settings.runtime.compaction.maxImages.title", message: "Max History Images" },
   agentWorkers: { id: "settings.runtime.agents.agentWorkers.title", message: "Parallel model requests" },
+  retryMaxAttempts: { id: "settings.runtime.agents.retryMaxAttempts.title", message: "Automatic model retries" },
+  retryUnlimited: { id: "settings.runtime.agents.retryUnlimited.title", message: "Unlimited automatic retries" },
   agentConcurrency: { id: "settings.runtime.agents.concurrency.title", message: "Parallel collaborator tasks" },
   coauthor: { id: "settings.runtime.agents.coauthor.title", message: "Co-author Reminder" },
   fileToolGroup: { id: "settings.runtime.fileToolGroup.title", message: "File read/write tool group" },
