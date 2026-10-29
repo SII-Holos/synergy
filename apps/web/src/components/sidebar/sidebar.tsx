@@ -1039,13 +1039,15 @@ export function Sidebar(props: SidebarProps) {
           </div>
         </Show>
       </div>
-      <div class="sb-space-footer">
-        <SpaceSwitcher
-          expanded={isExpanded()}
-          onSettings={(section) => dialog.show(() => <SettingsDialog initialTab={section} />)}
-          onRepository={() => platform.openLink("https://github.com/SII-Holos/synergy")}
-        />
-      </div>
+      <Show when={!props.integrated || isExpanded()}>
+        <div class="sb-space-footer">
+          <SpaceSwitcher
+            expanded={isExpanded()}
+            onSettings={(section) => dialog.show(() => <SettingsDialog initialTab={section} />)}
+            onRepository={() => platform.openLink("https://github.com/SII-Holos/synergy")}
+          />
+        </div>
+      </Show>
     </div>
   )
 }

@@ -2,8 +2,29 @@ import { z } from "zod"
 import { AppArtifact, SynergyPackage } from "../../../packages/plugin/src/package"
 import { DESKTOP_RELEASE_TARGETS } from "../../../apps/desktop/src/release-assets"
 import { DESKTOP_APP_PACKAGE } from "./packages"
+import releasedUpgrade from "../released-upgrade-artifacts.json"
 
 export const DesktopAppReceipt = z.object({ version: z.string(), artifacts: z.array(AppArtifact) }).strict()
+
+export const DESKTOP_UPGRADE_RECEIPT = "synergy-desktop-upgrade.json"
+export const DesktopUpgradeReceipt = z
+  .object({
+    version: z.string(),
+    previousVersion: z.literal(releasedUpgrade.version),
+    target: z.literal("darwin-arm64"),
+    artifact: z.string(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict()
+
+export function assertDesktopUpgradeReceipt(input: unknown, version: string, hashes: ReadonlyMap<string, string>) {
+  const receipt = DesktopUpgradeReceipt.parse(input)
+  const expected = desktopApplicationArtifacts(version).find((item) => item.artifact.target === receipt.target)!
+  if (receipt.version !== version || receipt.artifact !== expected.file)
+    throw new Error("Desktop upgrade receipt differs from this release")
+  if (hashes.get(receipt.artifact) !== receipt.sha256)
+    throw new Error("Desktop artifact differs from its successful upgrade receipt")
+}
 
 export function desktopApplicationArtifacts(version: string, platform?: string) {
   return DESKTOP_RELEASE_TARGETS.filter((target) => !platform || target.platform === platform).map((target) => {

@@ -205,27 +205,34 @@ test("an applied proof failure cannot publish an earlier completion from the sam
   })
 })
 
-test("absent root proof avoids one indexed query per empty migration input", async () => {
+test("empty input proofs stay within declared prefixes and reuse only transaction-local evidence", async () => {
   await using fixture = await migrationFixture()
   await fixture.run(async () => {
     await Storage.write(["retained", "record"], { keep: true })
+    const prefixes = Array.from({ length: 32 }, (_, index) => [
+      index % 2 ? "retained" : `absent-${index}`,
+      `nested-${index}`,
+    ])
     MigrationRegistry.register(
       "empty-input",
       Array.from({ length: 32 }, (_, index) => ({
         id: String(index).padStart(2, "0"),
         description: "empty historical input",
-        emptyInput: [[`absent-${index}`, "nested"]],
+        emptyInput: [prefixes[index], prefixes[index]],
         async up() {
           throw new Error("Empty historical body must not execute")
         },
       })),
     )
+    const scan = spyOn(StoreTransaction.prototype, "scan")
     const queries = spyOn(StoreTransaction.prototype, "queryKeys")
     try {
       expect((await runMigrations({ output: "silent" })).completed).toBe(32)
-      expect(queries).not.toHaveBeenCalled()
+      expect(scan).not.toHaveBeenCalled()
+      expect(queries.mock.calls.map(([input]) => input)).toEqual(prefixes.map((prefix) => ({ prefix, limit: 1 })))
       expect(await Storage.read<{ keep: boolean }>(["retained", "record"])).toEqual({ keep: true })
     } finally {
+      scan.mockRestore()
       queries.mockRestore()
     }
   })

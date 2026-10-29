@@ -495,7 +495,9 @@ test("deleting a memory confirms separately and restores the neighboring item or
   await page.getByRole("button", { name: "Delete memory", exact: true }).click()
   expect(await page.getByRole("button", { name: "Close Delete memory?", exact: true }).isVisible()).toBe(true)
   await page.getByRole("button", { name: "Delete", exact: true }).click()
-  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 0, undefined, {
+    timeout: 5000,
+  })
   await page.waitForFunction(() => document.activeElement?.textContent?.trim() === "Second memory")
   multipleMemories = false
   removedMemory = false
@@ -503,7 +505,9 @@ test("deleting a memory confirms separately and restores the neighboring item or
   await page.getByRole("button", { name: "Project testing", exact: true }).click()
   await page.getByRole("button", { name: "Delete memory", exact: true }).click()
   await page.getByRole("button", { name: "Delete", exact: true }).click()
-  await page.getByRole("dialog").waitFor({ state: "detached" })
+  await page.waitForFunction(() => document.querySelectorAll('[role="dialog"]').length === 0, undefined, {
+    timeout: 5000,
+  })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Search library")
   removedMemory = false
 })

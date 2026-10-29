@@ -489,7 +489,6 @@ async function completeVerifiedMigrations(
   return Storage.transaction(async (tx) => {
     const cohorts = await tx.readMany(candidates.map(({ domain, migration }) => [...cohortRoot, domain, migration.id]))
     const empty = new Map<string, boolean>()
-    let roots: Set<string> | undefined
     const completed: Array<(typeof ordered)[number] & { completedAt: number }> = []
     for (const [index, entry] of candidates.entries()) {
       if (cohorts[index] !== undefined) break
@@ -500,8 +499,7 @@ async function completeVerifiedMigrations(
       for (const prefix of onAccess || applied ? [] : entry.migration.emptyInput!) {
         const key = JSON.stringify(prefix)
         if (!empty.has(key)) {
-          roots ??= new Set(await tx.scan([]))
-          empty.set(key, !roots.has(prefix[0]) || !(await tx.queryKeys({ prefix, limit: 1 })).length)
+          empty.set(key, !(await tx.queryKeys({ prefix, limit: 1 })).length)
         }
         if (!empty.get(key)) {
           applicable = false

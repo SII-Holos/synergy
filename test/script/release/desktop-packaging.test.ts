@@ -4,6 +4,8 @@ interface WorkflowStep {
   name?: string
   run?: string
   env?: Record<string, unknown>
+  if?: string
+  "continue-on-error"?: boolean
 }
 
 interface ReleaseWorkflow {
@@ -54,12 +56,19 @@ describe("desktop release packaging", () => {
     const buildIndex = steps.findIndex((step) => step.name === "Build Synergy runtime for desktop package")
     const prepareIndex = steps.findIndex((step) => step.name === "Prepare Synergy runtime for desktop package")
     const packageIndex = steps.findIndex((step) => step.name === "Package desktop artifact")
+    const upgradeIndex = steps.findIndex((step) => step.run === "bun script/release/verify-desktop-upgrade.ts")
+    const uploadIndex = steps.findIndex((step) => step.name === "Upload desktop artifact bundle")
     const buildStep = steps[buildIndex]
     const prepareStep = steps[prepareIndex]
 
     expect(buildIndex).toBeGreaterThanOrEqual(0)
     expect(prepareIndex).toBeGreaterThan(buildIndex)
     expect(packageIndex).toBeGreaterThan(prepareIndex)
+    expect(upgradeIndex).toBeGreaterThan(packageIndex)
+    expect(uploadIndex).toBeGreaterThan(upgradeIndex)
+    expect(steps[upgradeIndex]?.if).toBe("${{ matrix.platform == 'darwin' }}")
+    expect(steps[upgradeIndex]?.["continue-on-error"]).not.toBe(true)
+    expect(steps[upgradeIndex]?.env?.SYNERGY_VERSION).toBe("${{ needs.stable_candidate.outputs.version }}")
     expect(buildStep?.env?.NODE_OPTIONS).toBe("--max-old-space-size=4096")
     expect(prepareStep?.run).toBe("bun run ./script/release/prepare-desktop-runtime.ts")
     expect(prepareStep?.env?.SYNERGY_BUILD_TARGETS).toBe("${{ matrix.runtime_targets }}")

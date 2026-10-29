@@ -61,6 +61,7 @@ beforeAll(async () => {
       if (id === "project-one" && expanded && !projectLoaded()) setProjectRequest({loading:true,loaded:false,error:false})
     }
     window.sidebarFixture = {
+      close:()=>setOpened(false),
       refresh:()=>setProjects(previous=>previous.map(scope=>({...scope}))),
       reorder:()=>setProjects(previous=>[previous.at(-1),...previous.slice(0,-1)]),
       finishLoad:()=>{setProjectLoaded(true);setProjectRequest({loading:false,loaded:true,error:false})},
@@ -565,10 +566,32 @@ test("sidebar headers retain only navigation controls in standalone and integrat
     const collapse = header.getByRole("button", { name: "Collapse sidebar", exact: true })
     const search = header.getByRole("button", { name: "Search sessions", exact: true })
     expect((await collapse.boundingBox())!.x).toBeLessThan((await search.boundingBox())!.x)
+    const space = page.getByRole("button", { name: "Current space", exact: true })
+    await space.click()
+    await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]'))
     await collapse.click()
-    expect(await header.getByRole("button", { name: "Expand sidebar", exact: true }).isVisible()).toBe(true)
+    const expand = header.getByRole("button", { name: "Expand sidebar", exact: true })
+    expect(await expand.isVisible()).toBe(true)
     expect(await header.locator("img").count()).toBe(0)
-    await page.getByRole("button", { name: "Current space", exact: true }).click()
+    await page.getByRole("menu").waitFor({ state: "hidden" })
+    if (integrated) {
+      expect(await space.count()).toBe(0)
+      expect(await page.locator(".sb-space-footer").count()).toBe(0)
+      expect(await expand.evaluate((element) => element === document.activeElement)).toBe(true)
+      await expand.press("Enter")
+      await space.waitFor({ state: "visible" })
+      expect(await space.innerText()).toContain("Personal space")
+      expect(await page.getByRole("menu").count()).toBe(0)
+      await space.click()
+      await page.waitForFunction(() => document.activeElement?.closest('[role="menu"]'))
+      await page.evaluate(() => (window as unknown as { sidebarFixture: { close(): void } }).sidebarFixture.close())
+      await page.getByRole("menu").waitFor({ state: "detached" })
+      expect(await space.count()).toBe(0)
+      await expand.click()
+      await space.waitFor({ state: "visible" })
+      expect(await page.getByRole("menu").count()).toBe(0)
+    }
+    await space.click()
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click()
     await page.getByRole("menu").waitFor({ state: "hidden" })
     expect(errors).toEqual([])

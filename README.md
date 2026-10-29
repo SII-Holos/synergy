@@ -198,7 +198,7 @@ Upgrade with `synergy upgrade`, or install a specific version by passing `--vers
 
 The built-in Browser is Desktop-local and uses Electron's bundled Chromium, with per-session workbench page tabs and reusable website logins; separate and temporary profiles live in Browser settings. CLI and Web use search, fetch and MCP integrations. macOS Desktop also supports native application Computer Use in Full Access mode, with independently checked Accessibility and Screen Recording permissions. Native observations report image quality and action availability; coordinate actions require a verified image submitted to the selecting model request. Computer Use prefers background delivery. The agent can explicitly request foreground observation or input when needed; actions never automatically escalate or replay, and a fresh observation verifies the result. See [Native Computer Use](docs/architecture/computer-use.md).
 
-The bottom-left Personal space menu opens Settings, Providers and the repository. Local work does not require a network identity.
+The Personal space menu in the sidebar opens Settings, Providers and the repository. It hides with the built-in sidebar. Local work does not require a network identity.
 
 See the [CLI reference](docs/reference/cli.md), [configuration reference](docs/reference/configuration.md), and [release notes](https://github.com/SII-Holos/synergy/releases) for complete setup and runtime details.
 
