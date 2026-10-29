@@ -229,11 +229,7 @@ export namespace PromptBudgeter {
         : configuredOutput
     const output = Math.min(providerOutput, requestedOutput, ModelLimit.OUTPUT_TOKEN_MAX)
     const margin = outputMargin(context)
-    const hasExplicitInput = typeof limits?.input === "number" && limits.input > 0
-    const boundedInputEnvelope = context - output - margin
-    const reservesBoundedOutput =
-      !hasExplicitInput && configuredOutput > 0 && configuredOutput < context && boundedInputEnvelope > 0
-    const inputEnvelope = reservesBoundedOutput ? boundedInputEnvelope : usable
+    const inputEnvelope = usable
     const threshold = options?.overflowThreshold ?? DEFAULT_OVERFLOW_THRESHOLD
     return {
       context,
@@ -358,8 +354,8 @@ export namespace PromptBudgeter {
                 if (item.content && (!item.key || !reasoningItems.has(item.key))) {
                   const reported = item.key ? encryptedReasoningTokens?.get(item.key) : undefined
                   encryptedReasoningCost +=
-                    typeof reported === "number" && Number.isFinite(reported)
-                      ? Math.max(ENCRYPTED_REASONING_TOKEN_ESTIMATE, reported)
+                    typeof reported === "number" && Number.isFinite(reported) && reported > 0
+                      ? reported
                       : ENCRYPTED_REASONING_TOKEN_ESTIMATE
                   if (item.key) reasoningItems.add(item.key)
                 }

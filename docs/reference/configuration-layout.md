@@ -545,14 +545,14 @@ Compaction settings are owned by the Runtime domain (`120-runtime.jsonc`):
 }
 ```
 
-| Field                          | Required | Default | Description                                                                                 |
-| ------------------------------ | -------- | ------- | ------------------------------------------------------------------------------------------- |
-| `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                |
-| `compaction.prune`             | no       | `true`  | Prune eligible old tool outputs when the existing prompt budget reports pressure            |
-| `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the input envelope that triggers auto-compaction; constrained to `0.5`–`1`      |
-| `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders |
+| Field                          | Required | Default | Description                                                                                  |
+| ------------------------------ | -------- | ------- | -------------------------------------------------------------------------------------------- |
+| `compaction.auto`              | no       | `true`  | Enable automatic compaction when the measured prompt crosses the soft budget                 |
+| `compaction.prune`             | no       | `true`  | Prune eligible old tool outputs when the existing prompt budget reports pressure             |
+| `compaction.overflowThreshold` | no       | `0.85`  | Fraction of the visible input window that triggers auto-compaction; constrained to `0.2`–`1` |
+| `compaction.maxHistoryImages`  | no       | `8`     | Maximum historical images sent as base64 per request; older images become text placeholders  |
 
-The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the usable input for models with an explicit input limit, and `context - output - margin` for shared-context models only when reserving output and margin leaves a positive remainder; fully shared or near-window output declarations otherwise use the model's usable input. The margin is `min(32000, max(2048, ceil(context * 0.05)))`. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. Prompt pressure first permits eligible pruning and remeasurement. If no response space remains, automatic compaction receives one root-scoped recovery attempt before Synergy stops locally with an actionable error; with automatic compaction disabled, it stops after pruning cannot relieve that overflow. The `prune` and `auto` switches are independent. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
+The soft budget is `floor(inputEnvelope * overflowThreshold)`. The input envelope is the explicit input limit when present, otherwise the model context. Declared output is clamped per request to the remaining context after a margin of `min(32000, max(2048, ceil(context * 0.05)))`; it does not lower the compaction threshold. See [LLM loop and compaction](../architecture/llm-loop.md#prompt-budget) for the full budgeting model. Prompt pressure first permits eligible pruning and remeasurement. If no response space remains, automatic compaction receives one root-scoped recovery attempt before Synergy stops locally with an actionable error; with automatic compaction disabled, it stops after pruning cannot relieve that overflow. The `prune` and `auto` switches are independent. An explicit per-request output limit remains effective when model context metadata is unavailable. `SYNERGY_DISABLE_AUTOCOMPACT=1` and `SYNERGY_DISABLE_PRUNE=1` force `auto` and `prune` off for the process.
 
 ## Runtime Boss Mode
 

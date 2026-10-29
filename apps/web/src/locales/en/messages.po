@@ -23777,6 +23777,26 @@ msgid "settings.runtime.compaction.maxImagesAria"
 msgstr "Maximum history images"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.compaction.overflow.20"
+msgstr "20%"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.overflow.30"
+msgstr "30%"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.overflow.40"
+msgstr "40%"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.overflow.50"
+msgstr "50%"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.compaction.overflow.60"
+msgstr "60%"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.compaction.overflow.70"
 msgstr "70%"
 

@@ -1062,7 +1062,7 @@ export const CoreInfo = z
         prune: z.boolean().optional().describe("Enable pruning of old tool outputs (default: true)"),
         overflowThreshold: z
           .number()
-          .min(0.5)
+          .min(0.2)
           .max(1)
           .optional()
           .describe("Fraction of usable context that triggers auto-compaction (default: 0.85)"),

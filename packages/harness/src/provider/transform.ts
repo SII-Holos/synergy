@@ -37,6 +37,12 @@ export namespace ProviderTransform {
     return content.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "\uFFFD")
   }
 
+  function anthropicReplayable(options: unknown) {
+    const anthropic = (options as { anthropic?: { signature?: unknown; redactedData?: unknown } } | undefined)
+      ?.anthropic
+    return typeof anthropic?.signature === "string" || typeof anthropic?.redactedData === "string"
+  }
+
   function normalizeMessages(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
     // Sanitize surrogate characters in all messages
     msgs = msgs.map((msg) => {
@@ -69,8 +75,12 @@ export namespace ProviderTransform {
             }
             return true
           })
-          if (filtered.length === 0) return undefined
-          return { ...msg, content: filtered }
+          const replayable =
+            model.api.npm === "@ai-sdk/anthropic"
+              ? filtered.filter((part) => part.type !== "reasoning" || anthropicReplayable(part.providerOptions))
+              : filtered
+          if (replayable.length === 0) return undefined
+          return { ...msg, content: replayable }
         })
         .filter((msg): msg is ModelMessage => msg !== undefined && msg.content !== "")
     }
@@ -156,7 +166,10 @@ export namespace ProviderTransform {
       return msgs.map((msg) => {
         if (msg.role === "assistant" && Array.isArray(msg.content)) {
           const reasoningParts = msg.content.filter((part: any) => part.type === "reasoning")
-          const reasoningText = reasoningParts.map((part: any) => part.text).join("")
+          const reasoningText =
+            reasoningParts.map((part: any) => part.text).join("") ||
+            (msg.providerOptions as any)?.openaiCompatible?.reasoning_content ||
+            ""
 
           // Filter out reasoning parts from content
           const filteredContent = msg.content.filter((part: any) => part.type !== "reasoning")
@@ -172,7 +185,7 @@ export namespace ProviderTransform {
               ...msg.providerOptions,
               openaiCompatible: {
                 ...(msg.providerOptions as any)?.openaiCompatible,
-                reasoning_content: reasoningText || "",
+                reasoning_content: reasoningText,
               },
             },
           }

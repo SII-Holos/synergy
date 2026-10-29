@@ -673,6 +673,31 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
         input: { command: "echo hello" },
       },
     ])
+    const sent = ProviderTransform.message(
+      result as any[],
+      {
+        id: "deepseek/deepseek-chat",
+        providerID: "deepseek",
+        api: { id: "deepseek-chat", url: "https://api.deepseek.com", npm: "@ai-sdk/openai-compatible" },
+        name: "DeepSeek Chat",
+        capabilities: {
+          temperature: true,
+          reasoning: true,
+          attachment: false,
+          toolcall: true,
+          input: { text: true, audio: false, image: false, video: false, pdf: false },
+          output: { text: true, audio: false, image: false, video: false, pdf: false },
+          interleaved: { field: "reasoning_content" },
+        },
+        cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+        limit: { context: 128000, output: 8192 },
+        status: "active",
+        options: {},
+        headers: {},
+        release_date: "2023-04-01",
+      } as any,
+    )
+    expect(sent[0].providerOptions?.openaiCompatible?.reasoning_content).toBe("Let me think about this...")
     expect(result[0].providerOptions?.openaiCompatible?.reasoning_content).toBe("Let me think about this...")
   })
 
@@ -1107,7 +1132,8 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
       {
         role: "assistant",
         content: [
-          { type: "reasoning", text: "Thinking..." },
+          { type: "reasoning", text: "Thinking...", providerOptions: { anthropic: { signature: "sig" } } },
+          { type: "reasoning", text: "Unsigned..." },
           { type: "text", text: "" },
           { type: "text", text: "Result" },
         ],
@@ -1118,7 +1144,11 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
 
     expect(result).toHaveLength(1)
     expect(result[0].content).toHaveLength(2)
-    expect(result[0].content[0]).toEqual({ type: "reasoning", text: "Thinking..." })
+    expect(result[0].content[0]).toEqual({
+      type: "reasoning",
+      text: "Thinking...",
+      providerOptions: { anthropic: { signature: "sig" } },
+    })
     expect(result[0].content[1]).toEqual({ type: "text", text: "Result" })
   })
 

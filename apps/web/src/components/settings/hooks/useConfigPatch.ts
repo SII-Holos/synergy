@@ -353,7 +353,7 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
   const compaction = {
     auto: runtime.compactionAuto === "true",
     prune: runtime.compactionPrune === "true",
-    overflowThreshold: boundedNumber(runtime.compactionOverflowThreshold, 0.5, 1),
+    overflowThreshold: boundedNumber(runtime.compactionOverflowThreshold, 0.2, 1),
     maxHistoryImages: nonNegativeInteger(runtime.compactionMaxHistoryImages),
     codexRemote: runtime.compactionCodexRemote === "true",
   }
