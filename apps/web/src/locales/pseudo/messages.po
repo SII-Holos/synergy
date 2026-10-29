@@ -23597,6 +23597,22 @@ msgid "settings.runtime.agents.provider.title"
 msgstr "⟦Provider⟧"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryMaxAttempts.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryMaxAttempts.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryUnlimited.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryUnlimited.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.tools.title"
 msgstr "⟦Tools⟧"
 
@@ -24755,6 +24771,10 @@ msgstr "⟦Enter a whole number greater than zero.⟧"
 #. js-lingui-explicit-id
 msgid "settings.validation.nonNegative"
 msgstr "⟦Enter zero or a positive number.⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.nonNegativeInteger"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.validation.positive"

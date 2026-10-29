@@ -19,6 +19,7 @@ import { RolloutArtifact } from "../../src/session/rollout/artifact"
 import { ToolScheduler } from "../../src/session/tool-scheduler"
 import { ObservabilityMetrics } from "../../src/observability/metrics"
 import { tmpdir } from "../support/fixture"
+import { Config } from "../../src/config/config"
 
 afterEach(
   runtime.bind(async () => {
@@ -369,6 +370,35 @@ test.each(["ETIMEOUT", "ENOTFOUND"])(
     })
   }),
 )
+
+test("uses the configured session retry budget", () =>
+  runtime.run(async () => {
+    const configured = spyOn(Config, "current").mockResolvedValue({
+      execution: {},
+      retry: { maxAttempts: 1 },
+    } as never)
+    try {
+      const result = await run("exhausted", Object.assign(new Error("getaddrinfo ETIMEOUT"), { code: "ETIMEOUT" }))
+      expect(result.calls).toBe(2)
+    } finally {
+      configured.mockRestore()
+    }
+  }))
+
+test("allows the configured unlimited retry mode to outlive the finite budget", () =>
+  runtime.run(async () => {
+    const configured = spyOn(Config, "current").mockResolvedValue({
+      execution: {},
+      retry: { maxAttempts: 0, unlimited: true },
+    } as never)
+    try {
+      const result = await run("mixed-network")
+      expect(result.calls).toBe(11)
+      expect(result.effects).toBe(1)
+    } finally {
+      configured.mockRestore()
+    }
+  }))
 
 test.each([
   "Our servers are currently overloaded. Please try again later.",

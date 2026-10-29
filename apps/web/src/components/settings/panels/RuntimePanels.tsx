@@ -145,6 +145,16 @@ const agentWorkersPlaceholder = {
   id: "settings.runtime.agents.agentWorkers.placeholder",
   message: "Auto",
 }
+const retryMaxAttemptsRowTitle = settingsFieldCopy.retryMaxAttempts
+const retryMaxAttemptsRowDesc = {
+  id: "settings.runtime.agents.retryMaxAttempts.desc",
+  message: "Additional attempts after transient model request failures. Set 0 to disable automatic retries.",
+}
+const retryUnlimitedRowTitle = settingsFieldCopy.retryUnlimited
+const retryUnlimitedRowDesc = {
+  id: "settings.runtime.agents.retryUnlimited.desc",
+  message: "Continue retrying eligible model failures until the request is cancelled or its deadline expires.",
+}
 const invokeRowTitle = settingsFieldCopy.invokeTimeout
 const invokeRowDesc = {
   id: "settings.runtime.agents.invoke.desc",
@@ -431,6 +441,34 @@ export function TimeoutsPanel(props: {
               placeholder={_(agentWorkersPlaceholder)}
               class="settings-row-control-text"
               onChange={(value) => props.onRuntimeChange("agentWorkers", value)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(retryMaxAttemptsRowTitle)}
+          description={_(retryMaxAttemptsRowDesc)}
+          trailing={
+            <TextField
+              type="number"
+              min="0"
+              step="1"
+              value={props.runtime.retryMaxAttempts}
+              validationState={props.fieldError?.("retryMaxAttempts") ? "invalid" : "valid"}
+              error={props.fieldError?.("retryMaxAttempts")}
+              placeholder="10"
+              disabled={props.runtime.retryUnlimited === "true"}
+              class="settings-row-control-text"
+              onChange={(value) => props.onRuntimeChange("retryMaxAttempts", value)}
+            />
+          }
+        />
+        <SettingRow
+          title={_(retryUnlimitedRowTitle)}
+          description={_(retryUnlimitedRowDesc)}
+          trailing={
+            <Switch
+              checked={props.runtime.retryUnlimited === "true"}
+              onChange={(value) => props.onRuntimeChange("retryUnlimited", value ? "true" : "false")}
             />
           }
         />

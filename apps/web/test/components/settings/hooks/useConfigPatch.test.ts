@@ -416,6 +416,33 @@ describe("settings config patch", () => {
     expect(patch.execution).toEqual({ agentWorkers: 3, policyWorkers: 2 })
   })
 
+  test("persists the configured automatic retry count", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.retryMaxAttempts = "3"
+
+    expect(
+      buildPatch({
+        cfg: { retry: { maxAttempts: 10 } } as Config,
+        state,
+        originalMcps: {},
+      }).retry,
+    ).toEqual({ maxAttempts: 3 })
+  })
+
+  test("persists unlimited automatic retries without changing the finite value", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.retryMaxAttempts = "20"
+    state.runtime.retryUnlimited = "true"
+
+    expect(
+      buildPatch({
+        cfg: { retry: { maxAttempts: 20, unlimited: false } } as Config,
+        state,
+        originalMcps: {},
+      }).retry,
+    ).toEqual({ maxAttempts: 20, unlimited: true })
+  })
+
   test("clearing the agent worker pool size removes the explicit ceiling", () => {
     const state = defaultSettingsState("enter")
     state.runtime.agentWorkers = ""

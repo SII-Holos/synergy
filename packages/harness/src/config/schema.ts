@@ -10,6 +10,8 @@ import { ModelRole } from "../provider/model-role"
 import { ConfigExtensions } from "./extensions"
 import { FeaturePreferences } from "@ericsanchezok/synergy-util/features"
 
+export const DEFAULT_SESSION_RETRY_MAX_ATTEMPTS = 10
+
 export const SandboxConfig = z
   .object({
     enabled: z.boolean().optional().describe("Enable the sandbox runtime when available (default: true)"),
@@ -1036,6 +1038,24 @@ export const CoreInfo = z
           .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)"),
       })
       .optional(),
+    retry: z
+      .object({
+        maxAttempts: z
+          .number()
+          .int()
+          .nonnegative()
+          .optional()
+          .describe(
+            `Additional model attempts after retryable provider failures (0 = disabled, default: ${DEFAULT_SESSION_RETRY_MAX_ATTEMPTS})`,
+          ),
+        unlimited: z
+          .boolean()
+          .optional()
+          .describe("Retry eligible session model failures without an attempt cap (default: false)"),
+      })
+      .strict()
+      .optional()
+      .describe("Automatic session model retry configuration"),
     compaction: z
       .object({
         auto: z.boolean().optional().describe("Enable automatic compaction when context is full (default: true)"),

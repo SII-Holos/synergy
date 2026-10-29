@@ -91,6 +91,19 @@ describe("settings form Cortex concurrency", () => {
   })
 })
 
+describe("settings form session retries", () => {
+  test("defaults the automatic retry count to ten", () => {
+    expect(initializedRuntime({})).toMatchObject({ retryMaxAttempts: "10", retryUnlimited: "false" })
+  })
+
+  test("hydrates the configured automatic retry count", () => {
+    expect(initializedRuntime({ retry: { maxAttempts: 3, unlimited: true } })).toMatchObject({
+      retryMaxAttempts: "3",
+      retryUnlimited: "true",
+    })
+  })
+})
+
 describe("settings form agent worker pool", () => {
   test("hydrates the configured pool size", () => {
     expect(initializedRuntime({ execution: { agentWorkers: 6 } }).agentWorkers).toBe("6")

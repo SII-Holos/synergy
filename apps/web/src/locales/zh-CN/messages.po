@@ -23597,6 +23597,22 @@ msgid "settings.runtime.agents.provider.title"
 msgstr "提供商"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryMaxAttempts.desc"
+msgstr "发生临时模型请求失败后允许的额外尝试次数。设置为 0 可关闭自动重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryMaxAttempts.title"
+msgstr "自动模型重试"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryUnlimited.desc"
+msgstr "持续重试可重试的模型失败，直到请求被取消或达到截止时间。"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.retryUnlimited.title"
+msgstr "无限自动重试"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.agents.tools.title"
 msgstr "工具"
 
@@ -24755,6 +24771,10 @@ msgstr "请输入大于 0 的整数。"
 #. js-lingui-explicit-id
 msgid "settings.validation.nonNegative"
 msgstr "请输入 0 或正数。"
+
+#. js-lingui-explicit-id
+msgid "settings.validation.nonNegativeInteger"
+msgstr "请输入大于或等于 0 的整数。"
 
 #. js-lingui-explicit-id
 msgid "settings.validation.positive"

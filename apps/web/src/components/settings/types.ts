@@ -56,6 +56,8 @@ export const UI_DEFAULTS = {
   compactionOverflowThreshold: "0.85" as string,
   compactionMaxHistoryImages: "8" as string,
   compactionCodexRemote: "false" as string,
+  retryMaxAttempts: "10" as string,
+  retryUnlimited: "false" as string,
   cortexConcurrency: "8" as string,
   agentWorkers: "" as string,
   libraryLearning: "true" as string,
@@ -410,6 +412,8 @@ export type RuntimeStore = {
   compactionOverflowThreshold: string
   compactionMaxHistoryImages: string
   compactionCodexRemote: string
+  retryMaxAttempts: string
+  retryUnlimited: string
   cortexConcurrency: string
   agentWorkers: string
   invokeTimeout: string
@@ -531,6 +535,8 @@ export function defaultSettingsState(sendShortcut: SendShortcut, colorScheme: Co
       compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
       compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
       compactionCodexRemote: UI_DEFAULTS.compactionCodexRemote,
+      retryMaxAttempts: UI_DEFAULTS.retryMaxAttempts,
+      retryUnlimited: UI_DEFAULTS.retryUnlimited,
       cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
       agentWorkers: UI_DEFAULTS.agentWorkers,
       invokeTimeout: UI_DEFAULTS.invokeTimeout,

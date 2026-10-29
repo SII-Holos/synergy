@@ -73,6 +73,30 @@ describe("Settings draft validation", () => {
     ])
   })
 
+  test("requires the automatic retry count to be a nonnegative integer", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.retryMaxAttempts = "-1"
+    expect(validateSettingsDraft(state)).toContainEqual(
+      expect.objectContaining({ page: "timeouts", field: "retryMaxAttempts" }),
+    )
+
+    state.runtime.retryMaxAttempts = "1.5"
+    expect(validateSettingsDraft(state)).toContainEqual(
+      expect.objectContaining({ page: "timeouts", field: "retryMaxAttempts" }),
+    )
+
+    state.runtime.retryMaxAttempts = "0"
+    expect(validateSettingsDraft(state)).not.toContainEqual(
+      expect.objectContaining({ page: "timeouts", field: "retryMaxAttempts" }),
+    )
+
+    state.runtime.retryMaxAttempts = "invalid"
+    state.runtime.retryUnlimited = "true"
+    expect(validateSettingsDraft(state)).not.toContainEqual(
+      expect.objectContaining({ page: "timeouts", field: "retryMaxAttempts" }),
+    )
+  })
+
   test("rejects precise recall values outside the probability range", () => {
     const state = defaultSettingsState("enter")
     state.library.memorySimThreshold = "1.2"

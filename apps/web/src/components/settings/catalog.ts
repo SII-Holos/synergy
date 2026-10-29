@@ -470,11 +470,13 @@ const BUILTIN_SETTINGS_COPY = {
     searchTerms: {
       id: "settings.catalog.timeouts.searchTerms",
       message:
-        "agent | worker | pool | parallel | subagent | concurrency | timeout | provider | tool | coauthor | commit | git | prompt",
+        "agent | worker | pool | parallel | subagent | concurrency | retry | recovery | timeout | provider | tool | coauthor | commit | git | prompt",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
       settingsFieldCopy.agentWorkers,
+      settingsFieldCopy.retryMaxAttempts,
+      settingsFieldCopy.retryUnlimited,
       settingsFieldCopy.agentConcurrency,
       settingsFieldCopy.coauthor,
       settingsFieldCopy.defaultAgent,

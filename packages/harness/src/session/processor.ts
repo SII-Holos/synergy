@@ -1080,7 +1080,11 @@ export namespace SessionProcessor {
           messageID: input.assistantMessage.id,
           agent: input.assistantMessage.agent,
         })
-        const shouldBreak = (await Config.current()).execution?.continueOnDeny !== true
+        const config = await Config.current()
+        const shouldBreak = config.execution?.continueOnDeny !== true
+        const maxRetryAttempts = config.retry?.unlimited
+          ? "unlimited"
+          : (config.retry?.maxAttempts ?? SessionRetry.RETRY_MAX_ATTEMPTS)
         const retainedPartIDs = new Set(
           (await MessageV2.parts({ sessionID: input.sessionID, messageID: input.assistantMessage.id })).map(
             (part) => part.id,
@@ -2034,8 +2038,8 @@ export namespace SessionProcessor {
                 modelID: input.model.id,
                 endpointHost: providerEndpointHost(input.model, providerRecord),
               })
-              const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error)
-              if (retry !== undefined && attempt < retry.maxAttempts) {
+              const retry = fastAbort || !retryEligible ? undefined : SessionRetry.retryable(error, maxRetryAttempts)
+              if (retry !== undefined && (retry.maxAttempts === "unlimited" || attempt < retry.maxAttempts)) {
                 attempt++
                 const delay = SessionRetry.delay(attempt, error.name === "APIError" ? error : undefined)
                 ObservabilityMetrics.record({

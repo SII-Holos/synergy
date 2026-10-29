@@ -11,6 +11,10 @@ export type SettingsDraftIssue = {
 const positive = { id: "settings.validation.positive", message: "Enter a number greater than zero." }
 const nonNegative = { id: "settings.validation.nonNegative", message: "Enter zero or a positive number." }
 const integer = { id: "settings.validation.integer", message: "Enter a whole number greater than zero." }
+const nonNegativeInteger = {
+  id: "settings.validation.nonNegativeInteger",
+  message: "Enter a whole number greater than or equal to zero.",
+}
 const workers = {
   id: "settings.validation.workers",
   message: "Enter a whole number from 1 to 64, or leave empty for automatic capacity.",
@@ -80,6 +84,15 @@ export function validateSettingsDraft(state: SettingsState): SettingsDraftIssue[
     (number) => Number.isInteger(number) && number > 0,
     integer,
   )
+  if (runtime.retryUnlimited !== "true") {
+    check(
+      "timeouts",
+      "retryMaxAttempts",
+      runtime.retryMaxAttempts,
+      (number) => Number.isInteger(number) && number >= 0,
+      nonNegativeInteger,
+    )
+  }
   if (!parseToolTimeoutOverrides(runtime.toolOverrides))
     issues.push({ page: "timeouts", field: "toolOverrides", message: overrides })
   for (const field of ["smtpPort", "imapPort"] as const) {

@@ -6997,6 +6997,19 @@ export type Config = {
      */
     timeout?: number
   }
+  /**
+   * Automatic session model retry configuration
+   */
+  retry?: {
+    /**
+     * Additional model attempts after retryable provider failures (0 = disabled, default: 10)
+     */
+    maxAttempts?: number
+    /**
+     * Retry eligible session model failures without an attempt cap (default: false)
+     */
+    unlimited?: boolean
+  }
   compaction?: {
     /**
      * Enable automatic compaction when context is full (default: true)
