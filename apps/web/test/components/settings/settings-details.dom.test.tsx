@@ -64,6 +64,7 @@ beforeAll(async () => {
     import { EmailPanel } from "${source}/components/settings/panels/EmailPanel.tsx"
     import { LearningPanel } from "${source}/components/settings/panels/LibraryPanels.tsx"
     import { BossModePanel } from "${source}/components/settings/panels/BossModePanel.tsx"
+    import { CompactionPanel } from "${source}/components/settings/panels/RuntimePanels.tsx"
     import { ExperimentsPanel } from "${source}/components/settings/panels/ExperimentsPanel.tsx"
     import { createExperimentsController } from "${source}/components/settings/panels/experiments-controller.ts"
     import { ImportPanel } from "${source}/components/settings/panels/ImportPanel.tsx"
@@ -118,6 +119,7 @@ beforeAll(async () => {
       const [email, setEmail] = createStore(defaultSettingsState().email)
       const [library, setLibrary] = createStore(defaultSettingsState().library)
       const [runtime, setRuntime] = createStore(defaultSettingsState().runtime)
+      setRuntime("compactionOverflowThreshold", query.get("compaction") || "0.9")
       const [anima, setAnima] = createSignal(false)
       const [choice, setChoice] = createSignal("ask")
       const [segment, setSegment] = createSignal("balanced")
@@ -134,9 +136,10 @@ beforeAll(async () => {
         <button onClick={() => setView("experiments")}>Experiments page</button>
         <Show when={view() === "experiments"}><ExperimentsPanel controller={experiments} onRetrySave={() => void experiments.save()} /><button onClick={() => void experiments.save()}>Save experiments</button></Show>
         <Show when={view() === "email"}><EmailPanel email={email} onEmailChange={(key, value) => setEmail(key, value)} /></Show>
-        <div><button onClick={() => setView("learning")}>Learning page</button><button onClick={() => setAnima(value => !value)}>Toggle Anima</button><button onClick={() => setView("boss")}>Boss page</button></div>
+        <div><button onClick={() => setView("learning")}>Learning page</button><button onClick={() => setAnima(value => !value)}>Toggle Anima</button><button onClick={() => setView("boss")}>Boss page</button><button onClick={() => setView("compaction")}>Compaction page</button></div>
         <Show when={view() === "learning"}><LearningPanel library={library} showAutonomy={anima()} onLibraryChange={(key, value) => setLibrary(key, value)} /></Show>
         <Show when={view() === "boss"}><BossModePanel runtime={runtime} onRuntimeChange={(key, value) => setRuntime(key, value)} nameAvailable={false} nameController={{ content: () => "", setContent: () => {}, dirty: () => false, loaded: () => true, status: () => "idle", error: () => undefined, load: async () => {}, save: async () => true, discard: () => {} }} onOpenBossSession={async () => { window.bossOpens = (window.bossOpens || 0) + 1 }} /></Show>
+        <Show when={view() === "compaction"}><CompactionPanel runtime={runtime} onRuntimeChange={(key, value) => setRuntime(key, value)} /></Show>
         <Show when={view() === "import"}><ImportPanel domains={domains} scopes={scopes} onImported={refresh} /></Show>
         <Show when={view() === "formatter"}><LanguageToolsPanel kind="formatter" title="Formatter" description="Formatter configuration" config={{ formatter: { custom: { command: ["fixture"], extensions: [".tsx"] } }, lsp: { unrelated: { command: ["do-not-show"] } }, timeout: { invoke: 123 } }} scopes={scopes} domains={[]} /></Show>
         <Show when={view() === "paths"}><SettingsPage title="Config Files"><SettingsPathRow compact label="90-channels.jsonc" path={"/fixture/config/" + "long-directory/".repeat(12) + "90-channels.jsonc"} status="Empty" ownedKeys={["channel"]} mergePolicy="merge" /></SettingsPage></Show>
@@ -461,6 +464,19 @@ test("settings controls expose field descriptions, errors, object names and radi
   expect(await page.getByRole("slider", { name: "Duration", exact: true }).getAttribute("aria-valuetext")).toBe(
     "Custom 37",
   )
+  expect(errors).toEqual([])
+})
+
+test("compaction thresholds keep persisted decimal values on their matching steps", async () => {
+  const values = ["0.2", "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.95"]
+  for (const [index, value] of values.entries()) {
+    await page.goto(`${url}?compaction=${value}`)
+    await page.getByRole("heading", { name: "Email", exact: true }).waitFor()
+    await page.getByRole("button", { name: "Compaction page", exact: true }).click()
+    const slider = page.getByRole("slider", { name: "Compaction overflow threshold", exact: true })
+    expect(await slider.inputValue()).toBe(String(index))
+    expect(await slider.getAttribute("aria-valuetext")).toBe(`${Number(value) * 100}%`)
+  }
   expect(errors).toEqual([])
 })
 
