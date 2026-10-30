@@ -72,6 +72,7 @@ export const SessionSendTool = Tool.define("session_send", {
       mail,
       waitForProcessing: false,
       sourceSessionID: ctx.sessionID,
+      joinCurrentTask: true,
     })
     if (!item) throw new Error(`Message was not delivered: session ${session.id} is no longer available.`)
 

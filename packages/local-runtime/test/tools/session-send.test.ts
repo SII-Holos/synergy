@@ -121,7 +121,10 @@ for (const scenario of [
   "paused",
   "rollback",
 ] as const) {
-  test(`parent follow-up keeps task delivery for ${scenario}`, () =>
+  // Every session that can consume a steer joins the running task, whatever the
+  // sender's relationship to it; only a target that cannot consume one queues.
+  const steered = scenario === "other-parent" || scenario === "ordinary-child" || scenario === "primary-task"
+  test(`session_send delivery boundary: ${scenario}`, () =>
     runtime.run(() =>
       ScopeContext.provide({
         scope: Scope.home(),
@@ -184,10 +187,11 @@ for (const scenario of [
               },
             )
             const items = await SessionInbox.list(task.sessionID)
+            const mode = steered ? "steer" : "task"
             expect(items).toHaveLength(1)
-            expect(items[0]?.mode).toBe("task")
-            expect(result.metadata.mode).toBe("task")
-            expect(result.output).toContain("queued as a new task")
+            expect(items[0]?.mode).toBe(mode)
+            expect(result.metadata.mode).toBe(mode)
+            expect(result.output).toContain(mode === "steer" ? "next model call" : "queued as a new task")
             expect((await Session.get(task.sessionID)).paused).toEqual(before.paused)
             if (scenario === "stopping") expect(lease?.signal.aborted).toBe(true)
             if (!lease) expect(SessionManager.isRunning(task.sessionID)).toBe(false)
