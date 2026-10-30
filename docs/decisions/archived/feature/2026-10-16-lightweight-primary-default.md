@@ -1,6 +1,7 @@
 # Decision Record: Lightweight primary as the initial default
 
 Status: implemented
+Archived: 2026-10-30
 
 ## Problem
 
@@ -21,3 +22,5 @@ Existing Session choices, explicit composer intent, prompts, permissions and mod
 ## Consequences
 
 Fresh unconfigured sessions select Pico in both the composer and implicit backend execution. Users can retain Atlas, Forge or a custom primary through explicit configuration. Tests cover configured selection, invalid defaults, unavailable Pico and the absence of any visible primary.
+
+Superseded by [Atlas primary and text replacement as the code defaults](../../implemented/feature/2026-10-30-atlas-primary-and-replace-file-interface-defaults.md).

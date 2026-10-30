@@ -148,7 +148,7 @@ File: `60-agents.jsonc` · Merge: merge
 
 | Key | Type | Description |
 | --- | --- | --- |
-| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable. |
+| `default_agent` | string (optional) | Default agent to use when none is specified. Must be a visible primary agent. Falls back to Atlas, then another visible primary if unavailable. |
 | `fileToolGroup` | FileToolGroup.optional (optional) |  |
 | `agent` | object (optional) | Agent configuration |
 | `instructions` | array (optional) | Additional instruction files or patterns to include |

@@ -750,7 +750,7 @@ Diagnostic variables are not persisted preferences. Use domain configuration for
 
 ## File read/write tool group
 
-Set `fileToolGroup` in the existing `60-agents.jsonc` domain. The values are `replace` (Text replacement / 文本替换), `hashline` (Line-anchored editing / 行锚编辑), and `patch` (Patch editing / 补丁编辑). The universal fallback is `patch`. The existing Agent runtime Settings page stages this global preference through Save/Discard; project domain files and configuration import use the normal project override layer. Removing an override reveals the lower layer, or `patch` when absent everywhere.
+Set `fileToolGroup` in the existing `60-agents.jsonc` domain. The values are `replace` (Text replacement / 文本替换), `hashline` (Line-anchored editing / 行锚编辑), and `patch` (Patch editing / 补丁编辑). The universal fallback is `replace`. The existing Agent runtime Settings page stages this global preference through Save/Discard; project domain files and configuration import use the normal project override layer. Removing an override reveals the lower layer, or `replace` when absent everywhere.
 
 This setting changes the local file interface independently of Agent and model selection. It does not grant permission, install an optional component, or configure external agents' own tools. Existing permission-only interface switching must be replaced by an explicit group setting. Existing `read`/`edit` and concrete-tool restrictions remain authoritative; a conflicting `edit: deny` can leave the selected interface read-only. No migration deletes these restrictions or falls back to another group. See [file tool interfaces](../architecture/workspace-and-files.md#file-tool-interfaces) for the member table, search modes and patch failure guarantees.
 
