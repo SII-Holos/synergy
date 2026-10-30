@@ -14,9 +14,10 @@ describe("settings config patch", () => {
     state.runtime.compactionOverflowThreshold = "0.10"
     expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("compaction")
   })
-  test("file group draft defaults to patch and saves independently of default Agent", () => {
+  test("agent and file group drafts use Atlas and text replacement defaults", () => {
     const state = defaultSettingsState("enter")
-    expect(state.agents.fileToolGroup).toBe("patch")
+    expect(state.agents.defaultAgent).toBe("atlas")
+    expect(state.agents.fileToolGroup).toBe("replace")
     expect(buildPatch({ cfg: {}, state, originalMcps: {} })).not.toHaveProperty("fileToolGroup")
     state.agents.fileToolGroup = "hashline"
     const patch = buildPatch({ cfg: {}, state, originalMcps: {} })
@@ -297,7 +298,7 @@ describe("settings config patch", () => {
     const state = defaultSettingsState("enter")
 
     const patch = buildPatch({
-      cfg: { default_agent: TEST_AGENT_NAME } as Config,
+      cfg: { default_agent: "atlas" } as Config,
       state,
       originalMcps: {},
     })

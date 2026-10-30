@@ -585,12 +585,8 @@ export namespace SessionManager {
     if (lease.signal.aborted) return
     const { SessionInbox } = await import("./inbox")
     await Storage.transaction(async () => {
-      const session = await requireSession(lease.sessionID)
       for (const item of await SessionInbox.peekSteer(lease.sessionID)) {
-        if (
-          item.message?.metadata?.source === "session_send" &&
-          item.message.metadata.sourceSessionID === session.cortex?.parentSessionID
-        )
+        if (item.message?.metadata?.source === "session_send")
           await SessionInbox.failScheduledTask(lease.sessionID, item.id)
       }
     })
@@ -1006,6 +1002,12 @@ export namespace SessionManager {
     mail: SessionMail
     waitForProcessing?: boolean
     sourceSessionID?: string
+    /**
+     * Agent-to-agent mail joins the target's current task when that task can still
+     * consume a steer. Admission depends only on that capability, never on who is
+     * sending; without this intent the mail stays a new task.
+     */
+    joinCurrentTask?: boolean
   }): Promise<SessionInbox.Item | void> {
     const { SessionInbox } = await import("./inbox")
     const session = await getSession(input.target)
@@ -1040,16 +1042,13 @@ export namespace SessionManager {
 
     let item: SessionInbox.Item
     {
-      using control = input.sourceSessionID ? await Lock.write(`session-control:${session.id}`) : undefined
+      using control = input.joinCurrentTask ? await Lock.write(`session-control:${session.id}`) : undefined
       item = await Storage.transaction(async () => {
         const current = await requireSession(session.id)
         const owner = getRuntime(session.id)?.owner
         const steer =
-          input.sourceSessionID !== undefined &&
-          current.parentID === input.sourceSessionID &&
-          current.cortex?.parentSessionID === input.sourceSessionID &&
-          current.cortex.executionRole === "delegated_subagent" &&
-          current.cortex.status === "running" &&
+          input.joinCurrentTask === true &&
+          (!current.cortex || current.cortex.status === "running") &&
           !current.paused &&
           !current.time.archived &&
           !current.history?.rollback?.canUnrollback &&

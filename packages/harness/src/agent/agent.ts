@@ -458,7 +458,7 @@ export namespace Agent {
     const preferred =
       configured && configured.mode !== "subagent" && !configured.hidden
         ? configured.name
-        : PrimaryAgentIdentity.names.lightweight
+        : PrimaryAgentIdentity.names.general
     return pipe(agents, values(), sortBy([(x) => x.name === preferred, "desc"]))
   }
 
@@ -542,7 +542,7 @@ export namespace Agent {
       log.warn(`${reason}; falling back`)
     }
     const fallback =
-      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.lightweight && eligible(agent)) ??
+      agents.find((agent) => agent.name === PrimaryAgentIdentity.names.general && eligible(agent)) ??
       agents.find(eligible)
     if (!fallback)
       throw new Error("No visible primary agent is available. Enable a primary agent in the agents configuration.")

@@ -249,7 +249,7 @@ export namespace ToolRegistry {
   }
 
   export async function fileInterfaceIDs(): Promise<string[]> {
-    const group = (await Config.current()).fileToolGroup ?? "patch"
+    const group = (await Config.current()).fileToolGroup ?? "replace"
     return (await all()).filter((tool) => tool.fileToolGroups?.includes(group)).map((tool) => tool.id)
   }
 
@@ -291,7 +291,7 @@ export namespace ToolRegistry {
     model?: { providerID: string; modelID: string },
   ): Promise<CatalogEntry[]> {
     const allTools = await all()
-    const fileToolGroup = (await Config.current()).fileToolGroup ?? "patch"
+    const fileToolGroup = (await Config.current()).fileToolGroup ?? "replace"
     const tools = (
       await Promise.all(
         allTools.map(async (tool) =>

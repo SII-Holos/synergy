@@ -6,6 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { SessionSendTool } from "../../src/tools/session-send"
 import { testRuntime } from "../support/runtime"
@@ -53,6 +54,20 @@ test("default user delivery admits a durable task, preserves source metadata and
           expect(result.output).toContain("queued as a new task")
           expect(result.output).toContain("Reading is not yet confirmed.")
           expect(await Session.messages({ sessionID: target.id })).toEqual([])
+
+          await SessionInbox.materializeItem(await SessionInbox.getStored(target.id, items[0]!.id))
+          const [message] = await Session.messages({ sessionID: target.id })
+          const userInfo = message?.info.role === "user" ? message.info : undefined
+          expect(userInfo?.origin).toEqual({ type: "agent", sessionID: "ses_source", label: "Source agent" })
+          const systemParts = message?.parts.filter((part) => part.type === "text" && MessageV2.isSystemPart(part))
+          const userParts = message?.parts.filter((part) => part.type === "text" && !MessageV2.isSystemPart(part))
+          expect(systemParts).toHaveLength(1)
+          expect(systemParts?.[0]).toMatchObject({ origin: "system" })
+          expect(systemParts?.[0]?.type === "text" && systemParts[0].text).toContain('"sourceSessionID":"ses_source"')
+          expect(userParts?.map((part) => (part.type === "text" ? part.text : ""))).toEqual(["please continue"])
+          const projected = await MessageV2.projectModelMessages([message!])
+          expect(JSON.stringify(projected.messages)).toContain("please continue")
+          expect(JSON.stringify(projected.messages)).toContain("Source agent")
         } finally {
           await SessionManager.release(lease, { requestNextWork: false })
           await Session.remove(target.id)
@@ -121,7 +136,10 @@ for (const scenario of [
   "paused",
   "rollback",
 ] as const) {
-  test(`parent follow-up keeps task delivery for ${scenario}`, () =>
+  // Every session that can consume a steer joins the running task, whatever the
+  // sender's relationship to it; only a target that cannot consume one queues.
+  const steered = scenario === "other-parent" || scenario === "ordinary-child" || scenario === "primary-task"
+  test(`session_send delivery boundary: ${scenario}`, () =>
     runtime.run(() =>
       ScopeContext.provide({
         scope: Scope.home(),
@@ -184,10 +202,11 @@ for (const scenario of [
               },
             )
             const items = await SessionInbox.list(task.sessionID)
+            const mode = steered ? "steer" : "task"
             expect(items).toHaveLength(1)
-            expect(items[0]?.mode).toBe("task")
-            expect(result.metadata.mode).toBe("task")
-            expect(result.output).toContain("queued as a new task")
+            expect(items[0]?.mode).toBe(mode)
+            expect(result.metadata.mode).toBe(mode)
+            expect(result.output).toContain(mode === "steer" ? "next model call" : "queued as a new task")
             expect((await Session.get(task.sessionID)).paused).toEqual(before.paused)
             if (scenario === "stopping") expect(lease?.signal.aborted).toBe(true)
             if (!lease) expect(SessionManager.isRunning(task.sessionID)).toBe(false)

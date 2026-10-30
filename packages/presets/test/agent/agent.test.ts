@@ -914,7 +914,7 @@ test("Agent.list() sorts configured default_agent first", () =>
     })
   }))
 
-test("Agent.list() sorts the lightweight primary first when no default_agent configured", () =>
+test("Agent.list() sorts the general primary first when no default_agent configured", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -922,7 +922,7 @@ test("Agent.list() sorts the lightweight primary first when no default_agent con
       fn: async () => {
         const agents = await Agent.list()
         const firstAgent = agents[0]
-        expect(firstAgent.name).toBe(PrimaryAgentIdentity.names.lightweight)
+        expect(firstAgent.name).toBe(PrimaryAgentIdentity.names.general)
       },
     })
   }))

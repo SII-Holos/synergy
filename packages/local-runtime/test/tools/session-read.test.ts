@@ -26,7 +26,7 @@ const ctx = {
   ask: async () => {},
 }
 
-async function writeMessage(sessionID: string, text: string, created: number) {
+async function writeMessage(sessionID: string, text: string, created: number, origin?: MessageV2.OriginUser) {
   const message = (await Session.updateMessage({
     id: Identifier.ascending("message"),
     sessionID,
@@ -34,6 +34,7 @@ async function writeMessage(sessionID: string, text: string, created: number) {
     time: { created },
     agent: PrimaryAgentIdentity.names.general,
     model: { providerID: "test", modelID: "test" },
+    ...(origin ? { origin } : {}),
   })) as MessageV2.User
   await Session.updatePart({
     id: Identifier.ascending("part"),
@@ -113,6 +114,31 @@ describe("session_read", () => {
 
           expect(result.metadata).toMatchObject({ sessionID: session.id, total: 2, shown: 1 })
           expect(result.output).toContain("healthy message")
+          expect(release).toHaveBeenCalledTimes(1)
+        },
+      })
+    }))
+
+  test("labels agent-delivered user messages without exposing the hidden model marker", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Agent delivery history" })
+          const messageID = await writeMessage(session.id, "AABBCC", 100, {
+            type: "agent",
+            sessionID: "ses_source",
+            label: "Source agent",
+          })
+
+          using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
+          const tool = await SessionReadTool.init()
+          const result = await tool.execute({ target: session.id, limit: 20, offset: 0 }, ctx)
+
+          expect(result.output).toContain(`[${messageID}] agent "Source agent" (ses_source)`)
+          expect(result.output).toContain("AABBCC")
+          expect(result.output).not.toContain("message-origin")
           expect(release).toHaveBeenCalledTimes(1)
         },
       })

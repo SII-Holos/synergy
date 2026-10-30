@@ -1,6 +1,8 @@
 Send an actionable user message to a session. The target session's agent will process and respond to the message.
 
-Messages to your own actively running delegated subagent join its current task's next model call without interrupting a tool or model request already in progress. Other messages queue as new tasks, after any current task finishes. Sending does not resume a paused session or override cancellation.
+A target already running a task joins the message to that task's next model call, whoever sends it, without interrupting a tool or model request already in progress. Any other target queues the message as a new task, which starts after the current task finishes; a paused session stays paused and cancellation is never overridden. A steer that the target's task ends without reading is parked as a failed delivery — resend it.
+
+The target history records the message as forwarded from the sending session while preserving the supplied content as the target's user request.
 
 The result reports the admitted mode and queue/message IDs. Queue admission is not confirmation that the target has read or acted on the message.
 

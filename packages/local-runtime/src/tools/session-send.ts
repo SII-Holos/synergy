@@ -38,11 +38,29 @@ export const SessionSendTool = Tool.define("session_send", {
   async execute(params: z.infer<typeof parameters>, ctx) {
     const session = await resolveSession(params.target)
 
+    const messageID = Identifier.ascending("message")
+    const sourcePart: MessageV2.TextPart = {
+      id: Identifier.ascending("part"),
+      sessionID: session.id,
+      messageID,
+      type: "text",
+      origin: "system",
+      text: [
+        "<message-origin>",
+        JSON.stringify({
+          type: "agent",
+          sourceSessionID: ctx.sessionID,
+          ...(params.sourceName ? { sourceName: params.sourceName } : {}),
+        }),
+        "</message-origin>",
+      ].join(""),
+    }
     const textPart: MessageV2.TextPart = {
       id: Identifier.ascending("part"),
       sessionID: session.id,
-      messageID: Identifier.ascending("message"),
+      messageID,
       type: "text",
+      origin: "user",
       text: params.content,
     }
 
@@ -64,7 +82,7 @@ export const SessionSendTool = Tool.define("session_send", {
     })
     const mail: SessionManager.SessionMail.User = {
       type: "user",
-      parts: [textPart],
+      parts: [sourcePart, textPart],
       metadata: mailMetadata,
     }
     const item = await SessionManager.deliver({
@@ -72,6 +90,7 @@ export const SessionSendTool = Tool.define("session_send", {
       mail,
       waitForProcessing: false,
       sourceSessionID: ctx.sessionID,
+      joinCurrentTask: true,
     })
     if (!item) throw new Error(`Message was not delivered: session ${session.id} is no longer available.`)
 

@@ -87,9 +87,10 @@ def assert_native_control(records, *, tool_turns, bun_jit, observations, task_ho
             ), f"Native {phase} {kind} JIT setting differs"
     if observations:
         tools = {part["tool"] for part in completed.values()}
-        assert any({"bash", *pair} <= tools for pair in [("view_file", "revise_file"), ("read", "apply_patch")]), (
-            "Missing native file read/edit tool pair"
-        )
+        assert any(
+            {"bash", *pair} <= tools
+            for pair in [("view_file", "revise_file"), ("read", "edit"), ("read", "apply_patch")]
+        ), "Missing native file read/edit tool pair"
         verified = {
             int(turn)
             for output in outputs
@@ -186,11 +187,14 @@ async def fixture_provider(
             if phase in (1, 2):
                 names = {tool["name"].split("__")[-1] for tool in functions}
                 anchored = {"view_file", "revise_file"} <= names
-                assert anchored or {"read", "apply_patch"} <= names, "Missing native file read/edit tool pair"
+                replacement = {"read", "edit"} <= names
+                assert anchored or replacement or {"read", "apply_patch"} <= names, (
+                    "Missing native file read/edit tool pair"
+                )
                 name = (
                     ("view_file" if anchored else "read")
                     if phase == 1
-                    else ("revise_file" if anchored else "apply_patch")
+                    else ("revise_file" if anchored else "edit" if replacement else "apply_patch")
                 )
                 selected = next(tool for tool in functions if tool["name"].split("__")[-1] == name)
                 namespace = selected.get("namespace")
@@ -200,6 +204,12 @@ async def fixture_provider(
                     headers = re.findall(r"\[[^\]\n]*observation\.txt#([A-Za-z0-9]+)\]", json.dumps(messages))
                     assert headers, "Native view_file did not return an anchored snapshot"
                     args = {"input": f"[{observation_file}#{headers[-1]}]\nSWAP 1..1:\n+changed {observation_turn}"}
+                elif replacement:
+                    args = {
+                        "filePath": observation_file,
+                        "oldString": "row 0 " + "中😀" * 128,
+                        "newString": f"changed {observation_turn}",
+                    }
                 else:
                     args = {
                         "patch": f"*** Begin Patch\n*** Update File: {observation_file}\n@@\n-row 0 "

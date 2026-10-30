@@ -107,7 +107,7 @@ test("new Home sessions expose file tools through their selected default Workspa
           fn: async () => {
             const available = await ToolResolver.availability({ agent, model, session, sessionID: session.id })
             expect(available.visible.map((tool) => tool.id)).toEqual(
-              expect.arrayContaining(["read", "file_search", "apply_patch", "view_image", "process"]),
+              expect.arrayContaining(["read", "file_search", "edit", "view_image", "process"]),
             )
           },
         })

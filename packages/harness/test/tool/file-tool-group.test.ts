@@ -59,7 +59,7 @@ for (const group of [undefined, "replace", "hashline", "patch"] as const) {
         scope: Scope.home(),
         workspace: null,
         fn: async () => {
-          const effective = group ?? "patch"
+          const effective = group ?? "replace"
           expect((await Config.current()).fileToolGroup).toBe(effective)
           const expected = Object.entries(members)
             .filter(([, groups]) => (groups as readonly string[]).includes(effective))
@@ -150,14 +150,14 @@ test("primary, writer, reviewer and internal roles preserve authority across fil
   )
 })
 
-test("scoped domain precedence, clear and reload preserve the universal fallback", async () => {
+test("scoped domain precedence, clear and reload preserve the text replacement fallback", async () => {
   await using runtime = await testRuntime()
   await runtime.run(async () => {
     await using project = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await project.scope(),
       fn: async () => {
-        expect((await Config.current()).fileToolGroup).toBe("patch")
+        expect((await Config.current()).fileToolGroup).toBe("replace")
         await Config.domainUpdate("agents", { fileToolGroup: "replace" })
         expect((await Config.current()).fileToolGroup).toBe("replace")
         const root = path.join(project.path, ".synergy")
@@ -167,7 +167,7 @@ test("scoped domain precedence, clear and reload preserve the universal fallback
         await Config.reload("project")
         expect((await Config.current()).fileToolGroup).toBe("replace")
         await Config.domainUpdate("agents", {}, { mode: "replace-domain" })
-        expect((await Config.current()).fileToolGroup).toBe("patch")
+        expect((await Config.current()).fileToolGroup).toBe("replace")
         expect(Config.Info.safeParse({ fileToolGroup: "automatic" }).success).toBe(false)
       },
     })
@@ -177,7 +177,12 @@ test("scoped domain precedence, clear and reload preserve the universal fallback
 test("old deferred expansion and full-access overrides cannot recover unselected writers", async () => {
   let loaded = 0
   await using runtime = await testRuntime({
-    env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
+    env: {
+      SYNERGY_CONFIG_CONTENT: JSON.stringify({
+        fileToolGroup: "patch",
+        provider: { openai: { options: { apiKey: "fixture-key" } } },
+      }),
+    },
     register() {
       ToolRegistry.registerToolProvider("file-lazy", () => [
         {

@@ -1,6 +1,7 @@
 # Decision Record: Independent scoped file interfaces
 
 Status: implemented
+Archived: 2026-10-30
 
 ## Problem
 
@@ -33,3 +34,5 @@ File-change result views reuse the Review diff renderer for edit, revise_file an
 The default intentionally changes prior interfaces. Permission-only configurations must select the group explicitly; no migration guesses intent or removes denies. Ordinary patch read evidence protects freshness but does not claim Hashline's displayed-line guarantee. Sequential patches can leave committed files and created parents after failure. Recovery requires inspecting those effects and reconciling existing operation identities. This decision makes no comparative model-performance claim.
 
 Native controlled-model tests select a complete reader/writer pair from the advertised catalog. They verify actual file bytes, worktree restoration, compaction and usage receipts without overriding the product default to retain an obsolete test interface.
+
+Superseded by [Atlas primary and text replacement as the code defaults](../../implemented/feature/2026-10-30-atlas-primary-and-replace-file-interface-defaults.md).

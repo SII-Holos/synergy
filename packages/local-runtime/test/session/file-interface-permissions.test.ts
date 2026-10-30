@@ -168,7 +168,12 @@ test("boundary recovery does not recommend tools outside the selected interface"
 
 test("production patch execution persists the destination write when source removal fails", async () => {
   await using runtime = await testRuntime({
-    env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
+    env: {
+      SYNERGY_CONFIG_CONTENT: JSON.stringify({
+        fileToolGroup: "patch",
+        provider: { openai: { options: { apiKey: "fixture-key" } } },
+      }),
+    },
   })
   await runtime.run(async () => {
     await using tmp = await tmpdir({
@@ -223,7 +228,12 @@ test("production patch execution persists the destination write when source remo
 for (const stage of ["metadata", "activity-mask", "result-mask"] as const)
   test(`cancellation during ${stage} after the final patch commit retains the applied ledger and interruption`, async () => {
     await using runtime = await testRuntime({
-      env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
+      env: {
+        SYNERGY_CONFIG_CONTENT: JSON.stringify({
+          fileToolGroup: "patch",
+          provider: { openai: { options: { apiKey: "fixture-key" } } },
+        }),
+      },
     })
     await runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
@@ -290,7 +300,12 @@ for (const stage of ["metadata", "activity-mask", "result-mask"] as const)
 for (const action of ["deny", "ask"] as const)
   test(`a later exact file allow preserves saved ${action} and mandatory external approval`, async () => {
     await using runtime = await testRuntime({
-      env: { SYNERGY_CONFIG_CONTENT: JSON.stringify({ provider: { openai: { options: { apiKey: "fixture-key" } } } }) },
+      env: {
+        SYNERGY_CONFIG_CONTENT: JSON.stringify({
+          fileToolGroup: "patch",
+          provider: { openai: { options: { apiKey: "fixture-key" } } },
+        }),
+      },
     })
     await runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
