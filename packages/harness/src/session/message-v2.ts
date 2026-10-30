@@ -1076,7 +1076,10 @@ export namespace MessageV2 {
     if (typeof source === "string" && source.startsWith("blueprint_loop_"))
       return { type: "blueprint", detail: source.replace(/^blueprint_loop_/, "") }
     if (metadata.channelPush || metadata.mailbox) return { type: "channel" }
-    if (sessionID?.trim()) return { type: "agent", sessionID }
+    if (sessionID?.trim()) {
+      const label = typeof metadata.sourceName === "string" ? metadata.sourceName.trim() : ""
+      return { type: "agent", sessionID, ...(label ? { label } : {}) }
+    }
     return { type: "user" }
   }
 

@@ -225,6 +225,8 @@ Text parts use `origin: "user" | "system"`. `MessageV2.isSystemPart()` is the ca
 
 Part origin answers who authored the text. It does not remove the part from model context. Message `includeInContext` and attachment model policy own context inclusion.
 
+Cross-session `session_send` preserves the supplied content as a user-origin text part and adds a hidden system-origin attribution part carrying the sending Session identity. Model projection sees the attribution, while ordinary text extraction omits the marker and uses the canonical message origin for source labels. The tool owns this narrow forwarding presentation; it does not change `lateSystem`, workflow prompt projection or the persisted user text.
+
 ## Read-Time Canonicalization
 
 `SessionCorpus` provides paginated installation-wide Session/message enumeration, mixed CJK/ASCII text retrieval, versioned batch hydration and canonical neighboring turns. It reuses the history text projection and its deferred preparation; origin filtering continues beyond rejected hits. Fork ancestry and source versions accompany evidence rather than defining user identity. Generic `metadata.assistance` records accepted completion producers and fingerprints without changing origin, root semantics or required owners; original-voice consumers exclude an assisted submission as a whole.

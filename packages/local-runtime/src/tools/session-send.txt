@@ -4,6 +4,8 @@ Messages to your own actively running delegated subagent join its current task's
 
 The result reports the admitted mode and queue/message IDs. Queue admission is not confirmation that the target has read or acted on the message.
 
+The target history records the message as forwarded from the sending session while preserving the supplied content as the target's user request.
+
 The `target` parameter identifies which session to send to:
 - A session ID (e.g. "ses_xxx") to send to a specific session
 
