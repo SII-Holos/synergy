@@ -49,13 +49,23 @@ function extractToolSummaries(parts: MessageV2.Part[]): Array<{ name: string; st
     }))
 }
 
+function formatUserOrigin(info: MessageV2.User): string {
+  const origin = info.origin ?? MessageV2.originFromMetadata(info.metadata)
+  if (origin.type === "user") return "user"
+  const label = origin.label?.trim()
+  const sessionID = origin.sessionID?.trim()
+  return [origin.type, label ? JSON.stringify(label) : undefined, sessionID ? `(${sessionID})` : undefined]
+    .filter((value): value is string => value !== undefined)
+    .join(" ")
+}
+
 function formatMessage(msg: MessageV2.WithParts, highlight?: boolean): string {
   const text = extractMessageText(msg.parts)
   const time = formatLocalDateTime(msg.info.time.created)
   const marker = highlight ? " ◀" : ""
 
   if (msg.info.role === "user") {
-    return `[${msg.info.id}] user (${time})${marker}:\n${text || "(empty)"}`
+    return `[${msg.info.id}] ${formatUserOrigin(msg.info)} (${time})${marker}:\n${text || "(empty)"}`
   }
 
   const assistant = msg.info as MessageV2.Assistant

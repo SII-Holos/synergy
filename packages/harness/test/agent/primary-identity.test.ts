@@ -13,7 +13,7 @@ const identities = [
   ["lightweight", "pico", "Pico"],
 ] as const
 
-test("primary identities register visible native agents and select the lightweight default", () =>
+test("primary identities register visible native agents and select the general default", () =>
   runtime.run(async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
@@ -27,9 +27,9 @@ test("primary identities register visible native agents and select the lightweig
           expect(agent).toMatchObject({ name, mode: "primary", native: true })
           expect(agent?.hidden).not.toBe(true)
         }
-        expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.lightweight)
-        expect((await Agent.list())[0].name).toBe(PrimaryAgentIdentity.names.lightweight)
-        expect((await Config.current()).default_agent).toBe(PrimaryAgentIdentity.names.lightweight)
+        expect(await Agent.defaultAgent()).toBe(PrimaryAgentIdentity.names.general)
+        expect((await Agent.list())[0].name).toBe(PrimaryAgentIdentity.names.general)
+        expect((await Config.current()).default_agent).toBe(PrimaryAgentIdentity.names.general)
         expect((await Config.globalRaw()).default_agent).toBeUndefined()
       },
     })

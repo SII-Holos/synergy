@@ -4147,7 +4147,7 @@ export type ScopeUiPreferences = {
    */
   model?: string | null
   /**
-   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Atlas, then another visible primary if unavailable.
    */
   default_agent?: string
   /**
@@ -6925,11 +6925,11 @@ export type Config = {
     [key: string]: string | null
   }
   /**
-   * File read/write interface for all local Agents in this Scope: replace (text replacement), hashline (line-anchored editing), or patch (patch editing, default). Does not change permissions.
+   * File read/write interface for all local Agents in this Scope: replace (text replacement, default), hashline (line-anchored editing), or patch (patch editing). Does not change permissions.
    */
   fileToolGroup?: "replace" | "hashline" | "patch"
   /**
-   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Pico, then another visible primary if unavailable.
+   * Default agent to use when none is specified. Must be a visible primary agent. Falls back to Atlas, then another visible primary if unavailable.
    */
   default_agent?: string
   /**

@@ -94,8 +94,8 @@ export const UI_DEFAULTS = {
   lspWriteDiagnostics: "true" as string,
   lspDiagnosticsSeverity: "error" as string,
   lspDiagnosticsScope: "project" as string,
-  defaultAgent: "" as string,
-  fileToolGroup: "patch" as NonNullable<Config["fileToolGroup"]>,
+  defaultAgent: "atlas" as string,
+  fileToolGroup: "replace" as NonNullable<Config["fileToolGroup"]>,
   defaultSessionWorkspace: "main" as NewSessionWorkspacePreference,
 } as const
 

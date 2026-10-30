@@ -6,6 +6,7 @@ import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
 import { SessionInbox } from "@ericsanchezok/synergy-harness/session/inbox"
 import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
+import { MessageV2 } from "@ericsanchezok/synergy-harness/session/message-v2"
 import { Lock } from "@ericsanchezok/synergy-harness/util/lock"
 import { SessionSendTool } from "../../src/tools/session-send"
 import { testRuntime } from "../support/runtime"
@@ -53,6 +54,20 @@ test("default user delivery admits a durable task, preserves source metadata and
           expect(result.output).toContain("queued as a new task")
           expect(result.output).toContain("Reading is not yet confirmed.")
           expect(await Session.messages({ sessionID: target.id })).toEqual([])
+
+          await SessionInbox.materializeItem(await SessionInbox.getStored(target.id, items[0]!.id))
+          const [message] = await Session.messages({ sessionID: target.id })
+          const userInfo = message?.info.role === "user" ? message.info : undefined
+          expect(userInfo?.origin).toEqual({ type: "agent", sessionID: "ses_source", label: "Source agent" })
+          const systemParts = message?.parts.filter((part) => part.type === "text" && MessageV2.isSystemPart(part))
+          const userParts = message?.parts.filter((part) => part.type === "text" && !MessageV2.isSystemPart(part))
+          expect(systemParts).toHaveLength(1)
+          expect(systemParts?.[0]).toMatchObject({ origin: "system" })
+          expect(systemParts?.[0]?.type === "text" && systemParts[0].text).toContain('"sourceSessionID":"ses_source"')
+          expect(userParts?.map((part) => (part.type === "text" ? part.text : ""))).toEqual(["please continue"])
+          const projected = await MessageV2.projectModelMessages([message!])
+          expect(JSON.stringify(projected.messages)).toContain("please continue")
+          expect(JSON.stringify(projected.messages)).toContain("Source agent")
         } finally {
           await SessionManager.release(lease, { requestNextWork: false })
           await Session.remove(target.id)

@@ -253,7 +253,7 @@ Failed incremental watcher batches require the same full resync as queue overflo
 
 ## File tool interfaces
 
-The current Scope's resolved `fileToolGroup` selects one model-facing file interface. Global and project values use normal configuration precedence; absence resolves to `patch` for every local Agent. Agent identity, model, workflow and Session do not select or override the group.
+The current Scope's resolved `fileToolGroup` selects one model-facing file interface. Global and project values use normal configuration precedence; absence resolves to `replace` for every local Agent. Agent identity, model, workflow and Session do not select or override the group.
 
 | Value      | Interface             | Members                                                                    |
 | ---------- | --------------------- | -------------------------------------------------------------------------- |

@@ -12,6 +12,16 @@ test("new Cortex deliveries retain their task reference and captured task title"
   ).toEqual({ type: "cortex", sessionID: "child", taskID: "ctx_original", label: "Inspect readiness" })
 })
 
+test("session delivery metadata promotes the source name into the agent origin label", () => {
+  expect(
+    MessageV2.originFromMetadata({
+      source: "session_send",
+      sourceSessionID: "ses_source",
+      sourceName: "Source agent",
+    }),
+  ).toEqual({ type: "agent", sessionID: "ses_source", label: "Source agent" })
+})
+
 test("historical Cortex references resolve only from the established delivery identity", () => {
   const message: MessageV2.User = {
     id: "msg_delivery",
