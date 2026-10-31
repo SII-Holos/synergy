@@ -7,6 +7,7 @@ import type { WorkspaceCatalog } from "./catalog"
 import { Log } from "../util/log"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
+import type { SnapshotSchema } from "../session/snapshot-schema"
 
 export namespace WorkspaceEvidence {
   export const Owner = z.object({
@@ -114,16 +115,25 @@ export namespace WorkspaceEvidence {
       (part): part is MessageV2.PatchPart => part.id === reference.partID && part.type === "patch",
     )
     if (!part || part.operation?.status === "complete") return
-    const hash = await Snapshot.trackContent(workspace, before, reference.sessionID)
-    const afterHash = await Snapshot.trackContent(workspace, after, reference.sessionID)
-    const files = await Snapshot.changedPaths(hash, afterHash, reference.sessionID)
+    let baselineOmissions: SnapshotSchema.Omission[] = []
+    let omissions: SnapshotSchema.Omission[] = []
+    const hash = await Snapshot.trackContent(workspace, before, reference.sessionID, undefined, (value) => {
+      baselineOmissions = value
+    })
+    const afterHash = await Snapshot.trackContent(workspace, after, reference.sessionID, undefined, (value) => {
+      omissions = value
+    })
+    const omitted = new Set([...baselineOmissions, ...omissions].map((item) => item.file))
+    const files = (await Snapshot.changedPaths(hash, afterHash, reference.sessionID)).filter(
+      (file) => !omitted.has(file),
+    )
     const { Session } = await import("../session")
     try {
       await Session.updatePart({
         ...part,
         hash,
         files,
-        operation: { toolCallID: reference.toolCallID, status: "complete", afterHash },
+        operation: { toolCallID: reference.toolCallID, status: "complete", afterHash, baselineOmissions, omissions },
       })
     } catch (error) {
       if (error instanceof Storage.NotFoundError) return

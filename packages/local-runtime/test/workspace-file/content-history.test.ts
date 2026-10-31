@@ -265,3 +265,111 @@ test("execution history survives a failed save and includes only explicitly refe
     })
   })
 }, 30_000)
+
+test("execution completes with oversized files and a fresh environment restores their bytes", async () => {
+  await using runtime = await testRuntime({
+    register() {
+      WorkspaceBlobs.register("large-history", {
+        put: (hash, bytes) => Storage.writeBinary(["large_history", hash], bytes),
+        get: (hash) => Storage.readBinary(["large_history", hash]),
+      })
+    },
+  })
+  await runtime.run(() =>
+    ScopeContext.provide({
+      scope: Scope.home(),
+      workspace: null,
+      async fn() {
+        const scopeID = Scope.home().id
+        const workspace = await WorkspaceCatalog.create({
+          scopeID,
+          backend: { provider: "objects", spec: { blobStore: "large-history" } },
+        })
+        const environment = await Environment.bind({ scopeID, ownerID: "large-history", provider: "native", spec: {} })
+        const session = await Session.create({ workspaceID: workspace.id, environmentID: environment.id })
+        const message = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: PrimaryAgentIdentity.names.general,
+          model: { providerID: "test", modelID: "test" },
+        })
+        await WorkspaceContent.write(
+          { scopeID, workspaceID: workspace.id },
+          {
+            path: "large.txt",
+            data: new Uint8Array([1]),
+            expectedVersion: null,
+          },
+        )
+        await using resources = await EnvironmentResources.resolve({
+          scopeID,
+          workspaceID: workspace.id,
+          environmentID: environment.id,
+          needs: { execution: "exec" },
+        })
+        for (const id of ["grow", "continue"]) {
+          await RolloutTool.execute(
+            {
+              owner: { kind: "session", scopeID, sessionID: session.id },
+              runID: message.id,
+              messageID: message.id,
+              toolCallID: id,
+              tool: "bash",
+              args: {},
+            },
+            async () => {
+              const execution = await EnvironmentProcess.prepare({
+                id,
+                scopeID,
+                resources,
+                command: {
+                  command: process.execPath,
+                  args: [
+                    "-e",
+                    id === "grow"
+                      ? "await Bun.write('large.txt', new Uint8Array(2 * 1024 * 1024 + 1).fill(65))"
+                      : "if ((await Bun.file('large.txt').bytes()).length !== 2 * 1024 * 1024 + 1) process.exit(2)",
+                  ],
+                  cwd: resources.directory!,
+                  env: {},
+                  useRoots: [],
+                },
+              })
+              execution.child.stdout.resume()
+              execution.child.stderr.resume()
+              await execution.activate()
+              await execution.completion
+              expect(execution.child.exitCode).toBe(0)
+              return "completed"
+            },
+          )
+          expect((await EnvironmentExecution.get(id, scopeID)).state).toBe("completed")
+        }
+        await resources.release()
+        await Environment.deallocate(environment.id, { scopeID })
+        const large = new Uint8Array(2 * 1024 * 1024 + 1).fill(65)
+        expect(await WorkspaceContent.read({ scopeID, workspaceID: workspace.id }, "large.txt")).toEqual(large)
+        const parts = (await MessageV2.get({ sessionID: session.id, messageID: message.id })).parts.filter(
+          (part): part is MessageV2.PatchPart => part.type === "patch",
+        )
+        expect(parts).toHaveLength(2)
+        expect(parts[0]!.operation).toMatchObject({
+          status: "complete",
+          omissions: [{ file: "large.txt", reason: "size_limit" }],
+        })
+        const replacement = await Environment.bind({ scopeID, ownerID: "replacement", provider: "native", spec: {} })
+        await using restored = await EnvironmentResources.resolve({
+          scopeID,
+          workspaceID: workspace.id,
+          environmentID: replacement.id,
+          needs: { execution: "exec" },
+        })
+        expect(await Bun.file(restored.directory! + "/large.txt").bytes()).toEqual(large)
+        await restored.release()
+        await Environment.deallocate(replacement.id, { scopeID })
+      },
+    }),
+  )
+}, 30_000)

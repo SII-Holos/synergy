@@ -824,7 +824,7 @@ export namespace SessionHistory {
         messageID: input.messageID,
         partID: input.partID,
         files: input.files,
-      }).filter((part) => !part.checkpoint)
+      }).filter((part) => !part.checkpoint && !part.operation)
       patches.push(...legacy)
     }
     if (!patches.length)
