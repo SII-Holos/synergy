@@ -10756,6 +10756,14 @@ export type PatchPart = {
         status: "complete"
         toolCallID: string
         afterHash: string
+        baselineOmissions?: Array<{
+          file: string
+          reason: "size_limit" | "read_failed"
+        }>
+        omissions?: Array<{
+          file: string
+          reason: "size_limit" | "read_failed"
+        }>
       }
   workspace?: SnapshotWorkspace
   files: Array<string>

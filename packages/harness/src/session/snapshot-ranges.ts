@@ -70,7 +70,21 @@ export namespace SnapshotRanges {
             ? {
                 operationID: part.id,
                 from: part.hash || undefined,
-                ...(part.operation.status === "complete" ? { to: part.operation.afterHash } : { incomplete: true }),
+                ...(part.operation.status === "complete"
+                  ? {
+                      to: part.operation.afterHash,
+                      ...(part.operation.baselineOmissions || part.operation.omissions
+                        ? {
+                            baselineOmissions: part.operation.baselineOmissions,
+                            endpointOmissions: part.operation.omissions,
+                            omissions: [
+                              ...(part.operation.baselineOmissions ?? []),
+                              ...(part.operation.omissions ?? []),
+                            ],
+                          }
+                        : {}),
+                    }
+                  : { incomplete: true }),
               }
             : {}),
           ...(part.type === "patch" && part.checkpoint

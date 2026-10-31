@@ -69895,6 +69895,38 @@
                   "afterHash": {
                     "type": "string",
                     "pattern": "^[0-9a-f]{40}$"
+                  },
+                  "baselineOmissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": ["size_limit", "read_failed"]
+                        }
+                      },
+                      "required": ["file", "reason"]
+                    }
+                  },
+                  "omissions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "file": {
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": ["size_limit", "read_failed"]
+                        }
+                      },
+                      "required": ["file", "reason"]
+                    }
                   }
                 },
                 "required": ["status", "toolCallID", "afterHash"]
