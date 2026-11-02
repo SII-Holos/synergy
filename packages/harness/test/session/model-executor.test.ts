@@ -38,45 +38,38 @@ function fixture(options = { size: 1, maxQueued: 1, maxQueuedBytes: 4096 }) {
   return { executor, calls }
 }
 
-test("holds capacity until the stream is consumed and rejects excess waiting calls", async () => {
+test("executes admitted streams directly and retains each reader until disposal", async () => {
   const { executor, calls } = fixture()
   const first = await executor.run(input())
-  const next = executor.run(input())
-  await expect(executor.run(input())).rejects.toThrow("queue is full")
-  expect(calls).toHaveLength(1)
-  expect(executor.stats()).toMatchObject({ active: 1, queued: 1, workers: 0 })
+  const second = await executor.run(input())
+  expect(calls).toHaveLength(2)
+  expect(executor.stats()).toMatchObject({ active: 2, queued: 0, queuedBytes: 0 })
   calls[0]!.output.close()
   for await (const part of first.fullStream) void part
-  await first.dispose()
-  const second = await next
-  expect(calls).toHaveLength(2)
+  expect(executor.stats().active).toBe(1)
   calls[1]!.output.close()
   for await (const part of second.fullStream) void part
   await executor.stop()
-  expect(executor.stats()).toMatchObject({ active: 0, queued: 0, queuedBytes: 0 })
+  expect(executor.stats().active).toBe(0)
 })
 
-test("queued cancellation releases count and bytes without starting a provider call", async () => {
+test("cancellation retains active ownership until actual provider disposal", async () => {
   const { executor, calls } = fixture()
-  await executor.run(input())
   const controller = new AbortController()
-  const pending = executor.run(input(controller.signal))
-  expect(executor.stats().queuedBytes).toBeGreaterThan(0)
-  controller.abort(new Error("cancel queued"))
-  await expect(pending).rejects.toThrow("cancel queued")
-  expect(executor.stats()).toMatchObject({ active: 1, queued: 0, queuedBytes: 0 })
-  expect(calls).toHaveLength(1)
+  const stream = await executor.run(input(controller.signal))
+  controller.abort(new Error("cancel active"))
+  expect(executor.stats().active).toBe(1)
   calls[0]!.cancelled.resolve()
+  await stream.dispose()
+  expect(executor.stats().active).toBe(0)
   await executor.stop()
 })
 
 test("shutdown aborts active streams but waits for actual provider disposal", async () => {
   const { executor, calls } = fixture()
   await executor.run(input())
-  const queued = executor.run(input())
   let stopped = false
   const stopping = executor.stop().then(() => (stopped = true))
-  await expect(queued).rejects.toThrow("stopping")
   expect(calls[0]!.signal.aborted).toBe(true)
   await Promise.resolve()
   expect(stopped).toBe(false)
@@ -106,16 +99,11 @@ test("cancellation during provider initialization does not admit another call ea
   expect(executor.stats().active).toBe(0)
 })
 
-test("bounds retained bytes and validates finite capacity", async () => {
+test("validates the execution ceiling", () => {
   expect(() => fixture({ size: 0, maxQueued: 1, maxQueuedBytes: 4096 })).toThrow("positive")
-  expect(() => fixture({ size: 1, maxQueued: -1, maxQueuedBytes: 4096 })).toThrow("non-negative")
-  const { executor } = fixture({ size: 1, maxQueued: 8, maxQueuedBytes: 64 })
-  await expect(executor.run(input())).rejects.toThrow("bytes")
-  expect(executor.stats()).toMatchObject({ active: 0, queued: 0 })
-  await executor.stop()
 })
 
-test("queued calls retain their originating asynchronous identity context", async () => {
+test("admitted calls retain their originating asynchronous identity context", async () => {
   const identity = new AsyncLocalStorage<string>()
   const seen: Array<string | undefined> = []
   const outputs: ReadableStreamDefaultController<never>[] = []

@@ -12,6 +12,8 @@ Harness owns a Runtime-scoped resource sampler and one atomic ledger of future a
 
 Reservations cover future allocations only. A stage checkpoint reduces a commitment after a newer observation; release is idempotent and belongs to the operation that has actually stopped. Root owners rotate fairly. Execution ceilings are separate named resources in the same admission operation. Pressure suspends new allocations and permits measured recovery without terminating active leases. Permanent rejection requires a proven minimum above hard capacity; estimates alone do not establish impossibility.
 
+Cortex retains one configured global ceiling and rotates root-session owners. Background launch returns a durable task handle before admission. AgentTurn owns model admission for both executors; Worker dispatch preserves admitted order, while the in-process executor owns readers without a second queue. Worker ceilings derive from explicit configuration or CPU availability. Default RSS and heap termination watermarks are absent; explicitly configured values retain their meaning. History hydration, prompt projection, attachment preparation and native process startup acquire allocation commitments before starting their work. Idle prewarming yields under pressure.
+
 ## Alternatives considered
 
 **Machine-specific GC constants.** Changing thresholds for one RAM size preserves the incorrect coupling between per-process GC behavior and global capacity.

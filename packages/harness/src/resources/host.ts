@@ -1,9 +1,11 @@
 import { RuntimeContext } from "../lifecycle/context"
 import type { ResourceSnapshot } from "./schema"
+import type { ServiceMemory } from "../process/service-memory"
 
 export namespace ResourceHost {
   export interface Source {
     sample(): Promise<ResourceSnapshot>
+    serviceMemory?(): ServiceMemory.CgroupV2 | undefined
     observe?(changed: () => void): () => void
     close?(): void
   }

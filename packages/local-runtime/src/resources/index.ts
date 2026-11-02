@@ -19,6 +19,9 @@ export function nativeResources(): ResourceHost.Source {
       }
       return source.sample()
     },
+    serviceMemory() {
+      return source?.serviceMemory?.()
+    },
     observe(changed) {
       observer = changed
       return () => {

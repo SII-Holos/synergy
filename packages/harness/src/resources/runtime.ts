@@ -4,6 +4,7 @@ import { GlobalBus } from "../bus/global"
 import { MemoryAdmission, type MemoryRequest } from "./admission"
 import { ResourceHost } from "./host"
 import { ResourceSnapshot, ResourceStatus } from "./schema"
+import { ExecutionCapacity } from "../session/execution-capacity"
 
 export namespace RuntimeResources {
   export const Event = BusEvent.define("runtime.resources", ResourceStatus, { streaming: true })
@@ -23,6 +24,33 @@ export namespace RuntimeResources {
   }
   export function setLimit(pool: string, limit: number) {
     state().gate.setLimit(pool, limit)
+  }
+  export function poolStatus(pool: string) {
+    return state().gate.poolStatus(pool)
+  }
+
+  export async function reserve(request: MemoryRequest) {
+    const lease = await ExecutionCapacity.wait(() => acquire(request))
+    let released = false
+    return {
+      async release() {
+        if (released) return
+        released = true
+        await sample()
+        lease.release()
+      },
+    }
+  }
+
+  export async function allocation<T>(request: MemoryRequest, work: () => Promise<T>): Promise<T> {
+    const lease = await ExecutionCapacity.wait(() => acquire(request))
+    try {
+      request.signal?.throwIfAborted()
+      return await work()
+    } finally {
+      await sample()
+      lease.release()
+    }
   }
 
   export async function acquire(request: MemoryRequest) {

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import type { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
 import type { ResourceSnapshot } from "@ericsanchezok/synergy-harness/resources/schema"
+import { CgroupMemory } from "./cgroup"
 
 const unescapeMount = (value: string) =>
   value.replace(/\\([0-7]{3})/g, (_match, octal: string) => String.fromCharCode(parseInt(octal, 8)))
@@ -77,10 +78,17 @@ function psi(text: string) {
   )
 }
 const optional = (file: string) => readFile(file, "utf8").catch(() => undefined)
+const readCounter = (file: string) =>
+  readFile(file, "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return undefined
+    throw error
+  })
 
 export function linuxResources(proc = "/proc"): ResourceHost.Source {
   let previous: { at: number; stall: number; high: number; oom: number } | undefined
+  let cgroup: ReturnType<typeof CgroupMemory.readCgroupV2>
   return {
+    serviceMemory: () => cgroup,
     async sample(): Promise<ResourceSnapshot> {
       const [memory, membership, mounts, hostPressure] = await Promise.all([
         readFile(path.join(proc, "meminfo"), "utf8"),
@@ -99,10 +107,12 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
       let oomEvents = 0
       let stall = psi(hostPressure ?? "").full || 0
       let throttled = false
-      for (const directory of cgroupDirectories(membership, mounts)) {
+      const directories = cgroupDirectories(membership, mounts)
+      cgroup = directories[0] ? CgroupMemory.readCgroupV2(directories[0]) : undefined
+      for (const directory of directories) {
         const [currentText, maxText, highText, eventsText, pressureText] = await Promise.all([
-          optional(path.join(directory, "memory.current")),
-          optional(path.join(directory, "memory.max")),
+          readCounter(path.join(directory, "memory.current")),
+          readCounter(path.join(directory, "memory.max")),
           optional(path.join(directory, "memory.high")),
           optional(path.join(directory, "memory.events")),
           optional(path.join(directory, "memory.pressure")),

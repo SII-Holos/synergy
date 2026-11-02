@@ -20,7 +20,7 @@ export type AgentTurnLane = "interactive" | "background"
 
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn"> {
   recovery?: ProviderRecoveryOptions
-  onPhase?: (phase: "queued_agent" | "waiting_model") => void
+  onPhase?: (phase: "waiting_resources" | "queued_agent" | "waiting_model") => void
   toolDefinitions: ToolCatalog.Definition[]
   contextUsageProvenance?: ContextUsage.Provenance
   recording?: { owner: RolloutSchema.Owner; runID: string; purpose: string }
@@ -70,8 +70,8 @@ export interface AgentWorkerPoolOptions {
   maxQueued: number
   maxQueuedBytes: number
   maxTurns: number
-  maxRssBytes: number
-  maxHeapBytes: number
+  maxRssBytes?: number
+  maxHeapBytes?: number
   idleBaselineRecycle: boolean
   idleBaselineRssGrowthBytes: number
   idleBaselineExternalGrowthBytes: number
@@ -180,7 +180,13 @@ interface ReleasedRequest {
 type MemoryRecycleReason = "rss_soft" | "heap_soft"
 
 type RecycleReason =
-  "max_turns" | MemoryRecycleReason | "idle_rss_growth" | "idle_external_growth" | "idle_timeout" | "pool_resize"
+  | "max_turns"
+  | MemoryRecycleReason
+  | "idle_rss_growth"
+  | "idle_external_growth"
+  | "idle_timeout"
+  | "pool_resize"
+  | "memory_pressure"
 
 type HardMemoryReason = "rss_hard" | "heap_hard"
 
@@ -292,8 +298,8 @@ class FrameStream {
 export class AgentWorkerPool {
   private readonly log = Log.create({ service: "agent.worker.pool" })
   private readonly workers = new Map<string, PoolWorker>()
-  private readonly interactiveQueue: PoolTask[] = []
-  private readonly backgroundQueue: PoolTask[] = []
+  private readonly dispatchQueue: PoolTask[] = []
+  private pressure = false
   private queuedBytes = 0
   private stopping = false
   private readonly healthTimer: ReturnType<typeof setInterval>
@@ -351,11 +357,6 @@ export class AgentWorkerPool {
     if (this.stopping) return Promise.reject(new Error("Agent worker pool is stopping"))
     if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
     if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("Agent turn aborted", "AbortError"))
-    const activeTasks = this.activeTaskCount()
-    if (activeTasks + this.queuedCount() >= this.targetSize + this.options.maxQueued) {
-      return Promise.reject(new Error(`Agent worker queue is full (${this.options.maxQueued} waiting)`))
-    }
-
     const requestId = `agent_turn_${crypto.randomUUID()}`
     const { abort: _abort, archive, lane: _lane, onPhase, ...turnInput } = input
     const workerInput: AgentTurnWorkerInput = {
@@ -371,12 +372,6 @@ export class AgentWorkerPool {
     }
     const payload = AgentTurnProtocol.serializeTurn(envelope as unknown as AgentTurnProtocol.TurnEnvelope)
     const requestBytes = payload.byteLength
-    if (this.queuedBytes + requestBytes > this.options.maxQueuedBytes) {
-      return Promise.reject(
-        new Error(`Agent worker queue exceeded ${this.options.maxQueuedBytes} bytes of waiting turns`),
-      )
-    }
-
     return new Promise<AgentTurnStream>((resolve, reject) => {
       let task!: PoolTask
       const stream = new FrameStream((ackSequence) => {
@@ -439,7 +434,7 @@ export class AgentWorkerPool {
       this.enqueue(task)
       ObservabilityMetrics.record({
         name: "agent.queue.depth",
-        value: task.lane === "interactive" ? this.interactiveQueue.length : this.backgroundQueue.length,
+        value: this.dispatchQueue.length,
         unit: "count",
         module: "session",
         sessionID: input.sessionID,
@@ -517,6 +512,17 @@ export class AgentWorkerPool {
     this.workers.clear()
   }
 
+  setPressure(constrained: boolean): void {
+    if (this.pressure === constrained) return
+    this.pressure = constrained
+    if (constrained) {
+      for (const worker of [...this.workers.values()]) {
+        if (!worker.task) this.recycle(worker, "memory_pressure")
+      }
+    }
+    this.ensureWorkers()
+  }
+
   private ensureWorkers(): void {
     if (this.startupRetryPending) return
     while (!this.stopping && !this.startupCircuitError && this.liveWorkerCount() < this.desiredWorkerCount()) {
@@ -570,7 +576,16 @@ export class AgentWorkerPool {
 
   private desiredWorkerCount(): number {
     const demand = this.activeTaskCount() + this.queuedCount()
-    return Math.min(this.targetSize, Math.max(this.options.minIdle, demand + this.options.minIdle))
+    return Math.min(this.targetSize, demand + (this.pressure ? 0 : this.options.minIdle))
+  }
+
+  async waitForWarm(signal: AbortSignal): Promise<void> {
+    while (!this.stopping && !this.pressure && this.stats().ready < Math.min(this.targetSize, this.options.minIdle)) {
+      signal.throwIfAborted()
+      if (this.startupCircuitError) throw this.startupCircuitError
+      await this.supervisor.sleep(50)
+    }
+    signal.throwIfAborted()
   }
 
   private spawnWorker(): boolean {
@@ -1078,13 +1093,14 @@ export class AgentWorkerPool {
   }
 
   private softMemoryReason(memory: AgentTurnProtocol.WorkerMemory): MemoryRecycleReason | undefined {
-    if (memory.rssBytes >= this.options.maxRssBytes / 2) return "rss_soft"
-    if (memory.heapUsedBytes >= this.options.maxHeapBytes / 2) return "heap_soft"
+    if (this.options.maxRssBytes !== undefined && memory.rssBytes >= this.options.maxRssBytes / 2) return "rss_soft"
+    if (this.options.maxHeapBytes !== undefined && memory.heapUsedBytes >= this.options.maxHeapBytes / 2)
+      return "heap_soft"
   }
 
   private hardMemoryReason(memory: AgentTurnProtocol.WorkerMemory): HardMemoryReason | undefined {
-    if (memory.rssBytes >= this.options.maxRssBytes) return "rss_hard"
-    if (memory.heapUsedBytes >= this.options.maxHeapBytes) return "heap_hard"
+    if (this.options.maxRssBytes !== undefined && memory.rssBytes >= this.options.maxRssBytes) return "rss_hard"
+    if (this.options.maxHeapBytes !== undefined && memory.heapUsedBytes >= this.options.maxHeapBytes) return "heap_hard"
   }
 
   private recycle(worker: PoolWorker, reason: RecycleReason): void {
@@ -1156,32 +1172,19 @@ export class AgentWorkerPool {
 
   private enqueue(task: PoolTask): void {
     this.queuedBytes += task.requestBytes
-    if (task.lane === "interactive") this.interactiveQueue.push(task)
-    else this.backgroundQueue.push(task)
+    this.dispatchQueue.push(task)
   }
 
   private queuedCount(): number {
-    return this.interactiveQueue.length + this.backgroundQueue.length
+    return this.dispatchQueue.length
   }
 
   private flushQueued(): PoolTask[] {
-    return [...this.interactiveQueue.splice(0), ...this.backgroundQueue.splice(0)]
+    return this.dispatchQueue.splice(0)
   }
 
   private nextTask(): PoolTask | undefined {
-    const interactive = this.interactiveQueue.shift()
-    if (interactive) return interactive
-    if (!this.backgroundQueue.length) return undefined
-    let interactiveActive = 0
-    let backgroundActive = 0
-    for (const worker of this.workers.values()) {
-      if (worker.stopping || !worker.task) continue
-      if (worker.task.lane === "interactive") interactiveActive++
-      else backgroundActive++
-    }
-    const backgroundReserve = Math.max(1, this.targetSize - interactiveActive - this.interactiveQueue.length)
-    if (backgroundActive >= backgroundReserve) return undefined
-    return this.backgroundQueue.shift()
+    return this.dispatchQueue.shift()
   }
 
   private sendNextChunk(worker: PoolWorker, task: PoolTask): void {
@@ -1204,7 +1207,7 @@ export class AgentWorkerPool {
   }
 
   private cancel(requestId: string, reason?: unknown): void {
-    for (const queue of [this.interactiveQueue, this.backgroundQueue]) {
+    for (const queue of [this.dispatchQueue]) {
       const queuedIndex = queue.findIndex((task) => task.requestId === requestId)
       if (queuedIndex === -1) continue
       const [task] = queue.splice(queuedIndex, 1)
@@ -1355,15 +1358,13 @@ export class AgentWorkerPool {
 
 export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
   // Constructor fallback only. Production resolves a capacity through
-  // resolveAgentWorkerCapacity, which adapts to the effective memory budget.
+  // resolveAgentWorkerCapacity; memory admission controls actual allocation.
   size: 1,
   minIdle: 1,
   idleTimeoutMs: 60_000,
   maxQueued: 256,
   maxQueuedBytes: 256 * 1024 * 1024,
   maxTurns: 64,
-  maxRssBytes: 3072 * 1024 * 1024,
-  maxHeapBytes: 2048 * 1024 * 1024,
   idleBaselineRecycle: process.platform === "linux",
   idleBaselineRssGrowthBytes: 256 * 1024 * 1024,
   idleBaselineExternalGrowthBytes: 128 * 1024 * 1024,

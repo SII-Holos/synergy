@@ -986,7 +986,12 @@ export namespace SessionHistory {
     return MessageV2.deriveSemantics(result)
   }
 
-  export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+  export async function modelMessages(input: {
+    sessionID: string
+    onLoadParts?: (messageID: string) => void
+    signal?: AbortSignal
+  }) {
+    input.signal?.throwIfAborted()
     const policy = (await Config.current()).execution?.messageCache
     const useCache = policy?.enabled !== false
     let cached = useCache ? SessionMessageCache.get(input.sessionID) : undefined

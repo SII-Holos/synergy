@@ -730,7 +730,7 @@ export const CoreInfo = z
           .max(131_072)
           .optional()
           .describe(
-            "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+            "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
           ),
         agentWorkerMaxHeapMb: z
           .number()
@@ -739,7 +739,7 @@ export const CoreInfo = z
           .max(131_072)
           .optional()
           .describe(
-            "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+            "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
           ),
         agentWorkerIdleBaselineRecycle: z
           .boolean()

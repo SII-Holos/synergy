@@ -265,9 +265,9 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("keeps default hard watermarks at twice the soft recycle watermarks", () => {
-    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxRssBytes).toBe(3 * 1024 * 1024 * 1024)
-    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxHeapBytes).toBe(2 * 1024 * 1024 * 1024)
+  test("leaves hard worker limits unset unless configured", () => {
+    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxRssBytes).toBeUndefined()
+    expect(DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxHeapBytes).toBeUndefined()
   })
 
   test("rejects an idle reserve larger than the worker concurrency limit", () => {
@@ -1361,75 +1361,7 @@ describe("AgentWorkerPool", () => {
     },
   )
 
-  test("enforces the combined byte budget across waiting lanes and restores cancelled capacity", async () => {
-    const fake = fakeWorkers()
-    const maxQueuedBytes = 2_048
-    const pool = new AgentWorkerPool({ ...options, maxQueuedBytes }, fake.spawn)
-    const pendingAbort = new AbortController()
-    const turnInput = input(pendingAbort.signal)
-    const largeInput = {
-      ...turnInput,
-      prepared: { ...turnInput.prepared, system: ["x".repeat(1_024)] },
-    }
-    try {
-      const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
-      void firstPromise.catch(() => undefined)
-      fake.workers[0].ready()
-      const firstRun = startTurn(fake.workers[0])
-      fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
-      await firstPromise
-
-      const pending = inScope(() => pool.run({ ...largeInput, lane: "background" }))
-      void pending.catch(() => undefined)
-      const waitingBytes = pool.stats().queuedBytes
-      expect(waitingBytes).toBeGreaterThan(maxQueuedBytes / 2)
-      expect(waitingBytes).toBeLessThanOrEqual(maxQueuedBytes)
-      await expect(inScope(() => pool.run({ ...largeInput, lane: "interactive" }))).rejects.toThrow("queue exceeded")
-      expect(pool.stats()).toMatchObject({ queued: 1, queuedBytes: waitingBytes })
-
-      pendingAbort.abort()
-      await expect(pending).rejects.toBeDefined()
-      expect(pool.stats()).toMatchObject({ queued: 0, queuedBytes: 0 })
-      const replacement = inScope(() => pool.run({ ...largeInput, abort: new AbortController().signal }))
-      void replacement.catch(() => undefined)
-      expect(pool.stats()).toMatchObject({ queued: 1, queuedBytes: waitingBytes })
-      await pool.stop()
-      await expect(replacement).rejects.toThrow("Agent worker pool stopped")
-      expect(pool.stats()).toMatchObject({ queued: 0, queuedBytes: 0 })
-    } finally {
-      await pool.stop()
-    }
-  })
-
-  test("bounds aggregate waiting-turn bytes independently from active work", async () => {
-    const fake = fakeWorkers()
-    const pool = new AgentWorkerPool({ ...options, maxQueuedBytes: 2_048 }, fake.spawn)
-    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
-    fake.workers[0].ready()
-    const firstRun = startTurn(fake.workers[0])
-    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
-    await firstPromise
-
-    await expect(
-      inScope(() =>
-        pool.run({
-          ...input(new AbortController().signal),
-          prepared: {
-            system: ["x".repeat(4_096)],
-            baseSystemLength: 1,
-            provider: {
-              options: {},
-              timeouts: { ttfbMs: 10, idleMs: 20, wallMs: false as const },
-            },
-            params: { options: {} },
-          },
-        }),
-      ),
-    ).rejects.toThrow("queue exceeded")
-    await pool.stop()
-  })
-
-  test("serves a queued interactive turn before an earlier background turn", async () => {
+  test("dispatches admitted turns in order without a second priority scheduler", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, size: 1 }, fake.spawn)
     const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -1474,11 +1406,11 @@ describe("AgentWorkerPool", () => {
     fake.workers[0].receive({ type: "started", requestId: nextRun.requestId })
     await Bun.sleep(0)
 
-    expect(settled).toBe("interactive")
+    expect(settled).toBe("background")
     expect(pool.stats()).toMatchObject({ active: 1, queued: 1 })
 
     await pool.stop()
-    await background.catch(() => undefined)
+    await interactive.catch(() => undefined)
   })
 
   test("occupies the whole pool with background turns while no interactive turn waits", async () => {

@@ -36,7 +36,8 @@ export class MemoryAdmission {
   private healthySamples = 0
   private probeRevision = -1
   private completedProbes = 0
-  private lastOwner?: string
+  private readonly served = new Map<string, number>()
+  private sequence = 0
   private readonly commitments = new Set<Commitment>()
   private readonly waiters: Waiter[] = []
   private readonly limits = new Map<string, number>()
@@ -56,6 +57,13 @@ export class MemoryAdmission {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("Resource pool ceiling must be positive")
     this.limits.set(pool, limit)
     this.drain()
+  }
+
+  poolStatus(pool: string) {
+    return {
+      active: [...this.commitments].filter((lease) => lease.pool === pool).length,
+      queued: this.waiters.filter((waiter) => waiter.request.pool === pool).length,
+    }
   }
 
   update(snapshot: ResourceSnapshot) {
@@ -195,8 +203,7 @@ export class MemoryAdmission {
         if (status.state === "blocked") break
         if (status.state !== "normal" && this.probeRevision === this.revision) break
         const owners = [...new Set(this.waiters.map((waiter) => waiter.request.owner))]
-        const previous = owners.indexOf(this.lastOwner ?? "")
-        const ordered = previous < 0 ? owners : [...owners.slice(previous + 1), ...owners.slice(0, previous + 1)]
+        const ordered = owners.sort((a, b) => (this.served.get(a) ?? 0) - (this.served.get(b) ?? 0))
         const candidates = ordered.map((owner) => this.waiters.find((waiter) => waiter.request.owner === owner)!)
         let admitted = false
         for (const waiter of candidates) {
@@ -218,7 +225,7 @@ export class MemoryAdmission {
           this.remove(waiter)
           const commitment: Commitment = { bytes: request.bytes, pool: request.pool }
           this.commitments.add(commitment)
-          this.lastOwner = request.owner
+          this.served.set(request.owner, ++this.sequence)
           this.probeRevision = this.revision
           const probe = status.state !== "normal"
           waiter.resolve({

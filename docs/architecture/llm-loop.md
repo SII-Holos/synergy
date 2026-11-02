@@ -6,7 +6,7 @@ The session LLM loop turns one root task into an ordered sequence of model calls
 
 The loop is not an in-memory conversation object. Durable messages and session state remain authoritative; the runtime is a single-writer execution window over that state.
 
-Execution admission and per-turn input preparation use the internal `preparing` phase. The `queued_agent` phase begins only at AgentTurn enqueue, and `running_agent` begins at its actual start callback. Repair, file-baseline and model-input spans measure preparation separately from worker wait; historical phase samples are not rewritten.
+Execution admission and per-turn input preparation use the internal `preparing` phase. The `waiting_resources` phase describes resource admission; `queued_agent` begins at admitted Worker dispatch, and `running_agent` begins at its actual start callback. Repair, file-baseline and model-input spans measure preparation separately from worker wait; historical phase samples are not rewritten.
 
 ## Entry and Ownership
 
@@ -78,7 +78,7 @@ Release-triggered memory work never blocks the Linux turn settlement path. Turn 
 
 ## Model execution isolation
 
-Runtime composition can register `ModelExecution.register("in-process")`; otherwise production model calls use isolated Agent workers. Both modes pass through `AgentTurn`, provider preparation, rollout recording and retry coordination. Same-process execution bounds concurrent calls and queued bytes, preserves each call's asynchronous context and credentials, and reads usage after stream consumption to preserve backpressure. Cancellation and shutdown wait for stream disposal; a failed disposal is a shutdown error. A provider stream that is already terminal with an error releases its slot without closing admission to independent requests. Worker RSS statistics remain zero for same-process execution because that memory belongs to the embedding process. See the [execution selection decision](../decisions/implemented/architecture/2026-10-09-select-production-model-execution-per-runtime.md).
+Runtime composition can register `ModelExecution.register("in-process")`; otherwise production model calls use isolated Agent workers. Both modes pass through `AgentTurn`, provider preparation, rollout recording and retry coordination. Both execution modes share resource admission in AgentTurn. Same-process execution owns stream readers without another admission queue, preserves each call's asynchronous context and credentials, and reads usage after stream consumption to preserve backpressure. Cancellation and shutdown wait for stream disposal; a failed disposal is a shutdown error. A provider stream that is already terminal with an error releases its slot without closing admission to independent requests. Worker RSS statistics remain zero for same-process execution because that memory belongs to the embedding process. See the [execution selection decision](../decisions/implemented/architecture/2026-10-09-select-production-model-execution-per-runtime.md).
 
 ## Agent and Model Resolution
 
