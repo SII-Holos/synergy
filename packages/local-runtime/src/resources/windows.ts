@@ -3,6 +3,27 @@ import { openNativeLibrary } from "../native/ffi"
 import type { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
 import type { ResourceSnapshot } from "@ericsanchezok/synergy-harness/resources/schema"
 
+const bytes = (buffer: Buffer, offset: number) => Number(buffer.readBigUInt64LE(offset))
+
+export function windowsMemoryDomains(
+  memory: Buffer,
+  performance: Buffer,
+  application: Buffer,
+): ResourceSnapshot["domains"] {
+  const page = bytes(performance, 80)
+  // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ne-processthreadsapi-process_information_class
+  // ProcessAppMemoryInfo reports additional commit availability, not a hard commit limit.
+  return [
+    { kind: "physical", capacityBytes: bytes(memory, 8), availableBytes: bytes(memory, 16) },
+    { kind: "process", capacityBytes: null, availableBytes: bytes(application, 0) },
+    {
+      kind: "commit",
+      capacityBytes: bytes(performance, 16) * page,
+      availableBytes: Math.max(0, bytes(performance, 16) - bytes(performance, 8)) * page,
+    },
+  ]
+}
+
 export function windowsResources(): ResourceHost.Source {
   const kernel = openNativeLibrary("kernel32.dll", {
     GlobalMemoryStatusEx: { args: ["ptr"], returns: "bool" },
@@ -47,22 +68,10 @@ export function windowsResources(): ResourceHost.Source {
         !processLibrary.symbols.GetPerformanceInfo(ptr(performance), performance.length)
       )
         throw new Error("Cannot read system memory availability")
-      const bytes = (buffer: Buffer, offset: number) => Number(buffer.readBigUInt64LE(offset))
-      const page = bytes(performance, 80)
       const application = Buffer.alloc(32)
       if (!api.GetProcessInformation(api.GetCurrentProcess(), 2, ptr(application), application.length))
         throw new Error("Cannot read process commit availability")
-      // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ne-processthreadsapi-process_information_class
-      // ProcessAppMemoryInfo reports additional commit availability, not a hard commit limit.
-      const domains: ResourceSnapshot["domains"] = [
-        { kind: "physical", capacityBytes: bytes(memory, 8), availableBytes: bytes(memory, 16) },
-        { kind: "process", capacityBytes: null, availableBytes: bytes(application, 0) },
-        {
-          kind: "commit",
-          capacityBytes: bytes(performance, 16) * page,
-          availableBytes: Math.max(0, bytes(performance, 16) - bytes(performance, 8)) * page,
-        },
-      ]
+      const domains = windowsMemoryDomains(memory, performance, application)
       const inJob = new Uint32Array(1)
       if (!api.IsProcessInJob(api.GetCurrentProcess(), null, ptr(inJob))) throw new Error("Cannot inspect process job")
       if (inJob[0]) {

@@ -4,8 +4,26 @@ import path from "node:path"
 import os from "node:os"
 import { cgroupDirectories, linuxResources, memoryFields } from "../../src/resources/linux"
 import { nativeResources } from "../../src/resources"
+import { windowsMemoryDomains } from "../../src/resources/windows"
 
 describe("native resource sampling", () => {
+  test("keeps Windows process and system commit headroom separate from plentiful RAM", () => {
+    const memory = Buffer.alloc(64)
+    const performance = Buffer.alloc(104)
+    const application = Buffer.alloc(32)
+    memory.writeBigUInt64LE(48n * 1024n ** 3n, 8)
+    memory.writeBigUInt64LE(24n * 1024n ** 3n, 16)
+    performance.writeBigUInt64LE(1000n, 8)
+    performance.writeBigUInt64LE(1100n, 16)
+    performance.writeBigUInt64LE(4096n, 80)
+    application.writeBigUInt64LE(200n, 0)
+    const domains = windowsMemoryDomains(memory, performance, application)
+    expect(domains).toEqual([
+      { kind: "physical", capacityBytes: 48 * 1024 ** 3, availableBytes: 24 * 1024 ** 3 },
+      { kind: "process", capacityBytes: null, availableBytes: 200 },
+      { kind: "commit", capacityBytes: 1100 * 4096, availableBytes: 100 * 4096 },
+    ])
+  })
   test.skipIf(process.platform !== "win32")("observes parent Job commit headroom through a nested Job", async () => {
     const ffi = new URL("../../src/native/ffi.ts", import.meta.url).href
     const probe = new URL("../../src/resources/windows.ts", import.meta.url).href

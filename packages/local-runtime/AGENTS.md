@@ -1,6 +1,6 @@
 # local-runtime Package
 
-Own native execution, reload, CLI adapters and exports.
+Own native execution and adapters.
 
 - Tools, routes, config and migrations stay with implementation.
 - Own config schemas, normalization, references and secrets in `src/config-schema.ts`; consumers use its typed reader and the host composes registration.

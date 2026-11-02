@@ -699,7 +699,7 @@ describe.serial("Cortex", () => {
               expect(Cortex.get(task1!.id)?.status).toBe("cancelled")
               expect(Cortex.get(task2!.id)?.status).toBe("cancelled")
 
-              const statusAfterRelease = CortexConcurrency.status()[agent]
+              const statusAfterRelease = CortexConcurrency.globalStatus()
               expect(statusAfterRelease?.running).toBe(0)
               expect(statusAfterRelease?.queued).toBe(0)
             } finally {
@@ -770,11 +770,9 @@ describe.serial("Cortex", () => {
               parentMessageID: "msg_test01234567890abc",
             })
 
-            // Check immediately before async runTask() can error
             expect(task).toBeDefined()
             expect(task.id).toMatch(/^ctx_/)
-            // Task status is set to "running" synchronously before runTask starts
-            expect(task.status).toBe("running")
+            expect(task.status).toBe("queued")
             expect(task.description).toBe("Test task")
             expect(task.agent).toBe("developer")
             expect(task.parentSessionID).toBe(parentSession.id)
@@ -838,7 +836,7 @@ describe.serial("Cortex", () => {
             })
 
             expect(task).toBeDefined()
-            expect(task.status).toBe("running")
+            expect(task.status).toBe("queued")
 
             await Cortex.cancel(task.id)
           },
@@ -972,7 +970,7 @@ describe.serial("Cortex", () => {
         })
       }))
 
-    test("task appears in getRunningTasks initially", () =>
+    test("task appears in getRunningTasks after admission", () =>
       runtime.run(async () => {
         await using tmp = await tmpdir({ git: true })
         await ScopeContext.provide({
@@ -980,15 +978,15 @@ describe.serial("Cortex", () => {
           fn: async () => {
             const parentSession = await Session.create({})
 
-            const task = await Cortex.launch({
+            const task = await Cortex.prepare({
               description: "Test task",
               prompt: "Do something",
               agent: "developer",
               parentSessionID: parentSession.id,
               parentMessageID: "msg_test01234567890abc",
             })
+            await Cortex.start(task.id)
 
-            // Task should initially be in running state
             const runningTasks = Cortex.getRunningTasks()
             expect(runningTasks.some((t) => t.id === task.id)).toBe(true)
 
@@ -1007,13 +1005,14 @@ describe.serial("Cortex", () => {
           fn: async () => {
             const parentSession = await Session.create({})
 
-            const task = await Cortex.launch({
+            const task = await Cortex.prepare({
               description: "Test task to cancel",
               prompt: "Do something slowly",
               agent: "developer",
               parentSessionID: parentSession.id,
               parentMessageID: "msg_test01234567890abc",
             })
+            await Cortex.start(task.id)
 
             expect(task.status).toBe("running")
 
@@ -1080,13 +1079,14 @@ describe.serial("Cortex", () => {
           fn: async () => {
             const parentSession = await Session.create({})
 
-            const task = await Cortex.launch({
+            const task = await Cortex.prepare({
               description: "Running task",
               prompt: "Do something",
               agent: "developer",
               parentSessionID: parentSession.id,
               parentMessageID: "msg_test01234567890abc",
             })
+            await Cortex.start(task.id)
 
             const output = await Cortex.output(task.id)
             expect(output).toContain("Status: running")
@@ -2350,7 +2350,7 @@ describe.serial("Cortex", () => {
               const finalTask = Cortex.get(queuedTask!.id)
               expect(finalTask?.status).toBe("cancelled")
 
-              const statusAfterSlots = CortexConcurrency.status()[agent]
+              const statusAfterSlots = CortexConcurrency.globalStatus()
               expect(statusAfterSlots?.running).toBe(0)
               expect(statusAfterSlots?.queued).toBe(0)
             } finally {
