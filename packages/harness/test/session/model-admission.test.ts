@@ -92,7 +92,7 @@ test("an upstream stream error releases admission after executor disposal while 
     let disposals = 0
     AgentTurn.setInProcessStream(async () => ({
       fullStream: (async function* () {
-        yield { type: "text-delta" as const, text: "partial response" }
+        yield { type: "text-delta" as const, id: "partial", text: "partial response" }
         throw new Error("upstream connection lost")
       })(),
       usage: Promise.resolve(undefined),
