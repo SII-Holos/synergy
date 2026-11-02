@@ -328,6 +328,7 @@ for (const ended of [false, true]) {
       await harness.frames()
       const offset = previous.getBoundingClientRect().top - viewport.getBoundingClientRect().top
       harness.ready(false)
+      const interactions = harness.interactions
       harness.remount()
       viewport = document.querySelector<HTMLElement>('[data-component="process-viewport"]')!
       const paragraph = document.getElementById("reading-paragraph")!
@@ -348,12 +349,14 @@ for (const ended of [false, true]) {
         displacements,
         gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
         notifications: harness.notifications,
+        restoredInteractions: harness.interactions - interactions,
       }
     }, ended)
     expect(result.remounted).toBe(true)
     expect(Math.max(...result.displacements.map(Math.abs))).toBeLessThanOrEqual(1)
     expect(result.gap).toBeGreaterThan(100)
     expect(result.notifications).toEqual([true, false, true])
+    expect(result.restoredInteractions).toBe(0)
   })
 
   test(`reading input cancels restored following before a remounted ${ended ? "completed" : "running"} process finishes hydration`, async () => {

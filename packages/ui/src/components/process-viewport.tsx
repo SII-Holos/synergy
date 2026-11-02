@@ -378,10 +378,7 @@ export function ProcessViewport(
         restore(saved.anchor!)
       })
     }
-    if (saved && !saved.following) {
-      props.onInteraction?.()
-      notifyReading(true)
-    }
+    if (saved && !saved.following) notifyReading(true)
     const selection = () => {
       if (
         readSelectionRanges(document).some(
