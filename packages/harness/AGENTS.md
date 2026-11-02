@@ -1,15 +1,13 @@
 # harness Package
 
-Own lifecycle, features and exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. Pairing: [Host connections](../../docs/architecture/host-connections.md).
+Own lifecycle, features, exports. `context` owns pure attribution; `agent/primary-identity` maps primary names. Pairing: [Host connections](../../docs/architecture/host-connections.md).
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - `SessionExecutionOwners` gates queued and retained execution against selected components. Domains check durable references; `MessageV2` derives historical origins and requirements. Preserve blocked records; new human tasks cannot resume an unavailable predecessor. Persist independent root admission and Agent selection, keeping its execution view separate from canonical Session writes.
 - `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; domain packages own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
-- Import other packages only through declared public exports; preserve cancellation, permissions and persisted data.
+- Use public package exports; preserve cancellation, permissions and persisted data.
 - Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances together and entrypoints in isolated child processes.
-- Use the unsealed fixture for migration mechanism tests.
-
-Verify types, tests and packages.
+- Use unsealed fixtures for migration tests.
 
 - Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.
 - Local Runtime owns native PTYs, watchers and OS sandboxes. `workspace/observation` qualifies invalidations; Session owns live comparisons. Harness owns permission policy and `SandboxHost`; missing host registration must fail closed for sandboxed execution.
@@ -17,6 +15,7 @@ Verify types, tests and packages.
 - Expose public domain operations; `session/prompt-budgeter` measures native model messages. Host adapters may use declared contract leaves; never export processor, resolver, scheduler or journal implementations to production. Published manifests omit `test/` exports; production cannot import them. Use relative imports internally.
 - File browsing, indexing, Ripgrep, Hashline editing and conflict resolution belong to local-runtime; this package retains execution read evidence and locking.
 - Native file imports cross the Runtime-scoped `workspace/file-import` Host contract; register the implementation before opening the Runtime and reject unavailable hosts explicitly.
+- Harness owns [resource admission](../../docs/architecture/resource-admission.md); Local Runtime supplies `ResourceHost` facts. Verify `test/resources/`.
 - Workspace catalog references and binding generations own file identity. Native write admission uses `workspace/access`; execution-capacity scheduling remains private. File resources use `WorkspaceState`; Scope configuration and event sequencing use `ScopedState`. Startup contributions declare Workspace ownership when they depend on working files.
 - Tool `resourceNeeds` augments static requirements through the resolver. Follow `add-tool`.
 - Environment ownership: [Environments](../../docs/architecture/environments.md).
