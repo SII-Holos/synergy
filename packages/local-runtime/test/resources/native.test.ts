@@ -13,6 +13,8 @@ describe("native resource sampling", () => {
     const application = Buffer.alloc(32)
     memory.writeBigUInt64LE(48n * 1024n ** 3n, 8)
     memory.writeBigUInt64LE(24n * 1024n ** 3n, 16)
+    memory.writeBigUInt64LE(150n, 24)
+    memory.writeBigUInt64LE(100n, 32)
     performance.writeBigUInt64LE(1000n, 8)
     performance.writeBigUInt64LE(1100n, 16)
     performance.writeBigUInt64LE(4096n, 80)
@@ -20,6 +22,7 @@ describe("native resource sampling", () => {
     const domains = windowsMemoryDomains(memory, performance, application)
     expect(domains).toEqual([
       { kind: "physical", capacityBytes: 48 * 1024 ** 3, availableBytes: 24 * 1024 ** 3 },
+      { kind: "process", capacityBytes: 150, availableBytes: 100 },
       { kind: "process", capacityBytes: null, availableBytes: 200 },
       { kind: "commit", capacityBytes: 1100 * 4096, availableBytes: 100 * 4096 },
     ])
@@ -63,7 +66,9 @@ describe("native resource sampling", () => {
       ])
       expect(code, error).toBe(0)
       const snapshot = JSON.parse(output) as { domains: Array<{ availableBytes: number }> }
-      expect(Math.min(...snapshot.domains.map((domain) => domain.availableBytes))).toBeLessThanOrEqual(1536 * 1024 ** 2)
+      expect(Math.min(...snapshot.domains.map((domain) => domain.availableBytes)), output).toBeLessThanOrEqual(
+        1536 * 1024 ** 2,
+      )
     } finally {
       if (child.exitCode === null) child.kill()
       await child.exited

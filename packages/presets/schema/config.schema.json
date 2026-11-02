@@ -201,7 +201,7 @@
         },
         "lspIdleReap": { "description": "Reap idle language servers (default: true)", "type": "boolean" },
         "agentWorkers": {
-          "description": "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+          "description": "Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.",
           "anyOf": [{ "type": "integer", "exclusiveMinimum": 0, "maximum": 64 }, { "type": "null" }]
         },
         "agentWorkerMinIdle": {
@@ -217,13 +217,13 @@
           "maximum": 3600000
         },
         "agentQueueMax": {
-          "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+          "description": "Maximum queued model requests waiting for resource admission (default: 256)",
           "type": "integer",
           "minimum": 0,
           "maximum": 32768
         },
         "agentQueueMaxMb": {
-          "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+          "description": "Maximum aggregate retained model admission payload size in MiB (default: 256)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 4096
@@ -235,13 +235,13 @@
           "maximum": 10000
         },
         "agentWorkerMaxRssMb": {
-          "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+          "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 131072
         },
         "agentWorkerMaxHeapMb": {
-          "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+          "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 131072

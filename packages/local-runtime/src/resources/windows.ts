@@ -15,6 +15,9 @@ export function windowsMemoryDomains(
   // ProcessAppMemoryInfo reports additional commit availability, not a hard commit limit.
   return [
     { kind: "physical", capacityBytes: bytes(memory, 8), availableBytes: bytes(memory, 16) },
+    // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex
+    // Effective process commit availability is distinct from the immediate Job's accounting.
+    { kind: "process", capacityBytes: bytes(memory, 24), availableBytes: bytes(memory, 32) },
     { kind: "process", capacityBytes: null, availableBytes: bytes(application, 0) },
     {
       kind: "commit",
