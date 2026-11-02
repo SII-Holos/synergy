@@ -12,11 +12,12 @@ import { SessionExport } from "../../src/session/session-export"
 import { SessionImport } from "../../src/session/session-import"
 import { SessionManager } from "../../src/session/manager"
 import { Cortex } from "../../src/cortex"
+import { registerCortexSessionRuntime } from "../../src/cortex/session-runtime"
 
 test.each(["resolved", "unresolved", "none"] as const)(
   "Cortex children preserve the parent's %s Workspace reference across ambient Scopes",
   async (binding) => {
-    await using runtime = await testRuntime()
+    await using runtime = await testRuntime({ register: registerCortexSessionRuntime })
     await runtime.run(async () => {
       await using files = await tmpdir()
       await using ambient = await tmpdir()

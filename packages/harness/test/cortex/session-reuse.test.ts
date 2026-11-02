@@ -1,5 +1,6 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test"
 import { Cortex } from "../../src/cortex"
+import { registerCortexSessionRuntime } from "../../src/cortex/session-runtime"
 import { CortexTypes } from "../../src/cortex/types"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -8,7 +9,7 @@ import { BusyError } from "../../src/session/error"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+const runtime = await testRuntime({ register: registerCortexSessionRuntime })
 
 describe("Cortex session reuse", () => {
   beforeEach(() =>
@@ -18,9 +19,9 @@ describe("Cortex session reuse", () => {
   )
 
   afterEach(() =>
-    runtime.run(() => {
-      // Clean up any lingering runtimes that may have been registered during launch
-      // (Session.create registers a runtime, and Cortex may also do so)
+    runtime.run(async () => {
+      await Cortex.drain()
+      Cortex.reset()
     }),
   )
 
@@ -49,6 +50,7 @@ describe("Cortex session reuse", () => {
             expect(task.parentSessionID).toBe(parentSession.id)
 
             await Cortex.cancel(task.id)
+            await Cortex.drain(task.id)
           },
         })
       }))
@@ -154,6 +156,7 @@ describe("Cortex session reuse", () => {
             expect(task.sessionID).not.toBe(parentSession.id)
 
             await Cortex.cancel(task.id)
+            await Cortex.drain(task.id)
           },
         })
       }))
