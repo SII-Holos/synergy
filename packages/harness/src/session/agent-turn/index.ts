@@ -224,6 +224,21 @@ export namespace AgentTurn {
       lease.release()
       throw error
     })
+    let owned: Stream | undefined
+    const own = (source: Stream): Stream => {
+      let disposed: Promise<void> | undefined
+      owned = {
+        ...source,
+        dispose: () =>
+          (disposed ??= (async () => {
+            // Rollout disposal can replay a provider error after the executor has acknowledged release.
+            await source.dispose()
+            await RuntimeResources.sample()
+            resource.release()
+          })()),
+      }
+      return owned
+    }
     try {
       const result = await RolloutCall.stream(
         {
@@ -274,8 +289,10 @@ export namespace AgentTurn {
             if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
             if (instanceState.inProcessStream) {
               onPhase?.("waiting_model")
-              return RolloutTransport.provide(archive, () =>
-                instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+              return own(
+                await RolloutTransport.provide(archive, () =>
+                  instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+                ),
               )
             }
             instanceState.pool ??= createExecutor(instanceState.options)
@@ -284,7 +301,7 @@ export namespace AgentTurn {
             onPhase?.("queued_agent")
             const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
             const contextUsageDraft = startContextUsageDraft(input, prepared!.system, provenance)
-            return { ...result, contextUsageDraft }
+            return own({ ...result, contextUsageDraft })
           }),
         () => {
           if (attribution.owner.kind === "session")
@@ -295,27 +312,21 @@ export namespace AgentTurn {
         resource.checkpoint(cost.turn)
         await RuntimeResources.sample()
       }
-      let disposed: Promise<void> | undefined
-      const dispose = () =>
-        (disposed ??= (async () => {
-          await result.dispose()
-          await RuntimeResources.sample()
-          resource.release()
-        })())
-      const fullStream = (async function* () {
-        try {
-          yield* result.fullStream
-        } finally {
-          await dispose()
-        }
-      })()
-      return { ...result, fullStream, dispose }
+      return result
     } catch (error) {
-      await RuntimeResources.sample()
-      resource.release()
       lease.release()
       if (RolloutRecordingError.isInstance(error) && attribution.owner.kind === "session") {
         SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
+      }
+      if (owned) {
+        try {
+          await owned.dispose()
+        } catch (disposalError) {
+          throw new AggregateError([error, disposalError], "Model startup and disposal failed")
+        }
+      } else {
+        await RuntimeResources.sample()
+        resource.release()
       }
       throw error
     }

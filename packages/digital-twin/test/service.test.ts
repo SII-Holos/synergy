@@ -4,6 +4,7 @@ import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { SessionContextSnapshot } from "@ericsanchezok/synergy-harness/session/context-snapshot"
 import { Provider } from "@ericsanchezok/synergy-harness/provider/provider"
 import { AgentCall } from "@ericsanchezok/synergy-harness/agent/call"
 import { RolloutLedger } from "@ericsanchezok/synergy-harness/session/rollout/ledger"
@@ -114,11 +115,19 @@ test(
             await entered.promise
             const survivor = new AbortController()
             const joined = Promise.withResolvers<void>()
+            const capture = SessionContextSnapshot.capture
+            let captured = false
+            using snapshot = spyOn(SessionContextSnapshot, "capture").mockImplementation(async (request) => {
+              const result = await capture(request)
+              if (request.signal === survivor.signal) captured = true
+              return result
+            })
             const addListener = survivor.signal.addEventListener.bind(survivor.signal)
             using subscription = spyOn(survivor.signal, "addEventListener").mockImplementation(
               (...args: Parameters<typeof addListener>) => {
                 addListener(...args)
-                if (args[0] === "abort") joined.resolve()
+                // Preparation also subscribes to cancellation before the consumer joins shared inference.
+                if (captured && args[0] === "abort") joined.resolve()
               },
             )
             const second = DigitalTwin.predictNextInput({ ...input, requestID: "two", signal: survivor.signal })

@@ -84,3 +84,50 @@ test("a tight real-capacity snapshot blocks request preparation without a model 
     expect(entered).toBe(false)
   })
 })
+
+test("an upstream stream error releases admission after executor disposal while preserving the error", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    AgentTurn.configure({ size: 1, minIdle: 0 })
+    let disposals = 0
+    AgentTurn.setInProcessStream(async () => ({
+      fullStream: (async function* () {
+        yield { type: "text-delta" as const, text: "partial response" }
+        throw new Error("upstream connection lost")
+      })(),
+      usage: Promise.resolve(undefined),
+      dispose: async () => {
+        disposals++
+      },
+    }))
+    const stream = await AgentTurn.stream(request(crypto.randomUUID()))
+    const text: string[] = []
+    await expect(
+      (async () => {
+        for await (const part of stream.fullStream) if (part.type === "text-delta") text.push(part.text)
+      })(),
+    ).rejects.toThrow("upstream connection lost")
+    expect(text).toEqual(["partial response"])
+    expect(disposals).toBe(1)
+    expect(AgentTurn.stats()).toMatchObject({ active: 0, queued: 0 })
+    expect(RuntimeResources.status().reservedBytes).toBe(0)
+  })
+})
+
+test("unconfirmed executor disposal retains its admission commitment", async () => {
+  await using runtime = await testRuntime()
+  await runtime.run(async () => {
+    AgentTurn.configure({ size: 1, minIdle: 0 })
+    AgentTurn.setInProcessStream(async () => ({
+      fullStream: (async function* () {})(),
+      usage: Promise.resolve(undefined),
+      dispose: async () => {
+        throw new Error("Executor did not acknowledge disposal")
+      },
+    }))
+    const stream = await AgentTurn.stream(request(crypto.randomUUID()))
+    await expect(stream.dispose()).rejects.toThrow("Executor did not acknowledge disposal")
+    expect(AgentTurn.stats()).toMatchObject({ active: 1, queued: 0 })
+    expect(RuntimeResources.status().reservedBytes).toBeGreaterThan(0)
+  })
+})
