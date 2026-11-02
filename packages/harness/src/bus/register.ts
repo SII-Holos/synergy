@@ -14,6 +14,7 @@ import { SessionCompaction } from "../session/compaction"
 import { SessionInputProgress } from "../session/input-progress"
 import { RolloutEvents } from "../session/rollout/events"
 import { CortexEvent } from "../cortex/event"
+import { RuntimeResources } from "../resources/runtime"
 import { UsageLedger } from "../usage/ledger"
 import { Permission } from "../permission"
 import { PermissionNext } from "../permission/next"
@@ -22,6 +23,7 @@ import { Bus } from "./index"
 
 export function registerCoreEvents() {
   BusEvent.register(
+    RuntimeResources.Event,
     ...Object.values(Config.Event),
     ...Object.values(Scope.Event),
     ...Object.values(Environment.Event),

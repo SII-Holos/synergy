@@ -57,6 +57,7 @@ import { Log } from "../util/log"
 import { Bus } from "../bus"
 import { GlobalBus } from "../bus/global"
 import { SecretVault } from "../secrets/vault"
+import { RuntimeResources } from "../resources/runtime"
 
 const log = Log.create({ service: "runtime" })
 
@@ -175,6 +176,7 @@ export namespace RuntimeHandle {
     }
 
     function closeAdmission() {
+      RuntimeResources.closeAdmission()
       RuntimeContext.setReady(false)
       ContextUsageEstimator.close()
       SessionManager.closeAdmission()
@@ -198,6 +200,7 @@ export namespace RuntimeHandle {
         }
         await cleanup(closeAdmission)
         if (!attached) {
+          await cleanup(() => RuntimeResources.stop())
           await cleanup(() => Log.close())
           await cleanup(() => storage?.handle.store.close())
           await cleanup(() => ownership?.release())
@@ -253,6 +256,7 @@ export namespace RuntimeHandle {
         await cleanup(() => LoopJob.cancelDetachedAll())
         for (const stop of [() => AgentTurn.stop(), () => PolicyWorker.stop(), () => ToolScheduler.stop()])
           await cleanup(stop)
+        await cleanup(() => RuntimeResources.stop())
         await cleanup(() => ToolResolver.stop())
         await cleanup(() => ScopeRuntime.stop())
         await cleanup(() => EnvironmentProviders.close())
@@ -350,6 +354,7 @@ export namespace RuntimeHandle {
       const resolved = await ScopeContext.provide({ scope: Scope.home(), fn: () => Config.resolveExecution() })
       const requested = Experiment.applyRuntime(resolved, options.experiment?.runtime ?? {})
       const shutdownTimeoutMs = configureExecution(requested, options.mode)
+      await RuntimeResources.start()
       const config = resolveExecutionConfiguration(requested, options.mode)
       Experiment.configureRuntime(config, options.experiment?.runtime)
       ScopeStartup.configure(options.mode)
