@@ -178,4 +178,29 @@ describe("memory admission", () => {
     gate.close()
     await expect(gate.acquire({ owner: "a", bytes: 1 })).rejects.toThrow("closed")
   })
+
+  test("partial observations admit one stage per fresh sample and retain cancellation", async () => {
+    let now = 0
+    const gate = new MemoryAdmission({ reserveBytes: 0, now: () => now })
+    gate.update({ ...snapshot(100), quality: "partial" })
+    expect(gate.status()).toMatchObject({ state: "constrained", reason: "incomplete_sample" })
+    const first = await gate.acquire({ owner: "a", bytes: 10 })
+    const abort = new AbortController()
+    const second = gate.acquire({ owner: "b", bytes: 10, signal: abort.signal })
+    expect(gate.status()).toMatchObject({ active: 1, queued: 1 })
+    first.release()
+    expect(gate.status().queued).toBe(1)
+    now = 1_000
+    gate.update({ ...snapshot(100, now), quality: "partial" })
+    ;(await second).release()
+    const waiting = gate.acquire({ owner: "c", bytes: 10, signal: abort.signal })
+    abort.abort(new Error("cancelled incomplete observation"))
+    await expect(waiting).rejects.toThrow("cancelled incomplete observation")
+    expect(gate.status()).toMatchObject({ active: 0, queued: 0, reservedBytes: 0 })
+    gate.update({ ...snapshot(100, now), pressure: "critical" })
+    now = 2_000
+    gate.update({ ...snapshot(100, now), quality: "partial" })
+    expect(gate.status().state).toBe("blocked")
+    gate.close()
+  })
 })

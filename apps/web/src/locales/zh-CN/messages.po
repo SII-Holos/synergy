@@ -24001,6 +24001,10 @@ msgid "settings.runtime.resources.headroom"
 msgstr "等待更多可用内存"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.resources.incomplete"
+msgstr "内存信息不完整，正在逐步启动新任务"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.resources.recovering"
 msgstr "内存恢复中，正在逐步恢复执行"
 

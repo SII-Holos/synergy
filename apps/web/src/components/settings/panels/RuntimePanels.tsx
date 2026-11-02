@@ -364,6 +364,11 @@ export function TimeoutsPanel(props: {
         id: "settings.runtime.resources.constrained",
         message: "Starting less work while memory is under pressure",
       })
+    if (reason === "incomplete_sample")
+      return _({
+        id: "settings.runtime.resources.incomplete",
+        message: "Memory information is incomplete; starting work gradually",
+      })
     if (reason === "critical_pressure")
       return _({ id: "settings.runtime.resources.blocked", message: "New work paused until memory pressure eases" })
     return _({ id: "settings.runtime.resources.unavailable", message: "Waiting for current resource information" })

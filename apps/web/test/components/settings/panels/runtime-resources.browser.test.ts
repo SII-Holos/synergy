@@ -65,6 +65,7 @@ test("renders live admission reasons and preserves the configured ceiling at nar
       ["critical_pressure", "New work paused until memory pressure eases"],
       ["execution_capacity", "Waiting for an execution slot"],
       ["recovering", "Resuming gradually as memory recovers"],
+      ["incomplete_sample", "Memory information is incomplete; starting work gradually"],
       ["available", "Ready for new work"],
     ]) {
       await page.evaluate(

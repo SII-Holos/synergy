@@ -24001,6 +24001,10 @@ msgid "settings.runtime.resources.headroom"
 msgstr "Waiting for more available memory"
 
 #. js-lingui-explicit-id
+msgid "settings.runtime.resources.incomplete"
+msgstr "Memory information is incomplete; starting work gradually"
+
+#. js-lingui-explicit-id
 msgid "settings.runtime.resources.recovering"
 msgstr "Resuming gradually as memory recovers"
 

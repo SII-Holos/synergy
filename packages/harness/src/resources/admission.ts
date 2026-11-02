@@ -166,19 +166,25 @@ export class MemoryAdmission {
               ? "recovering"
               : this.mode === "constrained"
                 ? "memory_pressure"
-                : this.waiters.some((item) => item.request.bytes > headroomBytes)
-                  ? "headroom"
-                  : this.waiters.some(
-                        (item) =>
-                          item.request.pool &&
-                          this.poolStatus(item.request.pool).active >= (this.limits.get(item.request.pool) ?? 1),
-                      )
-                    ? "execution_capacity"
-                    : "available"
+                : this.snapshot?.quality === "partial"
+                  ? "incomplete_sample"
+                  : this.waiters.some((item) => item.request.bytes > headroomBytes)
+                    ? "headroom"
+                    : this.waiters.some(
+                          (item) =>
+                            item.request.pool &&
+                            this.poolStatus(item.request.pool).active >= (this.limits.get(item.request.pool) ?? 1),
+                        )
+                      ? "execution_capacity"
+                      : "available"
     return {
       revision: this.version,
       snapshot: this.snapshot ?? null,
-      state: ["closed", "unavailable_sample", "stale_sample"].includes(reason) ? "blocked" : this.mode,
+      state: ["closed", "unavailable_sample", "stale_sample"].includes(reason)
+        ? "blocked"
+        : this.mode === "normal" && this.snapshot?.quality === "partial"
+          ? "constrained"
+          : this.mode,
       reason,
       reserveBytes,
       reservedBytes,
@@ -190,7 +196,7 @@ export class MemoryAdmission {
   }
 
   intervalMs() {
-    return this.waiters.length || this.mode !== "normal" ? 1000 : 5000
+    return this.waiters.length || this.mode !== "normal" || this.snapshot?.quality === "partial" ? 1000 : 5000
   }
 
   close() {

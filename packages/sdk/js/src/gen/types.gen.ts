@@ -7842,6 +7842,7 @@ export type ResourceStatus = {
     | "memory_pressure"
     | "critical_pressure"
     | "unavailable_sample"
+    | "incomplete_sample"
     | "stale_sample"
     | "headroom"
     | "execution_capacity"
