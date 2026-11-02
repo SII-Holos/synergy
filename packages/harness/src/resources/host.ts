@@ -2,6 +2,8 @@ import { RuntimeContext } from "../lifecycle/context"
 import type { ResourceSnapshot } from "./schema"
 import type { ServiceMemory } from "../process/service-memory"
 
+export type CgroupSnapshot = ServiceMemory.CgroupV2
+
 export namespace ResourceHost {
   export interface Source {
     sample(): Promise<ResourceSnapshot>

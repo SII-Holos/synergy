@@ -37,16 +37,6 @@ afterEach(() =>
   }),
 )
 
-function memorySnapshot(rssGiB: number, arrayBuffersGiB = 0) {
-  return {
-    rssBytes: rssGiB * 1024 ** 3,
-    heapUsedBytes: 1,
-    heapTotalBytes: 1,
-    externalBytes: 1,
-    arrayBuffersBytes: arrayBuffersGiB * 1024 ** 3,
-  }
-}
-
 describe("Cortex routes", () => {
   test("mounted detail and output operations expose optional expected Session identities", () =>
     runtime.run(async () => {
@@ -417,10 +407,7 @@ describe("Cortex routes", () => {
         configured: null,
         environment: null,
         effective: 8,
-        memoryPressureLimit: null,
-        memoryPressureReason: "normal",
         source: "default",
-        perAgentLimit: 8,
         running: 0,
         queued: 0,
       })
@@ -437,21 +424,15 @@ describe("Cortex routes", () => {
       expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
     }))
 
-  test("reports memory pressure as the effective admission limit", () =>
+  test("keeps task configuration separate from the resource admission snapshot", () =>
     runtime.run(async () => {
       CortexConcurrency.configure(3)
-      CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(10, 9))
-
       const response = await Server.App().request("/cortex/tasks/concurrency")
-
       expect(response.status).toBe(200)
-      expect(await response.json()).toMatchObject({
-        configured: 3,
-        effective: 2,
-        memoryPressureLimit: 2,
-        memoryPressureReason: "critical_memory_pressure",
-        source: "config",
-      })
+      const value = await response.json()
+      expect(value).toMatchObject({ configured: 3, effective: 3, source: "config" })
+      expect(value).not.toHaveProperty("memoryPressureLimit")
+      expect(value).not.toHaveProperty("perAgentLimit")
     }))
 })
 

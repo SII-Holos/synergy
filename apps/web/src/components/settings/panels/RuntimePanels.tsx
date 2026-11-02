@@ -4,7 +4,12 @@ import { settingsFieldCopy } from "../settings-field-copy"
 import type { MessageDescriptor } from "@lingui/core"
 
 import { useLingui } from "@lingui/solid"
-import type { Agent, AgentWorkerCapacityStatus, CortexConcurrencyStatus } from "@ericsanchezok/synergy-sdk/client"
+import type {
+  Agent,
+  AgentWorkerCapacityStatus,
+  CortexConcurrencyStatus,
+  ResourceStatus,
+} from "@ericsanchezok/synergy-sdk/client"
 import { For, Show } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -20,7 +25,6 @@ import {
 } from "../components/SettingsPrimitives"
 import type { AgentsStore, RuntimeStore } from "../types"
 import type { DesktopShellEnvironmentDiagnostics } from "@/context/platform"
-import { concurrencyPressureState } from "./runtime-concurrency-model"
 import { agentWorkerCapacityDisplay } from "./runtime-agent-workers-model"
 import { translateDescriptor } from "@/locales/translate"
 
@@ -332,6 +336,7 @@ export function TimeoutsPanel(props: {
   onDefaultAgentChange: (agent: string) => void
   concurrencyStatus?: CortexConcurrencyStatus
   capacityStatus?: AgentWorkerCapacityStatus
+  resourceStatus?: ResourceStatus
   fieldError?: (key: keyof RuntimeStore) => string | undefined
   popoverLayer?: HTMLElement
 }) {
@@ -341,23 +346,27 @@ export function TimeoutsPanel(props: {
   const displayedConcurrency = () =>
     managedByEnvironment() ? String(environmentConcurrency()) : props.runtime.cortexConcurrency
   const concurrencyStateLabel = () => {
-    const pressure = concurrencyPressureState(props.concurrencyStatus)
-    if (pressure?.managed) {
-      return _({
-        id: "settings.runtime.agents.concurrency.memoryLimitManaged",
-        message: "Managed by environment · Memory safety limit active: {value}",
-        values: { value: pressure.value },
-      })
-    }
-    if (pressure) {
-      return _({
-        id: "settings.runtime.agents.concurrency.memoryLimit",
-        message: "Memory safety limit active: {value}. New tasks will queue until pressure drops.",
-        values: { value: pressure.value },
-      })
-    }
     if (managedByEnvironment()) return _(managedByEnvLabel)
     return undefined
+  }
+
+  const resourceReason = () => {
+    const reason = props.resourceStatus?.reason
+    if (reason === "available") return _({ id: "settings.runtime.resources.available", message: "Ready for new work" })
+    if (reason === "execution_capacity")
+      return _({ id: "settings.runtime.resources.capacity", message: "Waiting for an execution slot" })
+    if (reason === "recovering")
+      return _({ id: "settings.runtime.resources.recovering", message: "Resuming gradually as memory recovers" })
+    if (reason === "headroom")
+      return _({ id: "settings.runtime.resources.headroom", message: "Waiting for more available memory" })
+    if (reason === "memory_pressure")
+      return _({
+        id: "settings.runtime.resources.constrained",
+        message: "Starting less work while memory is under pressure",
+      })
+    if (reason === "critical_pressure")
+      return _({ id: "settings.runtime.resources.blocked", message: "New work paused until memory pressure eases" })
+    return _({ id: "settings.runtime.resources.unavailable", message: "Waiting for current resource information" })
   }
 
   const agentWorkerStateLabel = () => {
@@ -380,6 +389,24 @@ export function TimeoutsPanel(props: {
   return (
     <SettingsPage title={_(agentsPageTitle)} description={_(agentsPageDesc)}>
       <SettingsSection title={_(agentSectionTitle)}>
+        <Show when={props.resourceStatus}>
+          {(status) => (
+            <SettingRow
+              trailing={undefined}
+              title={_({ id: "settings.runtime.resources.title", message: "Resource admission" })}
+              description={resourceReason()}
+              stateLabel={_({
+                id: "settings.runtime.resources.counts",
+                message: "{active} active stages · {queued} waiting · {memory} MiB available for new work",
+                values: {
+                  active: status().active,
+                  queued: status().queued,
+                  memory: Math.floor(status().headroomBytes / 1024 ** 2),
+                },
+              })}
+            />
+          )}
+        </Show>
         <SettingRow
           title={_(coauthorRowTitle)}
           description={_(coauthorRowDesc)}

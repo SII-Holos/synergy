@@ -85,7 +85,7 @@ const readCounter = (file: string) =>
   })
 
 export function linuxResources(proc = "/proc"): ResourceHost.Source {
-  let previous: { at: number; stall: number; high: number; oom: number } | undefined
+  let previous: { at: number; counters: Map<string, { stall: number; high: number; oom: number }> } | undefined
   let cgroup: ReturnType<typeof CgroupMemory.readCgroupV2>
   return {
     serviceMemory: () => cgroup,
@@ -103,11 +103,10 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
         { kind: "physical", capacityBytes: values.MemTotal, availableBytes: values.MemAvailable },
       ]
       let quality: ResourceSnapshot["quality"] = hostPressure ? "complete" : "partial"
-      let highEvents = 0
-      let oomEvents = 0
-      let stall = psi(hostPressure ?? "").full || 0
+      const counters = new Map([["host", { stall: psi(hostPressure ?? "").full || 0, high: 0, oom: 0 }]])
       let throttled = false
       const directories = cgroupDirectories(membership, mounts)
+      if (!directories.length && membership.trim()) throw new Error("Cgroup memory accounting requires v2")
       cgroup = directories[0] ? CgroupMemory.readCgroupV2(directories[0]) : undefined
       for (const directory of directories) {
         const [currentText, maxText, highText, eventsText, pressureText] = await Promise.all([
@@ -119,6 +118,7 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
         ])
         // A root without a memory controller has neither counter nor limit; partial reads are unsafe.
         if (currentText === undefined && maxText === undefined) {
+          if (directory !== directories.at(-1)) throw new Error("Cgroup hard limit is unreadable")
           quality = "partial"
           continue
         }
@@ -131,21 +131,35 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
         const high = highText === undefined ? undefined : limit(highText)
         throttled ||= high !== undefined && current >= high
         const events = memoryFields(eventsText ?? "")
-        highEvents += events.high ?? 0
-        oomEvents += (events.oom ?? 0) + (events.oom_kill ?? 0)
-        stall = Math.max(stall, psi(pressureText ?? "").full || 0)
+        counters.set(directory, {
+          high: events.high ?? 0,
+          oom: (events.oom ?? 0) + (events.oom_kill ?? 0),
+          stall: psi(pressureText ?? "").full || 0,
+        })
         if (!eventsText || !pressureText) quality = "partial"
       }
       const at = Date.now()
-      const stallFraction =
-        previous && at > previous.at ? Math.max(0, stall - previous.stall) / ((at - previous.at) * 1000) : 0
+      let stallFraction = 0
+      let highEvent = false
+      let oomEvent = false
+      for (const [source, counter] of counters) {
+        const before = previous?.counters.get(source)
+        if (!before || !previous) continue
+        if (at > previous.at)
+          stallFraction = Math.max(
+            stallFraction,
+            Math.max(0, counter.stall - before.stall) / ((at - previous.at) * 1000),
+          )
+        highEvent ||= counter.high > before.high
+        oomEvent ||= counter.oom > before.oom
+      }
       const pressure =
-        (previous && oomEvents > previous.oom) || stallFraction >= 0.1
+        oomEvent || stallFraction >= 0.1
           ? "critical"
-          : throttled || (previous && highEvents > previous.high) || stallFraction >= 0.01
+          : throttled || highEvent || stallFraction >= 0.01
             ? "warning"
             : "normal"
-      previous = { at, stall, high: highEvents, oom: oomEvents }
+      previous = { at, counters }
       return { sampledAt: at, quality, pressure, domains, processRssBytes: process.memoryUsage.rss() }
     },
   }

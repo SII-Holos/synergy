@@ -29,6 +29,7 @@ export const ResourceStatus = z
       "unavailable_sample",
       "stale_sample",
       "headroom",
+      "execution_capacity",
       "recovering",
       "closed",
     ]),

@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import type { ServiceMemory } from "@ericsanchezok/synergy-harness/process/service-memory"
+import type { CgroupSnapshot } from "@ericsanchezok/synergy-harness/resources/host"
 
 export namespace CgroupMemory {
-  type CgroupV2 = ServiceMemory.CgroupV2
+  type CgroupV2 = CgroupSnapshot
   export function readCgroupV2(directory: string): CgroupV2 | undefined {
     const currentBytes = readNumber(path.join(directory, "memory.current"))
     if (currentBytes === undefined) return undefined

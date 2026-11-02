@@ -13,6 +13,7 @@ import type { RolloutSchema } from "../rollout/schema"
 import type { RolloutTransportSchema } from "../rollout/transport-schema"
 import { RolloutRecordingError, isTransientStorageError } from "../rollout/error"
 import { spawnAgentWorkerProcess, type AgentWorkerProcess, type SpawnAgentWorkerProcessOptions } from "./process-host"
+import type { ResourceCosts } from "../../resources/costs"
 
 export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 
@@ -126,6 +127,8 @@ interface PoolTask {
   queuedAt: number
   startedAt?: number
   requestBytes: number
+  baselineRssBytes?: number
+  peakRssBytes?: number
   payload: Uint8Array
   nextChunk: number
   sessionID: string
@@ -300,6 +303,7 @@ export class AgentWorkerPool {
   private readonly workers = new Map<string, PoolWorker>()
   private readonly dispatchQueue: PoolTask[] = []
   private pressure = false
+  private warming = false
   private queuedBytes = 0
   private stopping = false
   private readonly healthTimer: ReturnType<typeof setInterval>
@@ -329,6 +333,7 @@ export class AgentWorkerPool {
     private readonly options: AgentWorkerPoolOptions,
     private readonly spawn: (options: SpawnAgentWorkerProcessOptions) => AgentWorkerProcess = spawnAgentWorkerProcess,
     supervisor: Partial<AgentWorkerSupervisorOptions> = {},
+    private readonly costs?: ResourceCosts,
   ) {
     this.supervisor = { ...DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS, ...supervisor }
     if (!Number.isInteger(options.size) || options.size <= 0) {
@@ -576,16 +581,22 @@ export class AgentWorkerPool {
 
   private desiredWorkerCount(): number {
     const demand = this.activeTaskCount() + this.queuedCount()
-    return Math.min(this.targetSize, demand + (this.pressure ? 0 : this.options.minIdle))
+    return Math.min(this.targetSize, demand + (!this.pressure && this.warming ? this.options.minIdle : 0))
   }
 
   async waitForWarm(signal: AbortSignal): Promise<void> {
-    while (!this.stopping && !this.pressure && this.stats().ready < Math.min(this.targetSize, this.options.minIdle)) {
+    this.warming = true
+    try {
+      this.ensureWorkers()
+      while (!this.stopping && !this.pressure && this.stats().ready < Math.min(this.targetSize, this.options.minIdle)) {
+        signal.throwIfAborted()
+        if (this.startupCircuitError) throw this.startupCircuitError
+        await Bun.sleep(50)
+      }
       signal.throwIfAborted()
-      if (this.startupCircuitError) throw this.startupCircuitError
-      await this.supervisor.sleep(50)
+    } finally {
+      this.warming = false
     }
-    signal.throwIfAborted()
   }
 
   private spawnWorker(): boolean {
@@ -848,6 +859,8 @@ export class AgentWorkerPool {
       }
       worker.turns = message.turns
       this.recordWorkerMemory(worker, message.memory, "turn.released", task)
+      if (task.baselineRssBytes !== undefined && task.peakRssBytes !== undefined)
+        this.costs?.observeTurn(task.requestBytes, Math.max(0, task.peakRssBytes - task.baselineRssBytes))
       const memoryReason = this.softMemoryReason(message.memory)
       const reason: RecycleReason | undefined =
         message.turns >= this.options.maxTurns
@@ -1048,6 +1061,9 @@ export class AgentWorkerPool {
       | "turn.released",
     task?: PoolTask,
   ): void {
+    if (phase === "ready") this.costs?.observeStartup(memory.rssBytes)
+    const active = task ?? worker.task
+    if (active) active.peakRssBytes = Math.max(active.peakRssBytes ?? 0, memory.rssBytes)
     worker.rssBytes = memory.rssBytes
     worker.heapUsedBytes = memory.heapUsedBytes
     worker.heapTotalBytes = memory.heapTotalBytes
@@ -1157,6 +1173,8 @@ export class AgentWorkerPool {
         continue
       }
       worker.task = task
+      task.baselineRssBytes = worker.rssBytes
+      task.peakRssBytes = worker.rssBytes
       worker.idleSince = undefined
       worker.activeMemoryPressureRequestId = undefined
       task.worker = worker

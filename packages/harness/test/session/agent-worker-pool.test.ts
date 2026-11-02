@@ -338,6 +338,7 @@ describe("AgentWorkerPool", () => {
   test("preserves the configured warm reserve after excess workers time out", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, size: 2, minIdle: 1, idleTimeoutMs: 10 }, fake.spawn)
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     expect(fake.workers).toHaveLength(1)
 
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -699,6 +700,7 @@ describe("AgentWorkerPool", () => {
         return new Promise<void>(() => {})
       },
     })
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     const turn = inScope(() => pool.run(input(new AbortController().signal)))
 
     try {
@@ -739,6 +741,7 @@ describe("AgentWorkerPool", () => {
         return new Promise<void>((resolve) => retries.push(resolve))
       },
     })
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
 
     try {
@@ -777,6 +780,7 @@ describe("AgentWorkerPool", () => {
         return new Promise<void>((resolve) => retries.push(resolve))
       },
     })
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
 
     try {
@@ -844,6 +848,7 @@ describe("AgentWorkerPool", () => {
         return Promise.resolve()
       },
     })
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     const failedTurn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
 
     try {
@@ -1888,6 +1893,7 @@ describe("AgentWorkerPool", () => {
   test("records worker ready latency when a spawned worker becomes ready", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, minIdle: 1 }, fake.spawn)
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     using _metrics = spyOn(ObservabilityMetrics, "record")
     fake.workers[0].ready()
     const calls = (
@@ -1902,6 +1908,7 @@ describe("AgentWorkerPool", () => {
   test("drops late metrics instead of attributing them to the next turn", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, minIdle: 1, idleBaselineRecycle: false }, fake.spawn)
+    void pool.waitForWarm(new AbortController().signal).catch(() => undefined)
     using recorded = spyOn(ObservabilityMetrics, "record")
     const worker = fake.workers[0]
     worker.ready()

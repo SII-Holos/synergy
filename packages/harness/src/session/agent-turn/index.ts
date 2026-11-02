@@ -25,6 +25,7 @@ import { ModelExecution } from "../../execution/model-execution"
 import { InProcessModelExecutor } from "./model-executor"
 import { SecretMask } from "../../secrets/mask"
 import { RuntimeResources } from "../../resources/runtime"
+import { ResourceCosts } from "../../resources/costs"
 import { sessionResourceOwner } from "../../resources/owner"
 import { ExecutionCapacity } from "../execution-capacity"
 import { LLMTurnMemory } from "../llm-memory"
@@ -36,6 +37,7 @@ export namespace AgentTurn {
 
   const runtimeState = RuntimeContext.state(() => ({
     recovery: new ProviderRetryCoordinator(),
+    costs: new ResourceCosts(),
     pool: undefined as AgentWorkerPool | InProcessModelExecutor | undefined,
     options: DEFAULT_AGENT_WORKER_POOL_OPTIONS,
     accepting: true,
@@ -57,7 +59,7 @@ export namespace AgentTurn {
       ...DEFAULT_AGENT_WORKER_POOL_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
     }
-    RuntimeResources.setLimit("model", instanceState.options.size)
+    RuntimeResources.setLimit("model", instanceState.options.size, instanceState.options)
   }
   export function setInProcessStream(hook: InProcessStream | undefined): void {
     const instanceState = runtimeState()
@@ -80,7 +82,7 @@ export namespace AgentTurn {
       throw new Error("Agent worker pool size must be a positive integer")
     }
     instanceState.options = { ...instanceState.options, size }
-    RuntimeResources.setLimit("model", size)
+    RuntimeResources.setLimit("model", size, instanceState.options)
     instanceState.pool?.resize(size)
   }
 
@@ -91,6 +93,7 @@ export namespace AgentTurn {
       !instanceState.accepting ||
       instanceState.stopPromise ||
       instanceState.inProcessStream ||
+      ModelExecution.mode() === "in-process" ||
       RuntimeResources.status().state !== "normal"
     )
       return Promise.resolve()
@@ -101,7 +104,8 @@ export namespace AgentTurn {
       Math.min(instanceState.options.size, (current?.active ?? 0) + instanceState.options.minIdle) -
         (current?.workers ?? 0),
     )
-    const bytes = missing * 256 * 1024 ** 2
+    const bytes = missing * instanceState.costs.startup()
+    if (!missing) return Promise.resolve()
     if (RuntimeResources.status().headroomBytes < bytes) return Promise.resolve()
     const abort = new AbortController()
     instanceState.warmAbort = abort
@@ -201,11 +205,17 @@ export namespace AgentTurn {
       input.abort,
       recovery,
     )
+    let cost = executionCost(input)
     const resource = await ExecutionCapacity.wait(() =>
       RuntimeResources.acquire({
         owner,
         pool: "model",
-        bytes: executionBytes(input),
+        bytes: cost.startup + cost.turn,
+        estimate: () => {
+          cost = executionCost(input)
+          return cost.startup + cost.turn
+        },
+        retainedBytes: LLMTurnMemory.estimateBytes(input),
         signal: input.abort,
       }),
     ).catch((error) => {
@@ -279,7 +289,10 @@ export namespace AgentTurn {
             SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
         },
       )
-      resource.checkpoint(16 * 1024 ** 2)
+      if (cost.startup) {
+        resource.checkpoint(cost.turn)
+        await RuntimeResources.sample()
+      }
       let disposed: Promise<void> | undefined
       const dispose = () =>
         (disposed ??= (async () => {
@@ -356,7 +369,7 @@ export namespace AgentTurn {
 
   function createExecutor(options: AgentWorkerPoolOptions) {
     if (ModelExecution.mode() === "in-process") return new InProcessModelExecutor(options)
-    const pool = new AgentWorkerPool(options)
+    const pool = new AgentWorkerPool(options, undefined, {}, runtimeState().costs)
     pool.setPressure(RuntimeResources.status().state !== "normal")
     runtimeState().unsubscribeResources = RuntimeResources.subscribe((status) => {
       if (status.state !== "normal") pool.setPressure(true)
@@ -369,7 +382,7 @@ export namespace AgentTurn {
     return 64 * 1024 ** 2 + 4 * LLMTurnMemory.estimateBytes(input.messages)
   }
 
-  function executionBytes(input: Input) {
+  function executionCost(input: Input) {
     const current = runtimeState()
     const stats = current.pool?.stats()
     const starting =
@@ -377,16 +390,17 @@ export namespace AgentTurn {
         ? 0
         : Math.max(
             0,
-            Math.min(current.options.size, (stats?.active ?? 0) + 1 + current.options.minIdle) - (stats?.workers ?? 0),
+            Math.min(current.options.size, RuntimeResources.poolStatus("model").active + 1) - (stats?.workers ?? 0),
           )
-    return (
-      (32 + starting * 256) * 1024 ** 2 +
-      4 *
+    return {
+      startup: starting * current.costs.startup(),
+      turn: current.costs.turn(
         LLMTurnMemory.estimateBytes({
           messages: input.messages,
           prepared: input.prepared,
           tools: input.toolDefinitions,
-        })
-    )
+        }),
+      ),
+    }
   }
 }

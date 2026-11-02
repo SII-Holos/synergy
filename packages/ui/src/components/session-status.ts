@@ -266,6 +266,7 @@ const ACTIVITY_DESC = {
   preparing_files: defineDescriptor("session.activity.preparingFiles", "Preparing project files"),
   preparing_context: defineDescriptor("session.activity.preparingContext", "Preparing context"),
   queued_agent: defineDescriptor("session.activity.queuedAgent", "Waiting for execution resources"),
+  waiting_resources: defineDescriptor("session.activity.waitingResources", "Waiting for available resources"),
   waiting_model: defineDescriptor("session.activity.waitingModel", "Waiting for model response"),
   responding: defineDescriptor("session.activity.responding", "Generating response"),
   queued_tools: defineDescriptor("session.activity.queuedTools", "Waiting for tool execution"),

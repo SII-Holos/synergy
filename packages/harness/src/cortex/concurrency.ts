@@ -70,8 +70,17 @@ export namespace CortexConcurrency {
 
   export function release(owner: string) {
     const current = state()
-    current.running.set(owner, Math.max(0, (current.running.get(owner) ?? 0) - 1))
+    const remaining = Math.max(0, (current.running.get(owner) ?? 0) - 1)
+    if (remaining) current.running.set(owner, remaining)
+    else current.running.delete(owner)
     drain()
+    if (current.served.size > 4096) {
+      const queued = new Set(current.queue.map((item) => item.owner))
+      for (const key of current.served.keys()) {
+        if (!current.running.has(key) && !queued.has(key)) current.served.delete(key)
+        if (current.served.size <= 2048) break
+      }
+    }
   }
 
   function drain() {

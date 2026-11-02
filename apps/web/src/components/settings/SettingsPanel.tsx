@@ -38,6 +38,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useTheme, type ColorScheme } from "@ericsanchezok/synergy-ui/theme"
 import type {
   AgentWorkerCapacityStatus,
+  ResourceStatus,
   ConfigDomainSummary,
   ControlProfileSummary,
   CortexConcurrencyStatus,
@@ -458,12 +459,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
     "storage",
   ]
   const sectionResourceStates: { sections: readonly string[]; state: SettingsResourceState }[] = []
-  function sectionResource<T>(loader: () => Promise<T>, sections: readonly string[]) {
+  function sectionResource<T>(
+    loader: () => Promise<T>,
+    sections: readonly string[],
+    merge?: (current: T | undefined, next: T) => T,
+  ) {
     const resource = createSettingsResource(
       loader,
       () =>
         sections.includes(activeTab()) && runtimeFeatureAvailable("settings", activeTab(), globalSDK.capabilities.has),
       globalSDK.capabilities.current,
+      merge,
     )
     sectionResourceStates.push({ sections, state: resource[1] })
     return resource
@@ -501,6 +507,20 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data as AgentWorkerCapacityStatus | undefined
   }, ["timeouts"])
   const refetchAgentWorkerCapacityStatus = agentWorkerCapacityStatusResource.refetch
+
+  const [resourceStatus, resourceStatusResource] = sectionResource(
+    async () => {
+      const res = await globalSDK.client.runtime.resources({}, { throwOnError: true })
+      return res.data as ResourceStatus
+    },
+    ["timeouts"],
+    (current, next) => (current && current.revision > next.revision ? current : next),
+  )
+  onCleanup(
+    globalSDK.event.listen((event) => {
+      if (event.details.type === "runtime.resources") resourceStatusResource.update(event.details.properties)
+    }),
+  )
 
   const [domainSummaries, domainSummariesResource] = sectionResource(async () => {
     const res = await globalSDK.client.config.domain.list({}, { throwOnError: true })
@@ -1423,6 +1443,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
         concurrencyStatus={cortexConcurrencyStatus()}
         capacityStatus={agentWorkerCapacityStatus()}
+        resourceStatus={resourceStatus()}
         popoverLayer={settingsPopoverLayer()}
       />
     ),

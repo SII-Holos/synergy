@@ -14,6 +14,33 @@ function snapshot(available = 2048 * MiB, sampledAt = 0): ResourceSnapshot {
 }
 
 describe("memory admission", () => {
+  test("reassesses waiting work when a worker becomes reusable", async () => {
+    const gate = new MemoryAdmission({ reserveBytes: 0, now: () => 0 })
+    gate.update(snapshot(100))
+    let estimate = 200
+    const waiting = gate.acquire({ owner: "a", bytes: estimate, estimate: () => estimate })
+    expect(gate.status().queued).toBe(1)
+    estimate = 40
+    gate.update(snapshot(100, 1))
+    const lease = await waiting
+    expect(gate.status().reservedBytes).toBe(40)
+    lease.release()
+  })
+  test("bounds retained queue payload centrally without expiring admitted waiters", async () => {
+    const gate = new MemoryAdmission({ reserveBytes: 0, now: () => 0 })
+    gate.setLimit("model", 1, { maxQueued: 1, maxQueuedBytes: 10 })
+    gate.update(snapshot(100))
+    const running = await gate.acquire({ owner: "a", bytes: 1, pool: "model" })
+    await expect(gate.acquire({ owner: "b", bytes: 1, retainedBytes: 11, pool: "model" })).rejects.toThrow("queue")
+    const waiting = gate.acquire({ owner: "b", bytes: 1, retainedBytes: 10, pool: "model" })
+    await expect(gate.acquire({ owner: "c", bytes: 1, pool: "model" })).rejects.toThrow("queue")
+    const revision = gate.status().revision
+    running.release()
+    const next = await waiting
+    expect(gate.status().revision).toBeGreaterThan(revision)
+    next.release()
+  })
+
   test("reserves atomically across bursts and cancels a queued request without spending capacity", async () => {
     const gate = new MemoryAdmission({ reserveBytes: 0, now: () => 0 })
     gate.update(snapshot(100))

@@ -11,6 +11,7 @@ export namespace RuntimeResources {
   const state = RuntimeContext.state(() => ({
     gate: new MemoryAdmission({ changed: () => changed() }),
     timer: undefined as ReturnType<typeof setTimeout> | undefined,
+    scheduledAt: 0,
     publishTimer: undefined as ReturnType<typeof setTimeout> | undefined,
     sampling: undefined as Promise<void> | undefined,
     unobserve: undefined as (() => void) | undefined,
@@ -22,8 +23,8 @@ export namespace RuntimeResources {
   export function status() {
     return state().gate.status()
   }
-  export function setLimit(pool: string, limit: number) {
-    state().gate.setLimit(pool, limit)
+  export function setLimit(pool: string, limit: number, queue?: { maxQueued: number; maxQueuedBytes: number }) {
+    state().gate.setLimit(pool, limit, queue)
   }
   export function poolStatus(pool: string) {
     return state().gate.poolStatus(pool)
@@ -128,12 +129,17 @@ export namespace RuntimeResources {
   function schedule() {
     const current = state()
     if (!current.started || current.stopping) return
+    const delay = current.gate.intervalMs()
+    const at = Date.now() + delay
+    if (current.timer && current.scheduledAt <= at) return
     clearTimeout(current.timer)
+    current.scheduledAt = at
     current.timer = setTimeout(
       RuntimeContext.current().bind(() => {
+        current.timer = undefined
         void sample()
       }),
-      current.gate.intervalMs(),
+      delay,
     )
     current.timer.unref()
   }

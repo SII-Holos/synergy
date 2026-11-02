@@ -5,6 +5,8 @@ export interface MemoryRequest {
   bytes: number
   minimumBytes?: number
   pool?: string
+  retainedBytes?: number
+  estimate?: () => number
   signal?: AbortSignal
 }
 
@@ -31,6 +33,7 @@ interface Waiter {
 export class MemoryAdmission {
   private snapshot?: ResourceSnapshot
   private revision = 0
+  private version = 0
   private mode: ResourceStatus["state"] = "normal"
   private healthySince?: number
   private healthySamples = 0
@@ -41,6 +44,7 @@ export class MemoryAdmission {
   private readonly commitments = new Set<Commitment>()
   private readonly waiters: Waiter[] = []
   private readonly limits = new Map<string, number>()
+  private readonly queueLimits = new Map<string, { maxQueued: number; maxQueuedBytes: number }>()
   private closed = false
   private draining = false
   private volatilityBytes = 0
@@ -53,10 +57,12 @@ export class MemoryAdmission {
     this.reserve = options.reserveBytes ?? 128 * 1024 ** 2
   }
 
-  setLimit(pool: string, limit: number) {
+  setLimit(pool: string, limit: number, queue?: { maxQueued: number; maxQueuedBytes: number }) {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("Resource pool ceiling must be positive")
     this.limits.set(pool, limit)
+    if (queue) this.queueLimits.set(pool, queue)
     this.drain()
+    this.changed()
   }
 
   poolStatus(pool: string) {
@@ -95,7 +101,7 @@ export class MemoryAdmission {
       }
     }
     this.drain()
-    this.options.changed?.()
+    this.changed()
   }
 
   acquire(request: MemoryRequest): Promise<MemoryLease> {
@@ -103,6 +109,7 @@ export class MemoryAdmission {
     if (
       !Number.isFinite(request.bytes) ||
       request.bytes < 0 ||
+      (request.retainedBytes !== undefined && (!Number.isFinite(request.retainedBytes) || request.retainedBytes < 0)) ||
       (request.minimumBytes !== undefined &&
         (!Number.isFinite(request.minimumBytes) || request.minimumBytes < 0 || request.minimumBytes > request.bytes))
     )
@@ -116,7 +123,7 @@ export class MemoryAdmission {
         waiter.removeAbort()
         reject(request.signal?.reason)
         this.drain()
-        this.options.changed?.()
+        this.changed()
       }
       const waiter: Waiter = {
         request,
@@ -128,7 +135,18 @@ export class MemoryAdmission {
       request.signal?.addEventListener("abort", abort, { once: true })
       this.waiters.push(waiter)
       this.drain()
-      this.options.changed?.()
+      const limit = request.pool && this.queueLimits.get(request.pool)
+      const queued = this.waiters.filter((item) => item.request.pool === request.pool)
+      if (
+        limit &&
+        this.waiters.includes(waiter) &&
+        (queued.length > limit.maxQueued ||
+          queued.reduce((sum, item) => sum + (item.request.retainedBytes ?? 0), 0) > limit.maxQueuedBytes)
+      ) {
+        this.remove(waiter)
+        reject(new Error("Model admission queue capacity exceeded"))
+      }
+      this.changed()
     })
   }
 
@@ -150,9 +168,15 @@ export class MemoryAdmission {
                 ? "memory_pressure"
                 : this.waiters.some((item) => item.request.bytes > headroomBytes)
                   ? "headroom"
-                  : "available"
+                  : this.waiters.some(
+                        (item) =>
+                          item.request.pool &&
+                          this.poolStatus(item.request.pool).active >= (this.limits.get(item.request.pool) ?? 1),
+                      )
+                    ? "execution_capacity"
+                    : "available"
     return {
-      revision: this.revision,
+      revision: this.version,
       snapshot: this.snapshot ?? null,
       state: ["closed", "unavailable_sample", "stale_sample"].includes(reason) ? "blocked" : this.mode,
       reason,
@@ -175,7 +199,7 @@ export class MemoryAdmission {
       waiter.removeAbort()
       waiter.reject(new Error("Memory admission is closed"))
     }
-    this.options.changed?.()
+    this.changed()
   }
 
   private available(snapshot?: ResourceSnapshot) {
@@ -208,6 +232,10 @@ export class MemoryAdmission {
         let admitted = false
         for (const waiter of candidates) {
           const { request } = waiter
+          if (request.estimate) {
+            const estimate = request.estimate()
+            if (Number.isFinite(estimate) && estimate >= (request.minimumBytes ?? 0)) request.bytes = estimate
+          }
           const impossible = this.snapshot?.domains.some((domain) => (request.minimumBytes ?? 0) > domain.capacityBytes)
           if (impossible) {
             this.remove(waiter)
@@ -239,7 +267,7 @@ export class MemoryAdmission {
               if (!this.commitments.delete(commitment)) return
               if (probe && this.snapshot?.pressure === "normal") this.completedProbes++
               this.drain()
-              this.options.changed?.()
+              this.changed()
             },
           })
           admitted = true
@@ -255,5 +283,17 @@ export class MemoryAdmission {
   private remove(waiter: Waiter) {
     this.waiters.splice(this.waiters.indexOf(waiter), 1)
     waiter.removeAbort()
+  }
+
+  private changed() {
+    this.version++
+    if (this.served.size > 4096) {
+      const waiting = new Set(this.waiters.map((item) => item.request.owner))
+      for (const owner of this.served.keys()) {
+        if (!waiting.has(owner)) this.served.delete(owner)
+        if (this.served.size <= 2048) break
+      }
+    }
+    this.options.changed?.()
   }
 }

@@ -232,7 +232,7 @@ test("reuses a prepared request without rerunning final prompt or parameter hook
     }
   }))
 
-test("prewarm creates the worker pool eagerly and stays a no-op for the in-process adapter", () =>
+test("prewarm skips zero idle demand and the in-process adapter", () =>
   runtime.run(async () => {
     try {
       await AgentTurn.stop()
@@ -241,7 +241,7 @@ test("prewarm creates the worker pool eagerly and stays a no-op for the in-proce
       expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
 
       await AgentTurn.prewarm()
-      expect(() => AgentTurn.configure()).toThrow("cannot be reconfigured")
+      expect(() => AgentTurn.configure({ size: 1, minIdle: 0 })).not.toThrow()
       expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
 
       await AgentTurn.stop()
