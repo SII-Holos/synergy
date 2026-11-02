@@ -9,9 +9,9 @@ Own native execution, reload, CLI adapters and exports.
 
 Run typecheck, affected tests and root package/dependency checks.
 
-Lifecycle stays in Harness; local capabilities register here. Local Host snapshots home and environment; `createLocalClient` requires its Runtime Handle and explicit Scope selector. Workers export startup functions activated only at selected entrypoints. HTTP handlers and in-process clients share `session-api.ts`; preserve Scope ownership, durable Inbox scheduling and cancellation. Do not import CLI, HTTP-server or product implementations.
+Harness owns lifecycle. Local Host snapshots home and environment. `createLocalClient` requires a Runtime Handle and Scope. Workers start at selected entrypoints. HTTP and in-process clients share `session-api.ts`; preserve Scope ownership, Inbox scheduling and cancellation. Do not import CLI, server or product implementations.
 
-Own native memory probes and pressure notifications in `resources`; register the typed Harness `ResourceHost` before startup. Keep resource sampling independent of optional telemetry. Verify `bun test test/resources` and both JIT modes when changing native bindings.
+`resources` owns telemetry-independent sampling. Register `ResourceHost` before startup; verify `test/resources` and both JIT modes.
 
 - Own bundled model SDK factories and custom SDK loading in `src/provider/sdk-registry.ts`; register them through `registerLocalRuntime()` in host and agent workers.
 - Image decoding uses `AttachmentImageInput`; verify `test/attachment/image-input.test.ts` and Media's attachment suite.

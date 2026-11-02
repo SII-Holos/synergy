@@ -31,7 +31,7 @@ export function cgroupDirectories(membership: string, mounts: string): string[] 
               ? member.slice(root.length)
               : undefined
       if (relative === undefined) return []
-      const directory = path.resolve(mount, `.${relative.startsWith("/") ? relative : `/${relative}`}`)
+      const directory = path.posix.resolve(mount, `.${relative.startsWith("/") ? relative : `/${relative}`}`)
       if (directory !== mount && !directory.startsWith(`${mount}/`)) return []
       return [{ mount, directory }]
     })
@@ -39,7 +39,7 @@ export function cgroupDirectories(membership: string, mounts: string): string[] 
   const selected = candidates[0]
   if (!selected) throw new Error("Cannot resolve cgroup v2 mount")
   const directories: string[] = []
-  for (let current = selected.directory; ; current = path.dirname(current)) {
+  for (let current = selected.directory; ; current = path.posix.dirname(current)) {
     directories.push(current)
     if (current === selected.mount) break
   }
@@ -109,12 +109,13 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
       if (!directories.length && membership.trim()) throw new Error("Cgroup memory accounting requires v2")
       cgroup = directories[0] ? CgroupMemory.readCgroupV2(directories[0]) : undefined
       for (const directory of directories) {
-        const [currentText, maxText, highText, eventsText, pressureText] = await Promise.all([
+        const [currentText, maxText, highText, eventsText, pressureText, statText] = await Promise.all([
           readCounter(path.join(directory, "memory.current")),
           readCounter(path.join(directory, "memory.max")),
           optional(path.join(directory, "memory.high")),
           optional(path.join(directory, "memory.events")),
           optional(path.join(directory, "memory.pressure")),
+          optional(path.join(directory, "memory.stat")),
         ])
         // A root without a memory controller has neither counter nor limit; partial reads are unsafe.
         if (currentText === undefined && maxText === undefined) {
@@ -126,8 +127,24 @@ export function linuxResources(proc = "/proc"): ResourceHost.Source {
         const current = limit(currentText)
         const max = limit(maxText)
         if (current === undefined) throw new Error("Cgroup usage is unavailable")
-        if (max !== undefined)
-          domains.push({ kind: "cgroup", capacityBytes: max, availableBytes: Math.max(0, max - current) })
+        if (max !== undefined) {
+          const stats = memoryFields(statText ?? "")
+          // Provenance: https://docs.kernel.org/admin-guide/cgroup-v2.html#memory
+          // Keep clean inactive file pages separate; the policy chooses how much reclaim to predict.
+          const reclaimableBytes =
+            pressureText && eventsText && statText
+              ? Math.min(
+                  current,
+                  Math.max(0, (stats.inactive_file ?? 0) - (stats.file_dirty ?? 0) - (stats.file_writeback ?? 0)),
+                )
+              : undefined
+          domains.push({
+            kind: "cgroup",
+            capacityBytes: max,
+            availableBytes: Math.max(0, max - current),
+            ...(reclaimableBytes === undefined ? {} : { reclaimableBytes }),
+          })
+        }
         const high = highText === undefined ? undefined : limit(highText)
         throttled ||= high !== undefined && current >= high
         const events = memoryFields(eventsText ?? "")

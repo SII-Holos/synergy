@@ -7826,8 +7826,9 @@ export type ResourceSnapshot = {
   pressure: "normal" | "warning" | "critical"
   domains: Array<{
     kind: "physical" | "cgroup" | "commit" | "job" | "process"
-    capacityBytes: number
+    capacityBytes: number | null
     availableBytes: number
+    reclaimableBytes?: number
   }>
   processRssBytes: number
 }

@@ -8,8 +8,9 @@ export const ResourceSnapshot = z
     domains: z.array(
       z.object({
         kind: z.enum(["physical", "cgroup", "commit", "job", "process"]),
-        capacityBytes: z.number().nonnegative(),
+        capacityBytes: z.number().nonnegative().nullable(),
         availableBytes: z.number().nonnegative(),
+        reclaimableBytes: z.number().nonnegative().optional(),
       }),
     ),
     processRssBytes: z.number().nonnegative(),

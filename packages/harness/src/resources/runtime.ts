@@ -89,9 +89,9 @@ export namespace RuntimeResources {
     if (current.sampling) return current.sampling
     current.sampling = (async () => {
       const source = ResourceHost.get()
-      const snapshot = await source
-        ?.sample()
-        .then((value) => ResourceSnapshot.parse(value))
+      const snapshot = await Promise.resolve()
+        .then(() => source?.sample())
+        .then((value) => value && ResourceSnapshot.parse(value))
         .catch(() => undefined)
       if (current.stopping) return
       current.gate.update(

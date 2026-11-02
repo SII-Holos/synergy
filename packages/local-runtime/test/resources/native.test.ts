@@ -6,6 +6,51 @@ import { cgroupDirectories, linuxResources, memoryFields } from "../../src/resou
 import { nativeResources } from "../../src/resources"
 
 describe("native resource sampling", () => {
+  test.skipIf(process.platform !== "win32")("observes parent Job commit headroom through a nested Job", async () => {
+    const ffi = new URL("../../src/native/ffi.ts", import.meta.url).href
+    const probe = new URL("../../src/resources/windows.ts", import.meta.url).href
+    const script = `
+      const { ptr } = await import("bun:ffi")
+      const { openNativeLibrary } = await import(${JSON.stringify(ffi)})
+      const { windowsResources } = await import(${JSON.stringify(probe)})
+      const library = openNativeLibrary("kernel32.dll", {
+        CreateJobObjectW: { args: ["ptr", "ptr"], returns: "ptr" },
+        GetCurrentProcess: { args: [], returns: "ptr" },
+        SetInformationJobObject: { args: ["ptr", "i32", "ptr", "u32"], returns: "bool" },
+        AssignProcessToJobObject: { args: ["ptr", "ptr"], returns: "bool" },
+        CloseHandle: { args: ["ptr"], returns: "bool" },
+      })
+      const api = library.symbols
+      const jobs = []
+      try {
+        for (const capacity of [1536, 3072]) {
+          const job = api.CreateJobObjectW(null, null)
+          if (!job) throw Error("Cannot create test Job")
+          jobs.push(job)
+          const limits = Buffer.alloc(144)
+          limits.writeUInt32LE(0x200, 16)
+          limits.writeBigUInt64LE(BigInt(capacity * 1024 ** 2), 120)
+          if (!api.SetInformationJobObject(job, 9, ptr(limits), limits.length) || !api.AssignProcessToJobObject(job, api.GetCurrentProcess())) throw Error("Cannot configure nested test Jobs")
+        }
+        const source = windowsResources()
+        try { console.log(JSON.stringify(await source.sample())) } finally { source.close() }
+      } finally { for (const job of jobs.reverse()) api.CloseHandle(job); library.close() }
+    `
+    const child = Bun.spawn([process.execPath, "--eval", script], { stdout: "pipe", stderr: "pipe" })
+    try {
+      const [output, error, code] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ])
+      expect(code, error).toBe(0)
+      const snapshot = JSON.parse(output) as { domains: Array<{ availableBytes: number }> }
+      expect(Math.min(...snapshot.domains.map((domain) => domain.availableBytes))).toBeLessThanOrEqual(1536 * 1024 ** 2)
+    } finally {
+      if (child.exitCode === null) child.kill()
+      await child.exited
+    }
+  })
   test("resolves namespace-relative cgroup mounts and all visible ancestors", () => {
     const mounts = "1 0 0:1 /tenant /sys/fs/cgroup rw - cgroup2 cgroup rw"
     expect(cgroupDirectories("0::/tenant/child", mounts)).toEqual(["/sys/fs/cgroup/child", "/sys/fs/cgroup"])
@@ -14,38 +59,50 @@ describe("native resource sampling", () => {
     expect(memoryFields("MemTotal: 1024 kB\nMemAvailable: 512 kB")).toEqual({ MemTotal: 1048576, MemAvailable: 524288 })
   })
 
-  test("uses a parent's remaining hard capacity and treats memory.high only as pressure", async () => {
-    const home = await mkdtemp(path.join(os.tmpdir(), "synergy-resource-probe-"))
-    try {
-      const proc = path.join(home, "proc")
-      const group = path.join(home, "cgroup")
-      await mkdir(path.join(proc, "self"), { recursive: true })
-      await mkdir(path.join(group, "child"), { recursive: true })
-      await writeFile(path.join(proc, "meminfo"), "MemTotal: 1000 kB\nMemAvailable: 800 kB")
-      await writeFile(path.join(proc, "self/cgroup"), "0::/child")
-      await writeFile(path.join(proc, "self/mountinfo"), `1 0 0:1 / ${group} rw - cgroup2 cgroup rw`)
-      for (const [directory, current, max, high] of [
-        [group, "900", "1000", "max"],
-        [path.join(group, "child"), "100", "max", "50"],
-      ]) {
-        for (const [name, value] of [
-          ["memory.current", current],
-          ["memory.max", max],
-          ["memory.high", high],
+  test.skipIf(process.platform === "win32")(
+    "uses a parent's remaining hard capacity and treats memory.high only as pressure",
+    async () => {
+      const home = await mkdtemp(path.join(os.tmpdir(), "synergy-resource-probe-"))
+      try {
+        const proc = path.join(home, "proc")
+        const group = path.join(home, "cgroup")
+        await mkdir(path.join(proc, "self"), { recursive: true })
+        await mkdir(path.join(group, "child"), { recursive: true })
+        await writeFile(path.join(proc, "meminfo"), "MemTotal: 1000 kB\nMemAvailable: 800 kB")
+        await writeFile(path.join(proc, "self/cgroup"), "0::/child")
+        await writeFile(path.join(proc, "self/mountinfo"), `1 0 0:1 / ${group} rw - cgroup2 cgroup rw`)
+        for (const [directory, current, max, high] of [
+          [group, "900", "1000", "max"],
+          [path.join(group, "child"), "100", "max", "50"],
         ]) {
-          await writeFile(path.join(directory!, name!), value!)
+          for (const [name, value] of [
+            ["memory.current", current],
+            ["memory.max", max],
+            ["memory.high", high],
+          ]) {
+            await writeFile(path.join(directory!, name!), value!)
+          }
         }
+        const result = await linuxResources(proc).sample()
+        expect(result.pressure).toBe("warning")
+        expect(result.domains).toContainEqual({ kind: "cgroup", capacityBytes: 1000, availableBytes: 100 })
+        expect(result.domains.some((domain) => domain.capacityBytes === 50)).toBe(false)
+        await writeFile(path.join(group, "memory.stat"), "inactive_file 500\nfile_dirty 50\nfile_writeback 25")
+        await writeFile(path.join(group, "memory.events"), "high 0\noom 0\noom_kill 0")
+        await writeFile(path.join(group, "memory.pressure"), "full avg10=0.00 total=0")
+        expect((await linuxResources(proc).sample()).domains).toContainEqual({
+          kind: "cgroup",
+          capacityBytes: 1000,
+          availableBytes: 100,
+          reclaimableBytes: 425,
+        })
+        await rm(path.join(group, "memory.max"))
+        await expect(linuxResources(proc).sample()).rejects.toThrow("unreadable")
+      } finally {
+        await rm(home, { recursive: true, force: true })
       }
-      const result = await linuxResources(proc).sample()
-      expect(result.pressure).toBe("warning")
-      expect(result.domains).toContainEqual({ kind: "cgroup", capacityBytes: 1000, availableBytes: 100 })
-      expect(result.domains.some((domain) => domain.capacityBytes === 50)).toBe(false)
-      await rm(path.join(group, "memory.max"))
-      await expect(linuxResources(proc).sample()).rejects.toThrow("unreadable")
-    } finally {
-      await rm(home, { recursive: true, force: true })
-    }
-  })
+    },
+  )
 
   test("reads the actual host without allocating pressure and closes its native observer", async () => {
     const source = nativeResources()
@@ -58,7 +115,7 @@ describe("native resource sampling", () => {
       expect(snapshot.quality).not.toBe("unavailable")
       expect(snapshot.domains[0]?.kind).toBe("physical")
       expect(snapshot.domains[0]!.capacityBytes).toBeGreaterThan(0)
-      expect(snapshot.domains[0]!.availableBytes).toBeLessThanOrEqual(snapshot.domains[0]!.capacityBytes)
+      expect(snapshot.domains[0]!.availableBytes).toBeLessThanOrEqual(snapshot.domains[0]!.capacityBytes!)
       expect(callbacks).toBeGreaterThanOrEqual(0)
     } finally {
       stop?.()

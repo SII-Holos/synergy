@@ -2,6 +2,9 @@ const MiB = 1024 ** 2
 
 /** Bounded observations from individual workers; host RSS is never attributed to a task. */
 export class ResourceCosts {
+  static history(bytes: number | undefined) {
+    return bytes === undefined ? 512 * MiB : 64 * MiB + 4 * bytes
+  }
   private readonly startupSamples: number[] = []
   private readonly turnSamples = [[], [], []] as number[][]
 

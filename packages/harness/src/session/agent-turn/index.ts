@@ -94,6 +94,7 @@ export namespace AgentTurn {
       instanceState.stopPromise ||
       instanceState.inProcessStream ||
       ModelExecution.mode() === "in-process" ||
+      RuntimeResources.status().queued > 0 ||
       RuntimeResources.status().state !== "normal"
     )
       return Promise.resolve()
@@ -133,7 +134,10 @@ export namespace AgentTurn {
   export async function prepare(request: Input): Promise<Input & { prepared: LLM.PreparedTurn }> {
     return RuntimeResources.allocation(
       {
-        owner: request.sessionID,
+        owner:
+          request.recording?.owner.kind === "operation"
+            ? request.sessionID
+            : await sessionResourceOwner(request.sessionID),
         bytes: preparationBytes(request),
         signal: request.abort,
       },
@@ -154,12 +158,14 @@ export namespace AgentTurn {
     const instanceState = runtimeState()
 
     if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
+    const owner =
+      request.recording?.owner.kind === "operation" ? request.sessionID : await sessionResourceOwner(request.sessionID)
     request.onPhase?.("waiting_resources")
     const input = request.prepared
       ? request
       : instanceState.inProcessStream
         ? await RuntimeResources.allocation(
-            { owner: request.sessionID, bytes: preparationBytes(request), signal: request.abort },
+            { owner, bytes: preparationBytes(request), signal: request.abort },
             async () => ({ ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }),
           )
         : await prepare(request)
@@ -196,10 +202,6 @@ export namespace AgentTurn {
           toolDefinitions: requestTools,
         })
       : undefined
-    const owner =
-      input.recording?.owner.kind === "session" || !input.recording
-        ? await sessionResourceOwner(input.sessionID)
-        : input.sessionID
     const lease = await instanceState.recovery.acquire(
       providerRetryKey(input.model, prepared?.provider),
       input.abort,

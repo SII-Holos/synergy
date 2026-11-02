@@ -60393,10 +60393,21 @@
                   "enum": ["physical", "cgroup", "commit", "job", "process"]
                 },
                 "capacityBytes": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "availableBytes": {
                   "type": "number",
                   "minimum": 0
                 },
-                "availableBytes": {
+                "reclaimableBytes": {
                   "type": "number",
                   "minimum": 0
                 }

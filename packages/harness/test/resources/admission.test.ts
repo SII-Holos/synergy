@@ -14,6 +14,53 @@ function snapshot(available = 2048 * MiB, sampledAt = 0): ResourceSnapshot {
 }
 
 describe("memory admission", () => {
+  test("sizes bursts from actual headroom across machine and container capacities", async () => {
+    for (const [ram, available, container, expected] of [
+      [8, 1, 0, 3],
+      [16, 4, 0, 15],
+      [48, 10, 0, 32],
+      [128, 10, 0.5, 1],
+    ]) {
+      const gate = new MemoryAdmission({ now: () => 0 })
+      gate.update({
+        ...snapshot(available! * 1024 ** 3),
+        domains: [
+          { kind: "physical", capacityBytes: ram! * 1024 ** 3, availableBytes: available! * 1024 ** 3 },
+          ...(container
+            ? [{ kind: "cgroup" as const, capacityBytes: 4 * 1024 ** 3, availableBytes: container * 1024 ** 3 }]
+            : []),
+        ],
+      })
+      const abort = new AbortController()
+      const requests = Array.from({ length: 32 }, (_, index) =>
+        gate.acquire({ owner: String(index), bytes: 256 * MiB, signal: abort.signal }),
+      )
+      expect(gate.status().active).toBe(expected!)
+      abort.abort()
+      for (const result of await Promise.allSettled(requests)) if (result.status === "fulfilled") result.value.release()
+      expect(gate.status().reservedBytes).toBe(0)
+      gate.close()
+    }
+  })
+  test("permits one cache-reclaiming probe per sample without spending cache optimistically in a burst", async () => {
+    const gate = new MemoryAdmission({ reserveBytes: 0, now: () => 0 })
+    const value = {
+      ...snapshot(1000),
+      domains: [
+        ...snapshot(1000).domains,
+        { kind: "cgroup" as const, capacityBytes: 1000, availableBytes: 0, reclaimableBytes: 200 },
+      ],
+    }
+    gate.update(value)
+    const first = await gate.acquire({ owner: "a", bytes: 20 })
+    const second = gate.acquire({ owner: "b", bytes: 20 })
+    expect(gate.status().queued).toBe(1)
+    first.release()
+    expect(gate.status().queued).toBe(1)
+    gate.update({ ...value, sampledAt: 1 })
+    ;(await second).release()
+    gate.close()
+  })
   test("reassesses waiting work when a worker becomes reusable", async () => {
     const gate = new MemoryAdmission({ reserveBytes: 0, now: () => 0 })
     gate.update(snapshot(100))

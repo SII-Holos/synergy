@@ -929,6 +929,17 @@ export namespace SessionHistory {
     })
   }
 
+  export async function hydrationSize(input: { sessionID: string; signal?: AbortSignal }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const infos = await modelMessageInfos(input)
+    return SessionHistoryDisplay.contentBytes(
+      session.scope.id,
+      session.id,
+      infos.map((info) => info.id),
+      input.signal,
+    )
+  }
+
   async function finiteMessages(input: { sessionID: string; limit?: number; raw?: boolean }) {
     const session = await prepareInfoRead(input.sessionID)
     return Storage.snapshot(async () => {

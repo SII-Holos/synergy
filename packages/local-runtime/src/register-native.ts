@@ -6,7 +6,7 @@ import { ResourceHost } from "@ericsanchezok/synergy-harness/resources/host"
 import { nativeResources } from "./resources"
 
 export function registerLocalNativeRuntime(): void {
-  ResourceHost.register(nativeResources())
+  if (!ResourceHost.get()) ResourceHost.register(nativeResources())
   SandboxHost.register(SandboxBackend)
   ScopeStartup.register({
     name: "file-watcher",

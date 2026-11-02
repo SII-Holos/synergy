@@ -16,6 +16,7 @@ export async function testRuntime(
     postgres?: string
     namespace?: string
     traceClose?: boolean
+    resources?: ResourceHost.Source
   } = {},
 ) {
   const fixture = await runtimeHome({ home: options.home })
@@ -27,11 +28,8 @@ export async function testRuntime(
         ...options.composition,
         register() {
           AgentTurn.setInProcessStream(runInProcessStream)
-          if (options.composition) options.composition.register()
-          else registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))
-          options.register?.()
-          if (!ResourceHost.get())
-            ResourceHost.register({
+          ResourceHost.register(
+            options.resources ?? {
               sample: async () => ({
                 sampledAt: Date.now(),
                 quality: "complete",
@@ -39,7 +37,11 @@ export async function testRuntime(
                 domains: [{ kind: "physical", capacityBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3 }],
                 processRssBytes: 0,
               }),
-            })
+            },
+          )
+          if (options.composition) options.composition.register()
+          else registerPolicyWorkerEntrypoint(new URL("./policy-worker.ts", import.meta.url))
+          options.register?.()
         },
       },
       mode: "oneshot",

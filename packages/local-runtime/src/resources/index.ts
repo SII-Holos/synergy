@@ -23,7 +23,9 @@ export function nativeResources(): ResourceHost.Source {
       return source?.serviceMemory?.()
     },
     observe(changed) {
+      stopObservation?.()
       observer = changed
+      stopObservation = source?.observe?.(changed)
       return () => {
         observer = undefined
         stopObservation?.()

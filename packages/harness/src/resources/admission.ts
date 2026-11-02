@@ -202,8 +202,15 @@ export class MemoryAdmission {
     this.changed()
   }
 
-  private available(snapshot?: ResourceSnapshot) {
-    return snapshot?.domains.length ? Math.min(...snapshot.domains.map((domain) => domain.availableBytes)) : 0
+  private available(snapshot?: ResourceSnapshot, includeCache = true) {
+    return snapshot?.domains.length
+      ? Math.min(
+          ...snapshot.domains.map((domain) => {
+            const credit = includeCache && snapshot.pressure !== "critical" ? (domain.reclaimableBytes ?? 0) * 0.5 : 0
+            return Math.min(domain.capacityBytes ?? Infinity, domain.availableBytes + credit)
+          }),
+        )
+      : 0
   }
 
   private usable() {
@@ -229,6 +236,11 @@ export class MemoryAdmission {
         const owners = [...new Set(this.waiters.map((waiter) => waiter.request.owner))]
         const ordered = owners.sort((a, b) => (this.served.get(a) ?? 0) - (this.served.get(b) ?? 0))
         const candidates = ordered.map((owner) => this.waiters.find((waiter) => waiter.request.owner === owner)!)
+        candidates.sort((a, b) => {
+          const oldA = this.now() - a.queuedAt > 30_000
+          const oldB = this.now() - b.queuedAt > 30_000
+          return oldA && oldB ? a.queuedAt - b.queuedAt : Number(oldB) - Number(oldA)
+        })
         let admitted = false
         for (const waiter of candidates) {
           const { request } = waiter
@@ -236,7 +248,9 @@ export class MemoryAdmission {
             const estimate = request.estimate()
             if (Number.isFinite(estimate) && estimate >= (request.minimumBytes ?? 0)) request.bytes = estimate
           }
-          const impossible = this.snapshot?.domains.some((domain) => (request.minimumBytes ?? 0) > domain.capacityBytes)
+          const impossible = this.snapshot?.domains.some(
+            (domain) => domain.capacityBytes !== null && (request.minimumBytes ?? 0) > domain.capacityBytes,
+          )
           if (impossible) {
             this.remove(waiter)
             waiter.reject(new Error("Request minimum exceeds hard capacity"))
@@ -246,10 +260,16 @@ export class MemoryAdmission {
           const occupied = [...this.commitments].filter((lease) => lease.pool === request.pool).length
           if (request.pool && occupied >= (this.limits.get(request.pool) ?? 1)) continue
           if (request.bytes > status.headroomBytes) {
-            // A known minimum can reserve future freed capacity; estimates alone cannot freeze the queue.
-            if (request.minimumBytes && this.now() - waiter.queuedAt > 30_000) break
+            // Wait for existing commitments only when this estimate fits unreserved availability.
+            if (
+              request.bytes <= this.available(this.snapshot) - status.reserveBytes &&
+              this.now() - waiter.queuedAt > 30_000
+            )
+              break
             continue
           }
+          const rawHeadroom = this.available(this.snapshot, false) - status.reserveBytes - status.reservedBytes
+          if (request.bytes > rawHeadroom && this.probeRevision === this.revision) continue
           this.remove(waiter)
           const commitment: Commitment = { bytes: request.bytes, pool: request.pool }
           this.commitments.add(commitment)

@@ -7,16 +7,24 @@ export function windowsResources(): ResourceHost.Source {
   const kernel = openNativeLibrary("kernel32.dll", {
     GlobalMemoryStatusEx: { args: ["ptr"], returns: "bool" },
     GetCurrentProcess: { args: [], returns: "ptr" },
+    GetProcessInformation: { args: ["ptr", "i32", "ptr", "u32"], returns: "bool" },
     IsProcessInJob: { args: ["ptr", "ptr", "ptr"], returns: "bool" },
     QueryInformationJobObject: { args: ["ptr", "i32", "ptr", "u32", "ptr"], returns: "bool" },
     CreateMemoryResourceNotification: { args: ["i32"], returns: "ptr" },
     QueryMemoryResourceNotification: { args: ["ptr", "ptr"], returns: "bool" },
     CloseHandle: { args: ["ptr"], returns: "bool" },
   })
-  const processLibrary = openNativeLibrary("psapi.dll", {
-    GetPerformanceInfo: { args: ["ptr", "u32"], returns: "bool" },
-    GetProcessMemoryInfo: { args: ["ptr", "ptr", "u32"], returns: "bool" },
-  })
+  const processLibrary = (() => {
+    try {
+      return openNativeLibrary("psapi.dll", {
+        GetPerformanceInfo: { args: ["ptr", "u32"], returns: "bool" },
+        GetProcessMemoryInfo: { args: ["ptr", "ptr", "u32"], returns: "bool" },
+      })
+    } catch (error) {
+      kernel.close()
+      throw error
+    }
+  })()
   const api = kernel.symbols
   const low = api.CreateMemoryResourceNotification(0)
   const high = api.CreateMemoryResourceNotification(1)
@@ -41,8 +49,14 @@ export function windowsResources(): ResourceHost.Source {
         throw new Error("Cannot read system memory availability")
       const bytes = (buffer: Buffer, offset: number) => Number(buffer.readBigUInt64LE(offset))
       const page = bytes(performance, 80)
+      const application = Buffer.alloc(32)
+      if (!api.GetProcessInformation(api.GetCurrentProcess(), 2, ptr(application), application.length))
+        throw new Error("Cannot read process commit availability")
+      // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ne-processthreadsapi-process_information_class
+      // ProcessAppMemoryInfo reports additional commit availability, not a hard commit limit.
       const domains: ResourceSnapshot["domains"] = [
         { kind: "physical", capacityBytes: bytes(memory, 8), availableBytes: bytes(memory, 16) },
+        { kind: "process", capacityBytes: null, availableBytes: bytes(application, 0) },
         {
           kind: "commit",
           capacityBytes: bytes(performance, 16) * page,

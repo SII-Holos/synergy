@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test"
 import { AgentTurn } from "../../src/session/agent-turn"
-import { ResourceHost } from "../../src/resources/host"
 import { RuntimeResources } from "../../src/resources/runtime"
 import { testRuntime } from "../support/runtime"
 
@@ -58,16 +57,15 @@ test("shared admission keeps model work queued until actual stream disposal and 
 
 test("a tight real-capacity snapshot blocks request preparation without a model retry", async () => {
   await using runtime = await testRuntime({
-    register: () =>
-      ResourceHost.register({
-        sample: async () => ({
-          sampledAt: Date.now(),
-          quality: "complete",
-          pressure: "normal",
-          processRssBytes: 0,
-          domains: [{ kind: "physical", capacityBytes: 8 * 1024 ** 3, availableBytes: 64 * 1024 ** 2 }],
-        }),
+    resources: {
+      sample: async () => ({
+        sampledAt: Date.now(),
+        quality: "complete",
+        pressure: "normal",
+        processRssBytes: 0,
+        domains: [{ kind: "physical", capacityBytes: 8 * 1024 ** 3, availableBytes: 64 * 1024 ** 2 }],
       }),
+    },
   })
   await runtime.run(async () => {
     const abort = new AbortController()

@@ -647,7 +647,7 @@ describe.serial("Cortex", () => {
           fn: async () => {
             const rootSession = await Session.create({})
             const agent = "developer"
-            const limit = CortexConcurrency.getLimit(agent)
+            const limit = CortexConcurrency.getGlobalLimit()
 
             for (let i = 0; i < limit; i++) {
               await CortexConcurrency.acquire(agent)
@@ -2318,7 +2318,7 @@ describe.serial("Cortex", () => {
           fn: async () => {
             const parentSession = await Session.create({})
             const agent = "developer"
-            const limit = CortexConcurrency.getLimit(agent)
+            const limit = CortexConcurrency.getGlobalLimit()
 
             for (let i = 0; i < limit; i++) {
               await CortexConcurrency.acquire(agent)
