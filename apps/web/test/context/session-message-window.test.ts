@@ -314,6 +314,31 @@ describe("reconcileMessage in history mode", () => {
     expect(result.droppedIds).toEqual([])
   })
 
+  // Shortest TLC trace of CandidatePendingIsNewer in spec/tla/MessageWindow.tla.
+  // Latest cap keeps the newest two, a one-message prepend evicts the tail,
+  // and the older id that is not in the window is parked rather than inserted.
+  test("parks an unseen older id after a capped prepend opens a tail gap", () => {
+    const loaded = applyLatestPage([msg("m1", 1), msg("m2", 2), msg("m3", 3), msg("m4", 4)], [], 2)
+    expect(loaded.window.messages.map((message) => message.id)).toEqual(["m3", "m4"])
+    expect(loaded.window.mode).toBe("latest")
+    expect(loaded.window.tailMissingLatest).toBe(false)
+
+    const prepended = prependOlderPage(loaded.window, [msg("m2", 2)], 2)
+    expect(prepended.window.messages.map((message) => message.id)).toEqual(["m2", "m3"])
+    expect(prepended.droppedIds).toEqual(["m4"])
+    expect(prepended.window.mode).toBe("history")
+    expect(prepended.window.tailMissingLatest).toBe(true)
+    expect(prepended.window.pendingLatestIds).toEqual([])
+
+    const parked = reconcileMessage(prepended.window, msg("m1", 1), 2)
+    expect(parked.window.messages.map((message) => message.id)).toEqual(["m2", "m3"])
+    expect(parked.window.pendingLatest).toBe(true)
+    expect(parked.window.pendingLatestIds).toEqual(["m1"])
+    expect(parked.window.tailMissingLatest).toBe(true)
+    expect(parked.window.mode).toBe("history")
+    expect(parked.droppedIds).toEqual([])
+  })
+
   test("sets pendingLatest to true when outside-window update arrives", () => {
     const w = window([msg("a", 1)], { mode: "history", pendingLatest: false })
     const result = reconcileMessage(w, msg("z", 99))
