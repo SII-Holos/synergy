@@ -10,12 +10,12 @@
 \* Message ids are 1..MsgCount in canonical order (time, then id). The window
 \* is a set under that order. Dependency-root retention is not modeled: the
 \* runtime may keep referenced roots above the primary cap, and this model
-\* does not. History cap keeps the oldest Cap ids of the combined slice,
-\* including a partial turn prefix; it does not drop the rest of that turn.
+\* does not. History cap keeps the newest Cap ids of the combined slice.
+\* A dropped id is older than every id that remains, and the window's
+\* maximum id does not fall. The cap does not set the tail flag.
 \*
 \* pending is every unseen id, not only ids newer than the window. That is
-\* the reducer rule. CandidatePendingIsNewer is the rejected stronger claim;
-\* it is not an invariant of MessageWindow.cfg.
+\* the reducer rule. It is a different claim from the history-cap rule.
 \*
 \* An unloaded bucket ignores message events. Removal of a pending-only id
 \* drops that id and does not change the visible window. Removal of a visible
@@ -43,13 +43,10 @@ Messages == 1..MsgCount
 MinSet(S) == CHOOSE x \in S : \A y \in S : x <= y
 MaxSet(S) == CHOOSE x \in S : \A y \in S : x >= y
 
-RECURSIVE Largest(_, _), Smallest(_, _)
+RECURSIVE Largest(_, _)
 Largest(S, k) ==
   IF Cardinality(S) <= k THEN S
   ELSE Largest(S \ {MinSet(S)}, k)
-Smallest(S, k) ==
-  IF Cardinality(S) <= k THEN S
-  ELSE Smallest(S \ {MaxSet(S)}, k)
 
 OlderThan(S) == {m \in published : m < MinSet(S)}
 OlderPage(S) == Largest(OlderThan(S), Page)
@@ -132,14 +129,14 @@ Prepend ==
   /\ OlderPage(window) # {}
   /\ LET older == OlderPage(window)
          combined == window \cup older
-         kept == Smallest(combined, Cap)
+         kept == Largest(combined, Cap)
          evicted == combined \ kept
          nextPending == {p \in pending : p \notin kept /\ p \notin evicted}
      IN /\ window' = kept
         /\ pending' = nextPending
         /\ pendingLatest' = (nextPending # {})
         /\ mode' = "history"
-        /\ tailMissing' = (tailMissing \/ (evicted # {}))
+        /\ tailMissing' = tailMissing
         /\ lastEvicted' = evicted
         /\ lastOlder' = older
         /\ lastAction' = "prepend"
@@ -280,20 +277,23 @@ InvLatestPageIsSuffix ==
      /\ ~tailMissing
      /\ ~cursorStale)
 
-InvPrependDropsNewest ==
+\* After a history cap, the window's maximum id is at least the pre-cap
+\* maximum, and every dropped id is older than every id that remains.
+InvHistoryCapKeepsNewerTail ==
   lastAction = "prepend" =>
     (/\ mode = "history"
      /\ loaded
      /\ prev.window # {}
      /\ Cardinality(lastOlder) \in 1..Page
      /\ lastOlder = Largest({m \in published : m < MinSet(prev.window)}, Page)
-     /\ window = Smallest(prev.window \cup lastOlder, Cap)
+     /\ window = Largest(prev.window \cup lastOlder, Cap)
      /\ window \cup lastEvicted = prev.window \cup lastOlder
      /\ window \cap lastEvicted = {}
-     /\ \A e \in lastEvicted : \A w \in window : e > w
+     /\ \A e \in lastEvicted : \A w \in window : e < w
+     /\ MaxSet(window) >= MaxSet(prev.window)
      /\ pending = {p \in prev.pending : p \notin window /\ p \notin lastEvicted}
      /\ pendingLatest <=> (pending # {})
-     /\ tailMissing <=> (prev.tail \/ (lastEvicted # {})))
+     /\ tailMissing = prev.tail)
 
 InvPendingStep ==
   lastAction = "pending" =>
@@ -330,11 +330,5 @@ InvIgnoreUnloaded ==
     (/\ ~loaded
      /\ window = {}
      /\ pending = {})
-
-\* Rejected candidate, checked only from MessageWindow.candidate.cfg.
-\* An unseen older id is parked in pending and is not newer than the window.
-CandidatePendingIsNewer ==
-  (loaded /\ mode = "history" /\ window # {}) =>
-    (\A p \in pending : p > MaxSet(window))
 
 =============================================================================

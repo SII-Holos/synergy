@@ -7,8 +7,7 @@
  *   SYNERGY_TLC=1 TLA2TOOLS_JAR=/path/to/tla2tools.jar bun script/tla-check.ts
  *
  * The default mode does not download or run TLC. `--tlc` / SYNERGY_TLC=1
- * model-checks the two passing specs. MessageWindow.candidate.cfg is a known
- * violation and is not executed here.
+ * model-checks both specs, including InvHistoryCapKeepsNewerTail.
  */
 
 import { spawnSync } from "node:child_process"
@@ -43,7 +42,7 @@ const REQUIRED_INVARIANTS: Record<(typeof MODULES)[number], readonly string[]> =
     "InvUnloaded",
     "InvCursorOnlyHistory",
     "InvLatestPageIsSuffix",
-    "InvPrependDropsNewest",
+    "InvHistoryCapKeepsNewerTail",
     "InvPendingStep",
     "InvHistoryTouchPreserves",
     "InvRemovePreserves",
@@ -61,7 +60,7 @@ const README_MARKERS = [
   "tlc2.TLC",
   "ScopeEpochReplay",
   "MessageWindow",
-  "CandidatePendingIsNewer",
+  "InvHistoryCapKeepsNewerTail",
   "SYNERGY_TLC",
 ]
 
@@ -129,9 +128,6 @@ export function auditModule(input: {
   for (const name of REQUIRED_PROPERTIES[input.name]) {
     if (!cfg.properties.includes(name)) errors.push(`${label}: missing PROPERTY ${name}`)
   }
-  if (input.name === "MessageWindow" && cfg.invariants.includes("CandidatePendingIsNewer")) {
-    errors.push(`${label}: CandidatePendingIsNewer is a known violation and is not a checked invariant`)
-  }
   return errors
 }
 
@@ -158,16 +154,6 @@ export async function checkTlaSpecs(root: string): Promise<string[]> {
     errors.push(...auditModule({ name, tla, cfgText }))
   }
 
-  const candidatePath = path.join(dir, "MessageWindow.candidate.cfg")
-  const candidate = await readFile(candidatePath, "utf8").catch(() => null)
-  if (candidate === null) errors.push(`${TLA_DIR}/MessageWindow.candidate.cfg: missing`)
-  else if (!parseCfg(candidate).invariants.includes("CandidatePendingIsNewer")) {
-    errors.push(`${TLA_DIR}/MessageWindow.candidate.cfg: must check CandidatePendingIsNewer`)
-  }
-  const windowTla = await readFile(path.join(dir, "MessageWindow.tla"), "utf8").catch(() => null)
-  if (windowTla && !definedOperators(windowTla).has("CandidatePendingIsNewer")) {
-    errors.push(`${TLA_DIR}/MessageWindow.tla: must define CandidatePendingIsNewer`)
-  }
   return errors
 }
 

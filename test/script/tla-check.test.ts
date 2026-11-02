@@ -5,7 +5,6 @@ import { auditModule, checkTlaSpecs, definedOperators, parseCfg } from "../../sc
 const root = path.resolve(import.meta.dir, "../..")
 
 const windowTla = `------------------------------- MODULE MessageWindow -------------------------------
-CandidatePendingIsNewer == TRUE
 TypeOK == TRUE
 InvPendingFlag == TRUE
 InvPendingDisjoint == TRUE
@@ -16,7 +15,7 @@ InvLatestClean == TRUE
 InvUnloaded == TRUE
 InvCursorOnlyHistory == TRUE
 InvLatestPageIsSuffix == TRUE
-InvPrependDropsNewest == TRUE
+InvHistoryCapKeepsNewerTail == TRUE
 InvPendingStep == TRUE
 InvHistoryTouchPreserves == TRUE
 InvRemovePreserves == TRUE
@@ -46,20 +45,13 @@ PROPERTY CaughtUp
     expect(definedOperators("KindOf(x) == TRUE\nInvCap == TRUE\n")).toEqual(new Set(["InvCap"]))
   })
 
-  test("rejects a missing message-window invariant and the known violation", () => {
+  test("rejects a missing message-window invariant", () => {
     const missing = auditModule({
       name: "MessageWindow",
       tla: windowTla,
       cfgText: "SPECIFICATION Spec\nINVARIANT TypeOK\n",
     })
-    expect(missing.some((error) => error.includes("missing INVARIANT InvCap"))).toBe(true)
-
-    const candidate = auditModule({
-      name: "MessageWindow",
-      tla: windowTla,
-      cfgText: "SPECIFICATION Spec\nINVARIANT CandidatePendingIsNewer\n",
-    })
-    expect(candidate.some((error) => error.includes("known violation"))).toBe(true)
+    expect(missing.some((error) => error.includes("missing INVARIANT InvHistoryCapKeepsNewerTail"))).toBe(true)
   })
 
   test("rejects an invariant the module does not define", () => {
@@ -73,6 +65,6 @@ PROPERTY CaughtUp
   })
 })
 
-test("the pilot tree names both specs, their invariants, and the rejected candidate", async () => {
+test("the pilot tree names both specs and their checked invariants", async () => {
   expect(await checkTlaSpecs(root)).toEqual([])
 })

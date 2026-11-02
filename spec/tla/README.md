@@ -5,8 +5,7 @@ Bounded models of two frontend sync rules. The specs are the models. They do not
 | Path | What it checks |
 | --- | --- |
 | `ScopeEpochReplay.tla` | One Scope's epoch, contiguous seq, journal prune, and reconnect replay/resync |
-| `MessageWindow.tla` | One session window: latest/history, `pendingLatest`, stale cursor, prepend, and cap |
-| `MessageWindow.candidate.cfg` | A stronger pending claim that TLC refutes. Not part of `tla:check` |
+| `MessageWindow.tla` | One session window: latest/history, `pendingLatest`, stale cursor, prepend, and the history cap that keeps the newer tail |
 
 `ScopeEpochReplay.cfg` and `MessageWindow.cfg` are the checked models. Constants in those files are the state-space bounds. Raising them is a local experiment.
 
@@ -36,7 +35,7 @@ SYNERGY_TLC=1 bun run tla:check
 
 `bun run tla:check` is the structural gate: both specs exist, each checked cfg names its invariants, and those operators are defined. It does not download Java or the jar.
 
-`SYNERGY_TLC=1` also runs TLC on `ScopeEpochReplay.cfg` and `MessageWindow.cfg`. It reads `TLA2TOOLS_JAR` and does not run `MessageWindow.candidate.cfg`.
+`SYNERGY_TLC=1` also runs TLC on `ScopeEpochReplay.cfg` and `MessageWindow.cfg`. It reads `TLA2TOOLS_JAR`. `InvHistoryCapKeepsNewerTail` is one of the checked message-window invariants.
 
 One spec from this directory:
 
@@ -76,7 +75,7 @@ A live client with no watermark seeds the first state event and does not replay 
 - `InvUnloaded` — an event does not create a window before a latest page load.
 - `InvCursorOnlyHistory` — a stale cursor is a loaded history window.
 - `InvLatestPageIsSuffix` — a latest load, return to latest, or stale-cursor recovery replaces the window with the newest `Cap` published ids and clears pending, the tail gap, and the stale cursor.
-- `InvPrependDropsNewest` — a history page keeps the oldest ids of the combined slice, within `Cap` and the page bound, and drops newer overflow. Evicted and newly visible ids leave `pending`. A drop, or an existing gap, sets the tail flag.
+- `InvHistoryCapKeepsNewerTail` — a history page keeps the newest ids of the combined slice, within `Cap` and the page bound. Every dropped id is older than every id that remains, and the window's maximum id is at least the pre-cap maximum. Evicted and newly visible ids leave `pending`. The tail flag is preserved, not set by the drop.
 - `InvPendingStep` — an id that is not in a history window is recorded once and is not inserted. The tail flag stays.
 - `InvHistoryTouchPreserves` — an in-window history update does not evict, does not clear pending, and does not clear the tail flag.
 - `InvRemovePreserves` — removal keeps mode and the tail flag. A pending-only id leaves pending and does not change the visible window.
@@ -89,28 +88,9 @@ The model has a quiescent state once every id is published and the window is idl
 TLC found no violation of the checked invariants.
 
 - `ScopeEpochReplay`: 4,353 distinct states, search depth 17. `CaughtUp` holds.
-- `MessageWindow`: 3,183 distinct states, search depth 14.
+- `MessageWindow`: 2,492 distinct states, search depth 14. `InvHistoryCapKeepsNewerTail` holds.
 
-## Rejected candidate
-
-`CandidatePendingIsNewer` says every pending id is newer than the history window. TLC's shortest counterexample has depth 8:
-
-1. Publish ids 1, 2, 3, and 4.
-2. Load latest. The cap keeps `{3, 4}`.
-3. Prepend one older id, `2`. The cap keeps `{2, 3}`, evicts `4`, and sets the tail gap.
-4. Reconcile id `1`. It is not in the window, so pending becomes `{1}` while the window stays `{2, 3}`.
-
-Id `1` is older than the window. The checked model allows this. The reducer parks any unseen id, and the architecture page states that rule. Inbox materialization treats `pendingLatestIds` as those unseen canonical ids. This pilot does not change that rule. `apps/web/test/context/session-message-window.test.ts` replays the same four steps on `applyLatestPage`, `prependOlderPage`, and `reconcileMessage`.
-
-Reproduce the refutation:
-
-```bash
-java -XX:+UseParallelGC -cp "$TLA2TOOLS_JAR" tlc2.TLC \
-  -workers 1 -cleanup -metadir /tmp/tlc-message-window-candidate \
-  -config MessageWindow.candidate.cfg MessageWindow.tla
-```
-
-TLC exits non-zero. That cfg is not a regression check.
+The reducer test covers the trace publish `m1`–`m4`, latest cap `{m3, m4}`, prepend `m2`: the window stays `{m3, m4}`. An unseen older id such as `m1` is still recorded in `pendingLatestIds`. That pending rule is separate from the history cap.
 
 ## Sources
 
