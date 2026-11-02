@@ -10,6 +10,8 @@ GC watermarks describe one process and cannot determine how many delegated tasks
 
 Harness owns a Runtime-scoped resource sampler and one atomic ledger of future allocation commitments. Local Runtime supplies native physical, cgroup, commit and Job observations through a typed host port. Facts carry freshness and coverage. Every applicable hard domain constrains headroom; Linux memory.high contributes pressure rather than a hard capacity. Native observations and independent timers wake admission without depending on optional telemetry.
 
+Windows private and total Job commit limits retain separate usage counters; process commit availability and immediate Job accounting alone do not establish enclosing Job headroom. Native tests exercise an independently constrained parent and child Job.
+
 Reservations cover future allocations only. A stage checkpoint reduces a commitment after a newer observation; release is idempotent and belongs to the operation that has actually stopped. Root owners rotate fairly. Execution ceilings are separate named resources in the same admission operation. Pressure suspends new allocations and permits measured recovery without terminating active leases. Permanent rejection requires a proven minimum above hard capacity; estimates alone do not establish impossibility.
 
 AgentTurn binds release to executor disposal acknowledgement before rollout wrapping. A recorded provider error can remain observable after the executor stops; replaying that error must not retain an execution lease. Failed executor disposal retains the lease because termination remains unconfirmed.

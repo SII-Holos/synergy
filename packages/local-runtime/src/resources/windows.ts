@@ -9,11 +9,12 @@ export function windowsMemoryDomains(
   memory: Buffer,
   performance: Buffer,
   application: Buffer,
+  job?: Buffer,
 ): ResourceSnapshot["domains"] {
   const page = bytes(performance, 80)
   // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/ne-processthreadsapi-process_information_class
   // ProcessAppMemoryInfo reports additional commit availability, not a hard commit limit.
-  return [
+  const domains: ResourceSnapshot["domains"] = [
     { kind: "physical", capacityBytes: bytes(memory, 8), availableBytes: bytes(memory, 16) },
     // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/ns-sysinfoapi-memorystatusex
     // Effective process commit availability is distinct from the immediate Job's accounting.
@@ -25,6 +26,19 @@ export function windowsMemoryDomains(
       availableBytes: Math.max(0, bytes(performance, 16) - bytes(performance, 8)) * page,
     },
   ]
+  if (job) {
+    // Provenance: https://github.com/winsiderss/phnt/blob/master/ntpsapi.h (PROCESS_JOB_MEMORY_INFO)
+    // Private and total commit have separate limits and current usage counters.
+    for (const [kind, offset, usage] of [
+      ["process", 24, bytes(job, 8)],
+      ["job", 32, bytes(job, 0) + bytes(job, 8)],
+    ] as const) {
+      const capacityBytes = bytes(job, offset)
+      if (capacityBytes > 0 && capacityBytes < Number.MAX_SAFE_INTEGER)
+        domains.push({ kind, capacityBytes, availableBytes: Math.max(0, capacityBytes - usage) })
+    }
+  }
+  return domains
 }
 
 export function windowsResources(): ResourceHost.Source {
@@ -50,6 +64,11 @@ export function windowsResources(): ResourceHost.Source {
     }
   })()
   const api = kernel.symbols
+  const openJobLibrary = () =>
+    openNativeLibrary("ntdll.dll", {
+      NtQueryInformationProcess: { args: ["ptr", "i32", "ptr", "u32", "ptr"], returns: "i32" },
+    })
+  let jobLibrary: ReturnType<typeof openJobLibrary> | undefined
   const low = api.CreateMemoryResourceNotification(0)
   const high = api.CreateMemoryResourceNotification(1)
   let pressure: ResourceSnapshot["pressure"] = "normal"
@@ -74,9 +93,22 @@ export function windowsResources(): ResourceHost.Source {
       const application = Buffer.alloc(32)
       if (!api.GetProcessInformation(api.GetCurrentProcess(), 2, ptr(application), application.length))
         throw new Error("Cannot read process commit availability")
-      const domains = windowsMemoryDomains(memory, performance, application)
       const inJob = new Uint32Array(1)
       if (!api.IsProcessInJob(api.GetCurrentProcess(), null, ptr(inJob))) throw new Error("Cannot inspect process job")
+      let job: Buffer | undefined
+      if (inJob[0]) {
+        jobLibrary ??= openJobLibrary()
+        job = Buffer.alloc(40)
+        const status = jobLibrary.symbols.NtQueryInformationProcess(
+          api.GetCurrentProcess(),
+          69,
+          ptr(job),
+          job.length,
+          null,
+        )
+        if (status < 0) throw new Error(`Cannot read native Job commit availability: ${status}`)
+      }
+      const domains = windowsMemoryDomains(memory, performance, application, job)
       if (inJob[0]) {
         const limits = Buffer.alloc(144)
         if (!api.QueryInformationJobObject(null, 9, ptr(limits), limits.length, null))
@@ -124,6 +156,7 @@ export function windowsResources(): ResourceHost.Source {
       clearInterval(timer)
       if (low) api.CloseHandle(low)
       if (high) api.CloseHandle(high)
+      jobLibrary?.close()
       processLibrary.close()
       kernel.close()
     },

@@ -27,10 +27,25 @@ describe("native resource sampling", () => {
       { kind: "commit", capacityBytes: 1100 * 4096, availableBytes: 100 * 4096 },
     ])
   })
-  test.skipIf(process.platform !== "win32")("observes parent Job commit headroom through a nested Job", async () => {
-    const ffi = new URL("../../src/native/ffi.ts", import.meta.url).href
-    const probe = new URL("../../src/resources/windows.ts", import.meta.url).href
-    const script = `
+  test("includes native private and total Job commit limits independently", () => {
+    const memory = Buffer.alloc(64)
+    const performance = Buffer.alloc(104)
+    const application = Buffer.alloc(32)
+    const job = Buffer.alloc(40)
+    job.writeBigUInt64LE(25n, 0)
+    job.writeBigUInt64LE(100n, 8)
+    job.writeBigUInt64LE(150n, 24)
+    job.writeBigUInt64LE(300n, 32)
+    const domains = windowsMemoryDomains(memory, performance, application, job)
+    expect(domains).toContainEqual({ kind: "process", capacityBytes: 150, availableBytes: 50 })
+    expect(domains).toContainEqual({ kind: "job", capacityBytes: 300, availableBytes: 175 })
+  })
+  test.skipIf(process.platform !== "win32").each(["job", "process"] as const)(
+    "observes parent %s commit headroom through a nested Job",
+    async (kind) => {
+      const ffi = new URL("../../src/native/ffi.ts", import.meta.url).href
+      const probe = new URL("../../src/resources/windows.ts", import.meta.url).href
+      const script = `
       const { ptr } = await import("bun:ffi")
       const { openNativeLibrary } = await import(${JSON.stringify(ffi)})
       const { windowsResources } = await import(${JSON.stringify(probe)})
@@ -49,31 +64,32 @@ describe("native resource sampling", () => {
           if (!job) throw Error("Cannot create test Job")
           jobs.push(job)
           const limits = Buffer.alloc(144)
-          limits.writeUInt32LE(0x200, 16)
-          limits.writeBigUInt64LE(BigInt(capacity * 1024 ** 2), 120)
+          limits.writeUInt32LE(${kind === "job" ? 0x200 : 0x100}, 16)
+          limits.writeBigUInt64LE(BigInt(capacity * 1024 ** 2), ${kind === "job" ? 120 : 112})
           if (!api.SetInformationJobObject(job, 9, ptr(limits), limits.length) || !api.AssignProcessToJobObject(job, api.GetCurrentProcess())) throw Error("Cannot configure nested test Jobs")
         }
         const source = windowsResources()
         try { console.log(JSON.stringify(await source.sample())) } finally { source.close() }
       } finally { for (const job of jobs.reverse()) api.CloseHandle(job); library.close() }
     `
-    const child = Bun.spawn([process.execPath, "--eval", script], { stdout: "pipe", stderr: "pipe" })
-    try {
-      const [output, error, code] = await Promise.all([
-        new Response(child.stdout).text(),
-        new Response(child.stderr).text(),
-        child.exited,
-      ])
-      expect(code, error).toBe(0)
-      const snapshot = JSON.parse(output) as { domains: Array<{ availableBytes: number }> }
-      expect(Math.min(...snapshot.domains.map((domain) => domain.availableBytes)), output).toBeLessThanOrEqual(
-        1536 * 1024 ** 2,
-      )
-    } finally {
-      if (child.exitCode === null) child.kill()
-      await child.exited
-    }
-  })
+      const child = Bun.spawn([process.execPath, "--eval", script], { stdout: "pipe", stderr: "pipe" })
+      try {
+        const [output, error, code] = await Promise.all([
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+          child.exited,
+        ])
+        expect(code, error).toBe(0)
+        const snapshot = JSON.parse(output) as { domains: Array<{ availableBytes: number }> }
+        expect(Math.min(...snapshot.domains.map((domain) => domain.availableBytes)), output).toBeLessThanOrEqual(
+          1536 * 1024 ** 2,
+        )
+      } finally {
+        if (child.exitCode === null) child.kill()
+        await child.exited
+      }
+    },
+  )
   test("resolves namespace-relative cgroup mounts and all visible ancestors", () => {
     const mounts = "1 0 0:1 /tenant /sys/fs/cgroup rw - cgroup2 cgroup rw"
     expect(cgroupDirectories("0::/tenant/child", mounts)).toEqual(["/sys/fs/cgroup/child", "/sys/fs/cgroup"])
