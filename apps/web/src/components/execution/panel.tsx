@@ -27,7 +27,7 @@ import { useSDK } from "@/context/sdk"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { ExecutionInspector } from "./inspector"
 import { createExecutionTrajectory } from "./trajectory"
-import { mergeExecutionWindow } from "./window"
+import { capExecutionBranchWindow, mergeExecutionWindow, retainExecutionPendingIds } from "./window"
 import { E, K } from "./i18n"
 import { ExecutionPreparation } from "./preparation"
 import { D } from "./context-categories"
@@ -60,7 +60,7 @@ type Branch = {
   next: boolean
   loading: boolean
   error: boolean
-  pending: number
+  pendingIds: string[]
 }
 type Line = { node: ExecutionTrajectoryNode; depth: number; branch?: string }
 const glyphs: Record<ExecutionTrajectoryNode["kind"], SemanticIconTokenName> = {
@@ -219,15 +219,17 @@ export function ExecutionPanelBody(
       const next = new Map(current)
       next.delete(id)
       next.set(id, value)
-      let count = [...next.values()].reduce((sum, branch) => sum + branch.rows.length, 0)
-      for (const [key, branch] of next) {
-        if (count <= 400) break
-        const removed = Math.min(count - 400, Math.max(0, branch.rows.length - 1))
-        if (!removed) continue
-        next.set(key, { ...branch, rows: branch.rows.slice(0, branch.rows.length - removed), next: true })
-        count -= removed
+      const capped = capExecutionBranchWindow(next, 400)
+      if (!capped.droppedIds.length) return capped.branches
+      const dropped = new Set(capped.droppedIds)
+      for (const [key, branch] of capped.branches) {
+        if (!branch.pendingIds.some((pendingId) => dropped.has(pendingId))) continue
+        capped.branches.set(key, {
+          ...branch,
+          pendingIds: branch.pendingIds.filter((pendingId) => !dropped.has(pendingId)),
+        })
       }
-      return next
+      return capped.branches
     })
   const loadBranch = async (node: ExecutionTrajectoryNode, later = false, latest = false, recover = false) => {
     branchAbort.get(node.id)?.abort()
@@ -240,7 +242,7 @@ export function ExecutionPanelBody(
       next: old?.next ?? false,
       loading: true,
       error: false,
-      pending: latest ? 0 : (old?.pending ?? 0),
+      pendingIds: latest ? [] : (old?.pendingIds ?? []),
     })
     try {
       const response = await sdk.client.session.executionTrajectory(
@@ -273,7 +275,7 @@ export function ExecutionPanelBody(
         next: !!response.data.nextCursor,
         loading: false,
         error: false,
-        pending: latest ? 0 : (current?.pending ?? 0),
+        pendingIds: latest ? [] : (current?.pendingIds ?? []).filter((id) => !rows.some((row) => row.id === id)),
       })
     } catch {
       if (!controller.signal.aborted && expandedTasks().has(node.id))
@@ -328,7 +330,13 @@ export function ExecutionPanelBody(
       updateBranch(id, {
         ...branch,
         rows: changed.rows,
-        pending: branch.pending + (trajectory.state.history ? changed.added : 0),
+        pendingIds: retainExecutionPendingIds(branch.pendingIds, {
+          rows: changed.rows,
+          addedIds: changed.addedIds,
+          removedIds: removed,
+          droppedIds: changed.droppedIds,
+          withhold: trajectory.state.history,
+        }),
       })
     }
   })
@@ -397,7 +405,8 @@ export function ExecutionPanelBody(
     })
   }
   const pending = () =>
-    trajectory.state.pending + [...branches().values()].reduce((sum, branch) => sum + branch.pending, 0)
+    trajectory.state.pendingIds.length +
+    [...branches().values()].reduce((sum, branch) => sum + branch.pendingIds.length, 0)
   const latest = async () => {
     setSelected("")
     setTrail([])

@@ -3,7 +3,13 @@ import { createEffect, createSignal, on, onCleanup, type Accessor } from "solid-
 import { createStore, reconcile } from "solid-js/store"
 import type { ExecutionSummary, ExecutionTrajectoryNode } from "@ericsanchezok/synergy-sdk/client"
 import type { SDKContext } from "@/context/sdk"
-import { executionOrder, executionWindowMatches, mergeExecutionWindow } from "./window"
+import {
+  capExecutionRows,
+  executionOrder,
+  executionWindowMatches,
+  mergeExecutionWindow,
+  retainExecutionPendingIds,
+} from "./window"
 
 export function createExecutionTrajectory(input: {
   sdk: Pick<SDKContext, "client" | "event">
@@ -32,7 +38,7 @@ export function createExecutionTrajectory(input: {
     previous: null as string | null,
     loading: false,
     error: false,
-    pending: 0,
+    pendingIds: [] as string[],
     history: false,
     summary: undefined as ExecutionSummary | undefined,
   })
@@ -48,7 +54,6 @@ export function createExecutionTrajectory(input: {
   let requiredRevision = -1
   let buffered = new Map<string, ExecutionTrajectoryNode>()
   let removed = new Set<string>()
-  const unseen = new Set<string>()
   const compare = () =>
     executionOrder(
       input.order?.() ?? "time",
@@ -86,7 +91,6 @@ export function createExecutionTrajectory(input: {
     setGeneration(version)
     buffered = new Map()
     removed = new Set()
-    if (!direction) unseen.clear()
     setState({ loading: true, error: false })
     const promise = Promise.resolve().then(async () => {
       try {
@@ -110,8 +114,9 @@ export function createExecutionTrajectory(input: {
                 .sort(compare())
                 .slice(0, input.capacity?.() ?? 500)
             : rows
+        const withhold = (restore && reading) || !!page.nextCursor
         const merged = mergeExecutionWindow(paged, [...buffered.values()], [...removed], {
-          history: (restore && reading) || !!page.nextCursor,
+          history: withhold,
           cap: input.capacity?.() ?? 500,
           compare: compare(),
         })
@@ -122,8 +127,14 @@ export function createExecutionTrajectory(input: {
           loading: false,
           next: direction === "previous" && paged.length < 500 ? state.next : page.nextCursor,
           previous: direction === "next" && paged.length < 500 ? state.previous : page.previousCursor,
-          history: (restore && reading) || !!page.nextCursor || direction === "previous",
-          pending: direction || restore ? state.pending : 0,
+          history: withhold || direction === "previous",
+          pendingIds: retainExecutionPendingIds(direction || restore ? state.pendingIds : [], {
+            rows: merged.rows,
+            addedIds: merged.addedIds,
+            removedIds: [...removed],
+            droppedIds: merged.droppedIds,
+            withhold,
+          }),
         })
         if (page.revision >= requiredRevision) requiredRevision = -1
         else
@@ -240,7 +251,7 @@ export function createExecutionTrajectory(input: {
         }
         selectionKey = key
         requiredRevision = -1
-        setState({ rows: [], revision: -1, next: null, previous: null, pending: 0, history: false })
+        setState({ rows: [], revision: -1, next: null, previous: null, pendingIds: [], history: false })
         void load(undefined, input.anchor() || (input.query() ? undefined : "latest"))
       },
     ),
@@ -311,20 +322,40 @@ export function createExecutionTrajectory(input: {
         buffered.delete(id)
       }
     }
-    const result = mergeExecutionWindow(state.rows, changed, [...removals, ...excluded], {
-      history: state.history || !!state.next,
+    const removedIds = [...removals, ...excluded]
+    const withhold = state.history || !!state.next
+    const result = mergeExecutionWindow(state.rows, changed, removedIds, {
+      history: withhold,
       cap: input.capacity?.() ?? 500,
       compare: compare(),
     })
-    const arrivals = changed.filter((node) => !state.rows.some((row) => row.id === node.id) && !unseen.has(node.id))
-    for (const node of arrivals) unseen.add(node.id)
     setState("rows", reconcile(result.rows))
-    setState({ revision: update.revision, pending: state.history ? state.pending + arrivals.length : state.pending })
+    setState({
+      revision: update.revision,
+      pendingIds: retainExecutionPendingIds(state.pendingIds, {
+        rows: result.rows,
+        addedIds: result.addedIds,
+        removedIds,
+        droppedIds: result.droppedIds,
+        withhold,
+      }),
+    })
   })
   createEffect(() => {
     const cap = input.capacity?.() ?? 500
-    if (state.rows.length > cap)
-      setState("rows", reconcile(state.history ? state.rows.slice(0, cap) : state.rows.slice(-cap)))
+    if (state.rows.length <= Math.max(0, cap)) return
+    const capped = capExecutionRows(state.rows, cap)
+    setState("rows", reconcile(capped.rows))
+    setState(
+      "pendingIds",
+      retainExecutionPendingIds(state.pendingIds, {
+        rows: capped.rows,
+        addedIds: [],
+        removedIds: [],
+        droppedIds: capped.droppedIds,
+        withhold: false,
+      }),
+    )
   })
   onCleanup(() => {
     disposed = true

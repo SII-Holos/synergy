@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test"
 import type { ExecutionTrajectoryNode } from "@ericsanchezok/synergy-sdk/client"
-import { mergeExecutionWindow, executionWindowMatches, executionOrder } from "../../../src/components/execution/window"
+import {
+  capExecutionBranchWindow,
+  executionOrder,
+  executionWindowMatches,
+  mergeExecutionWindow,
+  retainExecutionPendingIds,
+} from "../../../src/components/execution/window"
 
 const row = (index: number, status: ExecutionTrajectoryNode["status"] = "completed"): ExecutionTrajectoryNode => ({
   id: String(index),
@@ -29,8 +35,51 @@ test("live windows remain bounded while stable identities converge", () => {
 test("reading history retains its first row and counts unseen arrivals", () => {
   const result = mergeExecutionWindow([row(1), row(2)], [row(0), row(3), row(2, "failed")], [], { history: true })
   expect(result.rows.map((node) => node.id)).toEqual(["1", "2"])
-  expect(result.added).toBe(2)
+  expect(result.addedIds).toEqual(["0", "3"])
+  expect(result.droppedIds).toEqual([])
   expect(result.rows[1].status).toBe("failed")
+})
+test("history cap keeps the newer tail and drops only older rows", () => {
+  const order = executionOrder("time", new Map())
+  const result = mergeExecutionWindow([row(1), row(2), row(3), row(4)], [row(5), row(5), row(4, "failed")], ["9"], {
+    history: true,
+    cap: 2,
+  })
+  expect(result.rows.map((node) => node.id)).toEqual(["3", "4"])
+  expect(result.rows[1]?.status).toBe("failed")
+  expect(result.addedIds).toEqual(["5"])
+  expect(result.droppedIds).toEqual(["1", "2"])
+  for (const id of result.droppedIds)
+    for (const kept of result.rows) expect(order(row(Number(id)), kept)).toBeLessThan(0)
+})
+test("branch budget drops the older prefix and pending ids stay a set", () => {
+  const branches = new Map([
+    ["old", { rows: [row(1), row(2), row(3)], next: false, pendingIds: ["9"] }],
+    ["new", { rows: [row(4), row(5)], next: false, pendingIds: ["5"] }],
+  ])
+  const capped = capExecutionBranchWindow(branches, 3)
+  expect(capped.branches.get("old")?.rows.map((node) => node.id)).toEqual(["3"])
+  expect(capped.branches.get("new")?.rows.map((node) => node.id)).toEqual(["4", "5"])
+  expect(capped.droppedIds).toEqual(["1", "2"])
+  expect(capped.branches.get("old")?.next).toBe(false)
+  expect(
+    retainExecutionPendingIds(["9", "5", "8"], {
+      rows: capped.branches.get("new")?.rows ?? [],
+      addedIds: ["8", "8"],
+      removedIds: ["9"],
+      droppedIds: capped.droppedIds,
+      withhold: true,
+    }),
+  ).toEqual(["8"])
+  expect(
+    retainExecutionPendingIds(["6"], {
+      rows: [row(6)],
+      addedIds: ["6"],
+      removedIds: [],
+      droppedIds: [],
+      withhold: false,
+    }),
+  ).toEqual([])
 })
 test("paging and live merges preserve selected round and physical call order", () => {
   const rounds = new Map([
