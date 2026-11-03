@@ -237,15 +237,16 @@ export namespace SessionImport {
               `Imported session has ${snapshots.missing.length} unavailable file snapshots; JSON exports do not contain file objects.`,
             )
         }
-        const messages = []
+        const remapped = []
         for (const message of data.messages) {
           const parts = []
           for (const part of message.parts)
             parts.push(
               await Session.preparePart(remapPart(part, sessionID, message.info.id, idMap, options.rollout), scope.id),
             )
-          messages.push({ info: await remapMessage(message.info, sessionID, idMap), parts })
+          remapped.push({ info: await remapMessage(message.info, sessionID, idMap), parts })
         }
+        const messages = MessageV2.deriveSemantics(remapped)
         info.modelSelection ??= ModelSelection.legacy(
           info.modelOverride,
           messages.flatMap((message) => (message.info.role === "user" && message.info.isRoot ? [message.info] : [])),

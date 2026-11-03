@@ -508,6 +508,63 @@ test("reads original evidence behind compaction, excludes controls, and honors a
     })
   }))
 
+test("manual compaction controls do not trigger review or advance the original evidence anchor", () =>
+  withSession(async (session) => {
+    const original = await root(session.id, "Durable original before manual compaction", 1)
+    const markdown = "# Durable original decisions"
+    using call = spyOn(AgentCall, "text").mockResolvedValue({ text: markdown, model })
+    await update(original)
+    const before = (await Session.get(session.id)).longTermMemory
+    const control = await root(session.id, "What did we do so far?", 2)
+    await Session.updateMessage({ ...control, metadata: { compactionBoundary: true } })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      sessionID: session.id,
+      messageID: control.id,
+      type: "compaction",
+      auto: false,
+    })
+    const [canonical] = MessageV2.deriveSemantics([
+      await MessageV2.get({ sessionID: session.id, messageID: control.id }),
+    ])
+    expect(SessionLongTermMemory.isSourceMessage(canonical!)).toBe(false)
+    await update(control)
+    expect(call).toHaveBeenCalledTimes(1)
+    expect((await Session.get(session.id)).longTermMemory).toEqual(before)
+    expect(await SessionLongTermMemory.progress(await Session.get(session.id))).toMatchObject({
+      reviewedThrough: SessionLongTermMemory.cursor(original),
+    })
+    const fork = await Session.fork({ sessionID: session.id })
+    try {
+      await update({ ...control, sessionID: fork.id })
+      expect(call).toHaveBeenCalledTimes(1)
+      expect((await Session.get(fork.id)).longTermMemory).toEqual(before)
+    } finally {
+      await Session.remove(fork.id)
+    }
+  }))
+
+test("real user questions remain evidence when automatic compaction shares their root", () =>
+  withSession(async (session) => {
+    const user = await root(session.id, "What did we do so far?", 1)
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      sessionID: session.id,
+      messageID: user.id,
+      type: "compaction",
+      auto: true,
+    })
+    using call = spyOn(AgentCall, "text").mockImplementation(async (input) => {
+      expect(JSON.stringify(input.messages)).toContain("What did we do so far?")
+      return { text: "# Actual user question", model }
+    })
+    await update(user)
+    expect(call).toHaveBeenCalledTimes(1)
+    expect(await SessionLongTermMemory.progress(await Session.get(session.id))).toMatchObject({
+      reviewedThrough: SessionLongTermMemory.cursor(user),
+    })
+  }))
+
 for (const mutation of [
   "part edit",
   "new part",
@@ -724,6 +781,56 @@ test("transcript round trips keep aligned review progress and discard a missing 
       expect(await SessionLongTermMemory.progress(await Session.get(invalid.rootSessionID))).toBeUndefined()
     } finally {
       await Session.remove(invalid.rootSessionID)
+    }
+  }))
+
+test("legacy control anchors discard memory progress without blocking transcript import", () =>
+  withSession(async (session) => {
+    const user = await root(session.id, "Retained imported original", 1)
+    using call = spyOn(AgentCall, "text").mockResolvedValue({ text: "# Imported knowledge", model })
+    await update(user)
+    const report = await SessionExport.generate({ sessionID: session.id, mode: "full" })
+    const controlID = Identifier.ascending("message")
+    const control: MessageV2.WithParts = {
+      info: {
+        ...user,
+        id: controlID,
+        rootID: controlID,
+        time: { created: 2 },
+        origin: { type: "user" },
+        metadata: { compactionBoundary: true },
+      },
+      parts: [
+        {
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: controlID,
+          type: "compaction",
+          auto: false,
+        },
+        {
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: controlID,
+          type: "text",
+          text: "What did we do so far?",
+          origin: "user",
+        },
+      ],
+    }
+    const data = report.sessions[0]!
+    data.messages.push(control)
+    data.longTermMemoryProgress!.reviewedThrough = SessionLongTermMemory.cursor(control.info)
+    const imported = await SessionImport.fromReport(report)
+    try {
+      const stored = await Session.get(imported.rootSessionID)
+      expect(stored.longTermMemory).toBeUndefined()
+      expect(await SessionLongTermMemory.progress(stored)).toBeUndefined()
+      const messages = await Session.messages({ sessionID: stored.id })
+      expect(JSON.stringify(messages)).toContain("Retained imported original")
+      expect(JSON.stringify(messages)).toContain("What did we do so far?")
+    } finally {
+      await Session.remove(imported.rootSessionID)
     }
   }))
 

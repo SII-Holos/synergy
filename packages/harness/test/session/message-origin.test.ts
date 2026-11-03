@@ -42,3 +42,46 @@ test("historical Cortex references resolve only from the established delivery id
   ])[0].info as MessageV2.User
   expect(unrelated.origin?.taskID).toBeUndefined()
 })
+
+for (const origin of [undefined, { type: "user" as const }]) {
+  test(`manual compaction normalizes ${origin?.type ?? "missing"} origin without changing explicit root semantics`, () => {
+    const info: MessageV2.User = {
+      id: "msg_control",
+      sessionID: "ses_control",
+      role: "user",
+      time: { created: 1 },
+      agent: "general",
+      model: { providerID: "test", modelID: "test" },
+      isRoot: true,
+      rootID: "msg_control",
+      visible: true,
+      includeInContext: true,
+      origin,
+      metadata: { compactionBoundary: true },
+    }
+    const input = [{ info, parts: [] }]
+    const before = structuredClone(input)
+    const projected = MessageV2.deriveSemantics(input)
+    expect(projected[0]!.info).toMatchObject({
+      origin: { type: "system", detail: "manual_compaction" },
+      isRoot: true,
+      rootID: info.id,
+      visible: true,
+      includeInContext: true,
+    })
+    expect(MessageV2.deriveSemantics(projected)).toEqual(projected)
+    expect(input).toEqual(before)
+    const explicit = MessageV2.deriveSemantics([{ info: { ...info, origin: { type: "channel" as const } }, parts: [] }])
+    expect(explicit[0]!.info).toHaveProperty("origin.type", "channel")
+  })
+}
+
+test("manual compaction metadata requires the explicit boolean marker", () => {
+  for (const compactionBoundary of [undefined, false, "true"]) {
+    expect(MessageV2.originFromMetadata({ compactionBoundary })).toEqual({ type: "user" })
+  }
+  expect(MessageV2.originFromMetadata({ compactionBoundary: true })).toEqual({
+    type: "system",
+    detail: "manual_compaction",
+  })
+})
