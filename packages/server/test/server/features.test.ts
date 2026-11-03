@@ -5,6 +5,43 @@ import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
 import { Server } from "../../src/server/server"
+import { server } from "../../src/component"
+
+test("long-term summary HTTP capability follows live feature selection without Workbench", async () => {
+  await using runtime = await testRuntime({
+    composition: RuntimeComponents.compose([localRuntime({ workers: false, environment: false }), server()]),
+  })
+  await runtime.run(async () => {
+    const app = Server.App()
+    const capabilities = async () => {
+      const response = await app.request("/global/capabilities")
+      expect(response.status).toBe(200)
+      return response.json()
+    }
+    const initial = await capabilities()
+    expect(initial.features).not.toContain("session-long-term-memory")
+    expect(initial.components.map((component: { id: string }) => component.id).sort()).toEqual([
+      "local-runtime",
+      "server",
+    ])
+    for (const enabled of [true, false, true]) {
+      const response = await app.request("/config/domains/features", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ config: { features: { optIn: enabled ? ["session-long-term-memory"] : [] } } }),
+      })
+      expect(response.status).toBe(200)
+      expect(Features.enabled("session-long-term-memory")).toBe(enabled)
+      expect((await capabilities()).features.includes("session-long-term-memory")).toBe(enabled)
+      const catalog = await (await app.request("/global/features")).json()
+      expect(catalog.find((feature: { id: string }) => feature.id === "session-long-term-memory")).toMatchObject({
+        enabled,
+        pendingRestart: false,
+        definition: { activation: "live", owner: "local-runtime" },
+      })
+    }
+  })
+})
 
 test("live features reload through the config API without changing an in-flight operation", async () => {
   let release!: () => void

@@ -18090,6 +18090,42 @@ msgid "session.inbox.update"
 msgstr "更新"
 
 #. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr "复制长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr "暂无长期摘要。"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr "长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr "无法加载会话。"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr "正在加载会话…"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr "未找到会话。"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr "会话长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr "查看当前长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr "查看最新摘要"
+
+#. js-lingui-explicit-id
 msgid "session.lsp.noServers"
 msgstr "没有 LSP 服务器"
 

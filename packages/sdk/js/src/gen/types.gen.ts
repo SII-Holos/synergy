@@ -3620,6 +3620,16 @@ export type SessionWorkflowInfo =
       mode: "auto" | "collaborative"
     }
 
+export type SessionLongTermMemoryReview = {
+  reviewedThrough: {
+    /**
+     * Creation time of the reviewed source message, not the review time
+     */
+    created: number
+    messageID: string
+  }
+}
+
 export type SessionSuperPlanInfo = {
   runID: string
   role: "planner" | "node" | "merge" | "audit"
@@ -3737,6 +3747,7 @@ export type Session = {
   environmentID?: string | null
   workspaceError?: string
   workflow?: SessionWorkflowInfo
+  longTermMemoryReview?: SessionLongTermMemoryReview
   agenda?: {
     itemID: string
   }

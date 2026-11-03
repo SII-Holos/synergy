@@ -18,9 +18,10 @@ import type { BrowserWorkbenchOpenSelection } from "../../../src/components/work
   Fragment: Symbol("Fragment"),
 }
 
-const [selected, setSelected] = createSignal<string[] | undefined>()
+const confirmedFeatures = ["note", "workbench", "lattice", "boss", "browser", "session-long-term-memory"]
+const [selected, setSelected] = createSignal<string[] | undefined>(confirmedFeatures)
 mock.module("@/context/global-sdk", () => ({
-  useGlobalSDK: () => ({ capabilities: { has: (id: string) => selected()?.includes(id) ?? true } }),
+  useGlobalSDK: () => ({ capabilities: { has: (id: string) => selected()?.includes(id) ?? false } }),
 }))
 
 const [activeLocale, setActiveLocale] = createSignal("en")
@@ -123,6 +124,7 @@ const BUILTIN_PANEL_IDS = [
   "resource-home",
   "notes",
   "context",
+  "long-term-summary",
   "session-review",
   "execution-detail",
   "lattice",
@@ -139,7 +141,7 @@ function panelIds(): string[] {
 
 afterEach(() => {
   clearWorkbenchPanels()
-  setSelected(undefined)
+  setSelected(confirmedFeatures)
   setNativeBrowser(true)
   pages.length = 0
   creates.length = 0
@@ -150,6 +152,57 @@ afterEach(() => {
 })
 
 describe("built-in workbench panels", () => {
+  test("long-term summary is a lazy session singleton between task details and trajectory", () => {
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    try {
+      const panels = listWorkbenchPanels()
+      const summary = panels.find((panel) => panel.id === "long-term-summary")
+      expect(summary).toMatchObject({
+        label: "Long-term summary",
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: true,
+        pluginId: "builtin",
+        loader: expect.any(Function),
+      })
+      expect(summary?.component).toBeUndefined()
+      expect(summary?.order).toBeGreaterThan(panels.find((panel) => panel.id === "context")!.order!)
+      expect(summary?.order).toBeLessThan(panels.find((panel) => panel.id === "trajectory")!.order!)
+      expect(panels.filter((panel) => panel.surface === "side" && panel.order === summary?.order)).toHaveLength(1)
+    } finally {
+      dispose()
+    }
+  })
+
+  test("long-term summary requires its confirmed capability, not optional workbench", async () => {
+    setSelected(undefined)
+    const dispose = createRoot((done) => {
+      BuiltinWorkbenchPanelsProvider({ children: null })
+      return done
+    })
+    try {
+      expect(panelIds()).not.toContain("long-term-summary")
+      setSelected(["workbench"])
+      await Bun.sleep(1)
+      expect(panelIds()).not.toContain("long-term-summary")
+      setSelected(["session-long-term-memory"])
+      await Bun.sleep(1)
+      expect(panelIds()).toContain("long-term-summary")
+      expect(panelIds()).not.toContain("context")
+      setSelected([])
+      await Bun.sleep(1)
+      expect(panelIds()).not.toContain("long-term-summary")
+      setSelected(["session-long-term-memory"])
+      await Bun.sleep(1)
+      expect(panelIds().filter((id) => id === "long-term-summary")).toHaveLength(1)
+    } finally {
+      dispose()
+    }
+  })
+
   test("a confirmed resume failure retries the same page with a fresh command identity", async () => {
     const dispose = createRoot((done) => {
       BuiltinWorkbenchPanelsProvider({ children: null })

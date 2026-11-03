@@ -61,6 +61,7 @@ import { SessionEvent } from "./event"
 import {
   CortexDelegationSummary,
   Info as InfoSchema,
+  LongTermMemoryReview,
   normalizeSessionTags,
   PersistedInfo as PersistedInfoSchema,
   RollbackAck as RollbackAckSchema,
@@ -251,7 +252,7 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    const { working: _working, transfer: _transfer, ...rest } = session
+    const { working: _working, transfer: _transfer, longTermMemoryReview: _review, ...rest } = session
     return rest
   }
 
@@ -499,9 +500,11 @@ export namespace Session {
     return resolveRuntimeInfo(session)
   }
 
+  type RuntimeInfoRecords = ReadonlyMap<string, { transfer: unknown; longTermMemoryReview: unknown }>
+
   async function resolveRuntimeInfo(
     session: Info,
-    transferRecords?: ReadonlyMap<string, unknown>,
+    runtimeRecords?: RuntimeInfoRecords,
   ): Promise<Info & { working?: WorkingInfoType }> {
     session = await SessionRecords.hydrate(session)
     const storedRollback = session.history?.rollback
@@ -511,14 +514,20 @@ export namespace Session {
         ? SessionHistory.storedInfo(session.id).catch(() => session.history)
         : session.history,
     ])
-    const rawTransfer = transferRecords
-      ? transferRecords.get(session.id)
-      : (await Storage.readMany([["session_transfer_out", session.id]]))[0]
+    const records = runtimeRecords?.get(session.id)
+    const [rawTransfer, rawReview] = records
+      ? [records.transfer, records.longTermMemoryReview]
+      : await Storage.readMany([
+          ["session_transfer_out", session.id],
+          StoragePath.sessionLongTermMemory(asScopeID(session.scope.id), asSessionID(session.id)),
+        ])
     const transfer = rawTransfer ? SessionTransferState.parse(rawTransfer) : undefined
+    const review = LongTermMemoryReview.safeParse(rawReview)
     const result = {
       ...withoutRuntimeInfo(session),
       history,
       transfer: transfer?.phase === "cancelled" ? undefined : transfer,
+      ...(review.success ? { longTermMemoryReview: review.data } : {}),
     }
     if (!working) return result
     return { ...result, working }
@@ -526,9 +535,9 @@ export namespace Session {
 
   async function withClientInfo(
     session: Info,
-    transferRecords?: ReadonlyMap<string, unknown>,
+    runtimeRecords?: RuntimeInfoRecords,
   ): Promise<Info & { working?: WorkingInfoType }> {
-    const info = await resolveRuntimeInfo(session, transferRecords)
+    const info = await resolveRuntimeInfo(session, runtimeRecords)
     if (info.controlProfile) return info
     return {
       ...info,
@@ -537,9 +546,19 @@ export namespace Session {
   }
 
   async function withClientInfos(sessions: Info[]) {
-    const transfers = await Storage.readMany(sessions.map((session) => ["session_transfer_out", session.id]))
-    const transferRecords = new Map(sessions.map((session, index) => [session.id, transfers[index]]))
-    return workMap(LIST_ENRICH_CONCURRENCY, sessions, (session) => withClientInfo(session, transferRecords))
+    const records = await Storage.readMany(
+      sessions.flatMap((session) => [
+        ["session_transfer_out", session.id],
+        StoragePath.sessionLongTermMemory(asScopeID(session.scope.id), asSessionID(session.id)),
+      ]),
+    )
+    const runtimeRecords = new Map(
+      sessions.map((session, index) => [
+        session.id,
+        { transfer: records[index * 2], longTermMemoryReview: records[index * 2 + 1] },
+      ]),
+    )
+    return workMap(LIST_ENRICH_CONCURRENCY, sessions, (session) => withClientInfo(session, runtimeRecords))
   }
 
   // Dedup redundant session.updated publishes: a diff limited to time.updated
@@ -977,19 +996,19 @@ export namespace Session {
               JSON.stringify(currentSource.longTermMemory) === JSON.stringify(source.longTermMemory) &&
               (await SessionLongTermMemory.isCurrent(currentSource, progress))
             ) {
-              await update(
-                created.id,
-                (draft) => {
-                  draft.longTermMemory = currentSource.longTermMemory
-                },
-                { preserveActivityAt: true },
-              )
               await Storage.write(
                 StoragePath.sessionLongTermMemory(asScopeID(source.scope.id), asSessionID(created.id)),
                 await SessionLongTermMemory.rebase(await get(created.id), {
                   ...progress.reviewedThrough,
                   messageID: mapped,
                 }),
+              )
+              await update(
+                created.id,
+                (draft) => {
+                  draft.longTermMemory = currentSource.longTermMemory
+                },
+                { preserveActivityAt: true },
               )
             }
           }

@@ -76,7 +76,7 @@ export namespace SessionExport {
     await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
     const [source, dag, todos, diffs] = await Promise.all([
       Storage.snapshot(async () => {
-        const info = await Session.get(session.id)
+        const info = Session.withoutRuntimeInfo(await Session.get(session.id))
         const messages = await SessionHistory.originalMessages({ sessionID: session.id, raw: true })
         let longTermMemoryProgress = await SessionLongTermMemory.progress(info)
         if (longTermMemoryProgress && !(await SessionLongTermMemory.isCurrent(info, longTermMemoryProgress)))

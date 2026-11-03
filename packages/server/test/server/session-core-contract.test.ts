@@ -3,6 +3,10 @@ import { Hono } from "hono"
 import { tmpdir } from "@ericsanchezok/synergy-harness/test/support/fixture"
 import { ScopeContext } from "@ericsanchezok/synergy-harness/scope/context"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
+import { Storage } from "@ericsanchezok/synergy-harness/storage/storage"
+import { StoragePath } from "@ericsanchezok/synergy-harness/storage/path"
+import { createScopeBootstrapRoute } from "../../src/server/scope-bootstrap-route"
 import { SessionRoute } from "../../src/server/session"
 import { SessionExportRoute } from "../../src/server/session-export"
 import { afterAll as afterRuntimeTests } from "bun:test"
@@ -15,6 +19,55 @@ const json = (method: string, body: unknown) => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 })
+
+test("core session reads and bootstrap share read-only long-term review metadata without Workbench", () =>
+  runtime.run(async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Long-term review fixture" })
+        const empty = await Session.create({ title: "Unreviewed fixture" })
+        const memory = { markdown: "# Existing knowledge", revision: 1 }
+        await Session.update(session.id, (draft) => {
+          draft.longTermMemory = memory
+        })
+        const reviewedThrough = { created: 12, messageID: Identifier.ascending("message") }
+        const source = { version: 1, digest: "a".repeat(64) }
+        await Storage.write(
+          StoragePath.sessionLongTermMemory(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(session.id)),
+          { reviewedThrough, source },
+        )
+        const detail = await app.request(`/session/${session.id}`)
+        expect(detail.status).toBe(200)
+        const info = await detail.json()
+        expect(info).toMatchObject({ longTermMemory: memory, longTermMemoryReview: { reviewedThrough } })
+        expect(info.longTermMemoryReview).toEqual({ reviewedThrough })
+        const list = await (await app.request("/session")).json()
+        expect(list.data.find((item: Session.Info) => item.id === session.id)).toEqual(info)
+        expect(list.data.find((item: Session.Info) => item.id === empty.id)).not.toHaveProperty("longTermMemoryReview")
+        const bootstrap = new Hono().route("/scope", createScopeBootstrapRoute())
+        for (const path of ["/scope/bootstrap-core", "/scope/bootstrap"]) {
+          const response = await bootstrap.request(path)
+          expect(response.status).toBe(200)
+          const data = await response.json()
+          expect(data.sessions.data.find((item: Session.Info) => item.id === session.id)).toEqual(info)
+        }
+        const patched = await app.request(
+          `/session/${session.id}`,
+          json("PATCH", {
+            title: "Retained review",
+            longTermMemoryReview: { reviewedThrough: { ...reviewedThrough, created: 999 } },
+          }),
+        )
+        expect(patched.status).toBe(200)
+        expect(await patched.json()).toHaveProperty("longTermMemoryReview", { reviewedThrough })
+        expect(await Storage.read(["sessions", session.scope.id, session.id, "info"])).not.toHaveProperty(
+          "longTermMemoryReview",
+        )
+      },
+    })
+  }))
 
 test("POST and PATCH /session preserve normalized tags", () =>
   runtime.run(async () => {

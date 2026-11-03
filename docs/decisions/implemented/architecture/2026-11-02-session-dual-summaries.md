@@ -18,6 +18,8 @@ Review effective original evidence after the last cursor, including history outs
 
 Inject the latest L through the existing budgeted advisory assembly before each model request. Ordinary providers use their late-system layout; Codex uses durable state-source updates. This allows the same root to receive a newly committed L after compaction. Storage, fork, rollback, import and export follow the [Session state reference](../../../architecture/session-and-messages.md#session-long-term-summary); L is not shared across independent Sessions implicitly.
 
+Expose L through an independent, lazy Long-term summary Workbench panel after Task details. It reads the current Session's saved Markdown rather than a selected task or historical compaction, using body revision internally for explicit adoption of a newer body. Revision and reviewed-message coverage are not persistent reader labels. Existing Session metadata reads and events project the canonical progress record without exposing its digest or persisting another cursor. Progress-only publication observes the newly committed boundary, and the existing HTTP capability selection exposes the live experiment to ordinary entrypoints. Live capability refresh failures rejoin the existing connection recovery rather than leaving optional controls permanently unavailable or adding a separate poller. Reading and copying never generate a summary. A compaction detail links to the current L panel while retaining its own S snapshot. The [product contract](../../../../apps/web/PRODUCT.md#session-long-term-summary) owns reader presentation and explicit adoption of a newer body.
+
 ## Alternatives considered
 
 **Task working state instead of Session memory.** A current goal, TODO list or temporary execution state cannot represent unrelated completed topics and later revisits. It does not satisfy the conversation-wide requirement.
@@ -29,6 +31,10 @@ Inject the latest L through the existing budgeted advisory assembly before each 
 **JSON update actions or no-change sentinels.** These add a model-facing protocol for information the host already determines from string equality. They also blur the distinction between an unchanged body and newly reviewed evidence. Full Markdown plus separately persisted progress is sufficient.
 
 **A fixed 65,536-character ceiling or a half-window reservation.** Neither value is an established product requirement or supported by workload measurements. Native model capacities and the existing request meter provide the relevant execution limits without an additional arbitrary quota.
+
+**Put L inside task details or the historical compaction result.** Task details organizes execution evidence, while each S belongs to a particular compaction. Nesting the Session-wide current record in either view obscures its lifetime and makes a long document harder to find. An adjacent singleton panel keeps those reading purposes separate without adding another resource system.
+
+**Infer review coverage from body revisions or Session activity.** An unchanged Markdown body still advances review, and summary maintenance preserves conversation activity. Neither value represents that boundary. Projecting the existing progress record avoids invented timestamps, duplicate durable state and generation caused by viewing.
 
 ## Consequences
 

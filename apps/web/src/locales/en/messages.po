@@ -18090,6 +18090,42 @@ msgid "session.inbox.update"
 msgstr "Update"
 
 #. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr "Copy long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr "No long-term summary yet."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr "Long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr "Unable to load session."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr "Loading session…"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr "Session not found."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr "Session long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr "View current long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr "View latest"
+
+#. js-lingui-explicit-id
 msgid "session.lsp.noServers"
 msgstr "No LSP servers"
 

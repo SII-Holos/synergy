@@ -18090,6 +18090,42 @@ msgid "session.inbox.update"
 msgstr "⟦Update⟧"
 
 #. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "session.lsp.noServers"
 msgstr "⟦No LSP servers⟧"
 

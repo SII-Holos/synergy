@@ -18,10 +18,10 @@ import { MessageV2 } from "./message-v2"
 import { PromptBudgeter } from "./prompt-budgeter"
 import { SessionRetry } from "./retry"
 import { RolloutArtifact } from "./rollout/artifact"
-import { LongTermMemory } from "./types"
+import { LongTermMemory, LongTermMemoryReview } from "./types"
 
 export namespace SessionLongTermMemory {
-  export const Cursor = z.object({ created: z.number(), messageID: Identifier.schema("message") })
+  export const Cursor = LongTermMemoryReview.shape.reviewedThrough
   export type Cursor = z.infer<typeof Cursor>
   const Source = z.object({ version: z.literal(1), digest: z.string().regex(/^[a-f0-9]{64}$/) })
   export const Progress = z.object({ reviewedThrough: Cursor, source: Source.optional() })
@@ -157,7 +157,7 @@ export namespace SessionLongTermMemory {
       await Storage.remove(
         StoragePath.sessionLongTermMemory(Identifier.asScopeID(session.scope.id), Identifier.asSessionID(sessionID)),
       )
-      if (session.longTermMemory)
+      if (session.longTermMemory || session.longTermMemoryReview)
         await Session.update(
           sessionID,
           (draft) => {
@@ -531,6 +531,10 @@ export namespace SessionLongTermMemory {
           current.source.digest !== captured.source.digest
         )
           throw new ConflictError()
+        await Storage.write(captured.key, {
+          reviewedThrough: captured.through,
+          source: captured.source,
+        } satisfies Progress)
         await Session.update(
           input.sessionID,
           (draft) => {
@@ -539,10 +543,6 @@ export namespace SessionLongTermMemory {
           },
           { preserveActivityAt: true },
         )
-        await Storage.write(captured.key, {
-          reviewedThrough: captured.through,
-          source: captured.source,
-        } satisfies Progress)
       },
       { commitGuard: () => input.signal.throwIfAborted() },
     )

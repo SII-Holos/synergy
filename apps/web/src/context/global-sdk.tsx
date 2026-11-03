@@ -231,6 +231,16 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       setDisconnectedAt(Date.now())
     }
 
+    const scheduleReconnect = () => {
+      if (disposed || reconnectTimer) return
+      const jittered = reconnectDelay * (0.5 + Math.random())
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000)
+        void connect()
+      }, jittered)
+    }
+
     const clearPingTimers = () => {
       if (pingTimer) clearInterval(pingTimer)
       if (pongTimer) clearTimeout(pongTimer)
@@ -276,7 +286,14 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     async function connect() {
       if (disposed) return
-      await capabilities.load().catch(() => undefined)
+      try {
+        await capabilities.load()
+      } catch {
+        if (disposed) return
+        markDisconnected()
+        scheduleReconnect()
+        return
+      }
       if (disposed) return
       mode = capabilities.current()?.transports?.projection === "projection-v2" ? "projection-v2" : "projection"
       // Opt into the compact streaming protocol (#350 D1): the server sends
@@ -354,6 +371,15 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })
 
         if (parsed.scopeID !== null && typeof parsed.scopeID !== "string") return
+        if (
+          payload.type === "runtime.reloaded" ||
+          (payload.type === "config.updated" && payload.properties.changedFields.includes("features"))
+        ) {
+          capabilities.reset()
+          void capabilities.load().catch(() => {
+            if (!disposed && ws === socket) socket.close()
+          })
+        }
         eventQueue.push(parsed.scopeID ?? "global", payload)
       }
 
@@ -361,13 +387,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         if (ws !== socket) return
         clearPingTimers()
         markDisconnected()
-        if (disposed) return
-        // Apply ±50% jitter to avoid thundering-herd reconnections.
-        const jittered = reconnectDelay * (0.5 + Math.random())
-        reconnectTimer = setTimeout(() => {
-          reconnectDelay = Math.min(reconnectDelay * 2, 30000)
-          connect()
-        }, jittered)
+        scheduleReconnect()
       }
 
       socket.onerror = () => {

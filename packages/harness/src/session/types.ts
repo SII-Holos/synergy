@@ -245,6 +245,16 @@ export const LongTermMemory = z
   .meta({ ref: "SessionLongTermMemory" })
 export type LongTermMemory = z.infer<typeof LongTermMemory>
 
+export const LongTermMemoryReview = z
+  .object({
+    reviewedThrough: z.object({
+      created: z.number().describe("Creation time of the reviewed source message, not the review time"),
+      messageID: Identifier.schema("message"),
+    }),
+  })
+  .meta({ ref: "SessionLongTermMemoryReview" })
+export type LongTermMemoryReview = z.infer<typeof LongTermMemoryReview>
+
 export const CompletionNotice = z
   .object({
     unread: z.boolean(),
@@ -362,7 +372,7 @@ const BaseInfo = BaseInfoInput.pipe(
 export const Info = z
   .preprocess(
     (input) => SessionSchemaRegistry.projectInput(BaseInfoInput.parse(input)),
-    SessionSchemaRegistry.compose(BaseInfo.out),
+    SessionSchemaRegistry.compose(BaseInfo.out.extend({ longTermMemoryReview: LongTermMemoryReview.optional() })),
   )
   .meta({ ref: "Session" })
 export type Info = z.infer<typeof Info>
@@ -375,7 +385,9 @@ export function independentExecutionInfo(input: Info): Info {
   ) as Info
 }
 
-export const PersistedInfo = BaseInfoInput.pipe(BaseInfo.out.omit({ workflow: true }).passthrough())
+export const PersistedInfo = BaseInfoInput.pipe(BaseInfo.out.omit({ workflow: true }).passthrough()).transform(
+  ({ longTermMemoryReview: _review, ...info }) => info,
+)
 export type PersistedInfo = z.infer<typeof PersistedInfo>
 export const StatusInfo = z
   .union([

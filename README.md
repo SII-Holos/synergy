@@ -69,7 +69,7 @@ Use **Atlas** for general work, **Forge** for software engineering, and **Pico**
 
 Build applications, investigate a repository, write documents, or explore an interactive result in the same workbench. Review file changes beside the conversation, open an artifact in Desktop's native Browser, and retain reusable memory and experience in Library. Agents can explicitly [present existing resources](docs/architecture/workbench-presentation.md) through a confirmed frontend request without taking keyboard focus. Skills, MCP, plugins, and Channels extend the selected runtime. [The product overview](docs/product/overview.md) covers these workflows.
 
-Opt-in [Session long-term summaries](docs/architecture/session-and-messages.md#session-long-term-summary) maintain a separate Markdown record across compactions within one Session, independently of reusable Library memory.
+Opt-in [Session long-term summaries](docs/architecture/session-and-messages.md#session-long-term-summary) maintain a separate Markdown record across compactions within one Session, independently of reusable Library memory. Inspect the saved content in the read-only Long-term summary Workbench panel.
 
 ## What makes Synergy different
 

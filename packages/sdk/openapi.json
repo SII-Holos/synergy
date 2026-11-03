@@ -51378,6 +51378,27 @@
           }
         ]
       },
+      "SessionLongTermMemoryReview": {
+        "type": "object",
+        "properties": {
+          "reviewedThrough": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number",
+                "description": "Creation time of the reviewed source message, not the review time"
+              },
+              "messageID": {
+                "type": "string",
+                "format": "starts_with",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["created", "messageID"]
+          }
+        },
+        "required": ["reviewedThrough"]
+      },
       "SessionSuperPlanInfo": {
         "type": "object",
         "properties": {
@@ -51745,6 +51766,9 @@
           },
           "workflow": {
             "$ref": "#/components/schemas/SessionWorkflowInfo"
+          },
+          "longTermMemoryReview": {
+            "$ref": "#/components/schemas/SessionLongTermMemoryReview"
           },
           "agenda": {
             "type": "object",

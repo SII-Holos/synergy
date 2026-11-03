@@ -1,6 +1,10 @@
 import { afterAll, expect, spyOn, test } from "bun:test"
 import { Agent } from "../../src/agent/agent"
 import { AgentCall } from "../../src/agent/call"
+import { Bus } from "../../src/bus"
+import { SessionEvent } from "../../src/session/event"
+import { SessionRecords } from "../../src/session/records"
+import { independentExecutionInfo } from "../../src/session/types"
 import { Identifier } from "../../src/id/id"
 import { Provider } from "../../src/provider/provider"
 import { Token } from "../../src/util/token"
@@ -702,6 +706,12 @@ test("full forks remap the review cursor while historical forks never inherit fu
     const markdown = "# Both tasks\n"
     using call = spyOn(AgentCall, "text").mockResolvedValue({ text: markdown, model })
     await update(last)
+    const events = new Map<string, Session.Info>()
+    using subscription = {
+      [Symbol.dispose]: Bus.subscribe(SessionEvent.Updated, (event) => {
+        events.set(event.properties.info.id, event.properties.info)
+      }),
+    }
     const full = await Session.fork({ sessionID: session.id })
     const historical = await Session.fork({ sessionID: session.id, position: { type: "through", messageID: first.id } })
     try {
@@ -715,6 +725,10 @@ test("full forks remap the review cursor while historical forks never inherit fu
       })
       expect(copiedProgress?.source?.digest).toMatch(/^[a-f0-9]{64}$/)
       expect(await SessionLongTermMemory.isCurrent(await Session.get(full.id), copiedProgress!)).toBe(true)
+      expect(events.get(full.id)).toHaveProperty("longTermMemoryReview", {
+        reviewedThrough: { created: 2, messageID: copied.info.id },
+      })
+      expect(events.get(historical.id)).not.toHaveProperty("longTermMemoryReview")
       expect(historical.longTermMemory).toBeUndefined()
       expect(await SessionLongTermMemory.progress(await Session.get(historical.id))).toBeUndefined()
       await update({ ...last, id: copied.info.id, sessionID: full.id })
@@ -758,7 +772,12 @@ test("transcript round trips keep aligned review progress and discard a missing 
       reviewedThrough: SessionLongTermMemory.cursor(user),
       source: { version: 1 },
     })
+    expect(report.sessions[0]?.info).not.toHaveProperty("longTermMemoryReview")
+    Object.assign(report.sessions[0]!.info, {
+      longTermMemoryReview: { reviewedThrough: { created: 999, messageID: Identifier.ascending("message") } },
+    })
     const parsed = SessionImport.parse(new TextEncoder().encode(JSON.stringify(report)))
+    expect(parsed.sessions[0]?.info).not.toHaveProperty("longTermMemoryReview")
     const result = await SessionImport.fromReport(parsed)
     const imported = await Session.get(result.rootSessionID)
     try {
@@ -1213,7 +1232,17 @@ test("updates complete Markdown from original history and advances unchanged rev
         const navBefore = (await SessionNav.readNavIndex(session.scope.id)).entries.find(
           (entry) => entry.id === session.id,
         )
+        const events: Session.Info[] = []
+        using subscription = {
+          [Symbol.dispose]: Bus.subscribe(SessionEvent.Updated, (event) => {
+            if (event.properties.info.id === session.id) events.push(event.properties.info)
+          }),
+        }
         await update(user)
+        expect(events).toHaveLength(1)
+        expect(events[0]).toHaveProperty("longTermMemoryReview", {
+          reviewedThrough: { created: 2, messageID: user.id },
+        })
         expect((await Session.get(session.id)).longTermMemory).toEqual({ markdown, revision: 1 })
         expect(await Storage.read(progressKey(session))).toMatchObject({
           reviewedThrough: { created: 2, messageID: user.id },
@@ -1231,16 +1260,105 @@ test("updates complete Markdown from original history and advances unchanged rev
           expect(content).toContain("Keep both project decisions.")
           return { text: markdown, model }
         })
+        events.length = 0
+        const beforeReview = await Session.get(session.id)
+        const navBeforeReview = (await SessionNav.readNavIndex(session.scope.id)).entries.find(
+          (entry) => entry.id === session.id,
+        )
         await update(newer)
-        expect((await Session.get(session.id)).longTermMemory).toEqual({ markdown, revision: 1 })
+        const reviewed = Session.publicInfo(await Session.get(session.id))
+        expect(reviewed.longTermMemory).toEqual({ markdown, revision: 1 })
+        expect(reviewed.time).toEqual(beforeReview.time)
+        expect(reviewed).toHaveProperty("longTermMemoryReview", {
+          reviewedThrough: { created: 3, messageID: newer.id },
+        })
+        expect(events).toHaveLength(1)
+        expect(events[0]).toMatchObject({
+          longTermMemory: { markdown, revision: 1 },
+          longTermMemoryReview: { reviewedThrough: { created: 3, messageID: newer.id } },
+          time: beforeReview.time,
+        })
+        expect((await Session.list()).data.map(Session.publicInfo)).toContainEqual(reviewed)
+        expect(JSON.stringify(reviewed)).not.toContain('"digest"')
+        expect(JSON.stringify(events)).not.toContain('"source"')
+        expect(Session.publicInfo(Session.withoutRuntimeInfo(reviewed))).not.toHaveProperty("longTermMemoryReview")
+        expect(independentExecutionInfo(reviewed)).not.toHaveProperty("longTermMemoryReview")
+        expect(SessionRecords.serialize(reviewed)).not.toHaveProperty("longTermMemoryReview")
+        expect(Session.PersistedInfo.parse(reviewed)).not.toHaveProperty("longTermMemoryReview")
+        expect(await Storage.read(["sessions", session.scope.id, session.id, "info"])).not.toHaveProperty(
+          "longTermMemoryReview",
+        )
+        expect(
+          (await SessionNav.readNavIndex(session.scope.id)).entries.find((entry) => entry.id === session.id),
+        ).toEqual(navBeforeReview)
         expect(await Storage.read(progressKey(session))).toMatchObject({
           reviewedThrough: { created: 3, messageID: newer.id },
         })
         await update(newer)
         expect(call).toHaveBeenCalledTimes(2)
+        expect(events).toHaveLength(1)
         await Session.remove(session.id)
       },
     })
+  }))
+
+test("runtime review projection reads legacy progress without hydrating or validating original history", () =>
+  withSession(async (session) => {
+    using call = spyOn(AgentCall, "text")
+    using originals = spyOn(SessionHistory, "originalMessages")
+    using headers = spyOn(SessionHistory, "effectiveMessageInfos")
+    expect(await Session.get(session.id)).not.toHaveProperty("longTermMemoryReview")
+    await Storage.write(progressKey(session), {})
+    expect(await Session.get(session.id)).not.toHaveProperty("longTermMemoryReview")
+    expect((await Session.list()).data[0]).not.toHaveProperty("longTermMemoryReview")
+    expect(await Storage.read(progressKey(session))).toEqual({})
+    await Storage.remove(progressKey(session))
+    await Session.update(session.id, (draft) => {
+      draft.longTermMemory = { markdown: "# Legacy body without progress", revision: 1 }
+    })
+    expect(await Session.get(session.id)).not.toHaveProperty("longTermMemoryReview")
+    const reviewedThrough = { created: 17, messageID: Identifier.ascending("message") }
+    await Storage.write(progressKey(session), { reviewedThrough })
+    const reviewed = await Session.get(session.id)
+    expect(Session.publicInfo(reviewed)).toHaveProperty("longTermMemoryReview", { reviewedThrough })
+    expect((await Session.list()).data.map(Session.publicInfo)).toContainEqual(reviewed)
+    expect(await Storage.read(progressKey(session))).toEqual({ reviewedThrough })
+    const forged = { reviewedThrough: { created: 999, messageID: Identifier.ascending("message") } }
+    const updated = await Session.update(session.id, (draft) => {
+      Object.assign(draft, { longTermMemoryReview: forged })
+    })
+    expect(updated).toHaveProperty("longTermMemoryReview", { reviewedThrough })
+    expect(await Storage.read(["sessions", session.scope.id, session.id, "info"])).not.toHaveProperty(
+      "longTermMemoryReview",
+    )
+    await Storage.remove(progressKey(session))
+    expect(await Session.get(session.id)).not.toHaveProperty("longTermMemoryReview")
+    expect(call).not.toHaveBeenCalled()
+    expect(originals).not.toHaveBeenCalled()
+    expect(headers).not.toHaveBeenCalled()
+  }))
+
+test("empty Markdown still publishes reviewed source progress without inventing a body revision", () =>
+  withSession(async (session) => {
+    const user = await root(session.id, "No durable summary content", 4)
+    using call = spyOn(AgentCall, "text").mockResolvedValue({ text: "", model })
+    const events: Session.Info[] = []
+    using subscription = {
+      [Symbol.dispose]: Bus.subscribe(SessionEvent.Updated, (event) => {
+        if (event.properties.info.id === session.id) events.push(event.properties.info)
+      }),
+    }
+    await update(user)
+    const reviewed = await Session.get(session.id)
+    expect(reviewed.longTermMemory).toBeUndefined()
+    expect(reviewed).toHaveProperty("longTermMemoryReview", { reviewedThrough: SessionLongTermMemory.cursor(user) })
+    expect(events).toHaveLength(1)
+    expect(events[0]).toHaveProperty("longTermMemoryReview", { reviewedThrough: SessionLongTermMemory.cursor(user) })
+    await SessionLongTermMemory.clear(session.id)
+    expect(await Session.get(session.id)).not.toHaveProperty("longTermMemoryReview")
+    expect(events).toHaveLength(2)
+    expect(events[1]).not.toHaveProperty("longTermMemoryReview")
+    expect(events[1]?.time).toEqual(reviewed.time)
   }))
 
 test("session metadata preserves optional long-term Markdown without requiring legacy backfill", () =>
