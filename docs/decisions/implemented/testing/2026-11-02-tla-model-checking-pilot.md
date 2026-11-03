@@ -10,7 +10,7 @@ Scope epoch replay and the session message window are where reconnect and histor
 
 `spec/tla/` holds two bounded TLA+ models and the cfg files TLC checks. `ScopeEpochReplay` is one Scope's epoch, contiguous seq, journal suffix, and reconnect recovery. `MessageWindow` is one session window: latest and history, `pendingLatest`, stale-cursor recovery, prepend, and cap. The message window is its own spec. Constants in the cfg files bound the state space. `bun run tla:check` checks that the specs, invariants, and README are present. `SYNERGY_TLC=1` runs TLC when `TLA2TOOLS_JAR` points at a local jar. Required CI runs that structural gate through `test/script/tla-check.test.ts` and does not install a JDK or TLC.
 
-The checked message-window invariants match the reducer and the invariants list in [Frontend data sync](../../../architecture/frontend-data-sync.md#invariants). History cap keeps the newest ids of the combined slice, so a prepend cannot drop a tail newer than the messages that remain. That rule is [history cap keeps the newer tail](../bug-fix/2026-11-02-history-cap-keeps-newer-tail.md). Pending ids remain every unseen id. The architecture page defines that set, and this pilot does not narrow it to ids newer than the window.
+The checked message-window invariants match the reducer and the invariants list in [Frontend data sync](../../../architecture/frontend-data-sync.md#invariants). History cap keeps the newest ids of the combined slice, so a prepend cannot drop a tail newer than the messages that remain. That rule is [history cap keeps the newer tail](../bug-fix/2026-11-02-history-cap-keeps-newer-tail.md). Pending ids are newer than the window maximum, which [pending ids are newer than the window](../bug-fix/2026-11-03-pending-ids-newer-than-window.md) checks as `InvPendingIsNewer`.
 
 ## Alternatives considered
 
@@ -20,7 +20,7 @@ The checked message-window invariants match the reducer and the invariants list 
 
 **Vendor `tla2tools.jar`.** Rejected because the checker is an external JVM release. The README pins the download and the invocation; the jar stays outside the tree.
 
-**Change history reconcile so pending ids are only newer than the window.** Rejected because the written rule parks every unseen id, and inbox materialization treats that set as canonical arrivals. That claim is not the history-cap rule and is not a checked invariant.
+**Leave every unseen id pending.** The pilot first left that set unchecked. [Pending ids are newer than the window](../bug-fix/2026-11-03-pending-ids-newer-than-window.md) is the rule now, and `CandidatePendingIsNewer` is a checked invariant rather than a refuted candidate.
 
 ## Consequences
 

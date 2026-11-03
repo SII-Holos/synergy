@@ -10,7 +10,7 @@ Loading earlier messages capped the session history window by keeping the oldest
 
 `capHistoryMessages` keeps the newest `cap` messages of the merged, canonically ordered slice. Every dropped id is older than every id that remains, and the greatest id does not fall. `prependOlderPage` still removes kept and evicted ids from `pendingLatestIds`, and it preserves `tailMissingLatest` instead of setting it because oldest overflow was dropped. An explicit older-location replace still clears the current messages and sets `tailMissingLatest` before that prepend, so a jumped-to older location still records that the window is short of the true latest.
 
-`InvHistoryCapKeepsNewerTail` in [spec/tla/MessageWindow.tla](../../../../spec/tla/MessageWindow.tla) is a checked invariant of `MessageWindow.cfg`. It states the same rule: after a prepend, the window is the newest `Cap` ids of the combined slice, every evicted id is older than every remaining id, and the maximum id is at least the pre-cap maximum. The reducer test replays the former counterexample and asserts that `m4` stays visible. Pending ids stay every unseen id; that rule is unchanged.
+`InvHistoryCapKeepsNewerTail` in [spec/tla/MessageWindow.tla](../../../../spec/tla/MessageWindow.tla) is a checked invariant of `MessageWindow.cfg`. It states the same rule: after a prepend, the window is the newest `Cap` ids of the combined slice, every evicted id is older than every remaining id, and the maximum id is at least the pre-cap maximum. The reducer test replays the former counterexample and asserts that `m4` stays visible. Which absent ids may be pending is [pending ids are newer than the window](./2026-11-03-pending-ids-newer-than-window.md).
 
 ## Alternatives considered
 
@@ -18,7 +18,7 @@ Loading earlier messages capped the session history window by keeping the oldest
 
 **Keep only the single greatest id and fill the rest of the cap with the older page.** Rejected because that still drops messages newer than ones that remain. The user-visible tail is the newer suffix, not one id.
 
-**Narrow pending ids to ones newer than the window.** Rejected because that is a different claim. Inbox materialization treats `pendingLatestIds` as every unseen id, and the history-cap rule does not require changing it.
+**Narrow pending ids to ones newer than the window.** Not part of the history-cap rule. [Pending ids are newer than the window](./2026-11-03-pending-ids-newer-than-window.md) is that separate decision: an older absent id is not pending, and inbox materialization follows that set.
 
 ## Consequences
 

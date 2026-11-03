@@ -7,7 +7,7 @@
  *   SYNERGY_TLC=1 TLA2TOOLS_JAR=/path/to/tla2tools.jar bun script/tla-check.ts
  *
  * The default mode does not download or run TLC. `--tlc` / SYNERGY_TLC=1
- * model-checks both specs, including InvHistoryCapKeepsNewerTail.
+ * model-checks both specs, including InvPendingIsNewer.
  */
 
 import { spawnSync } from "node:child_process"
@@ -43,7 +43,10 @@ const REQUIRED_INVARIANTS: Record<(typeof MODULES)[number], readonly string[]> =
     "InvCursorOnlyHistory",
     "InvLatestPageIsSuffix",
     "InvHistoryCapKeepsNewerTail",
+    "InvPendingIsNewer",
+    "CandidatePendingIsNewer",
     "InvPendingStep",
+    "InvOlderIgnored",
     "InvHistoryTouchPreserves",
     "InvRemovePreserves",
     "InvIgnoreUnloaded",
@@ -61,6 +64,8 @@ const README_MARKERS = [
   "ScopeEpochReplay",
   "MessageWindow",
   "InvHistoryCapKeepsNewerTail",
+  "InvPendingIsNewer",
+  "CandidatePendingIsNewer",
   "SYNERGY_TLC",
 ]
 

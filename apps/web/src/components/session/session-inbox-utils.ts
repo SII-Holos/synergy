@@ -43,8 +43,10 @@ export function removeMaterializedInboxItems(
  * Whether a queued acceptance response may still upsert its item: once the
  * item's message is materialized in the loaded window (and is not the local
  * optimistic placeholder), re-inserting the item would resurrect a ghost.
- * History-mode windows record unseen canonical arrivals in pendingLatestIds
- * instead of the messages array, so those IDs count as materialized too.
+ * History-mode windows record canonical arrivals newer than the window
+ * maximum in pendingLatestIds instead of the messages array, so those IDs
+ * count as materialized. An older id that is only absent from the window is
+ * not in that list.
  */
 export function isInboxItemMaterialized(
   messages: ReadonlyArray<{ id: string }> | undefined,
