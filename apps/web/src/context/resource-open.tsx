@@ -1033,34 +1033,48 @@ export function ResourceOpenProvider(props: ParentProps) {
       setOpenedResource({ session: workbench.sessionKey(), tabID: tab.id, origin: options.focusTarget })
       return { status: "opened" }
     }
-    const route: BrowserWorkbenchRoute = {
-      mode: "scope",
-      scopeID: sdk.scopeID ?? sdk.scopeKey,
-      path_directory: params.dir ?? sdk.scopeID ?? sdk.scopeKey,
-    }
-    const catalog = browserCatalog.peek(route)
-    const candidates = options.newTab
+    const tabs = options.newTab
       ? []
       : side.tabs().flatMap((tab) => {
-          const source = browserWorkbenchRoute(tab.state)
-          if (tab.panelId !== "browser" || !source || !catalog || !sameBrowserCatalog(source, catalog.route)) return []
-          const page = catalog.store.session.pages.find(
-            (page) => page.id === tab.resourceId && page.status === "active",
+          const route = browserWorkbenchRoute(tab.state)
+          if (
+            tab.panelId !== "browser" ||
+            !tab.resourceId ||
+            !route ||
+            (route.serverUrl && route.serverUrl !== sdk.url)
           )
-          if (!page) return []
-          try {
-            const address = new URL(page.url)
-            const exact = address.href === url.href
-            address.hash = ""
-            const base = new URL(url.href)
-            base.hash = ""
-            return exact || address.href === base.href ? [{ tab, page, exact }] : []
-          } catch {
             return []
-          }
+          return [{ tab, route }]
         })
-    if (candidates.length === 1) {
-      const match = candidates[0]
+    const unloaded = tabs.filter(({ route }) => !browserCatalog.peek(route))
+    if (unloaded.length) {
+      await Promise.all(unloaded.map(({ route }) => browserCatalog.get(route)))
+      if (!current()) return { status: "cancelled" }
+    }
+    const base = new URL(url.href)
+    base.hash = ""
+    const candidates = tabs.flatMap(({ tab, route }) => {
+      if (!side.tabs().some((value) => value.id === tab.id && value.resourceId === tab.resourceId)) return []
+      const catalog = browserCatalog.peek(route)
+      if (!catalog || !sameBrowserCatalog(route, catalog.route)) return []
+      const page = catalog.store.session.pages.find((page) => page.id === tab.resourceId && page.status === "active")
+      if (!page) return []
+      try {
+        const address = new URL(page.navigation?.phase === "loading" ? page.navigation.requestedURL : page.url)
+        const exact = address.href === url.href
+        address.hash = ""
+        return exact || address.href === base.href ? [{ tab, page, exact, route: catalog.route }] : []
+      } catch {
+        return []
+      }
+    })
+    const exact = candidates.filter((candidate) => candidate.exact)
+    const suitable = exact.length ? exact : candidates
+    const match =
+      new Set(suitable.map(({ page }) => page.profileId)).size === 1
+        ? (suitable.find(({ tab }) => tab.id === side.active()) ?? suitable[0])
+        : undefined
+    if (match) {
       if (!match.exact) {
         const { browserWorkbenchAccess } = await import("@/components/workspace/browser/browser-workbench-api")
         const { createBrowserCommandId } = await import("@/components/workspace/browser/browser-command")
@@ -1068,7 +1082,7 @@ export function ResourceOpenProvider(props: ParentProps) {
           client: sdk.client,
           serverUrl: sdk.url,
           bridge: platform.browserNative,
-          route: catalog!.route,
+          route: match.route,
         })
         if (!current()) return { status: "cancelled" }
         await sdk.client.browser.control(
