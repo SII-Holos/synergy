@@ -964,8 +964,37 @@ export namespace Session {
             await updateMessage(message.info)
             for (const part of message.parts) await updatePart(part)
           }
+          if (!forkPoint) {
+            const { SessionLongTermMemory } = await import("./long-term-memory")
+            const progress = await SessionLongTermMemory.progress(currentSource)
+            const mapped = progress && messageMap.get(progress.reviewedThrough.messageID)
+            const anchor =
+              progress && selected.find((message) => message.info.id === progress.reviewedThrough.messageID)
+            if (
+              mapped &&
+              progress &&
+              anchor?.info.time.created === progress.reviewedThrough.created &&
+              JSON.stringify(currentSource.longTermMemory) === JSON.stringify(source.longTermMemory) &&
+              (await SessionLongTermMemory.isCurrent(currentSource, progress))
+            ) {
+              await update(
+                created.id,
+                (draft) => {
+                  draft.longTermMemory = currentSource.longTermMemory
+                },
+                { preserveActivityAt: true },
+              )
+              await Storage.write(
+                StoragePath.sessionLongTermMemory(asScopeID(source.scope.id), asSessionID(created.id)),
+                await SessionLongTermMemory.rebase(await get(created.id), {
+                  ...progress.reviewedThrough,
+                  messageID: mapped,
+                }),
+              )
+            }
+          }
           await SessionStaging.finish(stagingID)
-          return created
+          return get(created.id)
         })
 
         session = await applyWorkspaceSelection(session.id, input.workspace)
@@ -1988,11 +2017,20 @@ export namespace Session {
         part = { ...part, state: { ...part.state, attachments } }
       }
       if (part.type === "tool" && part.state.status === "completed" && !part.state.outputArtifact) {
+        const state = part.state
+        const metadata =
+          state.metadata.rolloutImportMissingOutput === undefined &&
+          (state.outputTruncated ||
+            state.time.compacted ||
+            state.metadata.truncated ||
+            state.metadata.rolloutLegacyOutput === "missing")
+            ? { ...state.metadata, rolloutImportMissingOutput: true }
+            : state.metadata
         const outputArtifact = await RolloutArtifact.writeText(
           { kind: "session", scopeID, sessionID: part.sessionID },
-          part.state.output,
+          state.output,
         )
-        part = { ...part, state: { ...part.state, outputArtifact } }
+        part = { ...part, state: { ...state, metadata, outputArtifact } }
       } else if (part.type === "tool" && part.state.status === "completed" && part.state.outputArtifact) {
         const owner = { kind: "session" as const, scopeID, sessionID: part.sessionID }
         const ref = part.state.outputArtifact

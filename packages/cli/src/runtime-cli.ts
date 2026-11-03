@@ -42,7 +42,7 @@ export async function createRuntimeCli(
       host,
       home: host.root,
       components: [localRuntime({ workers: false, environment: options.environment }), plugins(), ...components],
-      features,
+      features: selection.features ? features : undefined,
       listen,
     })
   }

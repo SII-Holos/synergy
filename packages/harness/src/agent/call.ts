@@ -20,6 +20,7 @@ export namespace AgentCall {
     | "model_unavailable"
     | "input_too_large"
     | "output_too_large"
+    | "incomplete_output"
     | "timeout"
     | "cancelled"
     | "invalid_owner"
@@ -49,6 +50,7 @@ export namespace AgentCall {
     retries: number
     maxInputChars?: number
     maxOutputChars: number
+    requireComplete?: boolean
     small?: boolean
     maxOutputTokens?: number
     /** A schema-only output Tool; this call has no domain Tool executor. */
@@ -251,6 +253,8 @@ export namespace AgentCall {
             let value = ""
             const toolCalls: Array<{ name: string; input: unknown }> = []
             let outputCharacters = 0
+            let stopped = false
+            let finished = false
             const iterator = stream.fullStream[Symbol.asyncIterator]()
             while (true) {
               const next = await wait(iterator.next())
@@ -258,6 +262,24 @@ export namespace AgentCall {
               const part = next.value
               if (part.type === "error") throw part.error
               if (part.type === "abort") throw new Error("cancelled", `Agent ${input.agent} was cancelled`)
+              if (input.requireComplete) {
+                if (part.type.startsWith("tool-")) {
+                  throw new Error(
+                    "incomplete_output",
+                    `Agent ${input.agent} returned tool output instead of complete text`,
+                  )
+                }
+                if (part.type === "finish-step") {
+                  if (part.finishReason !== "stop") {
+                    throw new Error(
+                      "incomplete_output",
+                      `Agent ${input.agent} did not complete normally (${part.finishReason})`,
+                    )
+                  }
+                  stopped = true
+                }
+                if (part.type === "finish") finished = true
+              }
               if (part.type === "tool-call" && outputTool) {
                 outputCharacters += (JSON.stringify(part.input) ?? "").length
                 if (outputCharacters > input.maxOutputChars) {
@@ -286,6 +308,9 @@ export namespace AgentCall {
               )
             }
             const usage = await wait(stream.usage)
+            if (input.requireComplete && (!stopped || !finished)) {
+              throw new Error("incomplete_output", `Agent ${input.agent} ended without a complete stop`)
+            }
             status = "completed"
             return { text: value, model, usage, ...(outputTool ? { toolCalls } : {}) }
           } finally {

@@ -3,21 +3,24 @@ import { ComponentFeatures, FeatureSelection, type FeatureComponent } from "../.
 
 const root = path.resolve(import.meta.dirname, "../..")
 const check = process.argv.includes("--check")
+const provided = { "local-runtime": "local", "plugin-host": "local" }
 const catalog: FeatureComponent[] = []
 for (const filename of await Array.fromAsync(new Bun.Glob("packages/*/package.json").scan({ cwd: root }))) {
   const file = Bun.file(path.join(root, filename))
   const manifest = await file.json()
-  if (manifest.synergy?.kind !== "component") continue
+  const component = path.basename(path.dirname(filename))
+  const installable = manifest.synergy?.kind === "component"
+  if (!installable && !Object.hasOwn(provided, component)) continue
   const source = path.join(root, path.dirname(filename), "src/features.ts")
   const definitions = await import(source)
   const features = ComponentFeatures.parse(definitions.componentFeatures)
-  catalog.push({ ...manifest.synergy, features })
-  if (JSON.stringify(manifest.synergy.features) === JSON.stringify(features)) continue
+  catalog.push(installable ? { ...manifest.synergy, features } : { id: component, version: manifest.version, features })
+  if (!installable || JSON.stringify(manifest.synergy.features) === JSON.stringify(features)) continue
   if (check) throw new Error(`Stale generated feature metadata: ${filename}; run bun script/gen/gen-feature-catalog.ts`)
   manifest.synergy.features = features
   await Bun.write(file, JSON.stringify(manifest, null, 2) + "\n")
 }
-FeatureSelection.resolve(catalog, { provided: { "local-runtime": "local", "plugin-host": "local" } })
+FeatureSelection.resolve(catalog, { provided })
 const copy = Object.fromEntries(
   catalog.flatMap(
     (component) =>

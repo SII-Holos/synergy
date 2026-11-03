@@ -6,13 +6,14 @@ import { PrimaryAgentIdentity } from "../agent/primary-identity"
 
 import { ToolIntent } from "./tool-intent"
 import { RuntimeContext } from "../lifecycle/context"
+import { Features } from "../lifecycle/features"
 import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
 import { AttachmentDelivery } from "../attachment/delivery"
 import { RolloutExecution } from "./rollout/execution"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
-import { RolloutRecordingError } from "./rollout/error"
+import { RolloutRecordingError, findRecordingError, isFatalStorageError } from "./rollout/error"
 import { RolloutLifecycle } from "./rollout/lifecycle"
 import { RolloutLedger } from "./rollout/ledger"
 import type { RolloutSchema } from "./rollout/schema"
@@ -595,6 +596,7 @@ export namespace SessionInvoke {
     lease: SessionManager.LoopLease,
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
+    const maintainLongTermMemory = Features.enabled("session-long-term-memory")
     ContinuationKernel.init()
     let workflowInitialized = false
     const abort = lease.signal
@@ -805,6 +807,7 @@ export namespace SessionInvoke {
                   lastFinishedParts,
                   lastAssistant,
                   abort,
+                  maintainLongTermMemory,
                   compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
                   compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
                   compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
@@ -1211,6 +1214,13 @@ export namespace SessionInvoke {
                     if (updated?.role === "user")
                       R = { ...updated, model: R.model, variant: R.variant, thinking: R.thinking }
                   }
+                }
+
+                if (maintainLongTermMemory && session.longTermMemory?.markdown) {
+                  appendAdvisory(
+                    "session-long-term-memory",
+                    `<session-long-term-memory>\n${session.longTermMemory.markdown}\n</session-long-term-memory>`,
+                  )
                 }
 
                 // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
@@ -1790,6 +1800,7 @@ export namespace SessionInvoke {
                       auto: !deferCompaction || RParts!.findLast((part) => part.type === "compaction")?.auto === true,
                       request: compactionRequest,
                       assistantMessageID: processor.message.id,
+                      maintainLongTermMemory,
                     })
                     compactionRequest = undefined
                     if (compacted !== "continue") break
@@ -1798,7 +1809,7 @@ export namespace SessionInvoke {
                     promptBaseline = undefined
                     continue
                   } catch (error) {
-                    if (RolloutRecordingError.isInstance(error)) throw error
+                    if (findRecordingError(error) || isFatalStorageError(error)) throw error
                     break
                   }
                 }
@@ -1867,6 +1878,7 @@ export namespace SessionInvoke {
                       abort,
                       auto: true,
                       request: compactionRequest,
+                      maintainLongTermMemory,
                     })
                     compactionRequest = undefined
                     if (compacted !== "continue") break

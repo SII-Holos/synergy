@@ -50796,6 +50796,20 @@
         },
         "required": ["mode"]
       },
+      "SessionLongTermMemory": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["markdown", "revision"]
+      },
       "SessionHistoryInfo": {
         "type": "object",
         "properties": {
@@ -51683,6 +51697,9 @@
                 "type": "string"
               }
             }
+          },
+          "longTermMemory": {
+            "$ref": "#/components/schemas/SessionLongTermMemory"
           },
           "history": {
             "$ref": "#/components/schemas/SessionHistoryInfo"

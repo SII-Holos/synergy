@@ -28,6 +28,7 @@ import { SessionNav } from "./nav"
 import { Log } from "../util/log"
 import { SnapshotSchema } from "./snapshot-schema"
 import { SessionRootVariant } from "./root-variant"
+import { SessionLongTermMemory } from "./long-term-memory"
 
 export namespace SessionImport {
   const log = Log.create({ service: "session-import" })
@@ -217,6 +218,7 @@ export namespace SessionImport {
         parentID: string | undefined
         info: Session.Info
         messages: MessageV2.WithParts[]
+        longTermMemoryProgress?: SessionLongTermMemory.Progress
       }> = []
       for (const data of ordered) {
         const sessionID = idMap.get(data.info.id)!
@@ -248,7 +250,23 @@ export namespace SessionImport {
           info.modelOverride,
           messages.flatMap((message) => (message.info.role === "user" && message.info.isRoot ? [message.info] : [])),
         )
-        prepared.push({ data, sessionID, parentID, info, messages })
+        const progress = data.longTermMemoryProgress
+        const anchor = progress && messages.find((message) => message.info.id === progress.reviewedThrough.messageID)
+        const longTermMemoryProgress =
+          progress?.source &&
+          anchor &&
+          anchor.info.time.created === progress.reviewedThrough.created &&
+          SessionLongTermMemory.isSourceMessage(anchor) &&
+          messages.every(
+            (message) =>
+              !SessionLongTermMemory.isSourceMessage(message) ||
+              MessageV2.compareStorageOrder(message.info, anchor.info) > 0 ||
+              message.parts.every(SessionLongTermMemory.hasOriginalOutput),
+          )
+            ? progress
+            : undefined
+        if (!longTermMemoryProgress) delete info.longTermMemory
+        prepared.push({ data, sessionID, parentID, info, messages, longTermMemoryProgress })
       }
       return await Storage.transaction(async () => {
         const workspaces = new Map<string, NonNullable<Session.Info["workspace"]>>()
@@ -262,7 +280,7 @@ export namespace SessionImport {
           workspaces.set(source.id, imported)
         }
         const workspaceIDs = new Map([...workspaces].map(([sourceID, workspace]) => [sourceID, workspace.id!]))
-        for (const { data, sessionID, parentID, info, messages } of prepared) {
+        for (const { data, sessionID, parentID, info, messages, longTermMemoryProgress } of prepared) {
           if (info.workspace) {
             const key = info.workspaceID ?? JSON.stringify([info.workspace.scopeID, info.workspace.path])
             let imported = workspaces.get(key)
@@ -316,6 +334,12 @@ export namespace SessionImport {
               await Session.updatePart(part)
             }
           }
+
+          if (longTermMemoryProgress)
+            await Storage.write(
+              StoragePath.sessionLongTermMemory(scopeID, Identifier.asSessionID(sessionID)),
+              await SessionLongTermMemory.rebase(await Session.get(sessionID), longTermMemoryProgress.reviewedThrough),
+            )
 
           const dag = Dag.normalizeRetiredAssignments(
             data.dag.map((node) => ({
@@ -512,7 +536,13 @@ export namespace SessionImport {
       if (!rollout && next.state.status === "completed" && next.state.outputArtifact) {
         next.state = {
           ...next.state,
-          metadata: { ...next.state.metadata, rolloutImportMissingOutput: next.state.outputArtifact },
+          metadata: {
+            ...next.state.metadata,
+            rolloutImportMissingOutput:
+              next.state.metadata.rolloutImportMissingOutput !== undefined
+                ? next.state.metadata.rolloutImportMissingOutput
+                : next.state.outputArtifact,
+          },
           outputArtifact: undefined,
         }
       }

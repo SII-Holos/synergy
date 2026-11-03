@@ -10,6 +10,11 @@ import { PermissionNext } from "../permission/next"
 import { SessionManager } from "./manager"
 import { SnapshotSchema } from "./snapshot-schema"
 import { Installation } from "../global/installation"
+import { Storage } from "../storage/storage"
+import { SessionHistory } from "./history"
+import { prepareSessionMigrations } from "../migration"
+import { SessionLongTermMemory } from "./long-term-memory"
+import { CompactionRegion } from "./compaction-region"
 
 export namespace SessionExport {
   export const Mode = z.enum(["compact", "standard", "full"]).meta({ ref: "SessionExportMode" })
@@ -21,6 +26,7 @@ export namespace SessionExport {
   export const SessionData = z.object({
     info: Session.Info,
     messages: z.array(MessageV2.WithParts),
+    longTermMemoryProgress: SessionLongTermMemory.Progress.optional(),
     dag: z.array(Dag.Node),
     todos: z.array(Todo.Info),
     diffs: z.array(SnapshotSchema.FileDiff),
@@ -67,13 +73,32 @@ export namespace SessionExport {
   }
 
   async function collectSessionData(session: Session.Info): Promise<SessionData> {
-    const [messages, dag, todos, diffs] = await Promise.all([
-      Session.messages({ sessionID: session.id, raw: true }),
+    await prepareSessionMigrations({ scopeID: session.scope.id, sessionID: session.id })
+    const [source, dag, todos, diffs] = await Promise.all([
+      Storage.snapshot(async () => {
+        const info = await Session.get(session.id)
+        const messages = await SessionHistory.originalMessages({ sessionID: session.id, raw: true })
+        let longTermMemoryProgress = await SessionLongTermMemory.progress(info)
+        if (longTermMemoryProgress && !(await SessionLongTermMemory.isCurrent(info, longTermMemoryProgress)))
+          longTermMemoryProgress = undefined
+        if (longTermMemoryProgress) {
+          const { reviewedThrough } = longTermMemoryProgress
+          const active = new Set((await SessionHistory.effectiveMessageInfos(info)).map((message) => message.id))
+          const restoresUnreviewedSource = messages.some(
+            (message) =>
+              SessionLongTermMemory.isSourceMessage(message) &&
+              CompactionRegion.compareCursor(SessionLongTermMemory.cursor(message.info), reviewedThrough) <= 0 &&
+              !active.has(message.info.id),
+          )
+          if (restoresUnreviewedSource) longTermMemoryProgress = undefined
+        }
+        return { info, messages, longTermMemoryProgress }
+      }),
       Dag.get(session.id),
       Todo.get(session.id),
       Session.diff(session.id),
     ])
-    return { info: session, messages, dag, todos, diffs }
+    return { ...source, dag, todos, diffs }
   }
 
   function truncateToolOutput(output: string, limit: number): string {

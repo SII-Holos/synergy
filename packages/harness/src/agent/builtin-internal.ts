@@ -6,6 +6,7 @@ import { buildCompactionPrompt } from "./prompt/compaction/builder"
 import PROMPT_SMART_ALLOW from "./prompt/smart-allow.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_SESSION_LONG_TERM_MEMORY from "./prompt/session-long-term-memory.txt"
 
 export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   return {
@@ -15,6 +16,16 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       native: true,
       hidden: true,
       prompt: buildCompactionPrompt(),
+      permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
+      options: {},
+      ...resolveAgentModelRole(ctx, "long"),
+    },
+    "session-long-term-memory": {
+      name: "session-long-term-memory",
+      mode: "primary",
+      native: true,
+      hidden: true,
+      prompt: PROMPT_SESSION_LONG_TERM_MEMORY,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       options: {},
       ...resolveAgentModelRole(ctx, "long"),

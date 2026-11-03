@@ -3452,6 +3452,11 @@ export type SessionInteraction = {
   source?: string
 }
 
+export type SessionLongTermMemory = {
+  markdown: string
+  revision: number
+}
+
 export type SessionHistoryInfo = {
   rollback?: {
     id: string
@@ -3721,6 +3726,7 @@ export type Session = {
     user?: string
     assistant?: string
   }
+  longTermMemory?: SessionLongTermMemory
   history?: SessionHistoryInfo
   rollbackAck?: SessionRollbackAck
   cortex?: SessionCortexDelegation

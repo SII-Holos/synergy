@@ -165,7 +165,12 @@ export namespace RolloutMigration {
                 },
               }
               audit.restoredOutputs++
-            } else if (state.time.compacted || state.metadata.truncated || state.metadata.rolloutImportMissingOutput) {
+            } else if (
+              state.time.compacted ||
+              state.outputTruncated ||
+              state.metadata.truncated ||
+              state.metadata.rolloutImportMissingOutput
+            ) {
               audit.missing.push(`tool:${partID}:original_not_recoverable`)
               part = { ...part, state: { ...state, metadata: { ...state.metadata, rolloutLegacyOutput: "missing" } } }
             } else {

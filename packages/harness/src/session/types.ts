@@ -237,6 +237,14 @@ export const RollbackAck = z
   .meta({ ref: "SessionRollbackAck" })
 export type RollbackAck = z.infer<typeof RollbackAck>
 
+export const LongTermMemory = z
+  .object({
+    markdown: z.string(),
+    revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .meta({ ref: "SessionLongTermMemory" })
+export type LongTermMemory = z.infer<typeof LongTermMemory>
+
 export const CompletionNotice = z
   .object({
     unread: z.boolean(),
@@ -331,6 +339,7 @@ const BaseInfo = BaseInfoInput.pipe(
         assistant: z.string().optional(),
       })
       .optional(),
+    longTermMemory: LongTermMemory.optional(),
     history: HistoryInfo.optional(),
     rollbackAck: RollbackAck.optional(),
     cortex: CortexDelegationInfo.optional(),

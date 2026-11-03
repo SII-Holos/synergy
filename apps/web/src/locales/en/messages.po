@@ -13069,6 +13069,22 @@ msgid "features.plugin-blueprint.name"
 msgstr "Plugin Blueprint"
 
 #. js-lingui-explicit-id
+msgid "features.plugin-host.description"
+msgstr "Provide plugin host capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.plugin-host.name"
+msgstr "Plugin Host"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.description"
+msgstr "Retain important conversation history alongside the recent compaction summary."
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.name"
+msgstr "Session long-term summary"
+
+#. js-lingui-explicit-id
 msgid "features.workbench.description"
 msgstr "Projects, task presentation, reviews and activity."
 

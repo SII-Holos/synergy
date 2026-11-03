@@ -13069,6 +13069,22 @@ msgid "features.plugin-blueprint.name"
 msgstr "插件 Blueprint"
 
 #. js-lingui-explicit-id
+msgid "features.plugin-host.description"
+msgstr "提供插件宿主能力。"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-host.name"
+msgstr "插件宿主"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.description"
+msgstr "在现有压缩摘要之外，保留会话历史中的重要信息。"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.name"
+msgstr "会话长期摘要"
+
+#. js-lingui-explicit-id
 msgid "features.workbench.description"
 msgstr "项目、任务展示、代码审查和活动。"
 

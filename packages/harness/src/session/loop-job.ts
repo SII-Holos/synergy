@@ -23,6 +23,7 @@ export namespace LoopJob {
     lastFinishedParts?: MessageV2.Part[]
     lastAssistant?: MessageV2.Assistant
     abort: AbortSignal
+    maintainLongTermMemory?: boolean
     compactionAutoDisabled?: boolean
     compactionOverflowThreshold?: number
     compactionMaxHistoryImages?: number
