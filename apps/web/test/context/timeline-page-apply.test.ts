@@ -4,6 +4,7 @@ import { planMessagePageApply } from "../../src/context/session-message-page"
 test("a message summary page changes the window without asserting empty canonical Parts", () => {
   const info = { id: "msg_one", sessionID: "session", role: "user" as const, time: { created: 1 } }
   const plan = planMessagePageApply({
+    mode: "latest",
     page: {
       items: [{ info, order: "one", version: "version" }],
       referencedRoots: [],

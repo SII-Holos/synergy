@@ -1,5 +1,5 @@
-import { planMessagePageApply, type MessagePageApplyPlan } from "../session-message-page"
-import type { MessageRef } from "../session-message-window"
+import { planMessagePageApply, type AppliedMessagePagePlan } from "../session-message-page"
+import type { MessageRef, MessageWindowState } from "../session-message-window"
 import type { SessionContextUsageMessage } from "../session-context-usage"
 import type { SessionPartSnapshotAction } from "../session-part-snapshot-freshness"
 
@@ -17,10 +17,11 @@ type PrefetchPage<M, P extends PartRef> = {
 
 export type PrefetchApplyPlan<M extends MessageRef & SessionContextUsageMessage, P extends PartRef> =
   | { status: "retry" }
+  | { status: "preserved-history"; latestContextMessage: M | null | undefined }
   | {
       status: "applied"
       window: { messages: M[] }
-      metadata: MessagePageApplyPlan<M, P>["metadata"]
+      metadata: AppliedMessagePagePlan<M, P>["metadata"]
       parts: Record<string, P[]>
       latestContextMessage: M | null | undefined
     }
@@ -37,9 +38,13 @@ export type PrefetchApplyPlan<M extends MessageRef & SessionContextUsageMessage,
  */
 export function planPrefetchApply<M extends MessageRef & SessionContextUsageMessage, P extends PartRef>(input: {
   page: PrefetchPage<M, P>
+  current?: MessageWindowState<M>
   partSnapshotAction: (messageID: string) => SessionPartSnapshotAction
 }): PrefetchApplyPlan<M, P> {
-  const plan = planMessagePageApply<M, P>({ page: input.page })
+  const plan = planMessagePageApply<M, P>({ page: input.page, current: input.current })
+  if (plan.outcome === "preserved-history") {
+    return { status: "preserved-history", latestContextMessage: plan.latestContextMessage }
+  }
   const parts: Record<string, P[]> = {}
   for (const [messageID, messageParts] of Object.entries(plan.parts)) {
     const action = input.partSnapshotAction(messageID)

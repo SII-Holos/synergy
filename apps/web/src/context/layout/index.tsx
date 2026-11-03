@@ -1158,12 +1158,38 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
           )
           if (!viewport) return
+          const [liveStore] = globalSync.ensureScopeState(scopeKey)
+          const metadata = liveStore.messageWindow[sessionID]
           const plan = planPrefetchApply<Message, Part>({
             page: response.data,
+            current:
+              metadata?.mode === "history"
+                ? {
+                    messages: liveStore.message[sessionID] ?? [],
+                    mode: metadata.mode,
+                    pendingLatest: metadata.pendingLatest,
+                    pendingLatestIds: metadata.pendingLatestIds,
+                    tailMissingLatest: metadata.tailMissingLatest,
+                  }
+                : undefined,
             partSnapshotAction: (messageID) =>
               globalSync.partSnapshotAction(scopeKey, sessionID, messageID, partSnapshotRequest),
           })
           if (plan.status === "retry") return
+          if (plan.status === "preserved-history") {
+            globalSync.applyResourceResponse(
+              scopeKey,
+              sessionID,
+              "message",
+              request,
+              response.response?.headers,
+              () => {
+                globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
+                globalSync.touchMessageBucket(scopeKey, sessionID)
+              },
+            )
+            return
+          }
           globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
             batch(() => {
               globalSync.seedSessionViewportContent(scopeKey, viewport)

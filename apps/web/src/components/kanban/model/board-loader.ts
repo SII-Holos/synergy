@@ -133,6 +133,20 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
             }
           : undefined,
       })
+      if (plan.outcome === "preserved-history") {
+        const accepted = deps.applyResourceResponse(
+          scopeKey,
+          sessionID,
+          "message",
+          result.request,
+          result.response?.response?.headers,
+          () => {
+            deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
+          },
+        )
+        if (accepted) deps.touchMessageBucket(scopeKey, sessionID)
+        return accepted ? "applied" : "superseded"
+      }
       const partActions = new Map(
         Object.keys(plan.parts).map((messageID) => [
           messageID,

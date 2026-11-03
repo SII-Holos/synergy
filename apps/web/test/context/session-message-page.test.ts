@@ -57,6 +57,7 @@ const window = (messages: TestMessage[], mode: "latest" | "history" = "latest"):
 describe("planMessagePageApply", () => {
   test("maps the latest page, referenced roots, and cursor metadata into one window", () => {
     const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({
         items: [message("child", 2, ["part-2", "part-1"])],
         referencedRoots: [message("root", 1), message("child", 2)],
@@ -198,6 +199,7 @@ describe("planMessagePageApply", () => {
 
   test("latest page plan metadata clears the tail gap", () => {
     const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({ items: [message("a", 1)], total: 1 }),
     })
     expect(plan.metadata.mode).toBe("latest")
@@ -221,6 +223,7 @@ describe("planMessagePageApply", () => {
     ineligible.info = { ...ineligible.info, role: "assistant", tokens: { input: 0, output: 0, reasoning: 0 } }
 
     const latest = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({ items: [older, ineligible, newer] }),
     })
     const history = planMessagePageApply<TestMessage, TestPart>({
@@ -245,13 +248,19 @@ describe("planMessagePageApply", () => {
       tokens: { input: 0, output: 0, reasoning: 0 },
     }
 
-    const plan = planMessagePageApply<TestMessage, TestPart>({ page: page({ items: [usage, barrier] }) })
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
+      page: page({ items: [usage, barrier] }),
+    })
 
     expect(plan.latestContextMessage?.id).toBe("barrier")
   })
 
   test("projects null when an authoritative latest page has no eligible assistant", () => {
-    const plan = planMessagePageApply<TestMessage, TestPart>({ page: page({ items: [message("user", 1)] }) })
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
+      page: page({ items: [message("user", 1)] }),
+    })
 
     expect(plan.latestContextMessage).toBeNull()
   })
@@ -267,6 +276,7 @@ describe("planMessagePageApply", () => {
       metadata: withOptimisticMessagePending(undefined),
     }
     const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({ items: [message("canonical", 1)], total: 1 }),
       current: window([message("canonical", 1).info, pending]),
     })
@@ -290,6 +300,7 @@ describe("planMessagePageApply", () => {
       metadata: withOptimisticMessagePending(undefined),
     }
     const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({ items: canonical, total: 500 }),
       current: window([...canonical.map((item) => item.info), pending]),
       cap: 500,
@@ -317,6 +328,7 @@ describe("planMessagePageApply", () => {
     }
     const canonical = [message("canonical-old", 10), message("canonical-new", 20)]
     const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({ items: canonical, total: 2 }),
       current: window([...canonical.map((item) => item.info), firstPending, secondPending]),
       cap: 2,
@@ -342,6 +354,7 @@ describe("planMessagePageApply", () => {
     canonical.info.metadata = { promptDraft: { text: "saved" } }
 
     const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
       page: page({ items: [canonical], total: 1 }),
       current: window([pending]),
     })
@@ -355,10 +368,160 @@ describe("planMessagePageApply", () => {
       { id: "old-1", time: { created: 1 }, role: "user" },
       { id: "old-2", time: { created: 2 }, role: "user" },
     ])
-    const plan = planMessagePageApply<TestMessage, TestPart>({ page: page(), current })
+    const plan = planMessagePageApply<TestMessage, TestPart>({ mode: "latest", page: page(), current })
 
     expect(plan.window.messages).toEqual([])
     expect(plan.droppedIds).toEqual(["old-1", "old-2"])
     expect(plan.parts).toEqual({})
+  })
+
+  test("history replace keeps a still-pending optimistic root out of the located page", () => {
+    const pending: TestMessage = {
+      id: "pending",
+      time: { created: 50 },
+      role: "user",
+      isRoot: true,
+      rootID: "pending",
+      visible: true,
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "visible", time: { created: 40 }, role: "user" }, pending],
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["unseen"],
+      tailMissingLatest: false,
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({
+        items: [message("located", 10)],
+        nextCursor: "earlier",
+        hasMore: true,
+        total: 30,
+      }),
+      current,
+      mode: "history",
+      replace: true,
+    })
+
+    expect(plan.outcome).toBe("applied")
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["located", "pending"])
+    expect(plan.window.messages.at(-1)).toBe(pending)
+    expect(plan.droppedIds).toEqual(["visible"])
+    expect(plan.window.mode).toBe("history")
+    expect(plan.window.tailMissingLatest).toBe(true)
+    expect(plan.window.pendingLatestIds).toEqual(["unseen"])
+    expect(plan.metadata.pendingLatestIds).toEqual(["unseen"])
+    expect(plan.latestContextMessage).toBeUndefined()
+  })
+
+  test("history replace keeps a pending optimistic root when the located page fills the cap", () => {
+    const pending: TestMessage = {
+      id: "pending",
+      time: { created: 3 },
+      role: "user",
+      isRoot: true,
+      rootID: "pending",
+      visible: true,
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("a", 1), message("b", 2)], total: 2 }),
+      current: window([{ id: "old", time: { created: 0 }, role: "user" }, pending], "history"),
+      mode: "history",
+      replace: true,
+      cap: 2,
+    })
+
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["a", "b", "pending"])
+    expect(plan.droppedIds).toEqual(["old"])
+    expect(plan.window.mode).toBe("history")
+  })
+
+  test("history replace adopts the page root when it has the optimistic id", () => {
+    const pending: TestMessage = {
+      id: "located",
+      time: { created: 10 },
+      role: "user",
+      isRoot: true,
+      rootID: "located",
+      visible: true,
+      label: "pending",
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const located = message("located", 10)
+    located.info.label = "canonical"
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [located], total: 1 }),
+      current: window([pending], "history"),
+      mode: "history",
+      replace: true,
+    })
+
+    expect(plan.window.messages).toEqual([located.info])
+    expect(plan.droppedIds).not.toContain("located")
+  })
+
+  test("history prepend keeps a pending optimistic root already in the window", () => {
+    const pending: TestMessage = {
+      id: "pending",
+      time: { created: 30 },
+      role: "user",
+      isRoot: true,
+      rootID: "pending",
+      visible: true,
+      metadata: withOptimisticMessagePending(undefined),
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("older", 1)], total: 3 }),
+      current: window([{ id: "visible", time: { created: 20 }, role: "user" }, pending], "history"),
+      mode: "history",
+    })
+
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["older", "visible", "pending"])
+    expect(plan.droppedIds).not.toContain("pending")
+  })
+
+  test("a shared latest page leaves a history window in place", () => {
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "old", time: { created: 1 }, role: "user" }],
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["unseen"],
+      tailMissingLatest: true,
+    }
+    const latest = message("latest", 9)
+    latest.info.role = "assistant"
+    latest.info.contextUsage = { total: 4 }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [latest], total: 4 }),
+      current,
+    })
+
+    expect(plan.outcome).toBe("preserved-history")
+    if (plan.outcome !== "preserved-history") return
+    expect(plan.latestContextMessage?.id).toBe("latest")
+  })
+
+  test("an authoritative latest page still replaces a history window", () => {
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "old", time: { created: 1 }, role: "user" }],
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["unseen"],
+      tailMissingLatest: true,
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      mode: "latest",
+      page: page({ items: [message("latest", 9)], total: 1 }),
+      current,
+    })
+
+    expect(plan.outcome).toBe("applied")
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["latest"])
+    expect(plan.window.mode).toBe("latest")
+    expect(plan.window.tailMissingLatest).toBe(false)
+    expect(plan.window.pendingLatestIds).toEqual([])
+    expect(plan.droppedIds).toEqual(["old"])
   })
 })
