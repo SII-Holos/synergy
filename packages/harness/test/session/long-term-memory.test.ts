@@ -508,7 +508,15 @@ test("reads original evidence behind compaction, excludes controls, and honors a
     })
   }))
 
-for (const mutation of ["part edit", "new part", "backdated message", "rollback", "delete"] as const) {
+for (const mutation of [
+  "part edit",
+  "new part",
+  "backdated message",
+  "header chronology",
+  "source exclusion",
+  "rollback",
+  "delete",
+] as const) {
   test(`rejects stale publication after a concurrent ${mutation}`, () =>
     withSession(async (session) => {
       const user = await root(session.id, "Initial source", 2)
@@ -541,6 +549,10 @@ for (const mutation of ["part edit", "new part", "backdated message", "rollback"
           })
         } else if (mutation === "backdated message") {
           await root(session.id, "Inserted earlier source", 1)
+        } else if (mutation === "header chronology") {
+          await Session.updateMessage({ ...user, time: { created: 1 } })
+        } else if (mutation === "source exclusion") {
+          await Session.updateMessage({ ...user, includeInContext: false })
         } else if (mutation === "rollback") {
           await Session.rollback({ sessionID: session.id, numTurns: 1 })
         } else {
@@ -767,7 +779,7 @@ test("original history retains the canonical Part order for tied identifier pref
     expect(original[0]?.parts.map((part) => part.id)).toEqual(canonical.map((part) => part.id))
   }))
 
-test("Codex advisory header bookkeeping does not invalidate reviewed original lineage", () =>
+test("header bookkeeping before and during review preserves original lineage", () =>
   withSession(async (session) => {
     const first = await root(session.id, "Already reviewed original body ".repeat(1000), 1)
     const markdown = "# Retained session decisions"
@@ -808,6 +820,7 @@ test("Codex advisory header bookkeeping does not invalidate reviewed original li
       expect(JSON.stringify(input.messages)).toContain(markdown)
       expect(JSON.stringify(input.messages)).not.toContain("Already reviewed original body")
       expect(JSON.stringify(input.messages)).not.toContain("Runtime advisory bookkeeping")
+      await Session.updateMessage({ ...latest, summary: { title: "Derived topic title", diffs: [] } })
       return { text: markdown, model }
     })
     await update(latest)

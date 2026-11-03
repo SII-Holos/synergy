@@ -106,10 +106,7 @@ export namespace SessionLongTermMemory {
     )
     const evidenceIDs = new Set(parts.map((part) => part.key[4]))
     const headers = prefix.filter((info) => evidenceIDs.has(info.id))
-    const keys = [
-      ...headers.map((info) => StoragePath.messageInfo(scopeID, sessionID, Identifier.asMessageID(info.id))),
-      ...parts.map((part) => part.key),
-    ]
+    const keys = parts.map((part) => part.key)
     const source: z.infer<typeof Source> = {
       version: 1,
       digest: new Bun.CryptoHasher("sha256")
