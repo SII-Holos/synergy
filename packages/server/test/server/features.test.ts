@@ -1,11 +1,68 @@
 import { expect, test } from "bun:test"
 import { Hono } from "hono"
-import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+import { RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
+import { Config } from "@ericsanchezok/synergy-harness/config/config"
 import { localRuntime } from "@ericsanchezok/synergy-local-runtime/component"
+import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { Server } from "../../src/server/server"
 import { server } from "../../src/component"
+import { registerHttp } from "../../src/http"
+
+test.each([false, true])(
+  "long-term summary stays unavailable without its owner (other feature selected: %s)",
+  async (otherSelected) => {
+    const components: RuntimeComponent[] = [{ id: "server", apiVersion: 1, version: "1.0.0", register: registerHttp }]
+    if (otherSelected)
+      components.push({
+        id: "fixture",
+        apiVersion: 1,
+        version: "1.0.0",
+        features: {
+          kind: "product",
+          definitions: [
+            {
+              id: "fixture-ui",
+              owner: "fixture",
+              maturity: "stable",
+              activation: "restart",
+              name: "Fixture",
+              description: "Selected HTTP feature",
+            },
+          ],
+        },
+        register() {
+          Server.registerContributions({ features: ["fixture-ui"] }, "fixture")
+        },
+      })
+    await using runtime = await testRuntime({
+      composition: RuntimeComponents.compose(
+        components,
+        FeatureSelection.resolve(components, { optIn: ["session-long-term-memory"] }),
+      ),
+    })
+    await runtime.run(async () => {
+      await Config.domainUpdate("features", { features: { optIn: ["session-long-term-memory"] } })
+      const response = await Server.App().request("/global/capabilities")
+      expect(response.status).toBe(200)
+      const capabilities = await response.json()
+      expect(capabilities.features).toEqual(otherSelected ? ["fixture-ui"] : [])
+      expect(capabilities.components.map((component: { id: string }) => component.id).sort()).toEqual(
+        otherSelected ? ["fixture", "server"] : ["server"],
+      )
+      expect(Features.enabled("session-long-term-memory")).toBe(false)
+      const catalog = await (await Server.App().request("/global/features")).json()
+      expect(catalog.find((feature: { id: string }) => feature.id === "session-long-term-memory")).toMatchObject({
+        selected: true,
+        available: false,
+        enabled: false,
+        pendingRestart: false,
+        reason: "not-installed",
+      })
+    })
+  },
+)
 
 test("long-term summary HTTP capability follows live feature selection without Workbench", async () => {
   await using runtime = await testRuntime({

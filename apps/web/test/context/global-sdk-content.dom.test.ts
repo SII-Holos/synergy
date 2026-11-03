@@ -233,7 +233,12 @@ test("the WebSocket entry preserves Part discovery and revalidates live capabili
       release()
 
       h.holdCapabilities()
+      const confirmedCapabilities = api.capabilities.current()
       socket.notify({ type: "config.updated", properties: { scope: "global", changedFields: ["theme"] } })
+      for (const changedFields of [[], ["pluginConfig"], ["theme"]]) {
+        socket.notify({ type: "runtime.reloaded", properties: { executed: ["config"], cascaded: [], changedFields } })
+        expect(api.capabilities.current()).toBe(confirmedCapabilities)
+      }
       expect(h.capabilityReads).toHaveLength(0)
       socket.notify({ type: "config.updated", properties: { scope: "global", changedFields: ["features"] } })
       await waitUntil(() => h.capabilityReads.length === 1)

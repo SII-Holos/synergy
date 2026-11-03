@@ -372,8 +372,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
         if (parsed.scopeID !== null && typeof parsed.scopeID !== "string") return
         if (
-          payload.type === "runtime.reloaded" ||
-          (payload.type === "config.updated" && payload.properties.changedFields.includes("features"))
+          (payload.type === "runtime.reloaded" || payload.type === "config.updated") &&
+          payload.properties.changedFields.includes("features")
         ) {
           capabilities.reset()
           void capabilities.load().catch(() => {
