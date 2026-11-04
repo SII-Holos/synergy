@@ -12,6 +12,8 @@ Registry version and dist-tag checks retain cache-busted reads and allow twenty 
 
 Product dispatch accepts an explicit unfinished version together with its original native run. The version must be the highest stable version already present in a managed package. Recovery rejects completed public releases and requires a completed ancestor Release run from `dev` with successful native jobs. Published-package sources and native build inputs must remain unchanged. A narrow allowlist permits release tooling and the separately built Execution Host Docker recipe; that recipe is absent from npm module archives and CLI/Desktop assembly. Candidate and Desktop jobs reuse that run's native assets, and ordinary artifact verification, signing, upgrade acceptance and final promotion remain required.
 
+Fixture corrections under the private benchmark workspace's `test/` directory are also permitted. Its evaluator sources and runtime preparation inputs remain rejected, with regression coverage for both boundaries.
+
 Release notes read every GitHub comparison page before intersecting the result with local product history. GitHub's [comparison API](https://docs.github.com/en/rest/commits/commits#compare-two-commits) limits unpaged responses to 250 commits. Classification covers current product modules, shared UI and Desktop, and excludes maintenance commit types with or without a conventional scope.
 
 ## Alternatives considered
