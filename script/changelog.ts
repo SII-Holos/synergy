@@ -28,7 +28,7 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
 
   const repo = await currentRepo()
   const compare =
-    await $`gh api "/repos/${repo}/compare/${fromRef}...${toRef}" --jq '.commits[] | {sha: .sha, login: .author.login, message: .commit.message}'`.text()
+    await $`gh api --paginate "/repos/${repo}/compare/${fromRef}...${toRef}?per_page=100" --jq '.commits[] | {sha: .sha, login: .author.login, message: .commit.message}'`.text()
 
   const commitData = new Map<string, { login: string | null; message: string }>()
   for (const line of compare.split("\n").filter(Boolean)) {
@@ -45,22 +45,17 @@ export async function getCommits(from: string, to: string): Promise<Commit[]> {
     if (!data) continue
 
     const message = data.message
-    if (message.match(/^(ignore:|test:|chore:|ci:|release:)/i)) continue
+    if (/^(ignore|test|chore|ci|release)(?:\([^)]+\))?!?:/i.test(message)) continue
 
     const files = await $`git diff-tree --no-commit-id --name-only -r ${hash}`.text()
     const areas = new Set<string>()
 
     for (const file of files.split("\n").filter(Boolean)) {
-      if (
-        file.startsWith("packages/harness/") ||
-        file.startsWith("packages/local-runtime/") ||
-        file.startsWith("packages/presets/") ||
-        file.startsWith("packages/cli/")
-      )
-        areas.add("core")
-      else if (file.startsWith("apps/web/")) areas.add("app")
-      else if (file.startsWith("packages/sdk/")) areas.add("sdk")
+      if (file.startsWith("apps/desktop/")) areas.add("desktop")
+      else if (file.startsWith("apps/web/") || file.startsWith("packages/ui/")) areas.add("app")
+      else if (file.startsWith("packages/sdk/") || file.startsWith("packages/plugin-kit/")) areas.add("sdk")
       else if (file.startsWith("packages/plugin/")) areas.add("plugin")
+      else if (file.startsWith("packages/") && !file.startsWith("packages/testing/")) areas.add("core")
     }
 
     if (areas.size === 0) continue
@@ -99,12 +94,13 @@ function filterRevertedCommits(commits: Commit[]): Commit[] {
 const sections = {
   core: "Core",
   app: "App",
+  desktop: "Desktop",
   sdk: "SDK",
   plugin: "SDK",
 } as const
 
 function getSection(areas: Set<string>): string {
-  const priority = ["core", "app", "sdk", "plugin"]
+  const priority = ["core", "app", "desktop", "sdk", "plugin"]
   for (const area of priority) {
     if (areas.has(area)) return sections[area as keyof typeof sections]
   }
@@ -123,7 +119,7 @@ export function generateChangelog(commits: Commit[]) {
     grouped.get(section)!.push(entry)
   }
 
-  const sectionOrder = ["Core", "App", "SDK", "Extensions"]
+  const sectionOrder = ["Core", "App", "Desktop", "SDK", "Extensions"]
   const lines: string[] = []
 
   for (const section of sectionOrder) {

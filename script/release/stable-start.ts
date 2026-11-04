@@ -24,13 +24,21 @@ import { ensureStableTag } from "./nodes/ensure-stable-tag"
 import { uploadBinaryAssets } from "./nodes/upload-binary-assets"
 import { verifyRegistryCandidate } from "./nodes/verify-registry-candidate"
 import { verifyDraftAssets } from "./nodes/verify-draft-assets"
+import { viewRelease } from "./shared/github"
+import { validateReleaseResume } from "./validate-resume"
 
 const bump = process.env.SYNERGY_BUMP?.trim()
 if (!bump || !["patch", "minor", "major"].includes(bump)) {
   throw new Error("stable-start requires SYNERGY_BUMP=patch|minor|major")
 }
 
-const version = await computeStableVersion(bump)
+const resumeVersion = process.env.SYNERGY_RELEASE_VERSION?.trim()
+await validateReleaseResume(resumeVersion, process.env.SYNERGY_NATIVE_RUN_ID?.trim())
+const version = await computeStableVersion(bump, resumeVersion)
+if (resumeVersion) {
+  const release = await viewRelease(`v${version}`)
+  if (release && !release.isDraft) throw new Error(`Cannot resume completed release v${version}`)
+}
 const state = createReleaseState({
   kind: "stable",
   version,

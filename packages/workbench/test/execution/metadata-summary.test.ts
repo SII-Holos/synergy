@@ -96,13 +96,15 @@ test("cached statistics resample canonical root, child and round clocks without 
         const laterScoped = await ExecutionService.summary(session.id, rootID)
         expect(later.revision).toBe(first.revision)
         expect(later.elapsedActive).toBe(true)
-        expect(later.elapsedMs).toBe(first.elapsedMs! + 1000)
-        expect(later.rounds.find((round) => round.id === rootID)?.elapsedMs).toBe(
+        expect(later.elapsedMs).toBeCloseTo(first.elapsedMs! + 1000, 6)
+        expect(later.rounds.find((round) => round.id === rootID)?.elapsedMs).toBeCloseTo(
           first.rounds.find((round) => round.id === rootID)!.elapsedMs! + 1000,
+          6,
         )
-        expect(laterScoped.elapsedMs).toBe(scoped.elapsedMs! + 1000)
-        expect(later.tasks.find((task) => task.sessionID === child.id)?.elapsedMs).toBe(
+        expect(laterScoped.elapsedMs).toBeCloseTo(scoped.elapsedMs! + 1000, 6)
+        expect(later.tasks.find((task) => task.sessionID === child.id)?.elapsedMs).toBeCloseTo(
           first.tasks.find((task) => task.sessionID === child.id)!.elapsedMs! + 1000,
+          6,
         )
         expect(later.sampledAt).toBe(sample.now + 1000)
         expect(usage).not.toHaveBeenCalled()

@@ -145,10 +145,13 @@ Product release keeps the existing candidate/finalize model:
 5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt` for the Desktop artifacts, and uploads them to the draft GitHub Release. The CLI checksum asset is separate and was already uploaded by `stable_candidate`.
 6. `stable_finalize` verifies npm candidates, downloads every CLI runtime archive, recomputes its SHA-256 against the published CLI checksum asset, rejects unsafe archive paths or links, extracts it into a private temporary directory, and re-validates its `runtime-manifest.sha256` and required target contract. It then verifies recommended Desktop installer artifacts, portable artifacts, Desktop checksum, and updater metadata from the draft GitHub Release before promoting npm tags and publishing the GitHub Release.
 
-Registry read-after-write checks use cache-busted, no-store requests. A successful npm write is not verified through a previously cached version or dist-tag response.
+Registry read-after-write checks use cache-busted, no-store requests and a twenty-minute visibility budget for npm publish-time scanning. An accepted upload is not installable until the registry exposes its version and requested dist-tag. Expiry still fails publication.
+
+The `version` and `native_run_id` dispatch inputs resume an unfinished stable candidate. They retain the highest already published managed-package version and reuse the original run's successful native artifacts. Recovery requires an ancestor Release run from `dev` and unchanged published-package sources and native build inputs. Only explicitly allowed release tooling, the separately built Execution Host Docker recipe, development Skills, tests and documentation may differ. The Docker recipe is not included in published npm modules or CLI/Desktop runtime assembly. A completed public GitHub Release cannot be resumed.
 
 ## Failure Recovery
 
+- If candidate publication fails after npm accepts packages, use the original candidate version and native run through the [release recovery procedure](../../.synergy/skill/git-guide/references/automation-ci.md). A fresh bump computes a different version; it does not complete the partial candidate.
 - If desktop packaging fails before upload, rerun the failed `stable_desktop_package` matrix job.
 - If desktop upload fails, rerun `stable_desktop_publish`; it uses `gh release upload --clobber`.
 - If Desktop checksum generation is wrong, delete `Synergy-${version}-checksums.txt` from the draft release, rerun `stable_desktop_publish`, then rerun finalize.

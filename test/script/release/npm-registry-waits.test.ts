@@ -1,16 +1,38 @@
 import { describe, expect, test } from "bun:test"
 import {
   computeStableVersion,
-  NPM_REGISTRY_WAIT_ATTEMPTS,
-  NPM_REGISTRY_WAIT_DELAY_MS,
   npmTagMatches,
   npmVersionExists,
+  waitForNpmVersion,
 } from "../../../script/release/shared/runtime"
 import { FIXED_REGISTRY_PACKAGES } from "../../../script/release/shared/packages"
 
 describe("release npm registry waits", () => {
-  test("uses a five minute registry visibility budget", () => {
-    expect(NPM_REGISTRY_WAIT_ATTEMPTS * NPM_REGISTRY_WAIT_DELAY_MS).toBe(5 * 60_000)
+  test("allows a published package to become visible beyond the former polling cutoff", async () => {
+    let calls = 0
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => new Response(null, { status: ++calls > 60 ? 200 : 404 })) as typeof fetch
+    try {
+      expect(await waitForNpmVersion("@ericsanchezok/synergy-library", "3.1.0", { delay: 0 })).toBe(true)
+      expect(calls).toBe(61)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("reports a package that remains unavailable when the polling budget expires", async () => {
+    let calls = 0
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => {
+      calls += 1
+      return new Response(null, { status: 404 })
+    }) as typeof fetch
+    try {
+      expect(await waitForNpmVersion("@ericsanchezok/synergy-library", "3.1.0", { attempts: 3, delay: 0 })).toBe(false)
+      expect(calls).toBe(3)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 
   test("waits for a dist-tag to converge", async () => {
@@ -64,6 +86,19 @@ describe("release npm registry waits", () => {
     try {
       expect(await computeStableVersion("patch")).toBe("3.0.2")
       expect(requestedPackages).toEqual(new Set(FIXED_REGISTRY_PACKAGES))
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  test("resumes only the highest partially published stable version without bumping it", async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => Response.json({ versions: { "3.0.22": {}, "3.1.0": {} } })) as typeof fetch
+    try {
+      expect(await computeStableVersion("minor", "3.1.0")).toBe("3.1.0")
+      await expect(computeStableVersion("minor", "3.0.22")).rejects.toThrow("highest published")
+      await expect(computeStableVersion("minor", "3.2.0")).rejects.toThrow("not published")
+      await expect(computeStableVersion("minor", "3.1.0-next")).rejects.toThrow("stable version")
     } finally {
       globalThis.fetch = originalFetch
     }

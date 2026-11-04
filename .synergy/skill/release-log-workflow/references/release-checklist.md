@@ -10,6 +10,8 @@
 ## During analysis
 
 - Read recent tags and commit history
+- Verify GitHub comparison pagination covers the complete local release range; an unpaged comparison is limited to 250 commits
+- Include current product modules, shared UI and Desktop when classifying changes; exclude scoped maintenance commits as well as unscoped ones
 - Check `git show --stat --summary` for the release commits
 - Check `git diff --stat <old>..<new>` for scope
 - Read touched files when commit subjects are ambiguous

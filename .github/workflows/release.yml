@@ -20,6 +20,16 @@ on:
           - minor
           - major
         default: patch
+      version:
+        description: "Resume an unfinished stable version (for example, 3.1.0)"
+        required: false
+        type: string
+        default: ""
+      native_run_id:
+        description: "Original Release run with successful native assets; required with version"
+        required: false
+        type: string
+        default: ""
       packages:
         description: "Package-only aliases: plugin-kit, plugin, util, sdk"
         required: false
@@ -34,7 +44,7 @@ on:
 jobs:
   stable_native_assets:
     name: Build Stable Native Assets
-    if: ${{ inputs.target == 'product' }}
+    if: ${{ inputs.target == 'product' && inputs.native_run_id == '' }}
     uses: ./.github/workflows/build-helpers.yml
     permissions:
       contents: read
@@ -42,9 +52,10 @@ jobs:
   stable_candidate:
     name: Publish Stable Candidate
     needs: [stable_native_assets]
-    if: ${{ inputs.target == 'product' }}
+    if: ${{ !cancelled() && inputs.target == 'product' && (needs.stable_native_assets.result == 'success' || inputs.native_run_id != '') }}
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
     outputs:
       version: ${{ steps.publish.outputs.version }}
@@ -61,9 +72,18 @@ jobs:
         with:
           bun-version: "1.4.3"
 
+      - name: Validate release resume source
+        run: bun script/release/validate-resume.ts
+        env:
+          SYNERGY_RELEASE_VERSION: ${{ inputs.version }}
+          SYNERGY_NATIVE_RUN_ID: ${{ inputs.native_run_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download PTY libraries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           path: packages/local-runtime/.artifacts/pty
           pattern: pty-assets-*
           merge-multiple: true
@@ -71,6 +91,8 @@ jobs:
       - name: Download sandbox assets
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           path: packages/local-runtime/sandbox-assets
           pattern: sandbox-assets-*
           merge-multiple: true
@@ -78,12 +100,16 @@ jobs:
       - name: Download patched SQLite engine
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           name: sqlite-assets-darwin
           path: packages/harness/.artifacts/sqlite
 
       - name: Download verified watcher assets
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           path: packages/local-runtime/.artifacts/watcher
           pattern: watcher-assets-*
           merge-multiple: true
@@ -129,6 +155,8 @@ jobs:
             bun run ./script/release/stable-start.ts
         env:
           SYNERGY_BUMP: ${{ inputs.bump }}
+          SYNERGY_RELEASE_VERSION: ${{ inputs.version }}
+          SYNERGY_NATIVE_RUN_ID: ${{ inputs.native_run_id }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SYNERGY_REQUIRE_SANDBOX_ASSETS: "1"
@@ -143,9 +171,10 @@ jobs:
   stable_desktop_package:
     name: Build Desktop Artifacts (${{ matrix.platform }})
     needs: [stable_candidate, stable_native_assets]
-    if: ${{ inputs.target == 'product' && needs.stable_candidate.result == 'success' && needs.stable_native_assets.result == 'success' }}
+    if: ${{ !cancelled() && inputs.target == 'product' && needs.stable_candidate.result == 'success' }}
     runs-on: ${{ matrix.os }}
     permissions:
+      actions: read
       contents: read
     strategy:
       fail-fast: false
@@ -187,6 +216,8 @@ jobs:
       - name: Download PTY libraries
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           path: packages/local-runtime/.artifacts/pty
           pattern: pty-assets-*
           merge-multiple: true
@@ -194,6 +225,8 @@ jobs:
       - name: Download sandbox assets
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           path: packages/local-runtime/sandbox-assets
           pattern: sandbox-assets-*
           merge-multiple: true
@@ -201,6 +234,8 @@ jobs:
       - name: Download verified watcher assets
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.native_run_id || github.run_id }}
           path: packages/local-runtime/.artifacts/watcher
           pattern: watcher-assets-*
           merge-multiple: true
@@ -325,7 +360,7 @@ jobs:
   stable_desktop_publish:
     name: Upload Desktop Artifacts
     needs: [stable_candidate, stable_desktop_package]
-    if: ${{ inputs.target == 'product' && needs.stable_candidate.result == 'success' && needs.stable_desktop_package.result == 'success' }}
+    if: ${{ !cancelled() && inputs.target == 'product' && needs.stable_candidate.result == 'success' && needs.stable_desktop_package.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
