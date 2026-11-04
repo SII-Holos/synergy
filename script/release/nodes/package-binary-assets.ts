@@ -25,12 +25,16 @@ export async function packageBinaryAssets(distDir: string, platformNames: string
   return assetPaths
 }
 
-export async function validatePackagedRuntimeArchive(assetPath: string, name: string): Promise<void> {
+export async function validatePackagedRuntimeArchive(
+  assetPath: string,
+  name: string,
+  options: { npm?: boolean } = {},
+): Promise<void> {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-release-archive-"))
   try {
     await assertArchiveMembersSafe(assetPath)
-    if (assetPath.endsWith(".tar.gz")) {
-      await $`tar -xzf ${assetPath} -C ${directory}`
+    if (assetPath.endsWith(".tar.gz") || assetPath.endsWith(".tgz")) {
+      await $`tar -xzf ${assetPath} ${options.npm ? ["--strip-components=1"] : []} -C ${directory}`
     } else if (assetPath.endsWith(".zip")) {
       await $`unzip -q ${assetPath} -d ${directory}`
     } else {
@@ -43,7 +47,7 @@ export async function validatePackagedRuntimeArchive(assetPath: string, name: st
 }
 
 export async function assertArchiveMembersSafe(assetPath: string): Promise<void> {
-  if (assetPath.endsWith(".tar.gz")) {
+  if (assetPath.endsWith(".tar.gz") || assetPath.endsWith(".tgz")) {
     const verbose = await $`tar -tvzf ${assetPath}`.text()
     if (verbose.split("\n").some((line) => line.startsWith("l") || line.startsWith("h"))) {
       throw new Error("release archive contains a symbolic or hard link")

@@ -17,6 +17,13 @@ test("resumes a failed candidate with verified native artifacts and release-only
   expect(() =>
     assertReleaseResumeSource(run, jobs, [
       "script/release/shared/runtime.ts",
+      "script/release/shared/module-seed.ts",
+      "script/release/shared/seed-payload.ts",
+      "script/release/shared/publish-modules.ts",
+      "script/release/shared/publish-generic.ts",
+      "script/release/nodes/publish-synergy-candidate.ts",
+      "script/release/nodes/package-binary-assets.ts",
+      "script/release/dev.ts",
       ".github/workflows/release.yml",
       "script/changelog.ts",
       "test/script/changelog.test.ts",
@@ -37,7 +44,10 @@ test("rejects changed product bytes and native or module build inputs", () => {
     "benchmark/src/synergy_bench/prepare.py",
     "benchmark/runtime/entry.ts",
     "script/release/shared/build/native-build-packages.ts",
-    "script/release/shared/publish-modules.ts",
+    "script/pack-workspace.ts",
+    "script/build-workspace.ts",
+    "script/release/shared/native-package.ts",
+    "script/release/shared/build-runtime.ts",
     ".github/workflows/build-helpers.yml",
     "bun.lock",
   ])

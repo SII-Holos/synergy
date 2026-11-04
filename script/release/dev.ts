@@ -17,7 +17,7 @@ import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
 import { publishModuleCandidates } from "./shared/publish-modules"
-import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
+import { prepareSynergyCandidate, publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -48,8 +48,9 @@ try {
   const platformNames = await buildSynergyBinaries(version, channel)
   await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)
+  const candidate = await prepareSynergyCandidate(version)
   const modules = await publishModuleCandidates(version, channel)
-  const synergy = await publishSynergyCandidate(version, channel)
+  const synergy = await publishSynergyCandidate(candidate, channel)
   state.registryPackages = [...new Set([...state.registryPackages, ...modules, ...synergy.platformPackages])]
   console.log("dev release", JSON.stringify(summarizeState(state), null, 2))
 } finally {
