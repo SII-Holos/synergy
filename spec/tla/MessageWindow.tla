@@ -14,8 +14,10 @@
 \* A dropped id is older than every id that remains, and the window's
 \* maximum id does not fall. The cap does not set the tail flag.
 \*
-\* pending is every unseen id, not only ids newer than the window. That is
-\* the reducer rule. It is a different claim from the history-cap rule.
+\* pending holds ids strictly newer than the window maximum. An older id that
+\* is only absent does not enter pending. CandidatePendingIsNewer is that
+\* claim; it is checked as InvPendingIsNewer. An empty window has no maximum,
+\* so a reconcile does not admit an id and does not drop ids already pending.
 \*
 \* An unloaded bucket ignores message events. Removal of a pending-only id
 \* drops that id and does not change the visible window. Removal of a visible
@@ -50,6 +52,10 @@ Largest(S, k) ==
 
 OlderThan(S) == {m \in published : m < MinSet(S)}
 OlderPage(S) == Largest(OlderThan(S), Page)
+
+PendingAfter(source, kept, evicted) ==
+  IF kept = {} THEN {p \in source : p \notin evicted}
+  ELSE {p \in source : p \notin kept /\ p \notin evicted /\ p > MaxSet(kept)}
 
 Snap == [
   window |-> window,
@@ -131,7 +137,7 @@ Prepend ==
          combined == window \cup older
          kept == Largest(combined, Cap)
          evicted == combined \ kept
-         nextPending == {p \in pending : p \notin kept /\ p \notin evicted}
+         nextPending == PendingAfter(pending, kept, evicted)
      IN /\ window' = kept
         /\ pending' = nextPending
         /\ pendingLatest' = (nextPending # {})
@@ -156,20 +162,29 @@ Reconcile(id) ==
           /\ pendingLatest' = pendingLatest
           /\ mode' = mode
           /\ tailMissing' = tailMissing
-     ELSE IF mode = "history" /\ id \notin window
+     ELSE IF mode = "history" /\ id \notin window /\ window # {} /\ id > MaxSet(window)
           THEN /\ pending' = pending \cup {id}
                /\ pendingLatest' = TRUE
                /\ window' = window
                /\ mode' = "history"
                /\ tailMissing' = tailMissing
                /\ lastAction' = "pending"
+          ELSE IF mode = "history" /\ id \notin window
+               THEN LET next == IF window = {} THEN pending ELSE pending \ {id}
+                    IN /\ pending' = next
+                       /\ pendingLatest' = (next # {})
+                       /\ window' = window
+                       /\ mode' = "history"
+                       /\ tailMissing' = tailMissing
+                       /\ lastAction' = "olderIgnored"
           ELSE IF mode = "history"
-               THEN /\ lastAction' = "historyTouch"
-                    /\ window' = window
-                    /\ pending' = pending
-                    /\ pendingLatest' = pendingLatest
-                    /\ mode' = "history"
-                    /\ tailMissing' = tailMissing
+               THEN LET next == pending \ {id}
+                    IN /\ lastAction' = "historyTouch"
+                       /\ window' = window
+                       /\ pending' = next
+                       /\ pendingLatest' = (next # {})
+                       /\ mode' = "history"
+                       /\ tailMissing' = tailMissing
                ELSE /\ window' = Largest(window \cup {id}, Cap)
                     /\ pending' = {}
                     /\ pendingLatest' = FALSE
@@ -213,7 +228,7 @@ Spec == Init /\ [][Next]_vars
 
 Actions == {
   "init", "publish", "latest", "returnLatest", "staleRecover", "cursorStale",
-  "prepend", "pending", "historyTouch", "latestReconcile", "ignore",
+  "prepend", "pending", "olderIgnored", "historyTouch", "latestReconcile", "ignore",
   "remove", "removeUnloaded", "removeAbsent"
 }
 
@@ -291,27 +306,50 @@ InvHistoryCapKeepsNewerTail ==
      /\ window \cap lastEvicted = {}
      /\ \A e \in lastEvicted : \A w \in window : e < w
      /\ MaxSet(window) >= MaxSet(prev.window)
-     /\ pending = {p \in prev.pending : p \notin window /\ p \notin lastEvicted}
+     /\ pending = PendingAfter(prev.pending, window, lastEvicted)
      /\ pendingLatest <=> (pending # {})
      /\ tailMissing = prev.tail)
+
+\* CandidatePendingIsNewer, checked. A non-empty window's pending ids are
+\* strictly newer than its maximum. The old counterexample parked id 1 after
+\* a capped history window of {3, 4}; that state is not reachable.
+InvPendingIsNewer ==
+  window # {} => \A p \in pending : p > MaxSet(window)
+
+CandidatePendingIsNewer == InvPendingIsNewer
 
 InvPendingStep ==
   lastAction = "pending" =>
     (/\ mode = "history"
      /\ prev.mode = "history"
      /\ window = prev.window
+     /\ window # {}
      /\ tailMissing = prev.tail
      /\ pendingLatest
      /\ prev.pending \subseteq pending
      /\ Cardinality(pending) \in {Cardinality(prev.pending), Cardinality(prev.pending) + 1}
-     /\ (pending \ window) = pending)
+     /\ (pending \ window) = pending
+     /\ \A p \in pending : p > MaxSet(window))
+
+InvOlderIgnored ==
+  lastAction = "olderIgnored" =>
+    (/\ mode = "history"
+     /\ prev.mode = "history"
+     /\ window = prev.window
+     /\ tailMissing = prev.tail
+     /\ pending \subseteq prev.pending
+     /\ Cardinality(prev.pending \ pending) \in {0, 1}
+     /\ pendingLatest <=> (pending # {})
+     /\ (window # {} => \A p \in pending : p > MaxSet(window)))
 
 InvHistoryTouchPreserves ==
   lastAction = "historyTouch" =>
     (/\ mode = "history"
      /\ window = prev.window
-     /\ pending = prev.pending
-     /\ pendingLatest = prev.pendingLatest
+     /\ pending \subseteq prev.pending
+     /\ (prev.pending \ pending) \subseteq window
+     /\ Cardinality(prev.pending \ pending) \in {0, 1}
+     /\ pendingLatest <=> (pending # {})
      /\ tailMissing = prev.tail)
 
 InvRemovePreserves ==

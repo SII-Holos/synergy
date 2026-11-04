@@ -2,6 +2,7 @@ import {
   applyLatestPage,
   prependOlderPage,
   reconcileMessage,
+  retainPendingLatestIds,
   type MessageRef,
   type MessageWindowMetadata,
   type MessageWindowResult,
@@ -88,20 +89,38 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
       .sort((a, b) => a.id.localeCompare(b.id))
   }
 
+  const pendingLatestIds =
+    input.mode === "history"
+      ? retainPendingLatestIds(
+          result.window.pendingLatestIds,
+          [
+            ...current.messages,
+            ...referencedRoots.map((item) => item.info),
+            ...items.map((item) => item.info),
+          ],
+          result.window.messages,
+        )
+      : result.window.pendingLatestIds
+  const window: MessageWindowState<M> = {
+    ...result.window,
+    pendingLatest: pendingLatestIds.length > 0,
+    pendingLatestIds,
+  }
+
   return {
-    window: result.window,
+    window,
     droppedIds: Array.from(droppedIds),
     metadata: {
       nextCursor: input.page.nextCursor,
       hasMore: input.page.hasMore,
       total:
         input.mode === "history"
-          ? Math.max(0, input.page.total - result.window.pendingLatestIds.length)
+          ? Math.max(0, input.page.total - pendingLatestIds.length)
           : input.page.total + preservedPendingCount,
-      mode: result.window.mode,
-      pendingLatest: result.window.pendingLatest,
-      pendingLatestIds: result.window.pendingLatestIds,
-      tailMissingLatest: result.window.tailMissingLatest,
+      mode: window.mode,
+      pendingLatest: window.pendingLatest,
+      pendingLatestIds,
+      tailMissingLatest: window.tailMissingLatest,
     },
     parts,
     latestContextMessage:

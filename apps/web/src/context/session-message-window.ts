@@ -47,6 +47,37 @@ export function compareByTimeThenId(a: MessageRef, b: MessageRef) {
   return a.time.created - b.time.created || a.id.localeCompare(b.id)
 }
 
+function newestMessage<T extends MessageRef>(messages: readonly T[]): T | undefined {
+  let newest: T | undefined
+  for (const message of messages) {
+    if (!newest || compareByTimeThenId(newest, message) < 0) newest = message
+  }
+  return newest
+}
+
+function isNewerThanMessageWindow<T extends MessageRef>(message: T, messages: readonly T[]) {
+  const newest = newestMessage(messages)
+  return newest !== undefined && compareByTimeThenId(newest, message) < 0
+}
+
+export function retainPendingLatestIds<T extends MessageRef>(
+  pendingIds: readonly string[],
+  known: readonly T[],
+  windowMessages: readonly T[],
+  excluded?: ReadonlySet<string>,
+) {
+  const inWindow = new Set(windowMessages.map((message) => message.id))
+  const knownById = new Map(known.map((message) => [message.id, message]))
+  const newest = newestMessage(windowMessages)
+  return pendingIds.filter((id) => {
+    if (inWindow.has(id) || excluded?.has(id)) return false
+    if (!newest) return true
+    const message = knownById.get(id)
+    if (!message) return true
+    return compareByTimeThenId(newest, message) < 0
+  })
+}
+
 function insertInOrder<T extends MessageRef>(messages: T[], message: T): T[] {
   const last = messages.at(-1)
   if (last && compareByTimeThenId(last, message) <= 0) {
@@ -125,9 +156,9 @@ export function prependOlderPage<T extends MessageRef>(
   const keptIds = new Set(kept.map((message) => message.id))
   const droppedIds = messages.filter((message) => !keptIds.has(message.id)).map((message) => message.id)
   const evictedIds = new Set(droppedIds)
-  // Kept and evicted ids are no longer unseen arrivals. Evicted ids are the
-  // oldest overflow, so dropping them does not open a tail gap.
-  const pendingLatestIds = current.pendingLatestIds.filter((id) => !keptIds.has(id) && !evictedIds.has(id))
+  // Kept and evicted ids are in the merged slice. A known id that is not
+  // newer than the kept maximum is not a pending arrival either.
+  const pendingLatestIds = retainPendingLatestIds(current.pendingLatestIds, messages, kept, evictedIds)
   return {
     window: {
       messages: kept,
@@ -147,11 +178,17 @@ export function reconcileMessage<T extends MessageRef>(
 ): MessageWindowResult<T> {
   const existing = current.messages.some((item) => item.id === message.id)
   if (current.mode === "history" && !existing) {
-    const pendingLatestIds = current.pendingLatestIds.includes(message.id)
-      ? current.pendingLatestIds
-      : [...current.pendingLatestIds, message.id]
+    const newer = isNewerThanMessageWindow(message, current.messages)
+    const admitted = newer
+      ? current.pendingLatestIds.includes(message.id)
+        ? current.pendingLatestIds
+        : [...current.pendingLatestIds, message.id]
+      : newestMessage(current.messages)
+        ? current.pendingLatestIds.filter((id) => id !== message.id)
+        : current.pendingLatestIds
+    const pendingLatestIds = retainPendingLatestIds(admitted, [message, ...current.messages], current.messages)
     return {
-      window: { ...current, pendingLatest: true, pendingLatestIds },
+      window: { ...current, pendingLatest: pendingLatestIds.length > 0, pendingLatestIds },
       droppedIds: [],
     }
   }
@@ -168,8 +205,18 @@ export function reconcileMessage<T extends MessageRef>(
     : insertInOrder(current.messages, message)
 
   if (current.mode === "history") {
+    const pendingLatestIds = retainPendingLatestIds(
+      current.pendingLatestIds.filter((id) => id !== message.id),
+      messages,
+      messages,
+    )
     return {
-      window: { ...current, messages },
+      window: {
+        ...current,
+        messages,
+        pendingLatest: pendingLatestIds.length > 0,
+        pendingLatestIds,
+      },
       droppedIds: [],
     }
   }
@@ -212,10 +259,15 @@ export function removeMessageFromWindow<T extends MessageRef>(
   current: MessageWindowState<T>,
   messageID: string,
 ): MessageWindowState<T> {
-  const pendingLatestIds = current.pendingLatestIds.filter((id) => id !== messageID)
+  const messages = current.messages.filter((message) => message.id !== messageID)
+  const pendingLatestIds = retainPendingLatestIds(
+    current.pendingLatestIds.filter((id) => id !== messageID),
+    messages,
+    messages,
+  )
   return {
     ...current,
-    messages: current.messages.filter((message) => message.id !== messageID),
+    messages,
     pendingLatest: pendingLatestIds.length > 0,
     pendingLatestIds,
   }

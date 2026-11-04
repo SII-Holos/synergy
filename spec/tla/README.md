@@ -76,8 +76,10 @@ A live client with no watermark seeds the first state event and does not replay 
 - `InvCursorOnlyHistory` — a stale cursor is a loaded history window.
 - `InvLatestPageIsSuffix` — a latest load, return to latest, or stale-cursor recovery replaces the window with the newest `Cap` published ids and clears pending, the tail gap, and the stale cursor.
 - `InvHistoryCapKeepsNewerTail` — a history page keeps the newest ids of the combined slice, within `Cap` and the page bound. Every dropped id is older than every id that remains, and the window's maximum id is at least the pre-cap maximum. Evicted and newly visible ids leave `pending`. The tail flag is preserved, not set by the drop.
-- `InvPendingStep` — an id that is not in a history window is recorded once and is not inserted. The tail flag stays.
-- `InvHistoryTouchPreserves` — an in-window history update does not evict, does not clear pending, and does not clear the tail flag.
+- `InvPendingIsNewer` — when the window is non-empty, every pending id is strictly newer than its maximum. `CandidatePendingIsNewer` is the same formula. TLC used to refute it by parking older id `1` after a history window `{3, 4}`; that state is not reachable.
+- `InvPendingStep` — a history reconcile records an id only when it is newer than the window maximum, once, and does not insert it. The tail flag stays.
+- `InvOlderIgnored` — an id that is only absent, and not newer than the window, is not parked. A non-empty window also drops that id if it was pending. An empty window does not admit an id and does not drop ids already pending.
+- `InvHistoryTouchPreserves` — an in-window history update does not evict and does not clear the tail flag. That id leaves pending if it was recorded there.
 - `InvRemovePreserves` — removal keeps mode and the tail flag. A pending-only id leaves pending and does not change the visible window.
 - `InvIgnoreUnloaded` — an event or removal before the first load leaves the bucket empty.
 
@@ -88,9 +90,9 @@ The model has a quiescent state once every id is published and the window is idl
 TLC found no violation of the checked invariants.
 
 - `ScopeEpochReplay`: 4,353 distinct states, search depth 17. `CaughtUp` holds.
-- `MessageWindow`: 2,492 distinct states, search depth 14. `InvHistoryCapKeepsNewerTail` holds.
+- `MessageWindow`: 1,831 distinct states, search depth 14. `InvPendingIsNewer` and `InvHistoryCapKeepsNewerTail` hold.
 
-The reducer test covers the trace publish `m1`–`m4`, latest cap `{m3, m4}`, prepend `m2`: the window stays `{m3, m4}`. An unseen older id such as `m1` is still recorded in `pendingLatestIds`. That pending rule is separate from the history cap.
+The reducer test covers the trace publish `m1`–`m4`, latest cap `{m3, m4}`, prepend `m2`: the window stays `{m3, m4}`. Reconciling older id `m1` leaves `pendingLatestIds` empty, so it does not reduce the history total, set bottom-return recovery, or count as inbox materialization. That trace was the `CandidatePendingIsNewer` counterexample; `InvPendingIsNewer` now holds on it.
 
 ## Sources
 

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { isInboxItemMaterialized } from "../../src/components/session/session-inbox-utils"
+import { shouldRecoverToLatest } from "../../src/components/session/session-history-scroll"
 import {
   applyLatestPage,
   hasMessageWindowSnapshot,
@@ -331,11 +333,64 @@ describe("reconcileMessage in history mode", () => {
 
     const parked = reconcileMessage(prepended.window, msg("m1", 1), 2)
     expect(parked.window.messages.map((message) => message.id)).toEqual(["m3", "m4"])
-    expect(parked.window.pendingLatest).toBe(true)
-    expect(parked.window.pendingLatestIds).toEqual(["m1"])
+    expect(parked.window.pendingLatest).toBe(false)
+    expect(parked.window.pendingLatestIds).toEqual([])
     expect(parked.window.tailMissingLatest).toBe(false)
     expect(parked.window.mode).toBe("history")
     expect(parked.droppedIds).toEqual([])
+    expect(
+      shouldRecoverToLatest({
+        mode: parked.window.mode,
+        tailMissingLatest: parked.window.tailMissingLatest,
+        pendingLatest: parked.window.pendingLatest,
+        historyLoading: false,
+      }),
+    ).toBe(false)
+    expect(isInboxItemMaterialized([], { messageID: "m1" }, () => false, parked.window.pendingLatestIds)).toBe(false)
+  })
+
+  test("parks only an id newer than the history window, and drops a stale older one", () => {
+    const history = window([msg("m3", 3), msg("m4", 4)], {
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["m1", "m5"],
+    })
+    const older = reconcileMessage(history, msg("m1", 1))
+    expect(older.window.messages.map((message) => message.id)).toEqual(["m3", "m4"])
+    expect(older.window.pendingLatestIds).toEqual(["m5"])
+    expect(older.window.pendingLatest).toBe(true)
+    expect(isInboxItemMaterialized([], { messageID: "m1" }, () => false, older.window.pendingLatestIds)).toBe(false)
+    expect(isInboxItemMaterialized([], { messageID: "m5" }, () => false, older.window.pendingLatestIds)).toBe(true)
+
+    const repeated = reconcileMessage(older.window, msg("m5", 5))
+    expect(repeated.window.pendingLatestIds).toEqual(["m5"])
+    expect(
+      shouldRecoverToLatest({
+        mode: repeated.window.mode,
+        tailMissingLatest: repeated.window.tailMissingLatest,
+        pendingLatest: repeated.window.pendingLatest,
+        historyLoading: false,
+      }),
+    ).toBe(true)
+
+    const entered = reconcileMessage(
+      window([msg("m3", 3), msg("m4", 4)], {
+        mode: "history",
+        pendingLatest: true,
+        pendingLatestIds: ["m4", "m5"],
+      }),
+      msg("m4", 4),
+    )
+    expect(entered.window.pendingLatestIds).toEqual(["m5"])
+    expect(entered.window.messages.map((message) => message.id)).toEqual(["m3", "m4"])
+
+    const empty = reconcileMessage(
+      window([], { mode: "history", pendingLatest: true, pendingLatestIds: ["m5"] }),
+      msg("m1", 1),
+    )
+    expect(empty.window.messages).toEqual([])
+    expect(empty.window.pendingLatestIds).toEqual(["m5"])
+    expect(reconcileMessage(window([], { mode: "history" }), msg("m1", 1)).window.pendingLatestIds).toEqual([])
   })
 
   test("sets pendingLatest to true when outside-window update arrives", () => {

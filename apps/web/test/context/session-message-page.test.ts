@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { planMessagePageApply } from "../../src/context/session-message-page"
-import type { MessageWindowState } from "../../src/context/session-message-window"
+import {
+  applyLatestPage,
+  prependOlderPage,
+  reconcileMessage,
+  type MessageWindowState,
+} from "../../src/context/session-message-window"
 import { withOptimisticMessagePending } from "../../src/context/session-optimistic-message"
 
 type TestMessage = {
@@ -142,6 +147,42 @@ describe("planMessagePageApply", () => {
     expect(plan.metadata.total).toBe(2)
     expect(plan.metadata.pendingLatest).toBe(false)
     expect(plan.metadata.pendingLatestIds).toEqual([])
+  })
+
+  test("subtracts only ids newer than the history window from the page total", () => {
+    const capped = applyLatestPage(
+      [message("m1", 1), message("m2", 2), message("m3", 3), message("m4", 4)].map((item) => item.info),
+      [],
+      2,
+    )
+    const history = prependOlderPage(capped.window, [message("m2", 2).info], 2)
+    const older = reconcileMessage(history.window, message("m1", 1).info, 2)
+    const newer = reconcileMessage(older.window, message("m5", 5).info, 2)
+    const pageInput = page({ items: [message("m0", 0)], total: 6 })
+
+    expect(history.window.messages.map((item) => item.id)).toEqual(["m3", "m4"])
+    expect(older.window.pendingLatestIds).toEqual([])
+
+    const olderPlan = planMessagePageApply<TestMessage, TestPart>({
+      page: pageInput,
+      current: older.window,
+      mode: "history",
+      cap: 2,
+    })
+    expect(olderPlan.metadata.pendingLatestIds).toEqual([])
+    expect(olderPlan.metadata.pendingLatest).toBe(false)
+    expect(olderPlan.metadata.total).toBe(6)
+
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: pageInput,
+      current: newer.window,
+      mode: "history",
+      cap: 2,
+    })
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["m3", "m4"])
+    expect(plan.metadata.pendingLatestIds).toEqual(["m5"])
+    expect(plan.metadata.pendingLatest).toBe(true)
+    expect(plan.metadata.total).toBe(5)
   })
 
   test("prepends referenced roots from an older history page", () => {
