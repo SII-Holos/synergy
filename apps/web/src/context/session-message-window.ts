@@ -13,10 +13,11 @@ export type MessageWindowState<T extends MessageRef = MessageRef> = {
   mode: "latest" | "history"
   pendingLatest: boolean
   pendingLatestIds: string[]
-  // True when the bounded window's tail no longer reaches the true latest
-  // messages (newest overflow was evicted by a history prepend). Cleared by
-  // any latest page apply/reconcile; preserved by history prepends,
-  // reconciles, and removals.
+  // True when an explicit older-location replace left this history window
+  // short of the true latest messages. A history cap drops the oldest
+  // overflow and does not set it. Cleared by any latest page apply or
+  // latest-mode reconcile; preserved by history prepends, reconciles, and
+  // removals.
   tailMissingLatest: boolean
 }
 
@@ -109,7 +110,9 @@ export function applyLatestPage<T extends MessageRef>(
 }
 
 function capHistoryMessages<T extends MessageRef>(messages: T[], cap: number): T[] {
-  return messages.length <= cap ? messages : messages.slice(0, cap)
+  // Canonical order is oldest-first. Keep the newest tail so the greatest id
+  // cannot fall and no dropped id is newer than a message that remains.
+  return messages.length <= cap ? messages : messages.slice(messages.length - cap)
 }
 
 export function prependOlderPage<T extends MessageRef>(
@@ -122,9 +125,8 @@ export function prependOlderPage<T extends MessageRef>(
   const keptIds = new Set(kept.map((message) => message.id))
   const droppedIds = messages.filter((message) => !keptIds.has(message.id)).map((message) => message.id)
   const evictedIds = new Set(droppedIds)
-  // Pending arrivals are the newest messages; when the cap evicts them they no
-  // longer belong to the pending set — the tail gap is tracked by
-  // tailMissingLatest instead.
+  // Kept and evicted ids are no longer unseen arrivals. Evicted ids are the
+  // oldest overflow, so dropping them does not open a tail gap.
   const pendingLatestIds = current.pendingLatestIds.filter((id) => !keptIds.has(id) && !evictedIds.has(id))
   return {
     window: {
@@ -132,7 +134,7 @@ export function prependOlderPage<T extends MessageRef>(
       mode: "history",
       pendingLatest: pendingLatestIds.length > 0,
       pendingLatestIds,
-      tailMissingLatest: current.tailMissingLatest || droppedIds.length > 0,
+      tailMissingLatest: current.tailMissingLatest,
     },
     droppedIds,
   }

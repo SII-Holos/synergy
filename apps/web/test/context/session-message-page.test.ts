@@ -79,7 +79,7 @@ describe("planMessagePageApply", () => {
     })
   })
 
-  test("prepends older history and evicts newest messages when capped", () => {
+  test("prepends older history and keeps the newer tail when capped", () => {
     const current = window(
       [
         { id: "new-1", time: { created: 3 }, role: "user" },
@@ -99,8 +99,9 @@ describe("planMessagePageApply", () => {
       cap: 2,
     })
 
-    expect(plan.window.messages.map((item) => item.id)).toEqual(["old-1", "old-2"])
-    expect(plan.droppedIds).toEqual(["new-1", "new-2"])
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["new-1", "new-2"])
+    expect(plan.droppedIds).toEqual(["old-1", "old-2"])
+    expect(plan.window.tailMissingLatest).toBe(false)
     expect(plan.metadata.mode).toBe("history")
     expect(plan.metadata.nextCursor).toBe("cursor-older")
   })
@@ -177,7 +178,7 @@ describe("planMessagePageApply", () => {
     expect(plan.metadata.tailMissingLatest).toBe(true)
   })
 
-  test("propagates a fresh eviction tail gap through plan metadata", () => {
+  test("does not open a tail gap when the history cap drops an older message", () => {
     const current: MessageWindowState<TestMessage> = {
       messages: [{ id: "new", time: { created: 4 }, role: "user" }],
       mode: "history",
@@ -191,9 +192,10 @@ describe("planMessagePageApply", () => {
       mode: "history",
       cap: 1,
     })
-    expect(plan.window.messages.map((item) => item.id)).toEqual(["older"])
-    expect(plan.window.tailMissingLatest).toBe(true)
-    expect(plan.metadata.tailMissingLatest).toBe(true)
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["new"])
+    expect(plan.droppedIds).toEqual(["older"])
+    expect(plan.window.tailMissingLatest).toBe(false)
+    expect(plan.metadata.tailMissingLatest).toBe(false)
   })
 
   test("latest page plan metadata clears the tail gap", () => {
