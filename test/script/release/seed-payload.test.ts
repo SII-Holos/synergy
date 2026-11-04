@@ -57,6 +57,36 @@ test("missing bundled embedding assets fail before any dependency payload is rem
   for (const file of run.removed) expect(await Bun.file(path.join(run.directory, file)).text()).toBe(file)
 })
 
+test.each([
+  ["@ast-grep/cli-win32-x64-msvc", ".exe"],
+  ["@ast-grep/cli-darwin-arm64", ""],
+  ["owner/node_modules/@ast-grep/cli-linux-x64-gnu", ""],
+])("full seeds keep the canonical ast-grep executable from %s", async (dependency, extension) => {
+  const run = await fixture()
+  const directory = path.join(run.directory, "node_modules", dependency)
+  const canonical = path.join(directory, `ast-grep${extension}`)
+  const alias = path.join(directory, `sg${extension}`)
+  await Bun.write(canonical, "canonical executable")
+  await fs.chmod(canonical, 0o755)
+  await Bun.write(alias, "duplicate CLI executable")
+  const unrelated = path.join(run.directory, "node_modules/other/sg.exe")
+  await Bun.write(unrelated, "unrelated executable")
+  await pruneSeedPayload(run.directory)
+  expect(await Bun.file(canonical).text()).toBe("canonical executable")
+  expect((await fs.stat(canonical)).mode & 0o111).toBe(0o111)
+  expect(await Bun.file(alias).exists()).toBe(false)
+  expect(await Bun.file(unrelated).text()).toBe("unrelated executable")
+})
+
+test("a missing canonical ast-grep executable fails without removing its alias", async () => {
+  const run = await fixture()
+  const alias = path.join(run.directory, "node_modules/@ast-grep/cli-win32-x64-msvc/sg.exe")
+  await Bun.write(alias, "only executable")
+  await expect(pruneSeedPayload(run.directory)).rejects.toThrow("canonical ast-grep executable")
+  expect(await Bun.file(alias).text()).toBe("only executable")
+  for (const file of run.removed) expect(await Bun.file(path.join(run.directory, file)).exists()).toBe(true)
+})
+
 test.each(["glibc", "musl"] as const)("Linux seeds retain only %s-compatible optional packages", async (libc) => {
   const run = await fixture()
   await Bun.write(path.join(run.directory, "node_modules/onnxruntime-node/package.json"), "{}")

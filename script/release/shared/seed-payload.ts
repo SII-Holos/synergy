@@ -36,6 +36,13 @@ export async function pruneSeedPayload(directory: string, target?: SandboxRuntim
   const unused: string[] = []
   for await (const relative of new Bun.Glob("**/*").scan({ cwd: modules, dot: true })) {
     const normalized = relative.split(path.sep).join("/")
+    if (/(?:^|\/node_modules\/)@ast-grep\/cli-[^/]+\/sg(?:\.exe)?$/.test(normalized)) {
+      const canonical = path.join(modules, path.dirname(relative), `ast-grep${path.extname(relative)}`)
+      if (!(await Bun.file(canonical).exists()))
+        throw new Error(`Cannot prune an alias without its canonical ast-grep executable: ${normalized}`)
+      unused.push(path.join(modules, relative))
+      continue
+    }
     if (
       path.basename(normalized) === ".npmignore" ||
       /\.(?:[cm]?js|[cm]?ts)\.map$/.test(normalized) ||

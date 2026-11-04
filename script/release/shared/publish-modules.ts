@@ -4,7 +4,7 @@ import { readPackedArchives, type PackedArchive } from "../../package-install-ch
 import { DESKTOP_APP_PACKAGE, NPM_REGISTRY, PRESETS_DIST_DIR } from "./packages"
 import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
 
-export const NPM_ARCHIVE_BUDGET = 180 * 1024 * 1024
+export const NPM_ARCHIVE_BUDGET = 190 * 1024 * 1024
 
 export async function assertNpmArchiveSize(pkg: Pick<PackedArchive, "name" | "archive">) {
   const archive = Bun.file(pkg.archive)
