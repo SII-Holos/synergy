@@ -39,7 +39,7 @@ export function assertReleaseResumeSource(run: ResumeRun, jobs: ResumeJob[], cha
   const productChanges = changed.filter(
     (file) =>
       !recoverableFiles.has(file) &&
-      !["docs/", "test/", ".synergy/skill/"].some((prefix) => file.startsWith(prefix)) &&
+      !["docs/", "test/", "benchmark/test/", ".synergy/skill/"].some((prefix) => file.startsWith(prefix)) &&
       !/^(?:packages|apps)\/[^/]+\/test\//.test(file),
   )
   if (productChanges.length)

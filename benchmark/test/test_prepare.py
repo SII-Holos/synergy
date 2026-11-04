@@ -305,6 +305,8 @@ def test_source_recipe_prepares_native_assets_from_the_measured_source(
 
 @pytest.mark.parametrize("failure", [RuntimeError("injected build failure"), KeyboardInterrupt()])
 def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monkeypatch, failure) -> None:
+    from types import SimpleNamespace
+
     import yaml
     from test_config import config
 
@@ -313,6 +315,7 @@ def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monk
     from synergy_bench.storage import read_json
 
     monkeypatch.setenv("BENCH_FIXTURE_KEY", "fixture")
+    monkeypatch.setattr("synergy_bench.cache.shutil.disk_usage", lambda _: SimpleNamespace(free=1024**3))
     path = tmp_path / "experiment.yaml"
     path.write_text(
         yaml.safe_dump(
@@ -320,6 +323,7 @@ def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monk
                 **config(),
                 "suite": str(BENCHMARK / "suites/local-24.json"),
                 "output": "runs",
+                "resources": {"min_free_disk_gib": 0.5, "cache_budget_gib": 1},
                 "harnesses": {"A": {"source": {"path": str(tmp_path)}, "kind": "synergy"}},
             }
         )
@@ -335,8 +339,9 @@ def test_preparation_failure_never_exposes_a_resumable_plan(tmp_path: Path, monk
         raise failure
 
     monkeypatch.setattr(runner, "prepare_source", prepare)
-    with pytest.raises(type(failure)):
+    with pytest.raises(type(failure)) as raised:
         runner.initialize(path)
+    assert raised.value is failure
     root = next((tmp_path / "runs").iterdir())
     assert read_json(root / "preparation.json")["status"] == (
         "interrupted" if isinstance(failure, KeyboardInterrupt) else "failed"
