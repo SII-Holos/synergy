@@ -16,6 +16,7 @@
     "perf:memory": "bun script/session-memory-benchmark.ts",
     "perf:memory:runtime": "bun script/session-memory-runtime-benchmark.ts",
     "perf:memory:runtime:matrix": "bun script/session-memory-runtime-benchmark.ts --scenario all",
+    "perf:memory:runtime:compare": "bun script/session-memory-runtime-compare.ts",
     "perf:playwright": "bun script/performance-playwright.ts",
     "perf:tools:test": "bun test --config /dev/null test/script/performance-tools.test.ts",
     "release:test": "bun test --config /dev/null test/script/release test/script/install.test.ts",
