@@ -1,6 +1,41 @@
 import { expect, test } from "bun:test"
 import { page, url, errors, frames } from "../../support/conversation-process"
 
+test("returning to latest keeps following when a paused process remounts", async () => {
+  await page.goto(`${url}?scrolling&motion`)
+  await page.getByText("I will check the project first.", { exact: true }).waitFor()
+  await page.evaluate(() => {
+    window.__conversationProcess.mode("full")
+    window.__conversationProcess.grow(80)
+    window.__conversationProcess.latest()
+  })
+  const process = page.locator('[data-component="process-viewport"]').last()
+  await process.waitFor()
+  await process.evaluate((element) => {
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true }))
+    element.scrollTop = 40
+  })
+  await frames()
+  await page.evaluate(() => window.__conversationProcess.hydrateBefore(80))
+  const outer = page.locator("[data-scroller]")
+  await outer.evaluate((element) => {
+    element.dispatchEvent(new WheelEvent("wheel", { deltaY: -120, bubbles: true }))
+    element.scrollTop = 0
+  })
+  await process.waitFor({ state: "detached" })
+  await page.evaluate(() => window.__conversationProcess.latest())
+  await process.waitFor()
+  for (let frame = 0; frame < 20; frame++) await frames()
+  await page.evaluate(() =>
+    window.__conversationProcess.stream("The latest response continues below the tool history. ".repeat(100)),
+  )
+  for (let frame = 0; frame < 20; frame++) await frames()
+  expect(
+    await outer.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+  ).toBeLessThanOrEqual(1)
+  expect(errors).toEqual([])
+})
+
 test("reading a grouped reasoning fragment survives an earlier fragment growing in the same virtual chunk", async () => {
   const cdp = await page.context().newCDPSession(page)
   await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 })
