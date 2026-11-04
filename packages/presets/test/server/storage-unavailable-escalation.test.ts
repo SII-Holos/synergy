@@ -80,7 +80,18 @@ test(
       const { PresetRuntimeHandle } = await import("./src/server/runtime-handle")
       const open = PresetRuntimeHandle.open
       let owner
-      PresetRuntimeHandle.open = async (options) => owner = await open(options)
+      let holdClose = false
+      let releaseClose
+      const admissionObserved = new Promise((resolve) => { releaseClose = resolve })
+      PresetRuntimeHandle.open = async (options) => {
+        owner = await open(options)
+        const close = owner.close
+        owner.close = async () => {
+          if (holdClose) await admissionObserved
+          return close()
+        }
+        return owner
+      }
       let endpoint
       let started = false
       void run({
@@ -119,6 +130,9 @@ test(
       }
       await mark(process.env.SYNERGY_ESCALATION_READY)
 
+      // Keep the real HTTP transport alive until its closed admission is observed.
+      // A fast cleanup can otherwise exit between the failure and the first poll.
+      holdClose = true
       owner.run(() => Storage.current().store.driver.writer.worker.kill())
 
       // Closing admission is the first act of the escalation, so a 503 here is
@@ -130,6 +144,7 @@ test(
         try {
           if ((await fetch(endpoint + "/global/health")).status === 503) {
             await mark(process.env.SYNERGY_ESCALATION_ESCALATED)
+            releaseClose()
             break
           }
         } catch {}
