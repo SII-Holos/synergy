@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test"
 import { Server } from "../../src/server/server"
+import type { ViewEvent } from "../../src/server/view-projection"
 import { GlobalBus } from "@ericsanchezok/synergy-harness/bus/global"
 import { testRuntime } from "../support/runtime"
 
@@ -23,7 +24,14 @@ test("capability negotiation, real multi-client projection and disconnect releas
               leases--
             }
             signal?.addEventListener("abort", dispose, { once: true })
-            const project = () =>
+            const project = (event?: ViewEvent) => {
+              if (
+                event &&
+                (event.scopeID !== interest.scopeID ||
+                  event.payload.type !== "execution.updated" ||
+                  event.payload.properties.sessionID !== interest.sessionID)
+              )
+                return
               send({
                 scopeID: interest.scopeID,
                 payload: {
@@ -38,6 +46,7 @@ test("capability negotiation, real multi-client projection and disconnect releas
                   },
                 },
               })
+            }
             project()
             return { project, dispose }
           },
@@ -88,8 +97,15 @@ test("capability negotiation, real multi-client projection and disconnect releas
           }),
         )
         await wait(() => leases === 1)
+        await wait(() => a.frames.some((frame) => frame.payload.type === "server.view.patch"))
         expect(demands[0]).toEqual(["root"])
         const feed = GlobalBus()
+        for (const [scopeID, type, sessionID] of [
+          ["home", "fixture.unrelated", "session"],
+          ["other-scope", "execution.updated", "session"],
+          ["home", "execution.updated", "other-session"],
+        ] as const)
+          feed.emit("event", { scopeID, payload: { type, properties: { sessionID } } })
         for (let seq = 1; seq <= 30; seq++)
           feed.emit("event", {
             scopeID: "home",
@@ -101,6 +117,11 @@ test("capability negotiation, real multi-client projection and disconnect releas
             },
           })
         await wait(() => b.frames.some((frame) => frame.payload.type === "server.cursor"))
+        await wait(() =>
+          a.frames.some(
+            (frame) => frame.payload.type === "server.view.patch" && frame.payload.properties.revision === 31,
+          ),
+        )
         expect(
           b.frames.filter((frame) => frame.payload.type === "server.cursor").map((frame) => frame.payload.properties),
         ).toEqual([{ epoch: "fixture", fromSeq: 1, toSeq: 30 }])
