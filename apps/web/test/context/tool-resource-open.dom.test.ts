@@ -6,9 +6,10 @@ import { chromium, type Browser, type Page } from "playwright"
 import { createServer, type ViteDevServer } from "vite"
 import solid from "vite-plugin-solid"
 import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
-import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser-core"
+import { BROWSER_PROTOCOL_VERSION, type BrowserSessionPage } from "@ericsanchezok/synergy-browser-core"
 import type { ToolPart } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelTab } from "../../src/plugin/registries/workbench-panel-registry"
+import type { BrowserWorkbenchRoute } from "../../src/components/workspace/browser/browser-workbench-model"
 import type {
   OpenableResource,
   ResourceOpenOptions,
@@ -23,6 +24,7 @@ type Fixture = {
   reads: string[]
   tabs(): WorkbenchPanelTab[]
   active(): string | undefined
+  opened(): boolean
   tool(name: string, input: Record<string, unknown>, metadata: Record<string, unknown>, status: string): void
   availability(value: boolean): void
   owner(id: string, scopeID?: string, url?: string): void
@@ -38,7 +40,8 @@ type Fixture = {
   reopen(): void
   evidence(part: ToolPart): void
   notes(value: { scopeID: string; notes: { id: string }[]; archived?: boolean }[]): void
-  browserPages(value: { id: string; title: string; url: string }[]): void
+  browserPages(value: (Pick<BrowserSessionPage, "id" | "title" | "url"> & Partial<BrowserSessionPage>)[]): void
+  catalog(route: BrowserWorkbenchRoute, loaded?: boolean): void
   sync(value: boolean): void
   revision(): number
   native(
@@ -58,6 +61,7 @@ type Fixture = {
 }
 interface FixtureWindow extends Window {
   fixture: Fixture
+  pendingOpen?: Promise<ResourceOpenResult>
 }
 const resolveUI = createRequire(path.resolve(import.meta.dir, "../../../../packages/ui/package.json"))
 
@@ -77,6 +81,7 @@ beforeAll(async () => {
     import {createSignal} from "solid-js"
     import {createStore} from "solid-js/store"
     import {registerWorkbenchPanel} from ${JSON.stringify(`/@fs/${source}/plugin/registries/workbench-panel-registry.ts`)}
+    import {sameBrowserCatalog} from ${JSON.stringify(`/@fs/${source}/components/workspace/browser/browser-workbench-model.ts`)}
     import {setupI18n} from "@lingui/core"
     const [selection,setSelection]=createSignal({features:["note","browser","blueprint","workbench","plugin-host","mcp","media"]})
     const surfaces=new Map()
@@ -92,6 +97,7 @@ beforeAll(async () => {
     let capabilityDelay=0; const bridges=new Map()
     let notes=[{scopeID:"home",notes:[{id:"note"},{id:"one"}]}],noteDraft,fileDraft
     const route={mode:"scope",scopeID:"project",path_directory:"project"}
+    let catalogRoute=route,catalogLoaded=true
     const [catalog,setCatalog]=createStore({session:{pages:[]}}),[sync,setSync]=createSignal(false)
     const register=()=>[
       registerWorkbenchPanel({id:"notes",label:"Notes",icon:"file",surface:"side",cardinality:"multi",beforeCloseTab:async()=>{throw new Error("An existing draft must not be replaced")}}),
@@ -111,9 +117,10 @@ beforeAll(async () => {
     const openingAttempts=[],openingResults=new Map()
     function openingMode(){disposers.forEach(dispose=>dispose());disposers=[registerWorkbenchPanel({id:"browser",label:"Browser",icon:"globe",surface:"side",cardinality:"multi",openingComponent:()=>null,async resolveTab(init,context){openingAttempts.push(context.requestId);let page=openingResults.get(context.requestId);if(!page){page={id:"unknown-page",url:init.state.url,title:"Created page",status:"active",profileId:"personal"};openingResults.set(context.requestId,page);setCatalog("session","pages",[page]);throw new Error("Native response lost after creation")}return {...init,resourceId:page.id,source:"browser-owner",state:{browserRoute:route,browserURL:page.url}}}})]}
     registerWorkbenchPanel({id:"execution-detail",label:"Details",icon:"file",surface:"side",cardinality:"singleton"})
-    export const fixture=window.fixture={calls,reads,external,controls,nativeEvents,platform:value=>platform=value,openingAttempts,openingMode,native:value=>native=value,features:features=>setSelection(features ? {features} : undefined),tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),
+    export const fixture=window.fixture={calls,reads,external,controls,nativeEvents,platform:value=>platform=value,openingAttempts,openingMode,native:value=>native=value,features:features=>setSelection(features ? {features} : undefined),tabs:()=>workbench.surface("side").tabs(),active:()=>workbench.surface("side").active(),opened:()=>workbench.surface("side").opened(),
       availability(value){disposers.forEach(dispose=>dispose());disposers=value?register():[]},owner(id,scopeID="project",url="http://fixture.test"){setSession(id);setScope(scopeID);setServer(url)},
       browserPages(value){setCatalog("session","pages",value)},sync:setSync,revision:()=>workbench.surface("side").selectionRevision(),
+      catalog(route,loaded=true){catalogRoute=route;catalogLoaded=loaded;const tab=workbench.surface("side").activeTab();workbench.updateTab(tab.id,{state:{...tab.state,browserRoute:route}})},
       capabilityDelay(value){capabilityDelay=value},hold(){hold=true},resolve(){complete?.();complete=undefined},missing(value){missing=value},close(){workbench.surface("side").close()},
       settled(){return pending},
       retarget(resourceId){workbench.updateTab(workbench.surface("side").active(),{resourceId})},
@@ -157,7 +164,7 @@ beforeAll(async () => {
     export const usePluginHost=()=>({resources:{register:()=>()=>{}}})
     export const useLayout=()=>({surface,transferWorkbenchState(){}})
     export const useLocale=()=>({i18n:setupI18n({locale:"en",messages:{en:{}}})})
-    export const browserRoute=route,isSyncEnabled=sync,useBrowserCatalog=()=>({get:async()=>({route,store:catalog}),peek:()=>({route,store:catalog})})
+    export const browserRoute=route,isSyncEnabled=sync,useBrowserCatalog=()=>({get:async requested=>{if(!sameBrowserCatalog(requested,catalogRoute))throw new Error("Wrong browser catalog");if(!catalogLoaded){reads.push("browser-catalog");if(hold){hold=false;await new Promise(resolve=>complete=resolve)}catalogLoaded=true}return {route:catalogRoute,store:catalog}},peek:requested=>catalogLoaded&&sameBrowserCatalog(requested,catalogRoute)?{route:catalogRoute,store:catalog}:undefined})
     export const useConfirm=()=>({ask:async()=>true})
     export const useWorkbenchPanels=()=>({...workbench,openPanel(panelId,options){calls.push({panelId,options});return pending=workbench.openPanel(panelId,options)}})
   `,
@@ -583,16 +590,25 @@ test("a captured tool action cannot open a removed owner or request its resource
 test("message URLs open the native Browser, reuse only their local tab and preserve explicit external intent", async () => {
   await load()
   await page.evaluate(() => (window as unknown as FixtureWindow).fixture.native("local"))
-  const target = "https://github.com/example/repo/blob/abc/index.ts#L2-L8"
+  const link = page.locator("#native-link")
+  const target = (await link.getAttribute("href"))!
   const open = (url: string, prefer?: ResourceOpenOptions["prefer"]) =>
     page.evaluate(
       ({ url, prefer }) => (window as unknown as FixtureWindow).fixture.open({ kind: "url", url }, { prefer }),
       { url, prefer },
     )
-  expect(await open(target)).toEqual({ status: "opened" })
+  await link.click()
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).fixture.tabs().length === 1)
   expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(1)
-  expect(await open(target)).toEqual({ status: "opened" })
+  const original = (await facts()).tabs[0]!.id
+  await page.evaluate(() => (window as unknown as FixtureWindow).fixture.close())
+  await link.focus()
+  await link.press("Enter")
+  await page.waitForFunction(() => (window as unknown as FixtureWindow).fixture.opened())
   expect((await facts()).tabs.filter((tab) => tab.panelId === "browser")).toHaveLength(1)
+  expect((await facts()).active).toBe(original)
+  expect((await facts()).calls).toHaveLength(1)
+  expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.controls)).toEqual([])
   expect(await open(target, "external")).toEqual({ status: "dispatched" })
   expect(await page.evaluate(() => (window as unknown as FixtureWindow).fixture.external)).toEqual([target])
   expect(await open("mailto:person@example.test")).toEqual({ status: "dispatched" })
@@ -831,6 +847,151 @@ test("different fragments navigate one suitable current tab while query targets 
     await f.open({ kind: "url", url: "https://example.test/article?view=source#second" }, { newTab: true })
   })
   expect((await facts()).tabs).toHaveLength(3)
+})
+
+test("message URLs prefer an exact tab and reuse duplicate pages within one login profile", async () => {
+  await load()
+  const result = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.native("local")
+    const target = { kind: "url" as const, url: "https://example.test/article#first" }
+    await f.open(target)
+    const first = f.active()
+    await f.open({ ...target, url: "https://example.test/article#second" }, { newTab: true })
+    await f.open(target)
+    const exact = { active: f.active(), tabs: f.tabs().length, requests: f.calls.length }
+    await f.open(target, { newTab: true })
+    const duplicate = f.active()
+    await f.open(target)
+    const selected = { active: f.active(), tabs: f.tabs().length, requests: f.calls.length }
+    await f.open({ ...target, url: "https://example.test/other" })
+    await f.open(target)
+    return { first, duplicate, exact, selected, fallback: f.active(), tabs: f.tabs().length, controls: f.controls }
+  })
+  expect(result.exact).toEqual({ active: result.first, tabs: 2, requests: 2 })
+  expect(result.selected).toEqual({ active: result.duplicate, tabs: 3, requests: 3 })
+  expect(result.fallback).toBe(result.first)
+  expect(result.tabs).toBe(4)
+  expect(result.controls).toEqual([])
+})
+
+test("message URLs reuse a page loading the target without selecting its previous address", async () => {
+  await load()
+  const result = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.native("local")
+    const target = { kind: "url" as const, url: "https://example.test/slow" }
+    await f.open(target)
+    const first = f.tabs()[0]!
+    f.browserPages([
+      {
+        id: first.resourceId!,
+        title: "Previous page",
+        url: "https://example.test/previous",
+        status: "active",
+        profileId: "personal",
+        navigation: {
+          id: "navigation",
+          generation: 1,
+          revision: 1,
+          requestedURL: target.url,
+          phase: "loading",
+          slow: true,
+        },
+      },
+    ])
+    f.select()
+    await f.open(target)
+    const loading = { active: f.active(), tabs: f.tabs().length, requests: f.calls.length }
+    await f.open({ ...target, url: "https://example.test/previous" })
+    return { first: first.id, loading, active: f.active(), tabs: f.tabs().length, controls: f.controls }
+  })
+  expect(result.loading).toEqual({ active: result.first, tabs: 1, requests: 1 })
+  expect(result.active).not.toBe(result.first)
+  expect(result.tabs).toBe(2)
+  expect(result.controls).toEqual([])
+})
+
+test("message URL reuse does not choose between different login profiles or other tasks' pages", async () => {
+  await load()
+  const result = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.native("local")
+    const target = { kind: "url" as const, url: "https://example.test/account" }
+    await f.open(target)
+    await f.open(target, { newTab: true })
+    f.browserPages(
+      f.tabs().map((tab, index) => ({
+        id: tab.resourceId!,
+        title: "Account",
+        url: target.url,
+        status: "active",
+        profileId: index ? "work" : "personal",
+      })),
+    )
+    await f.open(target)
+    const profiles = f.tabs().length
+    f.owner("other-session")
+    await f.open(target)
+    return { profiles, tabs: f.tabs().length, requests: f.calls.length, controls: f.controls }
+  })
+  expect(result).toEqual({ profiles: 3, tabs: 1, requests: 4, controls: [] })
+})
+
+test("message URLs load an existing tab's own catalog before deciding to create a page", async () => {
+  await load()
+  const result = await page.evaluate(async () => {
+    const f = (window as unknown as FixtureWindow).fixture
+    f.native("local")
+    const target = { kind: "url" as const, url: "https://example.test/existing" }
+    await f.open(target)
+    const first = f.active()
+    f.catalog({ mode: "session", sessionID: "session", scopeID: "project", path_directory: "project" }, false)
+    f.select()
+    await f.open(target)
+    return {
+      first,
+      active: f.active(),
+      tabs: f.tabs().length,
+      requests: f.calls.length,
+      reads: f.reads,
+      controls: f.controls,
+    }
+  })
+  expect(result.active).toBe(result.first)
+  expect(result.tabs).toBe(1)
+  expect(result.requests).toBe(1)
+  expect(result.reads.filter((read) => read === "browser-catalog")).toHaveLength(1)
+  expect(result.controls).toEqual([])
+})
+
+test("late Browser reuse lookup cannot override a newer task or tab selection", async () => {
+  for (const change of ["session", "selection"] as const) {
+    await load()
+    await page.evaluate(async () => {
+      const f = (window as unknown as FixtureWindow).fixture
+      f.native("local")
+      const target = { kind: "url" as const, url: "https://example.test/existing" }
+      await f.open(target)
+      f.catalog({ mode: "scope", scopeID: "project", path_directory: "project" }, false)
+      f.hold()
+      ;(window as unknown as FixtureWindow).pendingOpen = f.open(target)
+    })
+    await page.waitForFunction(() => (window as unknown as FixtureWindow).fixture.reads.includes("browser-catalog"))
+    const result = await page.evaluate(async (change) => {
+      const f = (window as unknown as FixtureWindow).fixture
+      if (change === "session") f.owner("other-session")
+      else f.select()
+      const active = f.active()
+      f.resolve()
+      const outcome = await (window as unknown as FixtureWindow).pendingOpen
+      return { active, after: f.active(), requests: f.calls.length, tabs: f.tabs().length, outcome }
+    }, change)
+    expect(result.after).toBe(result.active)
+    expect(result.requests).toBe(1)
+    expect(result.tabs).toBe(change === "session" ? 0 : 1)
+    expect(result.outcome).toEqual({ status: "cancelled" })
+  }
 })
 
 test("anonymous URL preview uses one lazy request, never opens a page, and respects capability removal", async () => {

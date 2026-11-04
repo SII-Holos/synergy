@@ -36,6 +36,8 @@ Use the workbench's semantic theme tokens, shared controls, localized descriptor
 
 ## Verification
 
+For message-link reuse, exercise duplicate tabs within one profile, exact versus fragment matches, in-progress navigation and unloaded catalogs for existing tabs. Assert stable tab/page identity and no page creation or navigation for an exact match. Preserve explicit new-tab intent, profile ambiguity, task isolation and newer human selection while metadata is loading.
+
 For navigation changes, distinguish native initialization, command acknowledgement, document progress and renderer loss. Test a real response slower than the CDP command budget, stop during loading, overlapping navigations, subframe failure and an unresolved CDP command with an unsaved form. Assert stable native identity after timeout and no automatic effect replay. Sample link-opening frames from the initiating click: the requested address must survive preparation without a New tab frame.
 
 For shell lifecycle changes, verify full-document reload and renderer exit release native parent membership while same-document and subframe navigation preserve it. Reattach after the next shell is ready and verify the website identity and unsaved form survive. Inspect the actual native window as well as DOM screenshots; renderer-only capture can omit overlays. Include the peer-tab title in first-frame sampling and exercise catalog synchronization before document commit.
