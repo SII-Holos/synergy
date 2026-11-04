@@ -25,6 +25,8 @@ test("resumes a failed candidate with verified native artifacts and release-only
       "script/release/nodes/package-binary-assets.ts",
       "script/release/dev.ts",
       ".github/workflows/release.yml",
+      ".github/workflows/ci.yml",
+      "script/ci.ts",
       "script/changelog.ts",
       "test/script/changelog.test.ts",
       "docs/operations/desktop-release.md",

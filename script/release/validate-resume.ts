@@ -16,7 +16,9 @@ interface ResumeJob {
 }
 
 const recoverableFiles = new Set([
+  ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
+  "script/ci.ts",
   "script/changelog.ts",
   "script/release/stable-start.ts",
   "script/release/dev.ts",

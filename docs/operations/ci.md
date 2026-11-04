@@ -24,6 +24,8 @@ PR 使用 base/head 两侧的 workspace、测试和静态资源导入关系计�
 
 ## 任务和报告
 
+macOS Workspace、签名检查和 Desktop 发行打包使用 `macos-26` ARM64 托管镜像。镜像版本是构建与验证环境，不改变 Desktop 的最低安装版本。Runner 分配失败仍使必需检查失败；镜像切换必须重新取得当前提交的完整验证结果。取舍见 [macOS 托管镜像决策](../decisions/implemented/process/2026-11-05-pin-macos-hosted-runner-image.md)。
+
 Linux browser units retain the hosted image's browser libraries and install `fonts-wqy-zenhei` for Chinese glyph coverage. Localized pixel and geometry assertions run against real glyphs rather than missing-glyph boxes; font readiness alone is not coverage evidence. See [localized browser fonts](../decisions/implemented/testing/2026-10-24-localized-browser-fonts.md).
 
 普通包测试执行一次，同时产生 JUnit、lcov 和批次耗时。Harness、Web、Presets、UI、Local Runtime 分别使用 4、6、4、2、2 个分区，按稳定批次的历史耗时均衡分配；Web/UI 的批次直接使用各包 `script/test-options.ts` 和执行器共同的 `frontendBatches`；后端使用其共享批次执行器。原有批次与特殊隔离文件保持完整，执行清单逐文件核对，无遗漏或重复。每批拥有独立 Home 和 fixture 根。UI DOM 夹具与 Web 的 Workbench、Agenda、Office、Decision、Settings 浏览器夹具复用经过校验的静态编译；每个测试保留独立 DOM、页面和可变状态，alias/stub 配置参与缓存身份。真实 sandbox、macOS/Windows 原生 Workspace、PostgreSQL 16/17/18 与安装产物保持独立任务。Windows 原生与 Desktop 分成可分别重跑的任务，同平台串行；原生结果生成 JUnit 与 lcov，要求两个 Local Runtime 分区的完整基线共同计算原有覆盖率门槛。Local Runtime 分区还依赖完整 CLI 与 Presets suite，后两者为 CLI Scope、组件与 worker 注册、Skill 摘要和 Workspace 迁移提供跨包行为覆盖；原生任务间接选中的基线也必须保留这些报告。
