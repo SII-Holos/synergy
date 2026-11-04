@@ -453,7 +453,18 @@ test("a live event during snapshot loading overlays the older response and retai
       properties: { ...update, revision: 3, upserts: [row(4)] },
     })
     expect(controller.state.rows.map((node) => node.id)).toEqual(["1", "2", "3"])
-    expect(controller.state.pending).toBe(1)
+    expect(controller.state.pendingIds).toEqual(["4"])
+    event.emit("execution.updated", {
+      type: "execution.updated",
+      properties: { ...update, revision: 4, upserts: [row(4)] },
+    })
+    expect(controller.state.pendingIds).toEqual(["4"])
+    event.emit("execution.updated", {
+      type: "execution.updated",
+      properties: { ...update, revision: 5, upserts: [], removed: ["4"] },
+    })
+    expect(controller.state.rows.map((node) => node.id)).toEqual(["1", "2", "3"])
+    expect(controller.state.pendingIds).toEqual([])
     reconnect(1)
     await tick()
     expect(urls.at(-1)?.searchParams.get("anchor")).toBe("2")
@@ -741,6 +752,100 @@ test("a summary-only gap during a pending page recovers the window and notifies 
     await tick()
     expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3"])
     expect(setup.trajectory.state.loading).toBe(false)
+  } finally {
+    setup.dispose()
+  }
+})
+
+test("shrinking a history window drops older rows", async () => {
+  const pending: ((response: Response) => void)[] = []
+  const [cap, setCap] = createSignal(5)
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.local",
+    fetch: Object.assign(() => new Promise<Response>((resolve) => pending.push(resolve)), {
+      preconnect: fetch.preconnect,
+    }),
+  })
+  const setup = createRoot((dispose) => ({
+    dispose,
+    trajectory: createExecutionTrajectory({
+      sdk: { client, event: createGlobalEmitter<{ [key in Event["type"]]: Extract<Event, { type: key }> }>() },
+      sessionID: () => "root",
+      runID: () => "",
+      actor: () => "",
+      kind: () => "",
+      status: () => "",
+      query: () => "",
+      anchor: () => "",
+      connectionVersion: () => 0,
+      capacity: cap,
+    }),
+  }))
+  try {
+    await tick()
+    pending[0]!(
+      Response.json({
+        sessionID: "root",
+        revision: 1,
+        total: 5,
+        items: [1, 2, 3, 4, 5].map((id) => row(id)),
+        nextCursor: "later",
+        previousCursor: null,
+      }),
+    )
+    await tick()
+    await tick()
+    expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["1", "2", "3", "4", "5"])
+    setCap(3)
+    await tick()
+    expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3", "4", "5"])
+    expect(setup.trajectory.state.previous).not.toBeNull()
+  } finally {
+    setup.dispose()
+  }
+})
+
+test("a history page cap retains the newer tail", async () => {
+  const pending: ((response: Response) => void)[] = []
+  const client = createSynergyClient({
+    baseUrl: "http://fixture.local",
+    fetch: Object.assign(() => new Promise<Response>((resolve) => pending.push(resolve)), {
+      preconnect: fetch.preconnect,
+    }),
+  })
+  const setup = createRoot((dispose) => ({
+    dispose,
+    trajectory: createExecutionTrajectory({
+      sdk: { client, event: createGlobalEmitter<{ [key in Event["type"]]: Extract<Event, { type: key }> }>() },
+      sessionID: () => "root",
+      runID: () => "",
+      actor: () => "",
+      kind: () => "",
+      status: () => "",
+      query: () => "",
+      anchor: () => "",
+      connectionVersion: () => 0,
+      capacity: () => 3,
+    }),
+  }))
+  try {
+    await tick()
+    pending[0]!(
+      Response.json({
+        sessionID: "root",
+        revision: 1,
+        total: 5,
+        items: [1, 2, 3, 4, 5].map((id) => row(id)),
+        nextCursor: "later",
+        previousCursor: null,
+      }),
+    )
+    await tick()
+    await tick()
+    expect(setup.trajectory.state.history).toBe(true)
+    expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3", "4", "5"])
+    expect(setup.trajectory.state.previous).not.toBeNull()
+    expect(setup.trajectory.state.pendingIds).toEqual([])
   } finally {
     setup.dispose()
   }

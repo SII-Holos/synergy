@@ -3,6 +3,10 @@ import { useLingui } from "@lingui/solid"
 import type { MessageDescriptor } from "@lingui/core"
 import type { CortexTask } from "@ericsanchezok/synergy-sdk/client"
 import { useSDK } from "@/context/sdk"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { useViewActivity } from "@/context/view-residency"
+import { runtimeFeatureAvailable } from "../runtime-features"
 import { useSessionDataView } from "@/context/session-data-view"
 import { requestErrorMessage } from "@/utils/error"
 import { translateDescriptor } from "@/locales/translate"
@@ -34,6 +38,15 @@ export function ProcessEventDetailWorkbenchContent(
   props: WorkbenchPanelContentProps & { state: ExecutionDetailState },
 ) {
   const sdk = useSDK()
+  const { capabilities } = useGlobalSDK()
+  const workbench = useWorkbenchPanels()
+  const active = useViewActivity()
+  const summaryAvailable = () =>
+    active() &&
+    props.state.kind === "compaction" &&
+    props.state.server === sdk.url &&
+    props.state.scope === sdk.scopeKey &&
+    runtimeFeatureAvailable("panel", "long-term-summary", capabilities.has)
   const view = useSessionDataView()
   const data = useData()
   const { _, i18n } = useLingui()
@@ -236,13 +249,24 @@ export function ProcessEventDetailWorkbenchContent(
         </>
       }
       actions={
-        <Show when={sourceID()}>
-          {(id) => (
-            <Button variant="ghost" size="small" onClick={() => data.navigateToSession?.(id())}>
-              {_({ id: "session.process.openSource", message: "Open source session" })}
+        <>
+          <Show when={summaryAvailable()}>
+            <Button
+              variant="ghost"
+              size="small"
+              onClick={() => summaryAvailable() && void workbench.openPanel("long-term-summary")}
+            >
+              {_({ id: "session.longTermSummary.viewCurrent", message: "View current long-term summary" })}
             </Button>
-          )}
-        </Show>
+          </Show>
+          <Show when={sourceID()}>
+            {(id) => (
+              <Button variant="ghost" size="small" onClick={() => data.navigateToSession?.(id())}>
+                {_({ id: "session.process.openSource", message: "Open source session" })}
+              </Button>
+            )}
+          </Show>
+        </>
       }
     >
       {(view) => (

@@ -42,7 +42,16 @@ test("default feature plan retains stable owners and excludes experimental modul
       .filter((item) => item.maturity === "experimental")
       .map((item) => item.id)
       .sort(),
-  ).toEqual(["boss", "kanban", "lattice"])
+  ).toEqual(["boss", "kanban", "lattice", "session-long-term-memory"])
+  expect(
+    FeatureSelection.status(plan, [], []).find((feature) => feature.id === "session-long-term-memory"),
+  ).toMatchObject({
+    definition: { owner: "local-runtime", maturity: "experimental", activation: "live" },
+    selected: false,
+    available: true,
+    enabled: false,
+    pendingRestart: false,
+  })
 })
 
 test("fresh and upgraded homes default off; saved choices apply only after restart and preserve dormant data", async () => {
@@ -58,9 +67,8 @@ test("fresh and upgraded homes default off; saved choices apply only after resta
       ScopeContext.provide({
         scope: Scope.home(),
         fn: async () => {
-          expect(Features.enabled("boss")).toBe(false)
-          expect(Features.enabled("lattice")).toBe(false)
-          expect(Features.enabled("kanban")).toBe(false)
+          for (const id of ["boss", "lattice", "kanban", "session-long-term-memory"])
+            expect(Features.enabled(id)).toBe(false)
           expect((await Agent.list()).map((agent) => agent.name)).not.toContain("boss-synergy")
           expect(await ToolRegistry.ids()).not.toContain("boss_assign")
           expect(WorkflowKindRegistry.get("lattice")).toBeUndefined()
@@ -69,6 +77,7 @@ test("fresh and upgraded homes default off; saved choices apply only after resta
           expect(capabilities.features).toContain("workbench")
           expect(capabilities.features).toContain("blueprint")
           expect(capabilities.features).not.toContain("kanban")
+          expect(capabilities.features).not.toContain("session-long-term-memory")
           await Storage.write(["fixture", "dormant-lattice"], { retained: "history" })
           const response = await Server.App().request("/config/domains/features", {
             method: "PATCH",
@@ -96,6 +105,8 @@ test("fresh and upgraded homes default off; saved choices apply only after resta
         scope: Scope.home(),
         fn: async () => {
           for (const id of ["boss", "lattice", "kanban"]) expect(Features.enabled(id)).toBe(true)
+          expect(Features.enabled("session-long-term-memory")).toBe(false)
+          expect(Server.features()).not.toContain("session-long-term-memory")
           expect((await Config.global()).boss).toMatchObject({ enabled: true, identityText: "preserved" })
           expect(await Storage.read(["fixture", "dormant-lattice"])).toEqual({ retained: "history" })
           expect(await ToolRegistry.ids()).toContain("boss_assign")

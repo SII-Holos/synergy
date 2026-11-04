@@ -20,6 +20,13 @@ const originalResolveRoleModel = Provider.resolveRoleModel
 const originalStream = LLM.stream
 const originalTakeTextStream = LLM.takeTextStream
 const originalSetTimeout = globalThis.setTimeout
+const completeUsage = {
+  inputTokens: 10,
+  outputTokens: 5,
+  totalTokens: 15,
+  inputTokenDetails: { noCacheTokens: undefined, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+  outputTokenDetails: { textTokens: undefined, reasoningTokens: undefined },
+}
 
 afterEach(() =>
   runtime.run(() => {
@@ -51,6 +58,124 @@ function call(overrides: Partial<AgentCall.TextInput> = {}) {
 }
 
 describe("AgentCall", () => {
+  test.each(["length", "content-filter", "tool-calls", "error", "other"] as const)(
+    "rejects %s text only when complete output is required",
+    (finishReason) =>
+      runtime.run(async () => {
+        installAgent()
+        using stream = spyOn(LLM, "stream").mockImplementation(
+          async () =>
+            ({
+              fullStream: (async function* () {
+                yield { type: "text-delta", id: "text", text: "# Partial summary\n" }
+                yield { type: "finish-step", finishReason, usage: completeUsage }
+                yield { type: "finish" }
+              })(),
+              usage: Promise.resolve(completeUsage),
+            }) as never,
+        )
+        await expect(call({ requireComplete: true })).rejects.toMatchObject({
+          name: "AgentCallError",
+          code: "incomplete_output",
+        })
+        await expect(call()).resolves.toMatchObject({ text: "# Partial summary\n" })
+        await expect(call({ requireComplete: false })).resolves.toMatchObject({ text: "# Partial summary\n" })
+        expect(stream).toHaveBeenCalledTimes(3)
+      }),
+  )
+
+  test.each([" \n# Memory\r\n\n- Keep **Markdown**.  \n\n", " \t\r\n\n", ""])(
+    "preserves complete text byte-for-byte, including whitespace: %j",
+    (text) =>
+      runtime.run(async () => {
+        installAgent()
+        using stream = spyOn(LLM, "stream").mockImplementation(
+          async () =>
+            ({
+              fullStream: (async function* () {
+                yield { type: "text-delta", id: "text", text: text.slice(0, 3) }
+                yield { type: "text-delta", id: "text", text: text.slice(3) }
+                yield { type: "finish-step", finishReason: "stop", usage: completeUsage }
+                yield { type: "finish" }
+              })(),
+              usage: Promise.resolve(completeUsage),
+            }) as never,
+        )
+        const result = await call({ requireComplete: true })
+        expect(result.text).toBe(text)
+        expect(result.usage).toEqual(completeUsage)
+        expect(result.model).toMatchObject({ providerID: "test", id: "model" })
+        expect(result.toolCalls).toBeUndefined()
+      }),
+  )
+
+  test.each(["neither", "finish-only", "stop-only"])("rejects missing completion evidence: %s", (completion) =>
+    runtime.run(async () => {
+      installAgent()
+      using stream = spyOn(LLM, "stream").mockImplementation(
+        async () =>
+          ({
+            fullStream: (async function* () {
+              yield { type: "text-delta", id: "text", text: "partial" }
+              if (completion === "stop-only") yield { type: "finish-step", finishReason: "stop", usage: completeUsage }
+              if (completion === "finish-only") yield { type: "finish", finishReason: "stop" }
+            })(),
+            usage: Promise.resolve(completeUsage),
+          }) as never,
+      )
+      await expect(call({ requireComplete: true })).rejects.toMatchObject({ code: "incomplete_output" })
+      await expect(call()).resolves.toMatchObject({ text: "partial" })
+      expect(stream).toHaveBeenCalledTimes(2)
+    }),
+  )
+
+  test.each([
+    { type: "tool-input-start", id: "tool", toolName: "unexpected" },
+    { type: "tool-input-delta", id: "tool", delta: "{" },
+    { type: "tool-input-end", id: "tool" },
+    { type: "tool-call", toolCallId: "tool", toolName: "unexpected", input: {} },
+    { type: "tool-result", toolCallId: "tool" },
+    { type: "tool-error", toolCallId: "tool", toolName: "unexpected", error: "invalid tool" },
+  ])("rejects tool events even with a normal stop: %j", (event) =>
+    runtime.run(async () => {
+      installAgent()
+      using stream = spyOn(LLM, "stream").mockImplementation(
+        async () =>
+          ({
+            fullStream: (async function* () {
+              yield { type: "text-delta", id: "text", text: "partial" }
+              yield event
+              yield { type: "finish-step", finishReason: "stop", usage: completeUsage }
+              yield { type: "finish" }
+            })(),
+            usage: Promise.resolve(completeUsage),
+          }) as never,
+      )
+      await expect(call({ requireComplete: true })).rejects.toMatchObject({ code: "incomplete_output" })
+      await expect(call()).resolves.toMatchObject({ text: "partial" })
+      expect(stream).toHaveBeenCalledTimes(2)
+    }),
+  )
+
+  test("rejects aborted complete text without returning a partial result and disposes the stream", () =>
+    runtime.run(async () => {
+      installAgent()
+      let disposed = false
+      using stream = spyOn(AgentTurn, "stream").mockResolvedValue({
+        fullStream: (async function* () {
+          yield { type: "text-delta" as const, id: "text", text: "partial" }
+          yield { type: "abort" as const }
+        })(),
+        usage: Promise.resolve(undefined),
+        async dispose() {
+          disposed = true
+        },
+      })
+      await expect(call({ requireComplete: true })).rejects.toMatchObject({ code: "cancelled" })
+      expect(stream).toHaveBeenCalledTimes(1)
+      expect(disposed).toBe(true)
+    }))
+
   test("collects a bounded forced output Tool without executing a domain action", () =>
     runtime.run(async () => {
       installAgent()
@@ -206,23 +331,32 @@ describe("AgentCall", () => {
       expect(aborted).toBe(true)
     }))
 
-  test("settles timeout and caller cancellation even when a stream stalls", () =>
-    runtime.run(async () => {
-      installAgent()
-      ;(LLM.stream as any) = mock(async () => ({
-        textStream: (async function* () {
-          yield "partial"
-          await new Promise(() => {})
-        })(),
-      }))
-      await expect(call({ timeoutMs: 20 })).rejects.toMatchObject({ code: "timeout" })
+  test.each([false, true])(
+    "settles timeout and caller cancellation even when a stream stalls (requireComplete=%j)",
+    (requireComplete) =>
+      runtime.run(async () => {
+        installAgent()
+        let partial = Promise.withResolvers<void>()
+        using stream = spyOn(LLM, "stream").mockImplementation(
+          async () =>
+            ({
+              textStream: (async function* () {
+                yield "partial"
+                partial.resolve()
+                await new Promise(() => {})
+              })(),
+            }) as never,
+        )
+        await expect(call({ timeoutMs: 20, requireComplete })).rejects.toMatchObject({ code: "timeout" })
 
-      const controller = new AbortController()
-      const pending = call({ signal: controller.signal })
-      await Bun.sleep(0)
-      controller.abort()
-      await expect(pending).rejects.toMatchObject({ code: "cancelled" })
-    }))
+        partial = Promise.withResolvers<void>()
+        const controller = new AbortController()
+        const pending = call({ signal: controller.signal, requireComplete })
+        await partial.promise
+        controller.abort()
+        await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+      }),
+  )
 
   test("drains a late-starting stream before returning a timeout", () =>
     runtime.run(async () => {
@@ -413,15 +547,20 @@ describe("AgentCall recovery budget", () => {
           },
         }
       })
-      await expect(call({ retries: 2 })).rejects.toBe(failure)
+      await expect(call({ ownership: "operation", requireComplete: true, retries: 2 })).rejects.toBe(failure)
       expect(attempts).toBe(3)
       expect(disposed).toBe(2)
     }),
   )
 
-  test.each(["ETIMEOUT", "ENOTFOUND"])(
-    "retries a failed %s stream with a fresh output buffer and no SDK budget",
-    (code) =>
+  test.each([
+    ["ETIMEOUT", false],
+    ["ETIMEOUT", true],
+    ["ENOTFOUND", false],
+    ["ENOTFOUND", true],
+  ] as const)(
+    "retries a failed %s stream with a fresh output buffer and no SDK budget (requireComplete=%j)",
+    (code, requireComplete) =>
       runtime.run(async () => {
         installAgent()
         using delay = spyOn(SessionRetry, "delay").mockReturnValue(0)
@@ -438,6 +577,8 @@ describe("AgentCall recovery budget", () => {
                   type: "error" as const,
                   error: Object.assign(new TypeError("fetch failed"), { cause: { code } }),
                 }
+              yield { type: "finish-step" as const, finishReason: "stop" as const, usage: completeUsage }
+              yield { type: "finish" as const }
             })(),
             usage: Promise.resolve(undefined),
             async dispose() {
@@ -445,7 +586,7 @@ describe("AgentCall recovery budget", () => {
             },
           }
         })
-        await expect(call()).resolves.toMatchObject({ text: "complete" })
+        await expect(call({ ownership: "operation", requireComplete })).resolves.toMatchObject({ text: "complete" })
         expect(attempts).toBe(2)
         expect(disposed).toBe(2)
       }),
@@ -489,6 +630,8 @@ describe("AgentCall recovery budget", () => {
       })
       await expect(call()).rejects.toBe(failure)
       expect(attempts).toBe(1)
+      await expect(call({ ownership: "operation", requireComplete: true })).rejects.toBe(failure)
+      expect(attempts).toBe(2)
     }))
 
   test("the original deadline covers backoff and all attempts", () =>
@@ -502,6 +645,8 @@ describe("AgentCall recovery budget", () => {
       })
       await expect(call({ timeoutMs: 50 })).rejects.toMatchObject({ code: "timeout" })
       expect(attempts).toBe(1)
+      await expect(call({ requireComplete: true, timeoutMs: 50 })).rejects.toMatchObject({ code: "timeout" })
+      expect(attempts).toBe(2)
     }))
 })
 
@@ -516,9 +661,12 @@ test("an independent derived call does not append to its terminal source rollout
       const stream = spyOn(LLM, "stream").mockImplementation(
         async () =>
           ({
-            textStream: (async function* () {
-              yield "derived"
+            fullStream: (async function* () {
+              yield { type: "text-delta", id: "text", text: "derived" }
+              yield { type: "finish-step", finishReason: "stop", usage: completeUsage }
+              yield { type: "finish" }
             })(),
+            usage: Promise.resolve(completeUsage),
           }) as never,
       )
       try {
@@ -526,6 +674,7 @@ test("an independent derived call does not append to its terminal source rollout
           RolloutContext.provide({ owner: source.owner, runID: rootID }, () =>
             call({
               ownership: "operation",
+              requireComplete: true,
               userMetadata: { sourceMessageID: rootID },
             }),
           ),

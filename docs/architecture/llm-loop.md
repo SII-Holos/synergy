@@ -6,7 +6,7 @@ The session LLM loop turns one root task into an ordered sequence of model calls
 
 The loop is not an in-memory conversation object. Durable messages and session state remain authoritative; the runtime is a single-writer execution window over that state.
 
-Execution admission and per-turn input preparation use the internal `preparing` phase. The `queued_agent` phase begins only at AgentTurn enqueue, and `running_agent` begins at its actual start callback. Repair, file-baseline and model-input spans measure preparation separately from worker wait; historical phase samples are not rewritten.
+Execution admission and per-turn input preparation use the internal `preparing` phase. The `waiting_resources` phase describes resource admission; `queued_agent` begins at admitted Worker dispatch, and `running_agent` begins at its actual start callback. Repair, file-baseline and model-input spans measure preparation separately from worker wait; historical phase samples are not rewritten.
 
 ## Entry and Ownership
 
@@ -78,7 +78,7 @@ Release-triggered memory work never blocks the Linux turn settlement path. Turn 
 
 ## Model execution isolation
 
-Runtime composition can register `ModelExecution.register("in-process")`; otherwise production model calls use isolated Agent workers. Both modes pass through `AgentTurn`, provider preparation, rollout recording and retry coordination. Same-process execution bounds concurrent calls and queued bytes, preserves each call's asynchronous context and credentials, and reads usage after stream consumption to preserve backpressure. Cancellation and shutdown wait for stream disposal; a failed disposal is a shutdown error. A provider stream that is already terminal with an error releases its slot without closing admission to independent requests. Worker RSS statistics remain zero for same-process execution because that memory belongs to the embedding process. See the [execution selection decision](../decisions/implemented/architecture/2026-10-09-select-production-model-execution-per-runtime.md).
+Runtime composition can register `ModelExecution.register("in-process")`; otherwise production model calls use isolated Agent workers. Both modes pass through `AgentTurn`, provider preparation, rollout recording and retry coordination. Both execution modes share resource admission in AgentTurn. Same-process execution owns stream readers without another admission queue, preserves each call's asynchronous context and credentials, and reads usage after stream consumption to preserve backpressure. Cancellation and shutdown wait for stream disposal; a failed disposal is a shutdown error. A provider stream that is already terminal with an error releases its slot without closing admission to independent requests. Worker RSS statistics remain zero for same-process execution because that memory belongs to the embedding process. See the [execution selection decision](../decisions/implemented/architecture/2026-10-09-select-production-model-execution-per-runtime.md).
 
 ## Agent and Model Resolution
 
@@ -151,6 +151,7 @@ Prompt assembly is ordered from stable to volatile to maximize provider cache re
 | Cortex context              | Parent task and delegated execution context.                                     |
 | Workflow context            | Plan, Lattice, Light Loop, or BlueprintLoop execution/audit contract.            |
 | Recall                      | Loop-stable Library memory and experience context.                               |
+| Session long-term summary   | Current Session-owned L, refreshed before each model request when selected.      |
 | Environment                 | Scope, workspace, platform, date, session, endpoint, and worktree facts.         |
 | Diagnostics and reminders   | Git health, coauthor reminder, Agenda wake-ups, Cortex status, and elapsed time. |
 
@@ -324,6 +325,16 @@ External-agent adapters cannot supply a native prepared prompt snapshot. Their d
 A minimum atomic prefix that cannot fit, an empty or truncated summary, prohibited tool output, or a summary without compression benefit never establishes a new boundary. The last committed coverage and remaining history stay authoritative. Token estimation does not authorize dropping unread messages. See the [prefix coverage decision](../decisions/implemented/bug-fix/2026-10-26-compaction-prefix-coverage.md).
 
 Optional Codex remote compaction is controlled by `compaction.codexRemote`, defaults off, and does not replace the authoritative local summary. Its concurrent call consumes the same selected range as the local summary. Shrinking that range cancels and drains its prior remote call. Version-3 artifacts bind to the committed coverage cursor; legacy unbound artifacts remain stored but are ineligible for replay. Replay preserves the boundary root and unprocessed tail outside the replacement. Its attachment lifecycle remains separate from native local prompt reuse. Preserved request content is intended to retain prefix-reuse eligibility; it does not establish a provider cache hit or latency, token-cost, or performance savings.
+
+### Session long-term summary
+
+The experimental, live `session-long-term-memory` behavior leaves the local compaction summary S in its existing path and starts a separate L update alongside it. The invoke snapshots this choice once and carries it into explicit, automatic and provider-overflow compaction. Both calls are awaited; they may select the same model, but do not share a model response, retry loop or success transaction. An L provider failure retains a still-valid preceding L and review progress without rerunning or discarding successful S. A previously invalidated source prefix is rebuilt instead of restoring its untrusted summary. A successful L remains committed if S fails. Root cancellation reaches both calls. Recording errors, storage-integrity or ownership failures, an unavailable store and an unknown commit result propagate through both the coordinator and native invoke catch; they are not downgraded to an optional model failure.
+
+L uses the hidden `session-long-term-memory` agent through `AgentCall.text` with complete-text verification. It returns only full Markdown, reproducing the previous body exactly when unchanged; no JSON action or no-change marker is used. L normally reserves the output allowance from the existing `PromptBudgeter` capacity calculation. If that full reservation alone would exclude an otherwise valid old L, it measures a fitting evidence group and requests the largest remaining native output allowance, still allowing a complete rewrite. There is no separate character ceiling or arbitrary half-window quota. Original text is segmented without dropping characters when a request cannot fit. Incomplete output, unavailable original tool evidence, an unfinished tool observation or an indivisible over-window item fails the L update without advancing its progress.
+
+The L review cursor is distinct from S coverage and excludes derived summaries and system control records. Shrinking S's fitting prefix does not silently shrink L's independent evidence review. `SessionLongTermMemory.update()` is callable independently; this integration schedules it at compaction, not on every turn or through another workflow. The [Session state reference](session-and-messages.md#session-long-term-summary) defines original-history reads, publication checks and lifecycle handling.
+
+Each subsequent model preparation reads the current L and places it in the existing budgeted advisory context. Ordinary provider layouts use late-system context; Codex uses its durable state-source update mechanism. Compaction can therefore refresh L within the same root without waiting for another user message or invalidating the Library recall cache. An unselected experiment adds no L call or empty source observation; disabling preserves stored L for later re-enablement.
 
 ### Anchor and continuation
 

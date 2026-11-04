@@ -6,6 +6,8 @@ This reference defines first-party feature availability. Product experiments are
 
 `FeatureDefinition` in Util defines an ID, owner, maturity (`experimental` or `stable`), activation (`live` or `restart`), name, description and optional component binding. A component binding requires restart activation. A feature without a component binding can select a behavior inside its existing owner. Each package declares its features in `src/features.ts`, independently of executable registration. Components are classified as product, foundation or bridge; product components require declarations. `feature:gen` validates declarations and generates package metadata and Web translation descriptors; `feature:check` prevents omissions and drift. Installed launchers read that metadata before importing executable components. Plugin API4 authorization and lifecycle remain separate.
 
+The existing provided core factories, `local-runtime` and `plugin-host`, carry their own pure declarations without installable component metadata. The feature generator reads those declarations alongside installable packages and includes both in Web descriptors; only installable manifests receive generated metadata. A core behavior does not require an unrelated optional product merely to enter the catalog.
+
 Util owns schemas and the pure `FeatureSelection` algorithm. Harness owns Runtime-local `Features`, configuration and reload integration. Domain packages own behavior and lifecycle. Presets and the installed launcher supply candidates to the same selection algorithm. Server publishes the resulting state; Web consumes it without interpreting raw preferences as effective availability.
 
 ## Preferences and effective state

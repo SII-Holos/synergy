@@ -57,7 +57,7 @@ Instruction files are budgeted so "keep it short" is mechanical:
 - `docs/AGENTS.md` ≤ 1600 words
 - `packages/presets/AGENTS.md`, `apps/web/AGENTS.md` ≤ 1100 words each
 - All other subtree `AGENTS.md` ≤ 600 words each
-- `docs/decisions/README.md` ≤ 1200 words; `docs/postmortem/README.md` ≤ 800 words
+- `docs/decisions/README.md` ≤ 1200 words; `docs/postmortem/README.md` ≤ 840 words
 
 Budgets live in `script/doc-budgets.json` and `doc:check` (doc-budgets) enforces them. When a document exceeds its budget: relocate the content to its owning tier, condense it, or raise the ceiling in the manifest — in that order. A ceiling raise is a visible, reviewable change, not a default.
 

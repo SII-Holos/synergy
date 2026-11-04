@@ -81,6 +81,16 @@ export const featureCopy: Record<string, { name: MessageDescriptor; description:
       message: "Provide acp capabilities.",
     },
   },
+  "plugin-host": {
+    name: {
+      id: "features.plugin-host.name",
+      message: "Plugin Host",
+    },
+    description: {
+      id: "features.plugin-host.description",
+      message: "Provide plugin host capabilities.",
+    },
+  },
   "code-tools": {
     name: {
       id: "features.code-tools.name",
@@ -229,6 +239,16 @@ export const featureCopy: Record<string, { name: MessageDescriptor; description:
     description: {
       id: "features.browser.description",
       message: "Provide browser capabilities.",
+    },
+  },
+  "session-long-term-memory": {
+    name: {
+      id: "features.session-long-term-memory.name",
+      message: "Session long-term summary",
+    },
+    description: {
+      id: "features.session-long-term-memory.description",
+      message: "Retain important conversation history alongside the recent compaction summary.",
     },
   },
   "external-agents": {

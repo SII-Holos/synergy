@@ -13069,6 +13069,22 @@ msgid "features.plugin-blueprint.name"
 msgstr "Plugin Blueprint"
 
 #. js-lingui-explicit-id
+msgid "features.plugin-host.description"
+msgstr "Provide plugin host capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.plugin-host.name"
+msgstr "Plugin Host"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.description"
+msgstr "Retain important conversation history alongside the recent compaction summary."
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.name"
+msgstr "Session long-term summary"
+
+#. js-lingui-explicit-id
 msgid "features.workbench.description"
 msgstr "Projects, task presentation, reviews and activity."
 
@@ -16979,6 +16995,10 @@ msgstr "Waiting for background tasks"
 msgid "session.activity.waitingModel"
 msgstr "Waiting for model response"
 
+#. js-lingui-explicit-id
+msgid "session.activity.waitingResources"
+msgstr "Waiting for available resources"
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -18072,6 +18092,42 @@ msgstr "Inbox"
 #. js-lingui-explicit-id
 msgid "session.inbox.update"
 msgstr "Update"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr "Copy long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr "No long-term summary yet."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr "Long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr "Unable to load session."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr "Loading session…"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr "Session not found."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr "Session long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr "View current long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr "View latest"
 
 #. js-lingui-explicit-id
 msgid "session.lsp.noServers"
@@ -23541,14 +23597,6 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "Maximum collaborator tasks running at once. New tasks may queue sooner when memory is limited."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryLimit"
-msgstr "Memory safety limit active: {value}. New tasks will queue until pressure drops."
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
-msgstr "Managed by environment · Memory safety limit active: {value}"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
 msgstr "Parallel collaborator tasks"
 
@@ -23979,6 +24027,46 @@ msgstr "Never"
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.timeout.title"
 msgstr "Timeout"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.available"
+msgstr "Ready for new work"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.blocked"
+msgstr "New work paused until memory pressure eases"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.capacity"
+msgstr "Waiting for an execution slot"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.constrained"
+msgstr "Starting less work while memory is under pressure"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.counts"
+msgstr "{active} active stages · {queued} waiting · {memory} MiB available for new work"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.headroom"
+msgstr "Waiting for more available memory"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.incomplete"
+msgstr "Memory information is incomplete; starting work gradually"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.recovering"
+msgstr "Resuming gradually as memory recovers"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.title"
+msgstr "Resource admission"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.unavailable"
+msgstr "Waiting for current resource information"
 
 #. js-lingui-explicit-id
 msgid "settings.sandbox.available"

@@ -1,4 +1,7 @@
 import { SessionTransferGate } from "./transfer-gate"
+import { RuntimeResources } from "../resources/runtime"
+import { sessionResourceOwner } from "../resources/owner"
+import { ResourceCosts } from "../resources/costs"
 import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { prepareSessionMigrations } from "../migration"
@@ -6,13 +9,14 @@ import { PrimaryAgentIdentity } from "../agent/primary-identity"
 
 import { ToolIntent } from "./tool-intent"
 import { RuntimeContext } from "../lifecycle/context"
+import { Features } from "../lifecycle/features"
 import { SessionModelSelection } from "./model-selection"
 import { SessionExecutionContributions } from "./execution-contributions"
 import { AttachmentDelivery } from "../attachment/delivery"
 import { RolloutExecution } from "./rollout/execution"
 import { RolloutContext } from "./rollout/context"
 import { Experiment } from "../config/experiment"
-import { RolloutRecordingError } from "./rollout/error"
+import { RolloutRecordingError, findRecordingError, isFatalStorageError } from "./rollout/error"
 import { RolloutLifecycle } from "./rollout/lifecycle"
 import { RolloutLedger } from "./rollout/ledger"
 import type { RolloutSchema } from "./rollout/schema"
@@ -595,6 +599,7 @@ export namespace SessionInvoke {
     lease: SessionManager.LoopLease,
     segments: RolloutSchema.ExecutionSegment[],
   ): Promise<MessageV2.WithParts> {
+    const maintainLongTermMemory = Features.enabled("session-long-term-memory")
     ContinuationKernel.init()
     let workflowInitialized = false
     const abort = lease.signal
@@ -631,9 +636,15 @@ export namespace SessionInvoke {
 
     while (true) {
       session = await Session.get(sessionID)
-      const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
-        (message) => message.info.role === "user" && message.info.isRoot === true,
+      const rootInfo = (await SessionHistory.modelMessageInfos({ sessionID })).findLast(
+        (message) => message.role === "user" && message.isRoot === true,
       )
+      const root = rootInfo
+        ? await RuntimeResources.allocation(
+            { owner: await sessionResourceOwner(sessionID), bytes: 64 * 1024 ** 2, signal: abort },
+            () => MessageV2.get({ sessionID, messageID: rootInfo.id }),
+          )
+        : undefined
       const rootAvailable =
         root &&
         (await SessionExecutionOwners.allowsMessage(session, root.info)) &&
@@ -691,10 +702,19 @@ export namespace SessionInvoke {
                 }
                 SessionManager.assertExecutionContext(session, "session loop refresh")
                 scopeID = (session.scope as Scope).id
+                SessionManager.setActivity(sessionID, { phase: "waiting_resources" }, { generation: lease.generation })
                 let msgs = MessageV2.executionMessages(
-                  await effectiveCompactedMessages(sessionID),
+                  await RuntimeResources.allocation(
+                    {
+                      owner: await sessionResourceOwner(sessionID),
+                      bytes: ResourceCosts.history(await SessionHistory.hydrationSize({ sessionID, signal: abort })),
+                      signal: abort,
+                    },
+                    () => effectiveCompactedMessages(sessionID, abort),
+                  ),
                   root.info as MessageV2.User,
                 )
+                SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
 
                 // Find R: the latest root user message. R is the anchor for the entire
                 // loop: rootID, model, agent, system, and compaction anchor all derive
@@ -805,6 +825,7 @@ export namespace SessionInvoke {
                   lastFinishedParts,
                   lastAssistant,
                   abort,
+                  maintainLongTermMemory,
                   compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
                   compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
                   compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
@@ -1213,6 +1234,13 @@ export namespace SessionInvoke {
                   }
                 }
 
+                if (maintainLongTermMemory && session.longTermMemory?.markdown) {
+                  appendAdvisory(
+                    "session-long-term-memory",
+                    `<session-long-term-memory>\n${session.longTermMemory.markdown}\n</session-long-term-memory>`,
+                  )
+                }
+
                 // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
                 envParts.forEach((text, index) => appendAdvisory(`environment:${index}`, text))
 
@@ -1301,24 +1329,33 @@ export namespace SessionInvoke {
                 })
                 await memoryTurn.stabilizeBeforeProjection()
                 async function projectHistory() {
-                  const messages = WorkflowUserWrapper.projectMessages({
-                    messages: sessionMessages,
-                    session,
-                    agent,
-                    root: R!,
-                  })
-                  return {
-                    messages,
-                    projection: await MessageV2.projectModelMessages(modelWorkingSetForPrompt(messages), {
-                      maxHistoryImages: jobCtx.compactionMaxHistoryImages,
-                      model: {
-                        providerID: model.providerID,
-                        modelID: model.id,
-                        profileID: producingProvider?.profileID,
-                        apiModelID: model.api.id,
-                      },
-                    }),
-                  }
+                  return RuntimeResources.allocation(
+                    {
+                      owner: await sessionResourceOwner(sessionID),
+                      bytes: 64 * 1024 ** 2 + historyBeforeBytes * 3,
+                      signal: abort,
+                    },
+                    async () => {
+                      const messages = WorkflowUserWrapper.projectMessages({
+                        messages: sessionMessages,
+                        session,
+                        agent,
+                        root: R!,
+                      })
+                      return {
+                        messages,
+                        projection: await MessageV2.projectModelMessages(modelWorkingSetForPrompt(messages), {
+                          maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+                          model: {
+                            providerID: model.providerID,
+                            modelID: model.id,
+                            profileID: producingProvider?.profileID,
+                            apiModelID: model.api.id,
+                          },
+                        }),
+                      }
+                    },
+                  )
                 }
                 let { messages: modelSessionMessages, projection: modelProjection } = await projectHistory()
                 const { converted, dropped, failed } = modelProjection.sanitization
@@ -1790,6 +1827,7 @@ export namespace SessionInvoke {
                       auto: !deferCompaction || RParts!.findLast((part) => part.type === "compaction")?.auto === true,
                       request: compactionRequest,
                       assistantMessageID: processor.message.id,
+                      maintainLongTermMemory,
                     })
                     compactionRequest = undefined
                     if (compacted !== "continue") break
@@ -1798,7 +1836,7 @@ export namespace SessionInvoke {
                     promptBaseline = undefined
                     continue
                   } catch (error) {
-                    if (RolloutRecordingError.isInstance(error)) throw error
+                    if (findRecordingError(error) || isFatalStorageError(error)) throw error
                     break
                   }
                 }
@@ -1867,6 +1905,7 @@ export namespace SessionInvoke {
                       abort,
                       auto: true,
                       request: compactionRequest,
+                      maintainLongTermMemory,
                     })
                     compactionRequest = undefined
                     if (compacted !== "continue") break
@@ -3026,7 +3065,7 @@ export namespace SessionInvoke {
     }
   }
 
-  async function effectiveCompactedMessages(sessionID: string) {
-    return SessionHistory.modelMessages({ sessionID })
+  async function effectiveCompactedMessages(sessionID: string, signal: AbortSignal) {
+    return SessionHistory.modelMessages({ sessionID, signal })
   }
 }

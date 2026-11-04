@@ -405,7 +405,10 @@
     "./agent/prompt-contributions": "./src/agent/prompt-contributions.ts",
     "./observability/resource-sources": "./src/observability/resource-sources.ts",
     "./session/execution-owners": "./src/session/execution-owners.ts",
-    "./lifecycle/features": "./src/lifecycle/features.ts"
+    "./lifecycle/features": "./src/lifecycle/features.ts",
+    "./resources/host": "./src/resources/host.ts",
+    "./resources/schema": "./src/resources/schema.ts",
+    "./resources/runtime": "./src/resources/runtime.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

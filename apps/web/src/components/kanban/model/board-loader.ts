@@ -44,6 +44,13 @@ export type BoardLoaderDeps = {
     request: SessionPartSnapshotRequest,
   ) => SessionPartSnapshotAction
   beginContextProjection: (scopeKey: string, sessionID: string) => number
+  validateResourceResponse: (
+    scopeKey: string,
+    sessionID: string,
+    resource: "message",
+    request: SyncResourceRequest,
+    headers: Pick<Headers, "get"> | undefined,
+  ) => boolean
   applyResourceResponse: (
     scopeKey: string,
     sessionID: string,
@@ -133,6 +140,20 @@ export function createBoardLoader(deps: BoardLoaderDeps): BoardLoader {
             }
           : undefined,
       })
+      if (plan.outcome === "preserved-history") {
+        const accepted = deps.validateResourceResponse(
+          scopeKey,
+          sessionID,
+          "message",
+          result.request,
+          result.response?.response?.headers,
+        )
+        if (accepted) {
+          deps.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, result.revision)
+          deps.touchMessageBucket(scopeKey, sessionID)
+        }
+        return accepted ? "applied" : "superseded"
+      }
       const partActions = new Map(
         Object.keys(plan.parts).map((messageID) => [
           messageID,

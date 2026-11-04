@@ -5,6 +5,10 @@ import path from "node:path"
 import { generate as generateCli, parseCommandBlocks, collectCommandSources } from "../../script/gen/gen-cli-reference"
 import { generate as generateConfig, parseDefCall, parseDomainObject } from "../../script/gen/gen-config-reference"
 import { generate as generateTools, parseTaxonomy } from "../../script/gen/gen-tool-catalog"
+import { featureCopy } from "../../apps/web/src/components/settings/feature-copy"
+import { componentFeatures as localRuntimeFeatures } from "../../packages/local-runtime/src/features"
+import { componentFeatures as pluginHostFeatures } from "../../packages/plugin-host/src/features"
+import { FeatureSelection } from "../../packages/util/src/features"
 import {
   findBlock,
   isFresh,
@@ -52,6 +56,35 @@ describe("catalog determinism", () => {
 })
 
 describe("generated catalog completeness", () => {
+  test("feature copy includes provided core definitions", () => {
+    for (const feature of [...localRuntimeFeatures.definitions, ...pluginHostFeatures.definitions]) {
+      expect(featureCopy[feature.id]).toEqual({
+        name: { id: `features.${feature.id}.name`, message: feature.name },
+        description: { id: `features.${feature.id}.description`, message: feature.description },
+      })
+    }
+  })
+
+  test.each([false, true])(
+    "core Session memory is discoverable without optional products (selected: %s)",
+    (selected) => {
+      const optIn = selected ? ["session-long-term-memory"] : []
+      const plan = FeatureSelection.resolve(
+        [{ id: "local-runtime", version: "1.0.0", features: localRuntimeFeatures }],
+        { optIn },
+      )
+      expect(plan.components).toEqual(["local-runtime"])
+      expect(
+        FeatureSelection.status(plan, optIn, optIn).find((feature) => feature.id === "session-long-term-memory"),
+      ).toMatchObject({
+        available: true,
+        selected,
+        enabled: selected,
+        pendingRestart: false,
+      })
+    },
+  )
+
   test("code search documentation explains evidence without unresolved template variables", async () => {
     const body = (await generateTools()).split("## parse_code\n")[1]!.split("\n## ")[0]!
     expect(body).toContain("Only displayed source lines count as observations")

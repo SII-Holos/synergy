@@ -13069,6 +13069,22 @@ msgid "features.plugin-blueprint.name"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "features.plugin-host.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.plugin-host.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.name"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "features.workbench.description"
 msgstr ""
 
@@ -16979,6 +16995,10 @@ msgstr ""
 msgid "session.activity.waitingModel"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "session.activity.waitingResources"
+msgstr ""
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -18072,6 +18092,42 @@ msgstr "⟦Inbox⟧"
 #. js-lingui-explicit-id
 msgid "session.inbox.update"
 msgstr "⟦Update⟧"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.lsp.noServers"
@@ -23541,14 +23597,6 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "⟦Maximum Cortex subagent tasks running at once. Memory pressure can temporarily queue new tasks sooner.⟧"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryLimit"
-msgstr "⟦Memory safety limit active: {value}. New tasks will queue until pressure drops.⟧"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
-msgstr "⟦Managed by environment · Memory safety limit active: {value}⟧"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
 msgstr "⟦Max Concurrent Subagents⟧"
 
@@ -23979,6 +24027,46 @@ msgstr "⟦Never⟧"
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.timeout.title"
 msgstr "⟦Timeout⟧"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.available"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.blocked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.capacity"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.constrained"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.counts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.headroom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.incomplete"
+msgstr "Memory information is incomplete; starting work gradually"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.recovering"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.unavailable"
+msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.sandbox.available"

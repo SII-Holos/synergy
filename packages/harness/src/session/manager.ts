@@ -29,6 +29,7 @@ import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionLifecycle } from "./lifecycle"
 import { ObservabilityMetrics } from "../observability/metrics"
 import { SessionWorkspaceRuntime } from "./workspace-runtime"
+import { z } from "zod"
 
 const log = Log.create({ service: "session.manager" })
 
@@ -73,15 +74,20 @@ export namespace SessionManager {
   export type SessionMail = SessionMail.User | SessionMail.Assistant
 
   export type LoopPhase = "starting" | "running" | "stopping"
-  export type ExecutionPhase =
-    | "preparing"
-    | "queued_agent"
-    | "running_agent"
-    | "authorizing_tools"
-    | "queued_tools"
-    | "running_tools"
-    | "waiting_background"
-    | "stopping"
+  export const ExecutionPhase = z
+    .enum([
+      "preparing",
+      "waiting_resources",
+      "queued_agent",
+      "running_agent",
+      "authorizing_tools",
+      "queued_tools",
+      "running_tools",
+      "waiting_background",
+      "stopping",
+    ])
+    .meta({ ref: "SessionExecutionPhase" })
+  export type ExecutionPhase = z.infer<typeof ExecutionPhase>
 
   export interface LoopLease {
     readonly sessionID: string

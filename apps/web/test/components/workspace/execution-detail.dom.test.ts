@@ -53,6 +53,7 @@ type Fixture = {
     taskRequests: Array<{ taskID: string; parentSessionID?: string; sessionID?: string }>
     sessionReads: number
     opened: string[]
+    panelOpens: Array<{ panelID: string; server: string; scope: string; sessionID: string }>
   }
 }
 let server: BrowserFixture
@@ -84,6 +85,7 @@ beforeAll(async () => {
     const requests=[]
     const taskRequests=[]
     const opened=[]
+    const panelOpens=[]
     let sessionReads=0
     let activityListener
     let resultUnmounts=0
@@ -111,7 +113,7 @@ beforeAll(async () => {
       fail(index,error){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"read",state:{status:"error",input:{filePath:"/fixture.txt"},error,time:{start:1,end:2}}}}})},
       patch(index){const request=requests[index];request.resolve({data:{evidenceMissing:true,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"apply_patch",state:{status:"error",input:{patch:"retained patch"},metadata:{outcome:"unresolved",sections:[{source:"source.ts",state:"unknown",operations:[{phase:"write",state:"unknown"}]}]},error:"Patch outcome unconfirmed",time:{start:1,end:2}}}}})},
       resolveCommand(index,process,text,toolError){const request=requests[index];request.resolve({data:{evidenceMissing:false,text,process,part:{id:request.partID,callID:request.callID,messageID:"message",sessionID:request.sessionID,type:"tool",tool:"bash",workBrief:"Check the foreground wait command.",activityEvidence:{kind:"command"},state:{status:toolError?"error":"completed",input:{command:'printf waiting && sleep 90'},error:toolError,output:toolError?undefined:text,time:{start:1,end:33401}}}}})},
-      close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied,taskRequests,sessionReads,opened}}
+      close(){setOpen(false)},facts(){return {requests:requests.length,aborted:requests.map(request=>request.signal.aborted),resultUnmounts,copied,taskRequests,sessionReads,opened,panelOpens}}
     }
     export {h}
     export const useGlobalSDK=()=>({capabilities:{current:selection,has:id=>selection()?.features.includes(id)??false}})
@@ -119,7 +121,7 @@ beforeAll(async () => {
     export const useParams=()=>({get id(){return owner.sessionID}})
     export const useSessionDataView=()=>()=>({messagesFor:()=>eventLive()?[eventLive()]:[],partsFor:()=>[]})
     export const useData=()=>({navigateToSession(){}})
-    export const useWorkbenchPanels=()=>({updateTab(id,patch){setState(patch.state)}})
+    export const useWorkbenchPanels=()=>({updateTab(id,patch){setState(patch.state)},openPanel(panelID){panelOpens.push({panelID,...owner})}})
     export const ToolResultBody=props=>{onCleanup(()=>resultUnmounts++);return <><output data-result>{props.part.state.error??props.part.state.output}</output>{props.showAttachments!==false&&<AttachmentGallery files={props.part.state.attachments??[]} serverUrl={props.serverUrl}/>}</>}
     export const resolveExternalToolRenderer=tool=>tool==="fixture.plugin"?{}:undefined
     export const externalLookup=undefined
@@ -194,6 +196,60 @@ afterAll(async () => {
   await server?.close()
   if (fixture) await rm(fixture, { recursive: true, force: true })
 })
+
+test("compaction links to the current owner summary only after capability confirmation without new reads", async () => {
+  await page.goto(base)
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture?.facts().requests === 1)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { fixture: Fixture }).fixture
+    fixture.event("compaction")
+    fixture.features(["session-long-term-memory"])
+  })
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 2)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: Fixture }).fixture.resolveEvent(1, "Historical continuation summary"),
+  )
+  await page.getByText("Historical continuation summary", { exact: true }).waitFor()
+  const link = page.getByRole("button", { name: "View current long-term summary", exact: true })
+  await link.focus()
+  await link.press("Enter")
+  expect((await inspect()).panelOpens).toEqual([
+    { panelID: "long-term-summary", server: "server-a", scope: "scope-a", sessionID: "session" },
+  ])
+  expect(await page.getByText("Historical continuation summary", { exact: true }).count()).toBe(1)
+  expect((await inspect()).requests).toBe(2)
+  expect((await inspect()).sessionReads).toBe(0)
+  expect((await inspect()).taskRequests).toEqual([])
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.refreshEvent())
+  await page.waitForFunction(() => (window as unknown as { fixture: Fixture }).fixture.facts().requests === 3)
+  await page.evaluate(() =>
+    (window as unknown as { fixture: Fixture }).fixture.resolveEvent(2, "Updated continuation summary"),
+  )
+  await page.getByText("Updated continuation summary", { exact: true }).waitFor()
+  expect((await inspect()).panelOpens).toHaveLength(1)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(undefined))
+  expect(await link.count()).toBe(0)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features([]))
+  expect(await link.count()).toBe(0)
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.features(["session-long-term-memory"]))
+  await link.waitFor()
+  expect((await inspect()).panelOpens).toHaveLength(1)
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { fixture: Fixture }).fixture
+    fixture.switchOwner("server-b", "scope-b", "session-b")
+    fixture.event("compaction", "other-compaction")
+  })
+  await link.click()
+  expect((await inspect()).panelOpens.at(-1)).toEqual({
+    panelID: "long-term-summary",
+    server: "server-b",
+    scope: "scope-b",
+    sessionID: "session-b",
+  })
+  await page.evaluate(() => (window as unknown as { fixture: Fixture }).fixture.event("agent-delivery"))
+  expect(await link.count()).toBe(0)
+  expect(errors).toEqual([])
+}, 30000)
 
 test("process detail failures remain local, preserve accepted evidence and allow one manual retry", async () => {
   await page.goto(base)

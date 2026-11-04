@@ -604,6 +604,8 @@ import type {
   RuntimeReloadResponses,
   RuntimeReloadScope,
   RuntimeReloadTarget,
+  RuntimeResourcesErrors,
+  RuntimeResourcesResponses,
   SandboxReadinessErrors,
   SandboxReadinessResponses,
   SandboxStatusErrors,
@@ -7135,6 +7137,36 @@ export class Push extends HeyApiClient {
 }
 
 export class Runtime extends HeyApiClient {
+  /**
+   * Get runtime resource admission
+   *
+   * Native memory availability, pending commitments, pressure and admission state for this Runtime.
+   */
+  public resources<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<RuntimeResourcesResponses, RuntimeResourcesErrors, ThrowOnError>({
+      url: "/runtime/resources",
+      ...options,
+      ...params,
+    })
+  }
+
   /**
    * Reload runtime state
    *

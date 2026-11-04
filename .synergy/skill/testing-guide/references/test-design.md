@@ -13,6 +13,8 @@ When a dedicated CI task activates opt-in tests, declare its mandatory scenario 
 2. For a bug or new behavior, write the smallest failing test before the implementation. Skip a new test only for a pure refactor whose existing tests already cover unchanged behavior.
 3. Assert public results, state transitions, emitted contracts, permissions, or recovery behavior. Avoid source-text assertions, private call counts, and snapshots of irrelevant structure.
 
+For bounded navigation, test progress across more than one full window as well as sorted order and residency. A model checker proving the selected eviction invariant does not establish that requested pages remain reachable. Exercise discarded snapshots without consuming freshness for unapplied events, and hold native resource observations across allocation completion to test commitment release ordering.
+
 Seed large SQLite fixtures inside a transaction so per-row durability flushes do not dominate correctness test deadlines. Preserve the dataset size and the migration, restart, and failure boundaries exercised by the test.
 
 For usage capture changes, vary response media type independently of body framing, including byte-sized UTF-8 chunks, SSE newline forms, oversized events and cancellation. Compare live normalized usage with replay from the retained bytes. Historical recovery fixtures must begin with an advanced live checkpoint and an incomplete estimate, then cover repeated replay, explicit clears, missing artifacts, restart at a page boundary and concurrent requests. Warm the task-summary cache before background repair and verify it observes the repaired facts through normal usage events. Do not reconstruct historical transport timing or substitute current prices for saved evidence.

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createStore, reconcile } from "solid-js/store"
 import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
 import { createBoardLoader, type BoardLoaderDeps } from "../../../../src/components/kanban/model/board-loader"
-import type { SyncResourceRequest } from "../../../../src/context/sync-resource-freshness"
+import { SyncResourceFreshness, readSyncVersion } from "../../../../src/context/sync-resource-freshness"
 import type { SessionPartSnapshotRequest } from "../../../../src/context/session-part-snapshot-freshness"
 import { createScopeRetention } from "../../../../src/context/scope-retention"
 import { planMessagePageApply } from "../../../../src/context/session-message-page"
@@ -24,7 +24,9 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
   scopeVersions: Record<string, number>
   dropSnapshot: (scopeKey: string, sessionID: string) => void
   partActions: Record<string, "apply" | "preserve" | "retry">
+  freshness: SyncResourceFreshness
 } {
+  const freshness = new SyncResourceFreshness()
   const touches: string[] = []
   const messagePages: { sessionID: string; limit: number }[] = []
   const scopeVersions: Record<string, number> = {}
@@ -39,6 +41,7 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     return store
   }
   return {
+    freshness,
     touches,
     messagePages,
     scopeVersions,
@@ -50,11 +53,14 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     partActions,
     ensureScopeState,
     retainScopeState: () => ({ release() {} }),
-    captureResourceRequest: (_s, sessionID) => ({ sessionID }) as unknown as SyncResourceRequest,
+    captureResourceRequest: (scopeKey, sessionID, resource) => freshness.capture({ scopeKey, sessionID, resource }),
     capturePartSnapshotRequest: (_s, _sid) => ({ generation: 1, revisions: new Map() }) as SessionPartSnapshotRequest,
     partSnapshotAction: (_s, _sid, messageID) => partActions[messageID] ?? "apply",
     beginContextProjection: () => 1,
-    applyResourceResponse: (_s, _sid, _r, _req, _h, apply) => {
+    validateResourceResponse: (scopeKey, sessionID, resource, request, headers) =>
+      freshness.canAcceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers)),
+    applyResourceResponse: (scopeKey, sessionID, resource, request, headers, apply) => {
+      if (!freshness.acceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers))) return false
       apply()
       return true
     },
@@ -213,6 +219,99 @@ describe("createBoardLoader", () => {
     await new Promise((r) => setTimeout(r, 10))
     expect(deps.messagePages.length).toBe(first + 1)
     expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
+  })
+
+  test("a latest page does not replace a session already in history mode", async () => {
+    const ready = Promise.withResolvers<void>()
+    const contexts: Array<{ id?: string } | null | undefined> = []
+    const latest = message("latest", 500)
+    latest.contextUsage = { total: 3 }
+    const deps = makeDeps({
+      setLatestContextMessage: (_scope, _session, value) => {
+        contexts.push(value)
+      },
+      messagePage: async () => ({
+        response: { headers: new Headers({ "x-synergy-epoch": "epoch", "x-synergy-seq": "12" }) },
+        data: {
+          items: [{ info: latest, parts: [{ id: "p-latest" } as Part] }],
+          referencedRoots: [],
+          nextCursor: null,
+          hasMore: false,
+          total: 20,
+        },
+      }),
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    const resource = { scopeKey: "/a", sessionID: "s1", resource: "message" as const }
+    deps.freshness.acceptSnapshot(resource, { epoch: "epoch", seq: 10 })
+    setStore("message", "s1", [message("older", 1)])
+    setStore("part", "older", [{ id: "p-older" } as Part])
+    setStore("messageWindow", "s1", {
+      mode: "history",
+      nextCursor: "cursor-older",
+      hasMore: true,
+      total: 8,
+      pendingLatest: true,
+      pendingLatestIds: ["unseen"],
+      tailMissingLatest: true,
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      expect(store.message.s1?.map((item) => item.id)).toEqual(["older"])
+      expect(store.messageWindow.s1).toMatchObject({
+        mode: "history",
+        nextCursor: "cursor-older",
+        hasMore: true,
+        total: 8,
+        pendingLatest: true,
+        pendingLatestIds: ["unseen"],
+        tailMissingLatest: true,
+      })
+      expect(store.part.older?.map((part) => part.id)).toEqual(["p-older"])
+      expect(store.part.latest).toBeUndefined()
+      expect(contexts.at(-1)).toMatchObject({ id: "latest" })
+      expect(deps.freshness.acceptEvent(resource, { epoch: "epoch", seq: 11 })).toBe(true)
+    } finally {
+      loader.dispose()
+    }
+  })
+
+  test("a latest page still replaces a latest-mode window", async () => {
+    const ready = Promise.withResolvers<void>()
+    const deps = makeDeps({
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    setStore("message", "s1", [message("old", 1)])
+    setStore("part", "old", [{ id: "p-old" } as Part])
+    setStore("messageWindow", "s1", {
+      mode: "latest",
+      nextCursor: "stale",
+      hasMore: true,
+      total: 4,
+      pendingLatest: false,
+      pendingLatestIds: [],
+      tailMissingLatest: false,
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      expect(store.message.s1?.map((item) => item.id)).toEqual(["s1-m1"])
+      expect(store.messageWindow.s1).toMatchObject({ mode: "latest", nextCursor: null, total: 1 })
+      expect(store.part.old).toBeUndefined()
+    } finally {
+      loader.dispose()
+    }
   })
 
   test("dispose stops further loads", async () => {

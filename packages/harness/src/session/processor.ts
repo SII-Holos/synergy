@@ -1165,7 +1165,7 @@ export namespace SessionProcessor {
                 usageRole: streamInput.usageRole ?? "conversation",
                 retryIndex: attempt,
                 onPhase: runtime.bind((phase) => {
-                  executionPhase(phase === "queued_agent" ? "queued_agent" : "running_agent")
+                  executionPhase(phase === "waiting_model" ? "running_agent" : phase)
                   activity(phase)
                 }),
                 recovery: { immediate: recovery.takeImmediate(), onWait: runtime.bind(recovery.providerWait) },

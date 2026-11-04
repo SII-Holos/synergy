@@ -47,6 +47,7 @@ beforeAll(async () => {
     window.executionResidencyControls={hide(value){setOwnerActive(value)},reconnect(){connect(false);connect(true);setConnectionVersion(value=>value+1)}}
     const long=()=>location.search.includes("long=1")
     const longRows=Array.from({length:10_000},(_,i)=>({...node("long-"+i,"root","tool","Long tool "+i),started:i+1,ended:i+2}))
+    const branchRows=Array.from({length:300},(_,i)=>({...node("branch-"+i,"child","tool","Branch tool "+i),started:i+1,ended:i+2}))
     const model={...node("model","root","model","Test model"),modelID:"test-model",evidenceKind:"call",tokens:{known:1250,total:1250,unknown:0}}
     const relatedRows=Array.from({length:40},(_,i)=>node("related-"+i,"child","model","Related request "+i,"child"))
     const fixtureNode=(id)=>id==="model"?model:[messageRow,...exportRows,...longRows,...relatedRows].find(n=>n.id===id)
@@ -57,6 +58,11 @@ beforeAll(async () => {
     }
     const sdk={event,connected,client:{session:{executionTrajectory:async(q,options)=>{
       (window.trajectoryRequests ??= []).push(q)
+      if(location.search.includes("branch-pages=1") && q.sessionID === "child") {
+        const anchor=branchRows.findIndex(n=>n.id===q.anchor)
+        const start=q.position==="before" ? Math.max(0,anchor-100) : q.position==="after" ? anchor+1 : 0
+        return {data:{sessionID:q.sessionID,revision:1,total:branchRows.length,items:branchRows.slice(start,start+100),nextCursor:start+100<branchRows.length?"next":null,previousCursor:start>0?"previous":null}}
+      }
       if(location.search.includes("membership=1")){
         const items=[model].filter(n=>!q.query || n.title.includes(q.query))
         if(window.holdTrajectory)await new Promise((resolve,reject)=>(window.pendingTrajectories ??= []).push({resolve,reject,signal:options.signal}))
@@ -489,6 +495,38 @@ test("completed child trajectories expand descendants without recursively offeri
   expect(await page.locator('[data-depth="2"] .execution-expand-task').count()).toBe(0)
   await page.evaluate("window.legacyCheckpoint()")
   await page.locator('[data-depth="1"]').getByText("Updated child record", { exact: true }).waitFor({ timeout: 3000 })
+  expect(errors).toEqual([])
+})
+
+test("expanded branches can page back to rows evicted by their budget", async () => {
+  await page.goto(server.resolvedUrls!.local[0]! + "?branch-pages=1")
+  await page.locator(".execution-node-line").getByRole("button", { name: "Child analysis", exact: true }).click()
+  const list = page.locator(".execution-list")
+  for (let pageIndex = 0; pageIndex < 2; pageIndex++) {
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight
+    })
+    await page.getByRole("button", { name: "Later events", exact: true }).click()
+    await page.waitForFunction(
+      (index) =>
+        (window as unknown as { trajectoryRequests: Array<{ anchor?: string }> }).trajectoryRequests.some(
+          (request) => request.anchor === `branch-${index * 100 + 99}`,
+        ),
+      pageIndex,
+    )
+  }
+  await list.evaluate((element) => {
+    element.scrollTop = 0
+  })
+  await page.getByRole("button", { name: "Earlier events", exact: true }).click()
+  await page.locator('[data-node-id="branch-0"]').waitFor()
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as { trajectoryRequests: Array<{ anchor?: string; position?: string }> }
+      ).trajectoryRequests.some((request) => request.anchor === "branch-100" && request.position === "before"),
+    ),
+  ).toBe(true)
   expect(errors).toEqual([])
 })
 

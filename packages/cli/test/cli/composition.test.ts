@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { createIsolatedTestEnv } from "@ericsanchezok/synergy-testing/env"
 import path from "node:path"
+import fs from "node:fs/promises"
+import { FEATURE_CONFIG_FILENAME } from "@ericsanchezok/synergy-util/feature-config"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
@@ -43,6 +45,110 @@ describe("standalone CLI composition", () => {
       expect(result.code).toBe(1)
       expect(result.stderr).toContain('Command "browser" is unavailable in this installation.')
     }))
+})
+
+describe("standalone CLI feature cold start", () => {
+  for (const scenario of [
+    { name: "saved opt-in enables the core experiment", customHost: false, saved: true, explicit: null },
+    { name: "an absent preference leaves the core experiment off", customHost: false, saved: false, explicit: null },
+    { name: "a custom host reads its own saved opt-in", customHost: true, saved: true, explicit: null },
+    { name: "a custom host does not inherit the default Home opt-in", customHost: true, saved: false, explicit: null },
+    { name: "an explicit disabled plan overrides a saved opt-in", customHost: false, saved: true, explicit: false },
+    {
+      name: "an explicit enabled plan overrides an absent preference",
+      customHost: false,
+      saved: false,
+      explicit: true,
+    },
+  ]) {
+    test(
+      scenario.name,
+      async () => {
+        const isolation = await createIsolatedTestEnv()
+        const home = isolation.env.SYNERGY_TEST_HOME!
+        const selectedHome = scenario.customHost ? path.join(home, "selected-home") : home
+        const root = path.join(home, scenario.customHost ? "selected-root" : ".synergy")
+        const featureID = "session-long-term-memory"
+        try {
+          await fs.mkdir(selectedHome, { recursive: true })
+          const preferences = [
+            { root: path.join(home, ".synergy"), selected: scenario.customHost ? !scenario.saved : scenario.saved },
+            ...(scenario.customHost ? [{ root, selected: scenario.saved }] : []),
+          ]
+          for (const preference of preferences) {
+            if (!preference.selected) continue
+            const directory = path.join(preference.root, "config", "synergy.d")
+            await fs.mkdir(directory, { recursive: true })
+            await Bun.write(
+              path.join(directory, FEATURE_CONFIG_FILENAME),
+              JSON.stringify({ features: { optIn: [featureID] } }),
+            )
+          }
+          const child = Bun.spawn(
+            [
+              process.execPath,
+              "--eval",
+              `
+              import { createRuntimeCli } from "./src/runtime-cli.ts"
+              import { createLocalHost } from "@ericsanchezok/synergy-local-runtime"
+              import { RuntimeComponents } from "@ericsanchezok/synergy-harness/lifecycle"
+              import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
+              import { Features } from "@ericsanchezok/synergy-harness/lifecycle/features"
+              import { Config } from "@ericsanchezok/synergy-harness/config/config"
+              import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
+              const explicit = ${JSON.stringify(scenario.explicit)}
+              const cli = explicit === null
+                ? await createRuntimeCli()
+                : await createRuntimeCli([], {
+                    features: FeatureSelection.resolve([], { optIn: explicit ? [${JSON.stringify(featureID)}] : [] }),
+                  })
+              await using opened = await cli.runtimeFactory({
+                mode: "oneshot",
+                host: ${scenario.customHost ? `createLocalHost({ home: ${JSON.stringify(selectedHome)}, root: ${JSON.stringify(root)} })` : "undefined"},
+                environment: false,
+                migrationOutput: "silent",
+                logging: { level: "ERROR" },
+              })
+              console.log(JSON.stringify(opened.run(() => ({
+                home: RuntimeContext.current().host.home,
+                root: RuntimeContext.current().host.root,
+                components: RuntimeComponents.selected().map((component) => component.id),
+                feature: Features.catalog().find((feature) => feature.id === ${JSON.stringify(featureID)}),
+                enabled: Features.enabled(${JSON.stringify(featureID)}),
+                library: "library" in Config.Info.shape,
+              }))))
+            `,
+            ],
+            {
+              cwd: path.resolve(import.meta.dirname, "../.."),
+              env: { ...isolation.env, SYNERGY_HOME: home, SYNERGY_RUNTIME_ROOT: undefined },
+              stdout: "pipe",
+              stderr: "pipe",
+            },
+          )
+          const [stdout, stderr, code] = await Promise.all([
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+            child.exited,
+          ])
+          expect(code, stderr + stdout).toBe(0)
+          const result = JSON.parse(stdout)
+          const enabled = scenario.explicit ?? scenario.saved
+          expect(result).toMatchObject({
+            home: selectedHome,
+            root,
+            components: ["local-runtime", "plugin-host"],
+            feature: { id: featureID, available: true, selected: enabled, enabled, pendingRestart: false },
+            enabled,
+            library: false,
+          })
+        } finally {
+          await isolation.dispose()
+        }
+      },
+      30_000,
+    )
+  }
 })
 
 test("command-loading failures set nonzero status and leave no process listeners", () =>

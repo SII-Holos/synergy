@@ -84,6 +84,7 @@ Read the owning architecture document before changing these areas:
 
 - session/message/compaction and LLM loop: `docs/architecture/session-and-messages.md`, `llm-loop.md`
 - frontend snapshots, events, replay, reconcile, and eviction: `frontend-data-sync.md`
+- Read [Memory residency scope](docs/operations/memory-residency-scope.md) before changing retain, boundary, or hot paths.
 - capability classification, control profiles, permissions, and sandbox: `execution-boundaries.md`
 - Cortex child sessions and task outputs: `cortex.md`
 - Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
@@ -120,7 +121,7 @@ bun run test:ci
 bun run test:coverage
 ```
 
-Frontend suites run via `bun run --cwd apps/web test` and `bun run --cwd packages/ui test`, both part of the Turbo test graph. Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke in `apps/web/AGENTS.md`.
+Frontend suites run via `bun run --cwd apps/web test` and `bun run --cwd packages/ui test`. Browser capability or App bootstrap changes also run the browser crypto contract and the production-build private HTTP browser smoke in `apps/web/AGENTS.md`.
 
 Coverage has a floor: `bun run coverage:check` enforces per-package thresholds via `script/coverage-exempt.json` (exclusions only through that manifest; every entry carries a reason; broad ones rejected). Run focused checks locally; CI owns the full matrix. Never default to full suites before commits or pushes. Use `verify local --test <path>` for focused checks, `verify plan` for scope, and `verify stability --test <path> --batch` for intermittent failures. Hooks reuse identical local static inputs; CI runs independently.
 

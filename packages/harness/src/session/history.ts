@@ -824,7 +824,7 @@ export namespace SessionHistory {
         messageID: input.messageID,
         partID: input.partID,
         files: input.files,
-      }).filter((part) => !part.checkpoint)
+      }).filter((part) => !part.checkpoint && !part.operation)
       patches.push(...legacy)
     }
     if (!patches.length)
@@ -929,6 +929,17 @@ export namespace SessionHistory {
     })
   }
 
+  export async function hydrationSize(input: { sessionID: string; signal?: AbortSignal }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const infos = await modelMessageInfos(input)
+    return SessionHistoryDisplay.contentBytes(
+      session.scope.id,
+      session.id,
+      infos.map((info) => info.id),
+      input.signal,
+    )
+  }
+
   async function finiteMessages(input: { sessionID: string; limit?: number; raw?: boolean }) {
     const session = await prepareInfoRead(input.sessionID)
     return Storage.snapshot(async () => {
@@ -986,7 +997,12 @@ export namespace SessionHistory {
     return MessageV2.deriveSemantics(result)
   }
 
-  export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+  export async function modelMessages(input: {
+    sessionID: string
+    onLoadParts?: (messageID: string) => void
+    signal?: AbortSignal
+  }) {
+    input.signal?.throwIfAborted()
     const policy = (await Config.current()).execution?.messageCache
     const useCache = policy?.enabled !== false
     let cached = useCache ? SessionMessageCache.get(input.sessionID) : undefined
@@ -1057,6 +1073,56 @@ export namespace SessionHistory {
     }))
     input.signal?.throwIfAborted()
     return MessageV2.deriveSemantics(messages)
+  }
+
+  export async function originalMessages(input: {
+    sessionID: string
+    raw?: boolean
+    after?: { created: number; messageID: string }
+    through?: { created: number; messageID: string }
+    signal?: AbortSignal
+  }) {
+    const session = await prepareInfoRead(input.sessionID)
+    return Storage.snapshot(async () => {
+      const infos = input.raw ? await rawMessageInfos(session) : await effectiveMessageInfos(session)
+      const selected = infos.filter((info) => {
+        const after = input.after
+        const through = input.through
+        return (
+          (!after ||
+            info.time.created > after.created ||
+            (info.time.created === after.created && info.id.localeCompare(after.messageID) > 0)) &&
+          (!through ||
+            info.time.created < through.created ||
+            (info.time.created === through.created && info.id.localeCompare(through.messageID) <= 0))
+        )
+      })
+      const messages = await mapWithConcurrency(selected, PAGE_HYDRATION_CONCURRENCY, async (info) => ({
+        info,
+        parts: await readOriginalParts(session, info.id, input.signal),
+      }))
+      return MessageV2.deriveSemantics(messages)
+    })
+  }
+
+  export async function originalParts(input: { sessionID: string; messageID: string; signal?: AbortSignal }) {
+    const session = await prepareInfoRead(input.sessionID)
+    return Storage.snapshot(() => readOriginalParts(session, input.messageID, input.signal))
+  }
+
+  async function readOriginalParts(session: Info, messageID: string, signal?: AbortSignal) {
+    signal?.throwIfAborted()
+    const parts: MessageV2.Part[] = []
+    for await (const record of Storage.records<SessionPartContent.Stored>({
+      kind: "part",
+      scopeID: session.scope.id,
+      sessionID: session.id,
+      messageID,
+    })) {
+      signal?.throwIfAborted()
+      parts.push(upgradeAccessRecord(record.key, await SessionPartContent.hydrate(record.key, record.value)))
+    }
+    return parts.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {
@@ -1315,6 +1381,8 @@ export namespace SessionHistory {
       event,
     )
     await SessionSummary.invalidateDerivedState(event.sessionID, scopeID)
+    const { SessionLongTermMemory } = await import("./long-term-memory")
+    await SessionLongTermMemory.clear(event.sessionID)
     Storage.afterCommit(() => {
       SessionManager.bumpHistoryRevision(event.sessionID)
       SessionMessageCache.invalidate(event.sessionID)

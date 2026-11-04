@@ -162,6 +162,8 @@ export namespace MessageV2 {
           status: z.literal("complete"),
           toolCallID: z.string(),
           afterHash: z.string().regex(/^[0-9a-f]{40}$/),
+          baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+          omissions: z.array(SnapshotSchema.Omission).optional(),
         }),
       ])
       .optional(),
@@ -1060,6 +1062,7 @@ export namespace MessageV2 {
    */
   export function originFromMetadata(metadata: Record<string, any> | undefined): OriginUser {
     if (!metadata) return { type: "user" }
+    if (metadata.compactionBoundary === true) return { type: "system", detail: "manual_compaction" }
     const source = metadata.source
     const sessionID = typeof metadata.sourceSessionID === "string" ? metadata.sourceSessionID : undefined
     if (source === "cortex") {
@@ -1179,6 +1182,8 @@ export namespace MessageV2 {
       if (msg.info.role === "user") {
         const user = msg.info as User
         let origin = user.origin ?? originFromMetadata(user.metadata)
+        if (user.origin?.type === "user" && user.metadata?.compactionBoundary === true)
+          origin = originFromMetadata(user.metadata)
         if (origin.type === "cortex" && !origin.taskID && typeof user.metadata?.inboxDeliveryKey === "string") {
           const key = user.metadata.inboxDeliveryKey
           const prefix = "cortex:taskNotification:"

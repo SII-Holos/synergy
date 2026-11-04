@@ -32,7 +32,10 @@ description: Add or modify a Synergy HTTP route, request/response schema, OpenAP
 ## Verify
 
 1. Test validation, success, domain error, Scope ownership, and event behavior at the narrowest route/domain level.
+   Hold transient domain states while reading their validated API projections. A successful idle read does not cover waiting, cancellation or teardown phases; reuse the owning domain schema instead of maintaining a second enum in the projection.
+
    For nested Hono routers, test `generateSpecs()` on the mounted parent and assert the new operation IDs. A child router's custom `onError` can wrap middleware and hide `describeRoute` metadata while HTTP tests still pass; map domain errors inside handlers or at the owning server boundary instead.
+
 2. Typecheck the runtime, SDK, and affected client.
 3. Run the affected frontend context/component test when response identity or event reconciliation changes.
    For narrowed configuration snapshots, compare the actual bootstrap response with the authoritative configuration under the real optional-owner composition. Cover absent, disabled and enabled settings plus explicit model selection; a hand-written frontend fixture with the setting already present cannot detect a dropped server field. Keep unregistered owners absent rather than importing their implementations into Server.

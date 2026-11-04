@@ -684,7 +684,7 @@ export const CoreInfo = z
           .nullable()
           .optional()
           .describe(
-            "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+            "Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.",
           ),
         agentWorkerMinIdle: z
           .number()
@@ -708,14 +708,14 @@ export const CoreInfo = z
           .nonnegative()
           .max(32_768)
           .optional()
-          .describe("Maximum queued Agent turns waiting for a worker (default: 256)"),
+          .describe("Maximum queued model requests waiting for resource admission (default: 256)"),
         agentQueueMaxMb: z
           .number()
           .int()
           .positive()
           .max(4_096)
           .optional()
-          .describe("Maximum aggregate queued Agent-turn payload size in MiB (default: 256)"),
+          .describe("Maximum aggregate retained model admission payload size in MiB (default: 256)"),
         agentWorkerMaxTurns: z
           .number()
           .int()
@@ -730,7 +730,7 @@ export const CoreInfo = z
           .max(131_072)
           .optional()
           .describe(
-            "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+            "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
           ),
         agentWorkerMaxHeapMb: z
           .number()
@@ -739,7 +739,7 @@ export const CoreInfo = z
           .max(131_072)
           .optional()
           .describe(
-            "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+            "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
           ),
         agentWorkerIdleBaselineRecycle: z
           .boolean()

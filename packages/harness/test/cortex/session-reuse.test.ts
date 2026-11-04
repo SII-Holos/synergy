@@ -1,5 +1,6 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test"
+import { describe, expect, test, beforeEach, afterEach, spyOn } from "bun:test"
 import { Cortex } from "../../src/cortex"
+import { registerCortexSessionRuntime } from "../../src/cortex/session-runtime"
 import { CortexTypes } from "../../src/cortex/types"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -8,7 +9,11 @@ import { BusyError } from "../../src/session/error"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
-const runtime = await testRuntime()
+function createReuseRuntime() {
+  return testRuntime({ register: registerCortexSessionRuntime })
+}
+
+const runtime = await createReuseRuntime()
 
 describe("Cortex session reuse", () => {
   beforeEach(() =>
@@ -18,9 +23,9 @@ describe("Cortex session reuse", () => {
   )
 
   afterEach(() =>
-    runtime.run(() => {
-      // Clean up any lingering runtimes that may have been registered during launch
-      // (Session.create registers a runtime, and Cortex may also do so)
+    runtime.run(async () => {
+      await Cortex.drain()
+      Cortex.reset()
     }),
   )
 
@@ -49,6 +54,7 @@ describe("Cortex session reuse", () => {
             expect(task.parentSessionID).toBe(parentSession.id)
 
             await Cortex.cancel(task.id)
+            await Cortex.drain(task.id)
           },
         })
       }))
@@ -154,10 +160,62 @@ describe("Cortex session reuse", () => {
             expect(task.sessionID).not.toBe(parentSession.id)
 
             await Cortex.cancel(task.id)
+            await Cortex.drain(task.id)
           },
         })
       }))
   })
+})
+
+test("closing the reuse fixture releases terminal task retention timers", async () => {
+  const fixture = await createReuseRuntime()
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+  const schedule = setTimeout
+  const cancel = clearTimeout
+  using scheduling = spyOn(globalThis, "setTimeout").mockImplementation(
+    new Proxy(schedule, {
+      apply(target, receiver, args) {
+        const timer = Reflect.apply(target, receiver, args) as ReturnType<typeof setTimeout>
+        if (args[1] === 30_000 || args[1] === 300_000) timers.add(timer)
+        return timer
+      },
+    }),
+  )
+  using cancelling = spyOn(globalThis, "clearTimeout").mockImplementation(
+    new Proxy(cancel, {
+      apply(target, receiver, args) {
+        timers.delete(args[0])
+        return Reflect.apply(target, receiver, args)
+      },
+    }),
+  )
+  try {
+    await fixture.run(async () => {
+      await using temporary = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await temporary.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const task = await Cortex.prepare({
+            description: "Retained reuse task",
+            prompt: "Keep the result available",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_reuse_retention",
+            notifyParentOnComplete: false,
+          })
+          await Cortex.cancel(task.id)
+          expect(Cortex.get(task.id)?.status).toBe("cancelled")
+        },
+      })
+    })
+    expect(timers.size).toBe(2)
+    await fixture.close()
+    expect(timers.size).toBe(0)
+  } finally {
+    await fixture.close()
+    for (const timer of timers) cancel(timer)
+  }
 })
 
 afterRuntimeTests(() => runtime.close())

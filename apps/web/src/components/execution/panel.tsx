@@ -27,7 +27,7 @@ import { useSDK } from "@/context/sdk"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 import { ExecutionInspector } from "./inspector"
 import { createExecutionTrajectory } from "./trajectory"
-import { mergeExecutionWindow } from "./window"
+import { capExecutionBranchWindow, executionOrder, mergeExecutionWindow, retainExecutionPendingIds } from "./window"
 import { E, K } from "./i18n"
 import { ExecutionPreparation } from "./preparation"
 import { D } from "./context-categories"
@@ -57,12 +57,13 @@ const settings = (value: unknown) => PanelState.safeParse(value).data ?? {}
 type Branch = {
   node: ExecutionTrajectoryNode
   rows: ExecutionTrajectoryNode[]
+  previous: boolean
   next: boolean
   loading: boolean
   error: boolean
-  pending: number
+  pendingIds: string[]
 }
-type Line = { node: ExecutionTrajectoryNode; depth: number; branch?: string }
+type Line = { node: ExecutionTrajectoryNode; depth: number; branch?: string; direction?: "previous" | "next" }
 const glyphs: Record<ExecutionTrajectoryNode["kind"], SemanticIconTokenName> = {
   turn: "session.taskDetails",
   input: "session.default",
@@ -219,17 +220,23 @@ export function ExecutionPanelBody(
       const next = new Map(current)
       next.delete(id)
       next.set(id, value)
-      let count = [...next.values()].reduce((sum, branch) => sum + branch.rows.length, 0)
-      for (const [key, branch] of next) {
-        if (count <= 400) break
-        const removed = Math.min(count - 400, Math.max(0, branch.rows.length - 1))
-        if (!removed) continue
-        next.set(key, { ...branch, rows: branch.rows.slice(0, branch.rows.length - removed), next: true })
-        count -= removed
+      const capped = capExecutionBranchWindow(next, 400)
+      if (!capped.droppedIds.length) return capped.branches
+      const dropped = new Set(capped.droppedIds)
+      for (const [key, branch] of capped.branches) {
+        if (!branch.pendingIds.some((pendingId) => dropped.has(pendingId))) continue
+        capped.branches.set(key, {
+          ...branch,
+          pendingIds: branch.pendingIds.filter((pendingId) => !dropped.has(pendingId)),
+        })
       }
-      return next
+      return capped.branches
     })
-  const loadBranch = async (node: ExecutionTrajectoryNode, later = false, latest = false, recover = false) => {
+  const loadBranch = async (
+    node: ExecutionTrajectoryNode,
+    options: { direction?: "previous" | "next"; latest?: boolean; recover?: boolean } = {},
+  ) => {
+    const { direction, latest, recover } = options
     branchAbort.get(node.id)?.abort()
     const controller = new AbortController()
     branchAbort.set(node.id, controller)
@@ -237,10 +244,11 @@ export function ExecutionPanelBody(
     updateBranch(node.id, {
       node,
       rows: old?.rows ?? [],
+      previous: old?.previous ?? false,
       next: old?.next ?? false,
       loading: true,
       error: false,
-      pending: latest ? 0 : (old?.pending ?? 0),
+      pendingIds: latest ? [] : (old?.pendingIds ?? []),
     })
     try {
       const response = await sdk.client.session.executionTrajectory(
@@ -251,12 +259,21 @@ export function ExecutionPanelBody(
           mode: mode(),
           anchor: latest
             ? "latest"
-            : later
-              ? old?.rows.at(-1)?.id
+            : direction
+              ? direction === "previous"
+                ? old?.rows[0]?.id
+                : old?.rows.at(-1)?.id
               : recover
                 ? old?.rows[Math.floor(old.rows.length / 2)]?.id
                 : undefined,
-          position: later ? "after" : recover && old?.rows.length ? "around" : undefined,
+          position:
+            direction && old?.rows.length
+              ? direction === "previous"
+                ? "before"
+                : "after"
+              : recover && old?.rows.length
+                ? "around"
+                : undefined,
           limit: recover ? Math.min(200, Math.max(100, old?.rows.length ?? 0)) : 100,
         },
         { signal: controller.signal, throwOnError: true },
@@ -264,16 +281,21 @@ export function ExecutionPanelBody(
       if (controller.signal.aborted || !expandedTasks().has(node.id) || !active()) return
       const items = response.data.items.filter((row) => row.id !== node.id)
       const current = branches().get(node.id)
-      const rows = later
-        ? [...new Map([...(current?.rows ?? []), ...items].map((row) => [row.id, row])).values()].slice(-200)
+      const combined = direction
+        ? [...new Map([...(current?.rows ?? []), ...items].map((row) => [row.id, row])).values()].sort(
+            executionOrder("time", new Map()),
+          )
         : items
+      const rows = direction === "previous" ? combined.slice(0, 200) : combined.slice(-200)
       updateBranch(node.id, {
         node,
         rows,
-        next: !!response.data.nextCursor,
+        previous:
+          direction === "next" ? !!current?.previous || combined.length > rows.length : !!response.data.previousCursor,
+        next: direction === "previous" ? !!current?.next || combined.length > rows.length : !!response.data.nextCursor,
         loading: false,
         error: false,
-        pending: latest ? 0 : (current?.pending ?? 0),
+        pendingIds: latest ? [] : (current?.pendingIds ?? []).filter((id) => !rows.some((row) => row.id === id)),
       })
     } catch {
       if (!controller.signal.aborted && expandedTasks().has(node.id))
@@ -306,9 +328,10 @@ export function ExecutionPanelBody(
       result.push({ node, depth })
       if (!expandedTasks().has(node.id)) return
       const branch = branches().get(node.id)
+      if (branch?.previous) result.push({ node, depth: depth + 1, branch: node.id, direction: "previous" })
       for (const child of branch?.rows ?? []) add(child, depth + 1)
       if (branch && (branch.next || branch.loading || branch.error))
-        result.push({ node, depth: depth + 1, branch: node.id })
+        result.push({ node, depth: depth + 1, branch: node.id, direction: "next" })
     }
     for (const node of trajectory.state.rows) add(node, 0)
     return result
@@ -328,7 +351,13 @@ export function ExecutionPanelBody(
       updateBranch(id, {
         ...branch,
         rows: changed.rows,
-        pending: branch.pending + (trajectory.state.history ? changed.added : 0),
+        pendingIds: retainExecutionPendingIds(branch.pendingIds, {
+          rows: changed.rows,
+          addedIds: changed.addedIds,
+          removedIds: removed,
+          droppedIds: changed.droppedIds,
+          withhold: trajectory.state.history,
+        }),
       })
     }
   })
@@ -397,14 +426,15 @@ export function ExecutionPanelBody(
     })
   }
   const pending = () =>
-    trajectory.state.pending + [...branches().values()].reduce((sum, branch) => sum + branch.pending, 0)
+    trajectory.state.pendingIds.length +
+    [...branches().values()].reduce((sum, branch) => sum + branch.pendingIds.length, 0)
   const latest = async () => {
     setSelected("")
     setTrail([])
     setAnchor("")
     await Promise.all([
       trajectory.load(undefined, "latest"),
-      ...[...branches().values()].map((branch) => loadBranch(branch.node, false, true)),
+      ...[...branches().values()].map((branch) => loadBranch(branch.node, { latest: true })),
     ])
     trajectory.setHistory(false)
     frame = requestAnimationFrame(() => scrollToIndex(rows().length - 1, "end"))
@@ -439,7 +469,7 @@ export function ExecutionPanelBody(
         for (const controller of branchAbort.values()) controller.abort()
         if (active())
           for (const branch of branches().values())
-            void loadBranch(branch.node, false, false, value[2] === previous?.[2] && trajectory.state.history)
+            void loadBranch(branch.node, { recover: value[2] === previous?.[2] && trajectory.state.history })
       },
       { defer: true },
     ),
@@ -815,14 +845,16 @@ export function ExecutionPanelBody(
                     class="execution-branch-more"
                     style={{ "padding-left": 16 + line.depth * 16 + "px" }}
                     disabled={branches().get(line.branch!)?.loading}
-                    onClick={() => void loadBranch(line.node, !branches().get(line.branch!)?.error)}
+                    onClick={() => void loadBranch(line.node, { direction: line.direction })}
                   >
                     {_(
                       branches().get(line.branch!)?.error
                         ? E.retry
                         : branches().get(line.branch!)?.loading
                           ? E.loading
-                          : E.next,
+                          : line.direction === "previous"
+                            ? E.previous
+                            : E.next,
                     )}
                   </button>
                 }

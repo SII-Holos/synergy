@@ -30,6 +30,7 @@ const requirements: Record<
   panel: {
     context: "workbench",
     trajectory: "workbench",
+    "long-term-summary": "session-long-term-memory",
     notes: "note",
     lattice: "lattice",
     boss: "boss",

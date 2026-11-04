@@ -11,6 +11,21 @@ export function executionOrder(order: "time" | "round" | "call", rounds: Readonl
     a.id.localeCompare(b.id)
 }
 
+export type ExecutionWindowMerge = {
+  rows: ExecutionTrajectoryNode[]
+  addedIds: string[]
+  droppedIds: string[]
+}
+
+export function capExecutionRows<T extends { id: string }>(rows: readonly T[], cap: number) {
+  const limit = Math.max(0, cap)
+  if (rows.length <= limit) return { rows: [...rows], droppedIds: [] as string[] }
+  return {
+    rows: rows.slice(rows.length - limit),
+    droppedIds: rows.slice(0, rows.length - limit).map((row) => row.id),
+  }
+}
+
 export function mergeExecutionWindow(
   current: readonly ExecutionTrajectoryNode[],
   incoming: readonly ExecutionTrajectoryNode[],
@@ -20,21 +35,75 @@ export function mergeExecutionWindow(
     cap?: number
     compare?: (a: ExecutionTrajectoryNode, b: ExecutionTrajectoryNode) => number
   },
-) {
+): ExecutionWindowMerge {
   const deleted = new Set(removed)
   const rows = new Map(current.filter((row) => !deleted.has(row.id)).map((row) => [row.id, row]))
-  let added = 0
+  const addedIds: string[] = []
+  const counted = new Set<string>()
   for (const row of incoming) {
     if (deleted.has(row.id)) continue
     if (!rows.has(row.id)) {
-      added++
+      if (!counted.has(row.id)) {
+        counted.add(row.id)
+        addedIds.push(row.id)
+      }
       if (options.history) continue
     }
     rows.set(row.id, row)
   }
   const sorted = [...rows.values()].sort(options.compare ?? executionOrder("time", new Map()))
-  const cap = options.cap ?? 500
-  return { rows: options.history ? sorted.slice(0, cap) : sorted.slice(-cap), added }
+  const capped = capExecutionRows(sorted, options.cap ?? 500)
+  return { rows: capped.rows, addedIds, droppedIds: capped.droppedIds }
+}
+
+export function capExecutionBranchWindow<T extends { rows: readonly { id: string }[]; previous?: boolean }>(
+  branches: ReadonlyMap<string, T>,
+  cap: number,
+): { branches: Map<string, T>; droppedIds: string[] } {
+  const next = new Map<string, T>()
+  let count = 0
+  for (const branch of branches.values()) count += branch.rows.length
+  const droppedIds: string[] = []
+  for (const [key, branch] of branches) {
+    if (count <= cap) {
+      next.set(key, branch)
+      continue
+    }
+    const removed = Math.min(count - Math.max(0, cap), branch.rows.length)
+    if (!removed) {
+      next.set(key, branch)
+      continue
+    }
+    droppedIds.push(...branch.rows.slice(0, removed).map((row) => row.id))
+    next.set(key, { ...branch, rows: branch.rows.slice(removed), previous: true })
+    count -= removed
+  }
+  return { branches: next, droppedIds }
+}
+
+export function retainExecutionPendingIds(
+  pendingIds: readonly string[],
+  input: {
+    rows: readonly { id: string }[]
+    addedIds: readonly string[]
+    removedIds: readonly string[]
+    droppedIds: readonly string[]
+    withhold: boolean
+  },
+) {
+  const removed = new Set(input.removedIds)
+  const dropped = new Set(input.droppedIds)
+  const visible = new Set(input.rows.map((row) => row.id))
+  const pending: string[] = []
+  const seen = new Set<string>()
+  const keep = (id: string) => {
+    if (removed.has(id) || dropped.has(id) || visible.has(id) || seen.has(id)) return
+    seen.add(id)
+    pending.push(id)
+  }
+  for (const id of pendingIds) keep(id)
+  if (input.withhold) for (const id of input.addedIds) keep(id)
+  return pending
 }
 
 export function executionWindowMatches(

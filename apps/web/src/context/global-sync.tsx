@@ -631,6 +631,16 @@ function createGlobalSync() {
     return true
   }
 
+  function validateResourceResponse(
+    scopeKey: string,
+    sessionID: string,
+    resource: SyncResource,
+    request: SyncResourceRequest,
+    headers: Pick<Headers, "get"> | undefined,
+  ) {
+    return resourceFreshness.canAcceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers))
+  }
+
   function applyResourceMutationResponse(
     scopeKey: string,
     sessionID: string,
@@ -1717,6 +1727,9 @@ function createGlobalSync() {
           pendingLatestIds: metadata?.pendingLatestIds ?? [],
           tailMissingLatest: metadata?.tailMissingLatest ?? false,
         },
+        // Latest repair and compaction own this window. Omitting mode would
+        // preserve history and leave a compacted transcript in place.
+        mode: "latest",
       })
       const partActions = new Map(
         Object.keys(plan.parts).map((messageID) => [
@@ -2849,6 +2862,7 @@ function createGlobalSync() {
     scopeRecoveryPending: (scopeKey: string) =>
       (scopeRecoveryTargets[scopeKey] ?? 0) > (scopeReconnectVersions[scopeKey] ?? 0),
     captureResourceRequest,
+    validateResourceResponse,
     applyResourceResponse,
     loadCurrentTurn,
     applyResourceMutationResponse,

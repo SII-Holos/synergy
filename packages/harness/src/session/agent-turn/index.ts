@@ -24,6 +24,11 @@ import { materializeAttachmentInput } from "../../attachment/model-input"
 import { ModelExecution } from "../../execution/model-execution"
 import { InProcessModelExecutor } from "./model-executor"
 import { SecretMask } from "../../secrets/mask"
+import { RuntimeResources } from "../../resources/runtime"
+import { ResourceCosts } from "../../resources/costs"
+import { sessionResourceOwner } from "../../resources/owner"
+import { ExecutionCapacity } from "../execution-capacity"
+import { LLMTurnMemory } from "../llm-memory"
 
 export namespace AgentTurn {
   export type Input = AgentTurnInput
@@ -32,11 +37,15 @@ export namespace AgentTurn {
 
   const runtimeState = RuntimeContext.state(() => ({
     recovery: new ProviderRetryCoordinator(),
+    costs: new ResourceCosts(),
     pool: undefined as AgentWorkerPool | InProcessModelExecutor | undefined,
     options: DEFAULT_AGENT_WORKER_POOL_OPTIONS,
     accepting: true,
     stopPromise: undefined as Promise<void> | undefined,
     inProcessStream: undefined as InProcessStream | undefined,
+    unsubscribeResources: undefined as (() => void) | undefined,
+    warming: undefined as Promise<void> | undefined,
+    warmAbort: undefined as AbortController | undefined,
   }))
 
   const log = Log.create({ service: "agent.turn" })
@@ -50,6 +59,7 @@ export namespace AgentTurn {
       ...DEFAULT_AGENT_WORKER_POOL_OPTIONS,
       ...Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined)),
     }
+    RuntimeResources.setLimit("model", instanceState.options.size, instanceState.options)
   }
   export function setInProcessStream(hook: InProcessStream | undefined): void {
     const instanceState = runtimeState()
@@ -61,6 +71,7 @@ export namespace AgentTurn {
     const instanceState = runtimeState()
 
     instanceState.accepting = false
+    instanceState.warmAbort?.abort()
     instanceState.recovery.close()
   }
 
@@ -71,23 +82,70 @@ export namespace AgentTurn {
       throw new Error("Agent worker pool size must be a positive integer")
     }
     instanceState.options = { ...instanceState.options, size }
+    RuntimeResources.setLimit("model", size, instanceState.options)
     instanceState.pool?.resize(size)
   }
 
-  export function prewarm(): void {
+  export function prewarm(): Promise<void> {
     const instanceState = runtimeState()
 
-    if (!instanceState.accepting || instanceState.stopPromise || instanceState.inProcessStream) return
-    try {
-      instanceState.pool ??= createExecutor(instanceState.options)
-    } catch (error) {
-      // Option validation cannot succeed in any later attempt either; log it
-      // and let the first turn surface the failure through lazy creation.
-      log.warn("agent worker pool prewarm rejected the configured options", { error })
-    }
+    if (
+      !instanceState.accepting ||
+      instanceState.stopPromise ||
+      instanceState.inProcessStream ||
+      ModelExecution.mode() === "in-process" ||
+      RuntimeResources.status().queued > 0 ||
+      RuntimeResources.status().state !== "normal"
+    )
+      return Promise.resolve()
+    if (instanceState.warming) return instanceState.warming
+    const current = instanceState.pool?.stats()
+    const missing = Math.max(
+      0,
+      Math.min(instanceState.options.size, (current?.active ?? 0) + instanceState.options.minIdle) -
+        (current?.workers ?? 0),
+    )
+    const bytes = missing * instanceState.costs.startup()
+    if (!missing) return Promise.resolve()
+    if (RuntimeResources.status().headroomBytes < bytes) return Promise.resolve()
+    const abort = new AbortController()
+    instanceState.warmAbort = abort
+    instanceState.warming = RuntimeResources.allocation(
+      { owner: "worker-prewarm", bytes, signal: abort.signal },
+      async () => {
+        if (!instanceState.accepting) return
+        instanceState.pool ??= createExecutor(instanceState.options)
+        if (instanceState.pool instanceof AgentWorkerPool) {
+          instanceState.pool.setPressure(false)
+          await instanceState.pool.waitForWarm(abort.signal)
+        }
+      },
+    )
+      .catch((error) => {
+        if (!abort.signal.aborted) log.warn("agent worker prewarm failed", { error })
+      })
+      .finally(() => {
+        instanceState.warming = undefined
+        instanceState.warmAbort = undefined
+      })
+    return instanceState.warming
   }
 
   export async function prepare(request: Input): Promise<Input & { prepared: LLM.PreparedTurn }> {
+    return RuntimeResources.allocation(
+      {
+        owner:
+          request.recording?.owner.kind === "operation"
+            ? request.sessionID
+            : await sessionResourceOwner(request.sessionID),
+        bytes: preparationBytes(request),
+        signal: request.abort,
+      },
+      () => prepareAdmitted(request),
+    )
+  }
+
+  async function prepareAdmitted(request: Input): Promise<Input & { prepared: LLM.PreparedTurn }> {
     const input = { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
     return {
       ...input,
@@ -100,9 +158,17 @@ export namespace AgentTurn {
     const instanceState = runtimeState()
 
     if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
+    const owner =
+      request.recording?.owner.kind === "operation" ? request.sessionID : await sessionResourceOwner(request.sessionID)
+    request.onPhase?.("waiting_resources")
     const input = request.prepared
       ? request
-      : { ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }
+      : instanceState.inProcessStream
+        ? await RuntimeResources.allocation(
+            { owner, bytes: preparationBytes(request), signal: request.abort },
+            async () => ({ ...request, messages: await materializeAttachmentInput(request.messages, request.abort) }),
+          )
+        : await prepare(request)
     if (input.promptSuffix) input.promptSuffix = await SecretMask.apply(input.promptSuffix)
     const userMetadata = input.user.metadata
       ? JSON.parse(await SecretMask.apply(JSON.stringify(input.user.metadata)))
@@ -141,8 +207,40 @@ export namespace AgentTurn {
       input.abort,
       recovery,
     )
+    let cost = executionCost(input)
+    const resource = await ExecutionCapacity.wait(() =>
+      RuntimeResources.acquire({
+        owner,
+        pool: "model",
+        bytes: cost.startup + cost.turn,
+        estimate: () => {
+          cost = executionCost(input)
+          return cost.startup + cost.turn
+        },
+        retainedBytes: LLMTurnMemory.estimateBytes(input),
+        signal: input.abort,
+      }),
+    ).catch((error) => {
+      lease.release()
+      throw error
+    })
+    let owned: Stream | undefined
+    const own = (source: Stream): Stream => {
+      let disposed: Promise<void> | undefined
+      owned = {
+        ...source,
+        dispose: () =>
+          (disposed ??= (async () => {
+            // Rollout disposal can replay a provider error after the executor has acknowledged release.
+            await source.dispose()
+            await RuntimeResources.sampleAfterAllocation()
+            resource.release()
+          })()),
+      }
+      return owned
+    }
     try {
-      return await RolloutCall.stream(
+      const result = await RolloutCall.stream(
         {
           ...attribution,
           usageRole: usageRole ?? "auxiliary",
@@ -191,25 +289,44 @@ export namespace AgentTurn {
             if (!instanceState.accepting || instanceState.stopPromise) throw new Error("Agent worker pool is stopping")
             if (instanceState.inProcessStream) {
               onPhase?.("waiting_model")
-              return RolloutTransport.provide(archive, () =>
-                instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+              return own(
+                await RolloutTransport.provide(archive, () =>
+                  instanceState.inProcessStream!({ ...input, contextUsageProvenance: provenance }),
+                ),
               )
             }
             instanceState.pool ??= createExecutor(instanceState.options)
+            if (instanceState.pool instanceof AgentWorkerPool)
+              instanceState.pool.setPressure(RuntimeResources.status().state !== "normal")
             onPhase?.("queued_agent")
             const result = await instanceState.pool.run({ ...turnInput, prepared: prepared!, archive, onPhase })
             const contextUsageDraft = startContextUsageDraft(input, prepared!.system, provenance)
-            return { ...result, contextUsageDraft }
+            return own({ ...result, contextUsageDraft })
           }),
         () => {
           if (attribution.owner.kind === "session")
             SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
         },
       )
+      if (cost.startup) {
+        await RuntimeResources.sampleAfterAllocation()
+        resource.checkpoint(cost.turn)
+      }
+      return result
     } catch (error) {
       lease.release()
       if (RolloutRecordingError.isInstance(error) && attribution.owner.kind === "session") {
         SessionManager.signalAbort(attribution.owner.sessionID, { rootID: attribution.runID })
+      }
+      if (owned) {
+        try {
+          await owned.dispose()
+        } catch (disposalError) {
+          throw new AggregateError([error, disposalError], "Model startup and disposal failed")
+        }
+      } else {
+        await RuntimeResources.sampleAfterAllocation()
+        resource.release()
       }
       throw error
     }
@@ -218,30 +335,29 @@ export namespace AgentTurn {
   export function stats() {
     const instanceState = runtimeState()
 
-    return (
-      instanceState.pool?.stats() ?? {
-        configured: instanceState.options.size,
-        minIdle: instanceState.options.minIdle,
-        idleTimeoutMs: instanceState.options.idleTimeoutMs,
-        maxQueued: instanceState.options.maxQueued,
-        maxQueuedBytes: instanceState.options.maxQueuedBytes,
-        workers: 0,
-        ready: 0,
-        active: 0,
-        queued: 0,
-        queuedBytes: 0,
-        rssBytes: 0,
-        heapUsedBytes: 0,
-        heapTotalBytes: 0,
-        externalBytes: 0,
-        arrayBuffersBytes: 0,
-        baselineBytes: 0,
-        peakBytes: 0,
-        retainedBytes: 0,
-        measuredWorkers: 0,
-        lastRecovery: undefined,
-      }
-    )
+    const stats = instanceState.pool?.stats() ?? {
+      configured: instanceState.options.size,
+      minIdle: instanceState.options.minIdle,
+      idleTimeoutMs: instanceState.options.idleTimeoutMs,
+      maxQueued: instanceState.options.maxQueued,
+      maxQueuedBytes: instanceState.options.maxQueuedBytes,
+      workers: 0,
+      ready: 0,
+      active: 0,
+      queued: 0,
+      queuedBytes: 0,
+      rssBytes: 0,
+      heapUsedBytes: 0,
+      heapTotalBytes: 0,
+      externalBytes: 0,
+      arrayBuffersBytes: 0,
+      baselineBytes: 0,
+      peakBytes: 0,
+      retainedBytes: 0,
+      measuredWorkers: 0,
+      lastRecovery: undefined,
+    }
+    return { ...stats, ...RuntimeResources.poolStatus("model") }
   }
 
   export async function stop(): Promise<void> {
@@ -252,6 +368,9 @@ export namespace AgentTurn {
     const current = instanceState.pool
     instanceState.stopPromise = (async () => {
       await current?.stop()
+      await instanceState.warming
+      instanceState.unsubscribeResources?.()
+      instanceState.unsubscribeResources = undefined
       if (instanceState.pool === current) instanceState.pool = undefined
     })()
     try {
@@ -262,6 +381,39 @@ export namespace AgentTurn {
   }
 
   function createExecutor(options: AgentWorkerPoolOptions) {
-    return ModelExecution.mode() === "in-process" ? new InProcessModelExecutor(options) : new AgentWorkerPool(options)
+    if (ModelExecution.mode() === "in-process") return new InProcessModelExecutor(options)
+    const pool = new AgentWorkerPool(options, undefined, {}, runtimeState().costs)
+    pool.setPressure(RuntimeResources.status().state !== "normal")
+    runtimeState().unsubscribeResources = RuntimeResources.subscribe((status) => {
+      if (status.state !== "normal") pool.setPressure(true)
+      else if (pool.stats().workers < Math.min(options.size, pool.stats().active + options.minIdle)) void prewarm()
+    })
+    return pool
+  }
+
+  function preparationBytes(input: Input) {
+    return 64 * 1024 ** 2 + 4 * LLMTurnMemory.estimateBytes(input.messages)
+  }
+
+  function executionCost(input: Input) {
+    const current = runtimeState()
+    const stats = current.pool?.stats()
+    const starting =
+      ModelExecution.mode() === "in-process" || current.inProcessStream
+        ? 0
+        : Math.max(
+            0,
+            Math.min(current.options.size, RuntimeResources.poolStatus("model").active + 1) - (stats?.workers ?? 0),
+          )
+    return {
+      startup: starting * current.costs.startup(),
+      turn: current.costs.turn(
+        LLMTurnMemory.estimateBytes({
+          messages: input.messages,
+          prepared: input.prepared,
+          tools: input.toolDefinitions,
+        }),
+      ),
+    }
   }
 }

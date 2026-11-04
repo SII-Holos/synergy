@@ -1,5 +1,5 @@
-import { composeWithExperiments } from "../support/selected-components"
 import { expect, test } from "bun:test"
+import { FeatureSelection } from "@ericsanchezok/synergy-util/features"
 import { RuntimeComponents, type RuntimeComponent } from "@ericsanchezok/synergy-harness/lifecycle"
 import { testRuntime } from "@ericsanchezok/synergy-harness/test/support/runtime"
 import { ToolResolver, LLM } from "@ericsanchezok/synergy-harness/test/support/internals"
@@ -57,7 +57,17 @@ async function open(selected: RuntimeComponent[]) {
     ...selected,
     ...(selected.some((component) => component.id === "server") ? [] : [server()]),
   ])
-  const composition = composeWithExperiments(components)
+  const composition = RuntimeComponents.compose(
+    components,
+    FeatureSelection.resolve(components, {
+      optIn: selected.flatMap(
+        (component) =>
+          component.features?.definitions
+            .filter((feature) => feature.maturity === "experimental")
+            .map((feature) => feature.id) ?? [],
+      ),
+    }),
+  )
   const adapters = await Promise.all(
     components.flatMap((component) => (component.adapters?.http ? [import(component.adapters.http.href)] : [])),
   )
@@ -144,6 +154,7 @@ for (const [name, components] of [
       const state = await inspect()
       const selected = new Set(components.map((component) => component.id))
       expect(state.capabilities.features).toEqual(state.capabilities.features.toSorted())
+      expect(state.capabilities.features).not.toContain("session-long-term-memory")
       for (const owner of [
         "note",
         "library",
@@ -229,6 +240,7 @@ for (const [name, components] of [
 test("closing or failing an extended Runtime does not change the interleaved Core HTTP contract", async () => {
   await using core = await open([])
   const before = await core.run(inspect)
+  expect(before.capabilities.features).toEqual([])
   const extended = await open([note(), blueprint()])
   try {
     expect((await extended.run(inspect)).capabilities.features).toEqual(["blueprint", "note"])

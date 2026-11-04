@@ -775,7 +775,8 @@ describe("SessionSummary", () => {
     }))
 
   test("a hung summarize run times out and does not wedge the session", async () => {
-    await using runtime = await testRuntime({ env: { SYNERGY_SUMMARY_TIMEOUT_MS: "100" } })
+    const summaryTimeoutMs = 123_456
+    await using runtime = await testRuntime({ env: { SYNERGY_SUMMARY_TIMEOUT_MS: String(summaryTimeoutMs) } })
     return await runtime.run(async () => {
       await using tmp = await tmpdir({ git: true })
       {
@@ -874,17 +875,39 @@ describe("SessionSummary", () => {
               options: {},
             }))
 
+            let expire: (() => void) | undefined
+            const nativeTimeout = globalThis.setTimeout
+            using timeout = spyOn(globalThis, "setTimeout").mockImplementation(
+              new Proxy(nativeTimeout, {
+                apply(target, receiver, args) {
+                  const [action, delay, ...values] = args
+                  if (delay === summaryTimeoutMs && typeof action === "function") expire = () => action(...values)
+                  return Reflect.apply(target, receiver, args)
+                },
+              }),
+            )
             const firstRun = SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
-            await firstRunStarted
+            await Promise.race([
+              firstRunStarted,
+              firstRun.then(() => {
+                throw new Error("Summary settled before the hung comparison started")
+              }),
+            ])
+            expect(expire).toBeDefined()
+            expire!()
             await firstRun
+            expect((await storedUser(session.id, user.id))?.summary?.diffState).toEqual({
+              status: "error",
+              code: "timeout",
+            })
 
             await SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
 
             expect(calls).toBeGreaterThanOrEqual(2)
             const messages = await Session.messages({ sessionID: session.id })
-            const storedUser = messages.find((message) => message.info.id === user.id)?.info as
+            const recoveredUser = messages.find((message) => message.info.id === user.id)?.info as
               MessageV2.User | undefined
-            expect(storedUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
+            expect(recoveredUser?.summary?.diffs).toEqual([{ ...diff, legacyRoot: tmp.path }])
 
             await Session.remove(session.id)
           },

@@ -122,6 +122,8 @@ export function KanbanPanel() {
   // --- Loader (cross-scope message page; panes rejoin the LRU on re-entry) ---
   const [loadStates, setLoadStates] = createStore<Record<string, BoardPaneLoadState>>({})
   const boardLoader = createBoardLoader({
+    validateResourceResponse: (scopeKey, sessionID, resource, request, headers) =>
+      globalSync.validateResourceResponse(scopeKey, sessionID, resource, request, headers),
     ensureScopeState: (scopeKey) => globalSync.ensureScopeState(scopeKey),
     retainScopeState: (scopeKey) => globalSync.retainScopeState(scopeKey),
     captureResourceRequest: (scopeKey, sessionID, resource) =>

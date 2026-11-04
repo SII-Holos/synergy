@@ -36,6 +36,7 @@ import { SessionInbox } from "../session/inbox"
 import { SessionDrive } from "../session/drive"
 import { LoopJob } from "../session/loop-job"
 import { Lock } from "../util/lock"
+import { sessionResourceOwner } from "../resources/owner"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
@@ -50,6 +51,7 @@ export namespace Cortex {
     taskRuns: new Map() as Map<string, Promise<void>>,
     taskBudgets: new Map<string, { maxOutputTokens?: number; maxCost?: number }>(),
     acquiredTasks: new Set<string>(),
+    admissionOwners: new Map<string, string>(),
     capacityOwners: new Map<string, { controller: AbortController; unregister(): void }>(),
     admissions: new Map<string, AbortController>(),
     taskTimeouts: new Map<string, ReturnType<typeof setTimeout>>(),
@@ -316,10 +318,14 @@ export namespace Cortex {
     if (!task) throw new Error(`Cortex task ${taskID} not found`)
     if (task.status !== "queued") return task
 
+    const admissionOwner = await sessionResourceOwner(task.parentSessionID)
+    if (task.status !== "queued" || instanceState.stopped || instanceState.cancellationRequests.has(taskID)) return task
+    instanceState.admissionOwners.set(taskID, admissionOwner)
+
     const admission = new AbortController()
     instanceState.admissions.set(taskID, admission)
     try {
-      await ExecutionCapacity.wait(() => CortexConcurrency.acquire(task.agent, admission.signal))
+      await ExecutionCapacity.wait(() => CortexConcurrency.acquire(admissionOwner, admission.signal))
     } catch (error) {
       if (instanceState.cancellationRequests.has(taskID) || isTerminal(task.status)) return task
       throw error
@@ -332,7 +338,7 @@ export namespace Cortex {
     if (!current || current.status === "cancelled") {
       instanceState.taskBudgets.delete(taskID)
       instanceState.acquiredTasks.delete(taskID)
-      CortexConcurrency.release(task.agent)
+      CortexConcurrency.release(admissionOwner)
       return current ?? task
     }
 
@@ -340,16 +346,16 @@ export namespace Cortex {
     let resuming: Promise<void> | undefined
     const branches = new Set<{ active: boolean }>()
     const pause = () => {
-      if (instanceState.acquiredTasks.delete(taskID)) CortexConcurrency.release(task.agent)
+      if (instanceState.acquiredTasks.delete(taskID)) CortexConcurrency.release(admissionOwner)
     }
     const resume = async () => {
       if (instanceState.acquiredTasks.has(taskID) || controller.signal.aborted) return
       if (resuming) return resuming
       resuming = (async () => {
         try {
-          await CortexConcurrency.acquire(task.agent, controller.signal)
+          await CortexConcurrency.acquire(admissionOwner, controller.signal)
           if (controller.signal.aborted) {
-            CortexConcurrency.release(task.agent)
+            CortexConcurrency.release(admissionOwner)
             return
           }
           instanceState.acquiredTasks.add(taskID)
@@ -439,7 +445,13 @@ export namespace Cortex {
 
   export const launch = fn(CortexTypes.LaunchInput, async (input) => {
     const task = await prepare(input)
-    return WorkspaceAccess.handoff(() => start(task.id))
+    track(
+      task.id,
+      ExecutionCapacity.detached(() => start(task.id)).catch(async (error) => {
+        await updateTaskStatus(task.id, "error", String(error), undefined, { launchFailure: true })
+      }),
+    )
+    return task
   })
 
   async function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): Promise<void> {
@@ -851,8 +863,9 @@ export namespace Cortex {
       capacity?.unregister()
       instanceState.capacityOwners.delete(taskID)
       if (instanceState.acquiredTasks.delete(taskID)) {
-        CortexConcurrency.release(terminalTask.agent)
+        CortexConcurrency.release(instanceState.admissionOwners.get(taskID) ?? terminalTask.parentSessionID)
       }
+      instanceState.admissionOwners.delete(taskID)
 
       if (!shouldNotifyParent) {
         if (waiters?.size) {
@@ -1711,6 +1724,7 @@ export namespace Cortex {
     }
     instanceState.capacityOwners.clear()
     instanceState.acquiredTasks.clear()
+    instanceState.admissionOwners.clear()
     instanceState.finalizingTasks.clear()
     instanceState.cancellationRequests.clear()
     instanceState.timeoutRequests.clear()

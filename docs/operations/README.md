@@ -6,6 +6,7 @@ These documents describe repeatable maintenance and release procedures for the c
 - [Open-source quality](open-source-quality.md) — local checks, CI jobs, package validation, secret scanning, and failure guidance.
 - [Desktop release](desktop-release.md) — Electron packaging, signing, updater artifacts, publication, and recovery.
 - [Performance observability](performance-observability.md) — runtime telemetry, retention, APIs, dashboards, and measurement tools.
+- [Memory residency scope](memory-residency-scope.md) — retain, boundary, and hot file globs, plus the admission lint.
 - [Native Workspace recovery](../../.synergy/skill/find-logs/SKILL.md#recover-native-workspace-coordination) — diagnose live or uncertain claims and recover a malformed ledger during offline host maintenance.
 
 Product usage belongs in [product documentation](../product/overview.md); source-development commands belong in the [development reference](../reference/development.md). Investigation results and one-time measurements belong in [research](../research/README.md).

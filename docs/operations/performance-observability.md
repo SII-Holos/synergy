@@ -128,11 +128,17 @@ git -C /path/to/candidate checkout <candidate-revision>
 
 cd /path/to/baseline
 bun install
-bun run perf:memory:runtime --preset standard --scenario parallel > baseline.json
+bun run perf:memory:runtime --preset standard --scenario sequential > baseline.json
 
 cd /path/to/candidate
 bun install
-bun run perf:memory:runtime --preset standard --scenario parallel > candidate.json
+bun run perf:memory:runtime --preset standard --scenario sequential > candidate.json
+```
+
+Compare two `--preset standard --scenario sequential` artifacts with the runtime memory gate. The command requires the same workload fingerprint and exits non-zero when the final after-delete idle-relative retained sample, or any 5/30/120-second idle-relative sample, grows by more than 64 MiB server RSS, 96 MiB process-tree RSS, 64 MiB descendant RSS, 32 MiB heap, 32 MiB external memory, or 16 MiB ArrayBuffers. Override one allowance with `--max-rss-mib`, `--max-process-tree-rss-mib`, `--max-descendant-rss-mib`, `--max-heap-mib`, `--max-external-mib`, or `--max-array-buffers-mib`. The command reads JSON only. See [the compare gate](../decisions/implemented/testing/2026-11-02-session-memory-runtime-compare-gate.md).
+
+```bash
+bun run perf:memory:runtime:compare --baseline baseline.json --candidate candidate.json
 ```
 
 Only compare results whose workload contract version and workload fingerprint are identical. The stable JSON paths include workload-phase peaks, sequential deletion checkpoints, and 5/30/120-second absolute and idle-relative retained memory for server RSS, process-tree RSS, descendant RSS, heap, external memory, and ArrayBuffers. Candidate minus baseline is the memory-load delta: positive values are regressions and negative values are improvements.

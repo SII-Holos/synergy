@@ -1,6 +1,13 @@
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import { StorageBusyError, StorageClosedError } from "../../storage/errors"
+import {
+  StorageBusyError,
+  StorageClosedError,
+  StorageCommitUnknownError,
+  StorageIntegrityError,
+  StorageOwnershipError,
+  StorageUnavailableError,
+} from "../../storage/errors"
 
 export const RolloutRecordingError = NamedError.create("RolloutRecordingError", z.object({ message: z.string() }))
 
@@ -38,6 +45,19 @@ export function findRecordingError(error: unknown): InstanceType<typeof RolloutR
 export function isTransientStorageError(error: unknown): boolean {
   for (const value of causes(error))
     if (value instanceof StorageBusyError || value instanceof StorageClosedError) return true
+  return false
+}
+
+export function isFatalStorageError(error: unknown): boolean {
+  for (const value of causes(error)) {
+    if (
+      value instanceof StorageIntegrityError ||
+      value instanceof StorageCommitUnknownError ||
+      value instanceof StorageOwnershipError ||
+      value instanceof StorageUnavailableError
+    )
+      return true
+  }
   return false
 }
 

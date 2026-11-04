@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { planPrefetchApply } from "../../../src/context/layout/prefetch-apply"
 
-const message = (id: string, created: number) => ({
+const message = (id: string, created: number, contextUsage?: unknown) => ({
   id,
   time: { created },
   role: "assistant" as const,
+  contextUsage,
 })
 
 const page = (items: Array<{ info: ReturnType<typeof message>; parts: Array<{ id: string }> }>) => ({
@@ -41,6 +42,23 @@ describe("planPrefetchApply", () => {
     // token already accepted the page, and only the live part bucket for m1
     // must be kept.
     expect(result.window.messages.map((m) => m.id)).toEqual(["m1", "m2"])
+  })
+
+  test("does not apply a latest page over a history window", () => {
+    const result = planPrefetchApply({
+      page: page([{ info: message("latest", 4, { total: 2 }), parts: [{ id: "p-latest" }] }]),
+      current: {
+        messages: [message("old", 1)],
+        mode: "history",
+        pendingLatest: true,
+        pendingLatestIds: ["unseen"],
+        tailMissingLatest: true,
+      },
+      partSnapshotAction: () => "apply",
+    })
+    expect(result.status).toBe("preserved-history")
+    if (result.status !== "preserved-history") return
+    expect(result.latestContextMessage?.id).toBe("latest")
   })
 
   test("applies every part bucket when no snapshot conflict exists", () => {

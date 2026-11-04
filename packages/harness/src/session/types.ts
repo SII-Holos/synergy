@@ -182,6 +182,7 @@ export const Activity = z
       "materializing_input",
       "preparing_files",
       "preparing_context",
+      "waiting_resources",
       "queued_agent",
       "waiting_model",
       "responding",
@@ -236,6 +237,24 @@ export const RollbackAck = z
   })
   .meta({ ref: "SessionRollbackAck" })
 export type RollbackAck = z.infer<typeof RollbackAck>
+
+export const LongTermMemory = z
+  .object({
+    markdown: z.string(),
+    revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .meta({ ref: "SessionLongTermMemory" })
+export type LongTermMemory = z.infer<typeof LongTermMemory>
+
+export const LongTermMemoryReview = z
+  .object({
+    reviewedThrough: z.object({
+      created: z.number().describe("Creation time of the reviewed source message, not the review time"),
+      messageID: Identifier.schema("message"),
+    }),
+  })
+  .meta({ ref: "SessionLongTermMemoryReview" })
+export type LongTermMemoryReview = z.infer<typeof LongTermMemoryReview>
 
 export const CompletionNotice = z
   .object({
@@ -331,6 +350,7 @@ const BaseInfo = BaseInfoInput.pipe(
         assistant: z.string().optional(),
       })
       .optional(),
+    longTermMemory: LongTermMemory.optional(),
     history: HistoryInfo.optional(),
     rollbackAck: RollbackAck.optional(),
     cortex: CortexDelegationInfo.optional(),
@@ -353,7 +373,7 @@ const BaseInfo = BaseInfoInput.pipe(
 export const Info = z
   .preprocess(
     (input) => SessionSchemaRegistry.projectInput(BaseInfoInput.parse(input)),
-    SessionSchemaRegistry.compose(BaseInfo.out),
+    SessionSchemaRegistry.compose(BaseInfo.out.extend({ longTermMemoryReview: LongTermMemoryReview.optional() })),
   )
   .meta({ ref: "Session" })
 export type Info = z.infer<typeof Info>
@@ -366,7 +386,9 @@ export function independentExecutionInfo(input: Info): Info {
   ) as Info
 }
 
-export const PersistedInfo = BaseInfoInput.pipe(BaseInfo.out.omit({ workflow: true }).passthrough())
+export const PersistedInfo = BaseInfoInput.pipe(BaseInfo.out.omit({ workflow: true }).passthrough()).transform(
+  ({ longTermMemoryReview: _review, ...info }) => info,
+)
 export type PersistedInfo = z.infer<typeof PersistedInfo>
 export const StatusInfo = z
   .union([
