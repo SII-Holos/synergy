@@ -162,6 +162,8 @@ export namespace MessageV2 {
           status: z.literal("complete"),
           toolCallID: z.string(),
           afterHash: z.string().regex(/^[0-9a-f]{40}$/),
+          baselineOmissions: z.array(SnapshotSchema.Omission).optional(),
+          omissions: z.array(SnapshotSchema.Omission).optional(),
         }),
       ])
       .optional(),
