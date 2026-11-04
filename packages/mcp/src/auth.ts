@@ -1,5 +1,5 @@
 import { RuntimeContext } from "@ericsanchezok/synergy-harness/lifecycle/context"
-import fs from "fs/promises"
+import { AtomicFile } from "@ericsanchezok/synergy-util/atomic-file"
 import { isDeepStrictEqual } from "node:util"
 import z from "zod"
 import { Global } from "@ericsanchezok/synergy-harness/global"
@@ -99,8 +99,10 @@ export namespace McpAuth {
   }
 
   async function persist(data: Record<string, Entry>): Promise<void> {
-    await Bun.write(Global.Path.authMcp, JSON.stringify(data, null, 2))
-    await fs.chmod(Global.Path.authMcp, 0o600)
+    await AtomicFile.writeJsonAtomic(Global.Path.authMcp, JSON.stringify(data, null, 2), {
+      private: true,
+      durable: true,
+    })
   }
 
   function mutate(
