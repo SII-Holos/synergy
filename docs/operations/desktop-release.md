@@ -147,7 +147,7 @@ Product release keeps the existing candidate/finalize model:
 
 Registry read-after-write checks use cache-busted, no-store requests and a twenty-minute visibility budget for npm publish-time scanning. An accepted upload is not installable until the registry exposes its version and requested dist-tag. Expiry still fails publication.
 
-The `version` and `native_run_id` dispatch inputs resume an unfinished stable candidate. They retain the highest already published managed-package version and reuse the original run's successful native artifacts. Recovery requires an ancestor Release run from `dev` and unchanged product and build inputs; only the explicitly allowed release-tooling changes, development Skills, tests and documentation may differ. A completed public GitHub Release cannot be resumed.
+The `version` and `native_run_id` dispatch inputs resume an unfinished stable candidate. They retain the highest already published managed-package version and reuse the original run's successful native artifacts. Recovery requires an ancestor Release run from `dev` and unchanged published-package sources and native build inputs. Only explicitly allowed release tooling, the separately built Execution Host Docker recipe, development Skills, tests and documentation may differ. The Docker recipe is not included in published npm modules or CLI/Desktop runtime assembly. A completed public GitHub Release cannot be resumed.
 
 ## Failure Recovery
 

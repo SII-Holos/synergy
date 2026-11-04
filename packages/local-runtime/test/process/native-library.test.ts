@@ -54,6 +54,7 @@ const cases = [
 for (const example of cases) {
   test(`native library build and loading select ${example.name}`, async () => {
     await using directory = await tmpdir()
+    await fs.mkdir(path.join(directory.path, "node_modules"))
     const compiler = Bun.spawn(
       [
         process.execPath,

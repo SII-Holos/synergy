@@ -21,6 +21,8 @@ test("resumes a failed candidate with verified native artifacts and release-only
       "script/changelog.ts",
       "test/script/changelog.test.ts",
       "docs/operations/desktop-release.md",
+      "packages/local-runtime/execution-host.Dockerfile",
+      "packages/local-runtime/test/process/native-library.test.ts",
     ]),
   ).not.toThrow()
 })
@@ -28,6 +30,9 @@ test("resumes a failed candidate with verified native artifacts and release-only
 test("rejects changed product bytes and native or module build inputs", () => {
   for (const changed of [
     "packages/harness/src/index.ts",
+    "packages/local-runtime/src/environment/entry.ts",
+    "packages/local-runtime/src/test/owned-worker.ts",
+    "packages/local-runtime/script/build-execution-host.ts",
     "script/release/shared/build/native-build-packages.ts",
     "script/release/shared/publish-modules.ts",
     ".github/workflows/build-helpers.yml",

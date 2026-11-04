@@ -15,13 +15,14 @@ interface ResumeJob {
   conclusion: string | null
 }
 
-const releaseOnlyFiles = new Set([
+const recoverableFiles = new Set([
   ".github/workflows/release.yml",
   "script/changelog.ts",
   "script/release/stable-start.ts",
   "script/release/stable-complete.ts",
   "script/release/shared/runtime.ts",
   "script/release/validate-resume.ts",
+  "packages/local-runtime/execution-host.Dockerfile",
 ])
 
 export function assertReleaseResumeSource(run: ResumeRun, jobs: ResumeJob[], changed: string[]) {
@@ -37,7 +38,9 @@ export function assertReleaseResumeSource(run: ResumeRun, jobs: ResumeJob[], cha
     throw new Error("Resume source must have successful native asset jobs")
   const productChanges = changed.filter(
     (file) =>
-      !releaseOnlyFiles.has(file) && !["docs/", "test/", ".synergy/skill/"].some((prefix) => file.startsWith(prefix)),
+      !recoverableFiles.has(file) &&
+      !["docs/", "test/", ".synergy/skill/"].some((prefix) => file.startsWith(prefix)) &&
+      !/^(?:packages|apps)\/[^/]+\/test\//.test(file),
   )
   if (productChanges.length)
     throw new Error(`Cannot resume after product or build changes: ${productChanges.join(", ")}`)
