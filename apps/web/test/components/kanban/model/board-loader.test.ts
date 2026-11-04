@@ -215,6 +215,95 @@ describe("createBoardLoader", () => {
     expect(deps.messagePages.at(-1)?.sessionID).toBe("s1")
   })
 
+  test("a latest page does not replace a session already in history mode", async () => {
+    const ready = Promise.withResolvers<void>()
+    const contexts: Array<{ id?: string } | null | undefined> = []
+    const latest = message("latest", 500)
+    latest.contextUsage = { total: 3 }
+    const deps = makeDeps({
+      setLatestContextMessage: (_scope, _session, value) => {
+        contexts.push(value)
+      },
+      messagePage: async () => ({
+        data: {
+          items: [{ info: latest, parts: [{ id: "p-latest" } as Part] }],
+          referencedRoots: [],
+          nextCursor: null,
+          hasMore: false,
+          total: 20,
+        },
+      }),
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    setStore("message", "s1", [message("older", 1)])
+    setStore("part", "older", [{ id: "p-older" } as Part])
+    setStore("messageWindow", "s1", {
+      mode: "history",
+      nextCursor: "cursor-older",
+      hasMore: true,
+      total: 8,
+      pendingLatest: true,
+      pendingLatestIds: ["unseen"],
+      tailMissingLatest: true,
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      expect(store.message.s1?.map((item) => item.id)).toEqual(["older"])
+      expect(store.messageWindow.s1).toMatchObject({
+        mode: "history",
+        nextCursor: "cursor-older",
+        hasMore: true,
+        total: 8,
+        pendingLatest: true,
+        pendingLatestIds: ["unseen"],
+        tailMissingLatest: true,
+      })
+      expect(store.part.older?.map((part) => part.id)).toEqual(["p-older"])
+      expect(store.part.latest).toBeUndefined()
+      expect(contexts.at(-1)).toMatchObject({ id: "latest" })
+    } finally {
+      loader.dispose()
+    }
+  })
+
+  test("a latest page still replaces a latest-mode window", async () => {
+    const ready = Promise.withResolvers<void>()
+    const deps = makeDeps({
+      onStateChange: (_key, state) => {
+        if (state.phase === "ready") ready.resolve()
+        if (state.phase === "error") ready.reject(new Error(state.error))
+      },
+    })
+    const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    setStore("message", "s1", [message("old", 1)])
+    setStore("part", "old", [{ id: "p-old" } as Part])
+    setStore("messageWindow", "s1", {
+      mode: "latest",
+      nextCursor: "stale",
+      hasMore: true,
+      total: 4,
+      pendingLatest: false,
+      pendingLatestIds: [],
+      tailMissingLatest: false,
+    })
+    const loader = createBoardLoader(deps)
+    try {
+      loader.load("/a", "s1")
+      await ready.promise
+      expect(store.message.s1?.map((item) => item.id)).toEqual(["s1-m1"])
+      expect(store.messageWindow.s1).toMatchObject({ mode: "latest", nextCursor: null, total: 1 })
+      expect(store.part.old).toBeUndefined()
+    } finally {
+      loader.dispose()
+    }
+  })
+
   test("dispose stops further loads", async () => {
     const deps = makeDeps()
     const loader = createBoardLoader(deps)

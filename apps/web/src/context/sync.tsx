@@ -405,7 +405,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         const plan = planMessagePageApply<Message, Part>({
           page,
           current,
-          mode: input?.mode,
+          // This loader owns locate, reconnect, and return-to-latest. A shared
+          // latest page omits mode so it cannot replace a history window.
+          mode: input?.mode ?? "latest",
           replace: !!input?.targetMessageID || !!input?.retainedWindow,
         })
         const partActions = new Map(

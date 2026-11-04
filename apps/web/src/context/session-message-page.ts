@@ -1,5 +1,6 @@
 import {
   applyLatestPage,
+  compareByTimeThenId,
   prependOlderPage,
   reconcileMessage,
   retainPendingLatestIds,
@@ -27,12 +28,44 @@ type MessagePage<M extends MessageRef, P extends PartRef> = {
   total: number
 }
 
-export type MessagePageApplyPlan<M extends MessageRef, P extends PartRef> = MessageWindowResult<M> & {
+export type AppliedMessagePagePlan<M extends MessageRef, P extends PartRef> = MessageWindowResult<M> & {
+  outcome: "applied"
   metadata: MessageWindowMetadata
   parts: Record<string, P[]>
   latestContextMessage: M | null | undefined
 }
 
+export type PreservedHistoryMessagePagePlan<M extends MessageRef> = {
+  outcome: "preserved-history"
+  latestContextMessage: M | null | undefined
+}
+
+export type MessagePageApplyPlan<M extends MessageRef, P extends PartRef> =
+  AppliedMessagePagePlan<M, P> | PreservedHistoryMessagePagePlan<M>
+
+type MessagePageApplyInput<M extends MessageRef, P extends PartRef> = {
+  page: MessagePage<M, P>
+  current?: MessageWindowState<M>
+  cap?: number
+  replace?: boolean
+}
+
+function retainOptimisticMessage<M extends MessageRef>(
+  window: MessageWindowState<M>,
+  message: M,
+): MessageWindowState<M> {
+  const messages = window.messages.filter((item) => item.id !== message.id)
+  messages.push(message)
+  messages.sort(compareByTimeThenId)
+  return { ...window, messages }
+}
+
+export function planMessagePageApply<M extends MessageRef & SessionContextUsageMessage, P extends PartRef>(
+  input: MessagePageApplyInput<M, P> & { mode: "latest" | "history" },
+): AppliedMessagePagePlan<M, P>
+export function planMessagePageApply<M extends MessageRef & SessionContextUsageMessage, P extends PartRef>(
+  input: MessagePageApplyInput<M, P>,
+): MessagePageApplyPlan<M, P>
 export function planMessagePageApply<M extends MessageRef & SessionContextUsageMessage, P extends PartRef>(input: {
   page: MessagePage<M, P>
   current?: MessageWindowState<M>
@@ -49,11 +82,20 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
     pendingLatestIds: [],
     tailMissingLatest: false,
   }
+  // Named latest/history applies own the window. An omitted mode is a shared
+  // latest page (Kanban, prefetch) and must not replace history.
+  if (input.mode === undefined && current.mode === "history") {
+    return {
+      outcome: "preserved-history",
+      latestContextMessage: findLatestSessionContextUsageMessage(items.map((item) => item.info)),
+    }
+  }
+  const pageInfos = [...referencedRoots, ...items].map((item) => item.info)
   let result =
     input.mode === "history"
       ? prependOlderPage(
           input.replace ? { ...current, messages: [], tailMissingLatest: true } : current,
-          [...referencedRoots, ...items].map((item) => item.info),
+          pageInfos,
           input.cap,
         )
       : applyLatestPage(
@@ -61,8 +103,14 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
           referencedRoots.map((item) => item.info),
           input.cap,
         )
-  const pageIDs = new Set([...referencedRoots, ...items].map((item) => item.info.id))
+  const pageIDs = new Set(pageInfos.map((info) => info.id))
   const droppedIds = new Set(result.droppedIds)
+  if (input.mode === "history" && input.replace) {
+    for (const message of current.messages) {
+      if (pageIDs.has(message.id) || !isOptimisticMessagePending(message)) continue
+      result = { window: retainOptimisticMessage(result.window, message), droppedIds: result.droppedIds }
+    }
+  }
   if (input.mode !== "history") {
     for (const message of current.messages) {
       if (pageIDs.has(message.id) || !isOptimisticMessagePending(message)) continue
@@ -108,6 +156,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
   }
 
   return {
+    outcome: "applied",
     window,
     droppedIds: Array.from(droppedIds),
     metadata: {

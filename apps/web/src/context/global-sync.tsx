@@ -1717,6 +1717,9 @@ function createGlobalSync() {
           pendingLatestIds: metadata?.pendingLatestIds ?? [],
           tailMissingLatest: metadata?.tailMissingLatest ?? false,
         },
+        // Latest repair and compaction own this window. Omitting mode would
+        // preserve history and leave a compacted transcript in place.
+        mode: "latest",
       })
       const partActions = new Map(
         Object.keys(plan.parts).map((messageID) => [
