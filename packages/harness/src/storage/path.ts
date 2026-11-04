@@ -231,6 +231,10 @@ export namespace StoragePath {
     sessionID as string,
   ]
   export const sessionInfo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "info"]
+  export const sessionLongTermMemory = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "long_term_memory",
+  ]
   export const sessionRolloutRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "rollout",

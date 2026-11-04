@@ -208,6 +208,17 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       register(createContextWorkbenchPanel(i18n._(E.title))),
       register({
+        id: "long-term-summary",
+        label: i18n._({ id: "session.longTermSummary.label", message: "Long-term summary" }),
+        icon: getSemanticIcon("memory.main"),
+        surface: "side",
+        cardinality: "singleton",
+        requiresSession: true,
+        pluginId: "builtin",
+        order: 12.5,
+        loader: async () => ({ default: (await import("./tool-long-term-summary")).LongTermSummaryWorkbenchContent }),
+      }),
+      register({
         id: "trajectory",
         label: i18n._(E.trajectory),
         icon: getSemanticIcon("execution.trajectory"),

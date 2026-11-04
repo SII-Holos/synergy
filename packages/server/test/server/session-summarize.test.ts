@@ -63,7 +63,10 @@ describe("session summarize route", () => {
               isRoot: true,
               rootID: boundary.id,
               visible: true,
+              origin: { type: "system", detail: "manual_compaction" },
             })
+            const persisted = await MessageV2.get({ sessionID: session.id, messageID: boundary.id })
+            expect(persisted.parts.find((part) => part.type === "text")).toMatchObject({ origin: "system" })
           } finally {
             GlobalBus().off("event", handler)
             await Session.remove(session.id)

@@ -13069,6 +13069,22 @@ msgid "features.plugin-blueprint.name"
 msgstr "插件 Blueprint"
 
 #. js-lingui-explicit-id
+msgid "features.plugin-host.description"
+msgstr "提供插件宿主能力。"
+
+#. js-lingui-explicit-id
+msgid "features.plugin-host.name"
+msgstr "插件宿主"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.description"
+msgstr "在现有压缩摘要之外，保留会话历史中的重要信息。"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.name"
+msgstr "会话长期摘要"
+
+#. js-lingui-explicit-id
 msgid "features.workbench.description"
 msgstr "项目、任务展示、代码审查和活动。"
 
@@ -18076,6 +18092,42 @@ msgstr "收件箱"
 #. js-lingui-explicit-id
 msgid "session.inbox.update"
 msgstr "更新"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr "复制长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr "暂无长期摘要。"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr "长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr "无法加载会话。"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr "正在加载会话…"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr "未找到会话。"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr "会话长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr "查看当前长期摘要"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr "查看最新摘要"
 
 #. js-lingui-explicit-id
 msgid "session.lsp.noServers"

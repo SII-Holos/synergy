@@ -13,11 +13,13 @@ type Fixture = {
     api(): SDK
     events: Array<{ name: string; details: Event }>
     reads: Array<{ signal: AbortSignal; resolve(value: Response): void }>
+    capabilityReads: Array<{ signal: AbortSignal; resolve(value: Response): void }>
+    holdCapabilities(): void
     dispose(): void
   }
 }
 
-test("the WebSocket entry preserves new Part discovery across inactive subscription generations", async () => {
+test("the WebSocket entry preserves Part discovery and revalidates live capabilities across epochs", async () => {
   const directory = await mkdtemp(path.join(import.meta.dir, ".sdk-content-"))
   const entry = path.join(directory, "main.tsx")
   const stub = path.join(directory, "platform.ts")
@@ -27,10 +29,12 @@ test("the WebSocket entry preserves new Part discovery across inactive subscript
   await Bun.write(
     stub,
     `
-    export const reads = []
+    export const reads = [], capabilityReads = []
+    let held = false
+    export const holdCapabilities = () => { held = true }
     export const usePlatform = () => ({fetch: async (request) => {
       if (new URL(request.url).pathname === '/global/capabilities')
-        return Response.json({apiVersion:1,features:[],transports:{projection:'projection-v2'}})
+        return held ? new Promise(resolve=>capabilityReads.push({signal:request.signal,resolve})) : Response.json({apiVersion:1,features:[],transports:{projection:'projection-v2'}})
       return new Promise(resolve=>reads.push({signal:request.signal,resolve}))
     }})
     export const useServer = () => ({url:'http://fixture.local',scopes:{prepare(){}}})
@@ -45,13 +49,13 @@ test("the WebSocket entry preserves new Part discovery across inactive subscript
     import { render } from 'solid-js/web'
     import { onCleanup } from 'solid-js'
     import { GlobalSDKProvider, useGlobalSDK } from ${JSON.stringify(globalSDK)}
-    import { reads } from ${JSON.stringify(stub)}
+    import { reads, capabilityReads, holdCapabilities } from ${JSON.stringify(stub)}
     export function mount(root) {
       let api
       const events=[]
       function Consumer(){api=useGlobalSDK();onCleanup(api.event.listen(event=>events.push(event)));return <div/>}
       const dispose=render(()=><GlobalSDKProvider><Consumer/></GlobalSDKProvider>,root)
-      return {api:()=>api,events,reads,dispose}
+      return {api:()=>api,events,reads,capabilityReads,holdCapabilities,dispose}
     }
   `,
   )
@@ -85,12 +89,15 @@ test("the WebSocket entry preserves new Part discovery across inactive subscript
         data: JSON.stringify({ scopeID: "scope", payload: { type: "message.part.summary", properties } }),
       })
     }
+    notify(payload: Event) {
+      this.onmessage?.({ data: JSON.stringify({ scopeID: null, payload }) })
+    }
   }
   const frames = new Map<number, FrameRequestCallback>()
   let frameID = 0
   let visible = true
-  const waitUntil = async (predicate: () => boolean) => {
-    const until = Date.now() + 2000
+  const waitUntil = async (predicate: () => boolean, timeout = 2000) => {
+    const until = Date.now() + timeout
     while (!predicate()) {
       if (Date.now() > until) throw new Error("WebSocket event did not converge")
       await new Promise((resolve) => setTimeout(resolve, 5))
@@ -224,6 +231,61 @@ test("the WebSocket entry preserves new Part discovery across inactive subscript
       expect(h.events.at(-1)?.details.properties).toEqual({ ...checkpoint, subscription: renewed })
       expect(h.reads).toHaveLength(1)
       release()
+
+      h.holdCapabilities()
+      const confirmedCapabilities = api.capabilities.current()
+      socket.notify({ type: "config.updated", properties: { scope: "global", changedFields: ["theme"] } })
+      for (const changedFields of [[], ["pluginConfig"], ["theme"]]) {
+        socket.notify({ type: "runtime.reloaded", properties: { executed: ["config"], cascaded: [], changedFields } })
+        expect(api.capabilities.current()).toBe(confirmedCapabilities)
+      }
+      expect(h.capabilityReads).toHaveLength(0)
+      socket.notify({ type: "config.updated", properties: { scope: "global", changedFields: ["features"] } })
+      await waitUntil(() => h.capabilityReads.length === 1)
+      expect(api.capabilities.current()).toBeUndefined()
+      const enabled = { apiVersion: 1, features: ["session-long-term-memory"] }
+      h.capabilityReads[0].resolve(Response.json(enabled))
+      await waitUntil(() => api.capabilities.has("session-long-term-memory"))
+
+      const reloaded: Event = {
+        type: "runtime.reloaded",
+        properties: { executed: ["config"], cascaded: [], changedFields: ["features"] },
+      }
+      socket.notify(reloaded)
+      await waitUntil(() => h.capabilityReads.length === 2)
+      expect(api.capabilities.has("session-long-term-memory")).toBe(false)
+      socket.notify(reloaded)
+      await waitUntil(() => h.capabilityReads.length === 3)
+      expect(h.capabilityReads[1].signal.aborted).toBe(true)
+      h.capabilityReads[2].resolve(Response.json({ apiVersion: 1, features: [] }))
+      await waitUntil(() => api.capabilities.current() !== undefined)
+      h.capabilityReads[1].resolve(Response.json(enabled))
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(api.capabilities.has("session-long-term-memory")).toBe(false)
+      expect(h.capabilityReads).toHaveLength(3)
+
+      socket.notify(reloaded)
+      await waitUntil(() => h.capabilityReads.length === 4)
+      h.capabilityReads[3].resolve(Response.json({ error: "Transient discovery failure" }, { status: 500 }))
+      await waitUntil(() => socket.readyState === 3 && !api.connected())
+      await waitUntil(() => h.capabilityReads.length === 5)
+      expect(api.capabilities.current()).toBeUndefined()
+      h.capabilityReads[4].resolve(Response.json({ error: "Discovery still recovering" }, { status: 500 }))
+      await waitUntil(() => h.capabilityReads.length === 6, 4000)
+      expect(sockets).toHaveLength(1)
+      expect(api.connected()).toBe(false)
+      h.capabilityReads[5].resolve(Response.json(enabled))
+      await waitUntil(() => sockets.length === 2 && api.connected())
+      expect(api.capabilities.has("session-long-term-memory")).toBe(true)
+      const recovered = sockets[1]
+      recovered.notify(reloaded)
+      await waitUntil(() => h.capabilityReads.length === 7)
+      recovered.close()
+      expect(h.capabilityReads[6].signal.aborted).toBe(true)
+      h.capabilityReads[6].resolve(Response.json(enabled))
+      await new Promise((resolve) => setTimeout(resolve, 30))
+      expect(api.capabilities.current()).toBeUndefined()
+      expect(h.capabilityReads).toHaveLength(7)
     } finally {
       h.dispose()
     }

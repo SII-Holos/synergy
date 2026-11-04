@@ -84,42 +84,44 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true })
 })
 
-test("plugin Scope generations survive ordinary navigation and clear on capability epoch loss", async () => {
-  await page.goto(fixture.url)
-  const a = page.locator("[data-scope-a]")
-  const b = page.locator("[data-scope-b]")
-  await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 1)
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.resolve(0))
-  await page.waitForFunction(() => document.querySelector("[data-loaded]")?.textContent === "fixture")
-  const generation = await a.textContent()
-  expect(generation).not.toBe("[]")
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.scope("b"))
-  expect(await a.textContent()).toBe(generation)
-  await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 2)
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.features())
-  expect(await a.textContent()).toBe("[]")
-  expect(await b.textContent()).toBe("[]")
-  expect(await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.requests())).toEqual([
-    true,
-    true,
-  ])
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.resolve(1))
-  expect(await b.textContent()).toBe("[]")
-  expect(await page.locator("[data-loaded]").textContent()).toBe("")
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.features(["plugin-host"]))
-  await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 3)
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.resolve(2))
-  await page.waitForFunction(() => document.querySelector("[data-loaded]")?.textContent === "fixture")
-  expect(await b.textContent()).not.toBe("[]")
-  expect(await a.textContent()).toBe("[]")
-  await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.features(["plugin-host"]))
-  expect(await b.textContent()).toBe("[]")
-  await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 4)
-  expect(await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.requests())).toEqual([
-    true,
-    true,
-    true,
-    false,
-  ])
-  expect(errors).toEqual([])
-})
+for (const preview of [false, true]) {
+  test(`plugin Scope generations survive navigation and capability epoch loss (preview=${preview})`, async () => {
+    await page.goto(`${fixture.url}?plugin-preview=${Number(preview)}`)
+    const a = page.locator("[data-scope-a]")
+    const b = page.locator("[data-scope-b]")
+    await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 1)
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.resolve(0))
+    await page.waitForFunction(() => document.querySelector("[data-loaded]")?.textContent === "fixture")
+    const generation = await a.textContent()
+    expect(generation).not.toBe("[]")
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.scope("b"))
+    expect(await a.textContent()).toBe(generation)
+    await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 2)
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.features())
+    expect(await a.textContent()).toBe("[]")
+    expect(await b.textContent()).toBe("[]")
+    expect(await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.requests())).toEqual([
+      true,
+      true,
+    ])
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.resolve(1))
+    expect(await b.textContent()).toBe("[]")
+    expect(await page.locator("[data-loaded]").textContent()).toBe("")
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.features(["plugin-host"]))
+    await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 3)
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.resolve(2))
+    await page.waitForFunction(() => document.querySelector("[data-loaded]")?.textContent === "fixture")
+    expect(await b.textContent()).not.toBe("[]")
+    expect(await a.textContent()).toBe("[]")
+    await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.features(["plugin-host"]))
+    expect(await b.textContent()).toBe("[]")
+    await page.waitForFunction(() => (window as unknown as { fixture: Control }).fixture.requests().length === 4)
+    expect(await page.evaluate(() => (window as unknown as { fixture: Control }).fixture.requests())).toEqual([
+      true,
+      true,
+      true,
+      false,
+    ])
+    expect(errors).toEqual([])
+  })
+}

@@ -1222,6 +1222,7 @@ export const SessionRoute = () =>
           }
         }
         const messageID = Identifier.ascending("message")
+        const metadata = { compactionBoundary: true }
         const msg = await Session.updateMessage({
           id: messageID,
           role: "user",
@@ -1234,12 +1235,11 @@ export const SessionRoute = () =>
           isRoot: true,
           rootID: messageID,
           visible: true,
+          origin: MessageV2.originFromMetadata(metadata),
           // Mark this as a compaction boundary so the frontend suppresses the
           // user chrome (the "What did we do so far?" prompt is internal) and
           // renders only the compaction card for the turn (issue #326).
-          metadata: {
-            compactionBoundary: true,
-          },
+          metadata,
           time: {
             created: Date.now(),
           },
@@ -1257,6 +1257,7 @@ export const SessionRoute = () =>
           sessionID,
           type: "text",
           text: "What did we do so far?",
+          origin: "system",
         })
         await SessionInvoke.loop(sessionID)
         return c.json(true)

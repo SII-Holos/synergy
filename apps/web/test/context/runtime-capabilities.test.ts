@@ -137,6 +137,19 @@ describe("runtime capabilities", () => {
     expect(retry.has("server")).toBe(true)
   })
 
+  test("a reset rejects late success without restarting discovery in the disconnected epoch", async () => {
+    const pending: Array<(value: RuntimeCapabilities) => void> = []
+    const capabilities = createRuntimeCapabilities(() => new Promise((resolve) => pending.push(resolve)))
+    const old = capabilities.load()
+    capabilities.reset()
+    pending[0](snapshot("session-long-term-memory"))
+    await Bun.sleep(1)
+    expect(pending).toHaveLength(1)
+    expect(capabilities.current()).toBeUndefined()
+    capabilities.dispose()
+    await old
+  })
+
   test("core, selective, and full compositions expose only their owned surfaces", async () => {
     const capabilities = createRuntimeCapabilities(async () => snapshot("mcp", "library", "agenda"))
     await capabilities.load()

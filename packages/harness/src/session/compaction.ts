@@ -32,7 +32,7 @@ import {
   type CodexReplayPlan,
 } from "../provider/codex-compaction"
 import { RolloutCall } from "./rollout/call"
-import { RolloutRecordingError } from "./rollout/error"
+import { RolloutRecordingError, findRecordingError, isFatalStorageError } from "./rollout/error"
 import { Storage } from "../storage/storage"
 import { StoragePath } from "../storage/path"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
@@ -42,6 +42,8 @@ import COMPACTION_PROMPT from "../agent/prompt/compaction/base.txt"
 import { TimeoutConfig } from "../util/timeout-config"
 import { CompactionRegion } from "./compaction-region"
 import { afterCompaction, modelWorkingSetForPrompt } from "./model-working-set"
+import { Features } from "../lifecycle/features"
+import { SessionLongTermMemory } from "./long-term-memory"
 
 type CompactionRequest = Pick<
   AgentTurn.Input,
@@ -265,19 +267,42 @@ export namespace SessionCompaction {
       )
       const compacted = Date.now()
       input.abort?.throwIfAborted()
-      const updated = await Promise.all(
-        completed.map((part) =>
-          Session.updatePart({
-            ...part,
-            state: {
-              ...part.state,
-              time: { ...part.state.time, compacted },
-            },
-          }),
-        ),
+      const updated = await Storage.transaction(
+        async () => {
+          const session = await Session.get(input.sessionID)
+          const progress = await SessionLongTermMemory.progress(session)
+          const verified = progress && (await SessionLongTermMemory.isCurrent(session, progress))
+          const updated: MessageV2.ToolPart[] = []
+          for (const candidate of completed) {
+            input.abort?.throwIfAborted()
+            const part = await MessageV2.readToolPart({
+              scopeID: session.scope.id,
+              sessionID: session.id,
+              messageID: candidate.messageID,
+              partID: candidate.id,
+            })
+            if (part?.state.status !== "completed" || part.state.time.compacted) continue
+            const next = await Session.updatePart({
+              ...part,
+              state: { ...part.state, time: { ...part.state.time, compacted } },
+            })
+            if (next.type === "tool") updated.push(next)
+          }
+          if (updated.length && verified && progress) {
+            await Storage.write(
+              StoragePath.sessionLongTermMemory(
+                Identifier.asScopeID(session.scope.id),
+                Identifier.asSessionID(session.id),
+              ),
+              await SessionLongTermMemory.rebase(session, progress.reviewedThrough),
+            )
+          }
+          return updated
+        },
+        { commitGuard: () => input.abort?.throwIfAborted() },
       )
-      log.info("pruned", { count: completed.length })
-      return updated.filter((part): part is MessageV2.ToolPart => part.type === "tool")
+      log.info("pruned", { count: updated.length })
+      return updated
     }
     return []
   }
@@ -676,7 +701,7 @@ export namespace SessionCompaction {
     }
   }
 
-  export async function process(input: {
+  type ProcessInput = {
     parentID: string
     messages: MessageV2.WithParts[]
     sessionID: string
@@ -684,7 +709,47 @@ export namespace SessionCompaction {
     auto: boolean
     request?: Request
     assistantMessageID?: string
-  }) {
+    maintainLongTermMemory?: boolean
+  }
+
+  export async function process(input: ProcessInput) {
+    const maintainLongTermMemory = input.maintainLongTermMemory ?? Features.enabled("session-long-term-memory")
+    if (!maintainLongTermMemory) return processShortTerm(input)
+    const sources = input.messages.filter(
+      (message) => MessageV2.isPromptVisible(message) && SessionLongTermMemory.isSourceMessage(message),
+    )
+    const through = sources
+      .map((message) => ({ created: message.info.time.created, messageID: message.info.id }))
+      .sort(CompactionRegion.compareCursor)
+      .at(-1)
+    const user = input.messages.findLast((message) => message.info.id === input.parentID)!.info as MessageV2.User
+    const updateLongTerm = async () => {
+      const fallbackModel = input.request?.model ?? (await Provider.getModel(user.model.providerID, user.model.modelID))
+      return SessionLongTermMemory.update({
+        sessionID: input.sessionID,
+        user: input.request?.user ?? user,
+        fallbackModel,
+        signal: input.abort,
+        through,
+      })
+    }
+    const [shortTerm, longTerm] = await Promise.allSettled([processShortTerm(input), updateLongTerm()])
+    const rejected = [shortTerm, longTerm].filter((result) => result.status === "rejected")
+    const failure =
+      rejected.find((result) => findRecordingError(result.reason)) ??
+      rejected.find((result) => isFatalStorageError(result.reason))
+    if (failure) throw failure.reason
+    if (shortTerm.status === "rejected") throw shortTerm.reason
+    if (longTerm.status === "rejected" && !input.abort.aborted) {
+      log.warn("session long-term summary update failed", {
+        sessionID: input.sessionID,
+        error: longTerm.reason,
+      })
+    }
+    return shortTerm.value
+  }
+
+  async function processShortTerm(input: ProcessInput) {
     const userMessage = input.messages.findLast((m) => m.info.id === input.parentID)!.info as MessageV2.User
     const agent = input.request?.agent ?? (await Agent.get("compaction"))
     const agentModel = input.request ? undefined : await Agent.getAvailableModel(agent)
@@ -1249,6 +1314,7 @@ export namespace SessionCompaction {
           abort: ctx.abort,
           sessionID: ctx.sessionID,
           auto: part.auto,
+          maintainLongTermMemory: ctx.maintainLongTermMemory,
         })
         return result === "noop" ? "stop" : result
       },

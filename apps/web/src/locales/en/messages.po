@@ -13069,6 +13069,22 @@ msgid "features.plugin-blueprint.name"
 msgstr "Plugin Blueprint"
 
 #. js-lingui-explicit-id
+msgid "features.plugin-host.description"
+msgstr "Provide plugin host capabilities."
+
+#. js-lingui-explicit-id
+msgid "features.plugin-host.name"
+msgstr "Plugin Host"
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.description"
+msgstr "Retain important conversation history alongside the recent compaction summary."
+
+#. js-lingui-explicit-id
+msgid "features.session-long-term-memory.name"
+msgstr "Session long-term summary"
+
+#. js-lingui-explicit-id
 msgid "features.workbench.description"
 msgstr "Projects, task presentation, reviews and activity."
 
@@ -18076,6 +18092,42 @@ msgstr "Inbox"
 #. js-lingui-explicit-id
 msgid "session.inbox.update"
 msgstr "Update"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.copy"
+msgstr "Copy long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.empty"
+msgstr "No long-term summary yet."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.label"
+msgstr "Long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loadFailed"
+msgstr "Unable to load session."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.loading"
+msgstr "Loading session…"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.sessionMissing"
+msgstr "Session not found."
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.title"
+msgstr "Session long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewCurrent"
+msgstr "View current long-term summary"
+
+#. js-lingui-explicit-id
+msgid "session.longTermSummary.viewLatest"
+msgstr "View latest"
 
 #. js-lingui-explicit-id
 msgid "session.lsp.noServers"

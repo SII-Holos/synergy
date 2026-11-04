@@ -949,7 +949,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
       })
     },
     changed(active) {
-      const refreshPreview = preview && pluginPreviewChanged(loaded(), active)
+      const refreshPreview = preview && pluginPreviewChanged(untrack(loaded), active)
       setLoaded(active)
       if (refreshPreview) queueMicrotask(() => window.location.reload())
       setStatus((current) => {

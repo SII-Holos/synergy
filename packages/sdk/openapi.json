@@ -50848,6 +50848,20 @@
         },
         "required": ["mode"]
       },
+      "SessionLongTermMemory": {
+        "type": "object",
+        "properties": {
+          "markdown": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["markdown", "revision"]
+      },
       "SessionHistoryInfo": {
         "type": "object",
         "properties": {
@@ -51416,6 +51430,27 @@
           }
         ]
       },
+      "SessionLongTermMemoryReview": {
+        "type": "object",
+        "properties": {
+          "reviewedThrough": {
+            "type": "object",
+            "properties": {
+              "created": {
+                "type": "number",
+                "description": "Creation time of the reviewed source message, not the review time"
+              },
+              "messageID": {
+                "type": "string",
+                "format": "starts_with",
+                "pattern": "^msg.*"
+              }
+            },
+            "required": ["created", "messageID"]
+          }
+        },
+        "required": ["reviewedThrough"]
+      },
       "SessionSuperPlanInfo": {
         "type": "object",
         "properties": {
@@ -51736,6 +51771,9 @@
               }
             }
           },
+          "longTermMemory": {
+            "$ref": "#/components/schemas/SessionLongTermMemory"
+          },
           "history": {
             "$ref": "#/components/schemas/SessionHistoryInfo"
           },
@@ -51780,6 +51818,9 @@
           },
           "workflow": {
             "$ref": "#/components/schemas/SessionWorkflowInfo"
+          },
+          "longTermMemoryReview": {
+            "$ref": "#/components/schemas/SessionLongTermMemoryReview"
           },
           "agenda": {
             "type": "object",

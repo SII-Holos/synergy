@@ -33,8 +33,8 @@ export function createRuntimeCapabilities(discover: (signal: AbortSignal) => Pro
     if (pending) return pending
     const requestedEpoch = epoch
     const request = discover(cancellation.signal)
-      .then(async (value) => {
-        if (requestedEpoch !== epoch) return load()
+      .then((value) => {
+        if (requestedEpoch !== epoch || disposed) return
         if (value.apiVersion !== 1 || !Array.isArray(value.features))
           throw new Error("Unsupported runtime capabilities API")
         setCurrent(value)

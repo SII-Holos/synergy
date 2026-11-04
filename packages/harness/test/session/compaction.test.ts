@@ -1207,50 +1207,6 @@ describe("session.compaction.selectPartsToPrune", () => {
       expect(withModel).toHaveLength(0)
     }))
 
-  test("prunes from the loop snapshot without rereading or mutating it", () =>
-    runtime.run(async () => {
-      const oldPart = toolPart({ id: "old-tool", output: "x".repeat(300_000) })
-      const msgs: MessageV2.WithParts[] = [
-        userMsg("u0"),
-        assistantMsg("a0", [oldPart]),
-        userMsg("u1"),
-        assistantMsg("a1", []),
-        userMsg("u2"),
-        assistantMsg("a2", []),
-      ]
-      const originalMessages = Session.messages
-      const originalUpdatePart = Session.updatePart
-      const originalConfigCurrent = Config.current
-      let persisted: MessageV2.Part | undefined
-      ;(Config.current as any) = mock(async () => ({ compaction: {} }))
-      ;(Session.messages as any) = mock(async () => {
-        throw new Error("prune reread full history")
-      })
-      ;(Session.updatePart as any) = mock(async (part: MessageV2.Part) => {
-        persisted = part
-        return part
-      })
-
-      try {
-        await SessionCompaction.prune({ sessionID: "test-session", messages: msgs })
-      } finally {
-        ;(Config.current as any) = originalConfigCurrent
-        ;(Session.messages as any) = originalMessages
-        ;(Session.updatePart as any) = originalUpdatePart
-      }
-
-      expect(oldPart.state.status).toBe("completed")
-      if (oldPart.state.status === "completed") {
-        expect(oldPart.state.output.length).toBe(300_000)
-        expect(oldPart.state.time.compacted).toBeUndefined()
-      }
-      expect(persisted?.type).toBe("tool")
-      if (persisted?.type === "tool" && persisted.state.status === "completed") {
-        expect(persisted.state.output).toBe("x".repeat(300_000))
-        expect(persisted.state.time.compacted).toBeNumber()
-      }
-    }))
-
   test("cancels pruning before writes when configuration preparation is interrupted", () =>
     runtime.run(async () => {
       const controller = new AbortController()

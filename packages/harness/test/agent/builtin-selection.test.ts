@@ -24,11 +24,18 @@ test("an embedded host selects internal agents without product agent families", 
           "agent-generator",
           "assistant",
           "compaction",
+          "session-long-term-memory",
           "smart-allow",
           "summary",
           "title",
         ])
         expect(agents.filter((agent) => !agent.hidden).map((agent) => agent.name)).toEqual(["assistant"])
+        expect(await Agent.get("session-long-term-memory")).toMatchObject({
+          hidden: true,
+          native: true,
+          mode: "primary",
+        })
+        expect(await Agent.defaultAgent()).toBe("assistant")
         expect(agents.find((agent) => agent.name === "assistant")!.permission).not.toEqual(
           expect.arrayContaining([expect.objectContaining({ permission: "memory_write" })]),
         )

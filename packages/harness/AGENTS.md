@@ -4,9 +4,10 @@ Own lifecycle, features, exports. `context` owns pure attribution; `agent/primar
 
 - Keep domain tools, routes, configuration and migrations with their implementation.
 - `SessionExecutionOwners` gates queued and retained execution against selected components. Domains check durable references; `MessageV2` derives historical origins and requirements. Preserve blocked records; new human tasks cannot resume an unavailable predecessor. Persist independent root admission and Agent selection, keeping its execution view separate from canonical Session writes.
+- Session L/progress: `session/long-term-memory`, never workflows/Library. [State](../../docs/architecture/session-and-messages.md#session-long-term-summary).
 - `SessionSchemaRegistry` composes owner session fields, creation/import behavior and indexes; domain packages own workflow state and execution/recovery policy. `ConfigExtensions` composes owner contracts; unregistered fields remain on disk but outside client output. Full composition explicitly completes schema registration.
 - Use public package exports; preserve cancellation, permissions and persisted data.
-- Supply Host, composition and owned or borrowed storage to `RuntimeHandle`. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work and `bind` for native callbacks. Migration listings are detached snapshots. Test independent instances together and entrypoints in isolated child processes.
+- `RuntimeHandle` takes Host, composition and owned/borrowed storage. Registration seals before storage startup; imports cannot register capabilities. Use `run` for owned work; `bind` native callbacks. Migration listings are detached snapshots. Test independent instances together and isolated child entrypoints.
 - Use unsealed fixtures for migration mechanism tests.
 
 - Hosts register model SDKs and native image codecs through `ProviderSdkSource` and `AttachmentImageInput`. Keep absence explicit; verify `test/attachment/model-input.test.ts`.

@@ -7,6 +7,7 @@ export function registerHttp() {
   BusEvent.register(...Object.values(Server.Event))
   Server.registerContributions(
     {
+      features: ["session-long-term-memory"],
       routes: { "global-navigation": new Hono().route("/global", GlobalNavRoute()) },
     },
     "server",

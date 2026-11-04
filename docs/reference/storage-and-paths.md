@@ -39,6 +39,8 @@ Native Workspace mount receipts live under `state/environments/<environment>/<al
 
 Removed user Inbox inputs and restoration receipts live at the logical keys `sessions/<scope>/<session>/inbox-removed/<item>`. They retain the complete domain input until Session deletion and never participate in ordinary queue discovery. See [Inbox removal and restoration](../architecture/session-and-messages.md#inbox-removal-and-restoration).
 
+The optional Session long-term summary lives in `sessions/<scope>/<session>/info` under `longTermMemory`. Its independent review cursor and versioned source digest live at `sessions/<scope>/<session>/long_term_memory`. These are Agent database records, not files, Library entries or cache data. [Session long-term summary](../architecture/session-and-messages.md#session-long-term-summary) defines revision, import, fork and deletion behavior.
+
 Rollout stores execution intervals at `<owner>/rollout/runs/<run>/intervals/<interval>` alongside its existing run and segment evidence. Interval writes append through the Rollout journal; [execution evidence](../architecture/session-and-messages.md) defines timing, recovery and migration semantics.
 
 Attempt journal context-v2 records use `<owner>/rollout/journal/contexts/<sha256>` and retain events at `<owner>/rollout/journal/events/<sequence>`. The maintenance receipt is `storage_maintenance/20261021-rollout-journal-contexts`, outside owner retention. Consistent compaction backups live under `data/storage/backups/rollout-<id>.sqlite` or `.ndjson`; these are database backups and retain references to the existing artifact packs. See [Agent storage](../architecture/agent-storage.md#files-and-evidence) for replay and recovery rules.

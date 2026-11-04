@@ -1463,6 +1463,10 @@
           "reason": "test/components/workspace/execution-detail.dom.test.ts exercises the real result viewer, historical identity, cancellation, copy, large output and retained reading state in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
         {
+          "glob": "src/components/workspace/tool-long-term-summary.tsx",
+          "reason": "test/context/workbench/residency-capabilities.dom.test.ts exercises full Markdown/copy, hidden internal metadata, selection/scroll stability, owner isolation, rollback/removal and capability restoration in real Chromium; test/components/workspace/execution-detail.dom.test.ts covers the S-to-L action. Vite/browser execution is outside Bun source LCOV."
+        },
+        {
           "glob": "src/components/workspace/execution-detail-layout.tsx",
           "reason": "Shared execution detail shell is exercised by test/components/workspace/execution-detail.dom.test.ts for keyboard tabs, failure retry, retained evidence and invocation changes in Chromium; Vite/browser execution is outside Bun source LCOV."
         },
