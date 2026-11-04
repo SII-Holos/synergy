@@ -3,6 +3,8 @@ import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
+import { SessionSummary } from "../../src/session/summary"
+import { LoopJob } from "../../src/session/loop-job"
 import { MessageV2 } from "../../src/session/message-v2"
 import { Storage } from "../../src/storage/storage"
 import { StoragePath } from "../../src/storage/path"
@@ -60,6 +62,7 @@ test.each([64, 512, 2478, 5000])(
           for (let offset = 0; offset < rows.length; offset += 256)
             await Storage.transaction((tx) => tx.writeMany(rows.slice(offset, offset + 256)))
           await SessionHistory.modelMessageInfos({ sessionID: session.id })
+          await SessionSummary.summarize({ sessionID: session.id, messageID: ids.at(-1)!, diffOnly: true })
           using parts = spyOn(MessageV2, "parts")
           using binary = spyOn(Storage, "readBinary")
           using queries = spyOn(Storage, "query")
@@ -80,6 +83,7 @@ test.each([64, 512, 2478, 5000])(
           if (latest.info.role !== "user") throw new Error("Expected input")
           const segment = await RolloutLifecycle.start(session, latest.info, latest.parts)
           await RolloutLifecycle.finishSegment(segment, "completed")
+          await LoopJob.settleDetached(session.id)
           expect(parts.mock.calls.filter(([input]) => input.sessionID === session.id).length).toBeLessThanOrEqual(2)
           expect(
             parts.mock.calls
