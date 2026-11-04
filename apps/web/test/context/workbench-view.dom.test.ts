@@ -270,10 +270,12 @@ test("user tab/session changes, cancel and disconnect fence delayed requests; du
       await act("setSession", "session-b")
       await act("setSession", "session-a")
     }
-    if (action === "cancel")
+    if (action === "cancel") {
       sockets
         .at(-1)!
         .send(JSON.stringify({ payload: { type: "server.workbench.cancel", properties: { requestId: id } } }))
+      expect((await receipt(id)).status).toBe("cancelled")
+    }
     if (action === "disconnect") {
       const count = sockets.length
       sockets.at(-1)!.close()
@@ -287,7 +289,11 @@ test("user tab/session changes, cancel and disconnect fence delayed requests; du
       ).toEqual([])
     }
     await act("resolve")
-    if (action !== "disconnect") expect(["superseded", "cancelled"]).toContain((await receipt(id)).status)
+    if (action !== "disconnect")
+      expect({ action, status: (await receipt(id)).status }).toEqual({
+        action,
+        status: action === "cancel" ? "cancelled" : "superseded",
+      })
     else
       expect(
         frames.filter((frame) => frame.type === "client.workbench.receipt" && frame.properties.requestId === id),
@@ -295,7 +301,9 @@ test("user tab/session changes, cancel and disconnect fence delayed requests; du
     expect(await page.locator('[data-resource="asset://0123456789abcdef.txt"]').isVisible()).toBe(true)
   }
   await act("hold")
+  const prior = await page.evaluate(() => Reflect.get(window, "fixture").reads.length)
   const id = await request({ action: "open", target: { kind: "note", id: "note" } })
+  await page.waitForFunction((count) => Reflect.get(window, "fixture").reads.length > count, prior)
   await request({ action: "open", target: { kind: "note", id: "note" } }, { requestId: id })
   await act("resolve")
   expect((await receipt(id)).status).toBe("applied")
