@@ -46726,6 +46726,20 @@
         },
         "required": ["owner", "processCount", "measuredProcessCount", "source", "completeness"]
       },
+      "SessionExecutionPhase": {
+        "type": "string",
+        "enum": [
+          "preparing",
+          "waiting_resources",
+          "queued_agent",
+          "running_agent",
+          "authorizing_tools",
+          "queued_tools",
+          "running_tools",
+          "waiting_background",
+          "stopping"
+        ]
+      },
       "PerfModule": {
         "type": "string",
         "enum": [
@@ -47232,17 +47246,7 @@
                   "executionPhases": {
                     "type": "object",
                     "propertyNames": {
-                      "type": "string",
-                      "enum": [
-                        "preparing",
-                        "queued_agent",
-                        "running_agent",
-                        "authorizing_tools",
-                        "queued_tools",
-                        "running_tools",
-                        "waiting_background",
-                        "stopping"
-                      ]
+                      "$ref": "#/components/schemas/SessionExecutionPhase"
                     },
                     "additionalProperties": {
                       "type": "integer",

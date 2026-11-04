@@ -12,6 +12,8 @@ Sampling uses five seconds at idle and one second with pressure or waiting work.
 
 Temporary shortage remains cancellable waiting work. There is no new resource-wait deadline or model retry. A declared minimum above a hard capacity can fail permanently; an estimate alone cannot prove impossibility. Explicit task deadlines and explicit Worker hard limits remain effective. Resource admission cannot guarantee that an unknown native command or an already-running SDK avoids OS allocation failure.
 
+Session execution reports `waiting_resources` while admission waits. `SessionManager.ExecutionPhase` owns the phase schema and inferred type; performance summaries consume that schema so transient waits remain observable through the same validated API.
+
 The existing model queue count and retained-payload limits are enforced by this same admission owner. They reject excess newly submitted requests, not requests already waiting for memory; execution transports do not apply another queue policy. Runtime status has a monotonically increasing revision for both samples and queue changes. Web merges the initial snapshot with coalesced events and invalidates that state on a server-generation change.
 
 Worker startup and turn estimates use bounded windows of 64 observations in three input-size cohorts. A turn observation is the worker's current-turn peak above its dispatch baseline, never its lifetime peak or the control plane's aggregate RSS. The estimate uses a recent 90th percentile with a margin and conservative cold floors. Those floors and the initial phase allowances are calibration starting points, not guarantees about arbitrary SDKs. Idle workers start only while an admitted prewarm request owns their startup commitment.

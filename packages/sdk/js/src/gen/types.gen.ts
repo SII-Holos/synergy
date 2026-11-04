@@ -2073,6 +2073,17 @@ export type PerfResourceOwner = {
   lastRecovery?: PerfResourceRecovery
 }
 
+export type SessionExecutionPhase =
+  | "preparing"
+  | "waiting_resources"
+  | "queued_agent"
+  | "running_agent"
+  | "authorizing_tools"
+  | "queued_tools"
+  | "running_tools"
+  | "waiting_background"
+  | "stopping"
+
 export type PerfModule =
   | "server"
   | "session"
@@ -2234,7 +2245,7 @@ export type PerfDashboardSummary = {
       userCount: number
       waiterCount: number
       executionPhases?: {
-        [key: string]: number
+        [key in SessionExecutionPhase]?: number
       }
     }
     execution?: {

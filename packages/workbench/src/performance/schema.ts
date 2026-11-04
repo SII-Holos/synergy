@@ -1,5 +1,6 @@
 import { ObservabilityConfig } from "@ericsanchezok/synergy-harness/observability/config"
 import { ObservabilitySchema } from "@ericsanchezok/synergy-harness/observability/schema"
+import { SessionManager } from "@ericsanchezok/synergy-harness/session/manager"
 import z from "zod"
 
 export namespace PerformanceSchema {
@@ -346,21 +347,7 @@ export namespace PerformanceSchema {
           childCount: z.number().int(),
           userCount: z.number().int(),
           waiterCount: z.number().int(),
-          executionPhases: z
-            .partialRecord(
-              z.enum([
-                "preparing",
-                "queued_agent",
-                "running_agent",
-                "authorizing_tools",
-                "queued_tools",
-                "running_tools",
-                "waiting_background",
-                "stopping",
-              ]),
-              z.number().int().nonnegative(),
-            )
-            .optional(),
+          executionPhases: z.partialRecord(SessionManager.ExecutionPhase, z.number().int().nonnegative()).optional(),
         }),
         execution: z
           .object({
