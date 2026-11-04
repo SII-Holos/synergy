@@ -13,11 +13,8 @@ export type MessageWindowState<T extends MessageRef = MessageRef> = {
   mode: "latest" | "history"
   pendingLatest: boolean
   pendingLatestIds: string[]
-  // True when an explicit older-location replace left this history window
-  // short of the true latest messages. A history cap drops the oldest
-  // overflow and does not set it. Cleared by any latest page apply or
-  // latest-mode reconcile; preserved by history prepends, reconciles, and
-  // removals.
+  // True when older paging or a locate leaves this window short of the latest messages.
+  // Cleared by latest replacement; other reconciliation and removals preserve the gap.
   tailMissingLatest: boolean
 }
 
@@ -78,7 +75,7 @@ export function retainPendingLatestIds<T extends MessageRef>(
   })
 }
 
-function insertInOrder<T extends MessageRef>(messages: T[], message: T): T[] {
+export function insertInOrder<T extends MessageRef>(messages: T[], message: T): T[] {
   const last = messages.at(-1)
   if (last && compareByTimeThenId(last, message) <= 0) {
     // Common path: an incoming message is the newest — append at the tail.
@@ -141,9 +138,7 @@ export function applyLatestPage<T extends MessageRef>(
 }
 
 function capHistoryMessages<T extends MessageRef>(messages: T[], cap: number): T[] {
-  // Canonical order is oldest-first. Keep the newest tail so the greatest id
-  // cannot fall and no dropped id is newer than a message that remains.
-  return messages.length <= cap ? messages : messages.slice(messages.length - cap)
+  return messages.length <= cap ? messages : messages.slice(0, cap)
 }
 
 export function prependOlderPage<T extends MessageRef>(
@@ -165,7 +160,7 @@ export function prependOlderPage<T extends MessageRef>(
       mode: "history",
       pendingLatest: pendingLatestIds.length > 0,
       pendingLatestIds,
-      tailMissingLatest: current.tailMissingLatest,
+      tailMissingLatest: current.tailMissingLatest || droppedIds.length > 0,
     },
     droppedIds,
   }

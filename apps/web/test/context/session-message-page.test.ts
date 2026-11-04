@@ -85,7 +85,7 @@ describe("planMessagePageApply", () => {
     })
   })
 
-  test("prepends older history and keeps the newer tail when capped", () => {
+  test("preserves backward paging progress when capped", () => {
     const current = window(
       [
         { id: "new-1", time: { created: 3 }, role: "user" },
@@ -105,9 +105,9 @@ describe("planMessagePageApply", () => {
       cap: 2,
     })
 
-    expect(plan.window.messages.map((item) => item.id)).toEqual(["new-1", "new-2"])
-    expect(plan.droppedIds).toEqual(["old-1", "old-2"])
-    expect(plan.window.tailMissingLatest).toBe(false)
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["old-1", "old-2"])
+    expect(plan.droppedIds).toEqual(["new-1", "new-2"])
+    expect(plan.window.tailMissingLatest).toBe(true)
     expect(plan.metadata.mode).toBe("history")
     expect(plan.metadata.nextCursor).toBe("cursor-older")
   })
@@ -150,7 +150,7 @@ describe("planMessagePageApply", () => {
     expect(plan.metadata.pendingLatestIds).toEqual([])
   })
 
-  test("subtracts only ids newer than the history window from the page total", () => {
+  test("subtracts only pending arrivals after backward paging", () => {
     const capped = applyLatestPage(
       [message("m1", 1), message("m2", 2), message("m3", 3), message("m4", 4)].map((item) => item.info),
       [],
@@ -161,7 +161,7 @@ describe("planMessagePageApply", () => {
     const newer = reconcileMessage(older.window, message("m5", 5).info, 2)
     const pageInput = page({ items: [message("m0", 0)], total: 6 })
 
-    expect(history.window.messages.map((item) => item.id)).toEqual(["m3", "m4"])
+    expect(history.window.messages.map((item) => item.id)).toEqual(["m2", "m3"])
     expect(older.window.pendingLatestIds).toEqual([])
 
     const olderPlan = planMessagePageApply<TestMessage, TestPart>({
@@ -180,7 +180,7 @@ describe("planMessagePageApply", () => {
       mode: "history",
       cap: 2,
     })
-    expect(plan.window.messages.map((item) => item.id)).toEqual(["m3", "m4"])
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["m0", "m2"])
     expect(plan.metadata.pendingLatestIds).toEqual(["m5"])
     expect(plan.metadata.pendingLatest).toBe(true)
     expect(plan.metadata.total).toBe(5)
@@ -220,7 +220,7 @@ describe("planMessagePageApply", () => {
     expect(plan.metadata.tailMissingLatest).toBe(true)
   })
 
-  test("does not open a tail gap when the history cap drops an older message", () => {
+  test("records the newer tail evicted by older paging", () => {
     const current: MessageWindowState<TestMessage> = {
       messages: [{ id: "new", time: { created: 4 }, role: "user" }],
       mode: "history",
@@ -234,10 +234,10 @@ describe("planMessagePageApply", () => {
       mode: "history",
       cap: 1,
     })
-    expect(plan.window.messages.map((item) => item.id)).toEqual(["new"])
-    expect(plan.droppedIds).toEqual(["older"])
-    expect(plan.window.tailMissingLatest).toBe(false)
-    expect(plan.metadata.tailMissingLatest).toBe(false)
+    expect(plan.window.messages.map((item) => item.id)).toEqual(["older"])
+    expect(plan.droppedIds).toEqual(["new"])
+    expect(plan.window.tailMissingLatest).toBe(true)
+    expect(plan.metadata.tailMissingLatest).toBe(true)
   })
 
   test("latest page plan metadata clears the tail gap", () => {

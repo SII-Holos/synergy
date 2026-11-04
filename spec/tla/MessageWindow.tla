@@ -10,9 +10,9 @@
 \* Message ids are 1..MsgCount in canonical order (time, then id). The window
 \* is a set under that order. Dependency-root retention is not modeled: the
 \* runtime may keep referenced roots above the primary cap, and this model
-\* does not. History cap keeps the newest Cap ids of the combined slice.
-\* A dropped id is older than every id that remains, and the window's
-\* maximum id does not fall. The cap does not set the tail flag.
+\* does not. Older paging keeps the oldest Cap ids of the combined slice.
+\* Every requested older page advances the reading window. Evicting newer
+\* rows sets the tail flag, so return-to-latest can recover them.
 \*
 \* pending holds ids strictly newer than the window maximum. An older id that
 \* is only absent does not enter pending. CandidatePendingIsNewer is that
@@ -49,6 +49,11 @@ RECURSIVE Largest(_, _)
 Largest(S, k) ==
   IF Cardinality(S) <= k THEN S
   ELSE Largest(S \ {MinSet(S)}, k)
+
+RECURSIVE Smallest(_, _)
+Smallest(S, k) ==
+  IF Cardinality(S) <= k THEN S
+  ELSE Smallest(S \ {MaxSet(S)}, k)
 
 OlderThan(S) == {m \in published : m < MinSet(S)}
 OlderPage(S) == Largest(OlderThan(S), Page)
@@ -135,14 +140,14 @@ Prepend ==
   /\ OlderPage(window) # {}
   /\ LET older == OlderPage(window)
          combined == window \cup older
-         kept == Largest(combined, Cap)
+         kept == Smallest(combined, Cap)
          evicted == combined \ kept
          nextPending == PendingAfter(pending, kept, evicted)
      IN /\ window' = kept
         /\ pending' = nextPending
         /\ pendingLatest' = (nextPending # {})
         /\ mode' = "history"
-        /\ tailMissing' = tailMissing
+        /\ tailMissing' = (tailMissing \/ evicted # {})
         /\ lastEvicted' = evicted
         /\ lastOlder' = older
         /\ lastAction' = "prepend"
@@ -292,27 +297,27 @@ InvLatestPageIsSuffix ==
      /\ ~tailMissing
      /\ ~cursorStale)
 
-\* After a history cap, the window's maximum id is at least the pre-cap
-\* maximum, and every dropped id is older than every id that remains.
-InvHistoryCapKeepsNewerTail ==
+\* Backward paging advances the oldest visible id and retains a recovery
+\* marker for the newer rows evicted to keep memory bounded.
+InvHistoryPagingProgress ==
   lastAction = "prepend" =>
     (/\ mode = "history"
      /\ loaded
      /\ prev.window # {}
      /\ Cardinality(lastOlder) \in 1..Page
      /\ lastOlder = Largest({m \in published : m < MinSet(prev.window)}, Page)
-     /\ window = Largest(prev.window \cup lastOlder, Cap)
+     /\ window = Smallest(prev.window \cup lastOlder, Cap)
      /\ window \cup lastEvicted = prev.window \cup lastOlder
      /\ window \cap lastEvicted = {}
-     /\ \A e \in lastEvicted : \A w \in window : e < w
-     /\ MaxSet(window) >= MaxSet(prev.window)
+     /\ \A e \in lastEvicted : \A w \in window : e > w
+     /\ MinSet(window) < MinSet(prev.window)
      /\ pending = PendingAfter(prev.pending, window, lastEvicted)
      /\ pendingLatest <=> (pending # {})
-     /\ tailMissing = prev.tail)
+     /\ tailMissing = (prev.tail \/ lastEvicted # {}))
 
 \* CandidatePendingIsNewer, checked. A non-empty window's pending ids are
 \* strictly newer than its maximum. The old counterexample parked id 1 after
-\* a capped history window of {3, 4}; that state is not reachable.
+\* a capped history window of {2, 3}; that state is not reachable.
 InvPendingIsNewer ==
   window # {} => \A p \in pending : p > MaxSet(window)
 

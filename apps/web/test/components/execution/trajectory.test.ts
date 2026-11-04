@@ -799,6 +799,7 @@ test("shrinking a history window drops older rows", async () => {
     setCap(3)
     await tick()
     expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3", "4", "5"])
+    expect(setup.trajectory.state.previous).not.toBeNull()
   } finally {
     setup.dispose()
   }
@@ -843,6 +844,7 @@ test("a history page cap retains the newer tail", async () => {
     await tick()
     expect(setup.trajectory.state.history).toBe(true)
     expect(setup.trajectory.state.rows.map((node) => node.id)).toEqual(["3", "4", "5"])
+    expect(setup.trajectory.state.previous).not.toBeNull()
     expect(setup.trajectory.state.pendingIds).toEqual([])
   } finally {
     setup.dispose()

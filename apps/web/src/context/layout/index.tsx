@@ -1177,17 +1177,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           })
           if (plan.status === "retry") return
           if (plan.status === "preserved-history") {
-            globalSync.applyResourceResponse(
-              scopeKey,
-              sessionID,
-              "message",
-              request,
-              response.response?.headers,
-              () => {
-                globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
-                globalSync.touchMessageBucket(scopeKey, sessionID)
-              },
-            )
+            if (
+              globalSync.validateResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers)
+            ) {
+              globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
+              globalSync.touchMessageBucket(scopeKey, sessionID)
+            }
             return
           }
           globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {

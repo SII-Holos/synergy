@@ -120,13 +120,21 @@ export function createExecutionTrajectory(input: {
           cap: input.capacity?.() ?? 500,
           compare: compare(),
         })
+        const candidates = [...(direction ? state.rows : []), ...page.items, ...buffered.values()]
+        const order = compare()
+        const first = merged.rows[0]
+        const last = merged.rows.at(-1)
+        const before = first && candidates.some((row) => order(row, first) < 0)
+        const after = last && candidates.some((row) => order(row, last) > 0)
+        const previous = direction === "next" ? state.previous : page.previousCursor
+        const next = direction === "previous" ? state.next : page.nextCursor
         setState("rows", reconcile(merged.rows))
         setState({
           total: page.total,
           revision: Math.max(state.revision, page.revision),
           loading: false,
-          next: direction === "previous" && paged.length < 500 ? state.next : page.nextCursor,
-          previous: direction === "next" && paged.length < 500 ? state.previous : page.previousCursor,
+          next: next ?? (after ? last.id : null),
+          previous: previous ?? (before ? first.id : null),
           history: withhold || direction === "previous",
           pendingIds: retainExecutionPendingIds(direction || restore ? state.pendingIds : [], {
             rows: merged.rows,
@@ -330,6 +338,7 @@ export function createExecutionTrajectory(input: {
       compare: compare(),
     })
     setState("rows", reconcile(result.rows))
+    if (result.droppedIds.length && result.rows.length && !state.previous) setState("previous", result.rows[0].id)
     setState({
       revision: update.revision,
       pendingIds: retainExecutionPendingIds(state.pendingIds, {
@@ -346,6 +355,7 @@ export function createExecutionTrajectory(input: {
     if (state.rows.length <= Math.max(0, cap)) return
     const capped = capExecutionRows(state.rows, cap)
     setState("rows", reconcile(capped.rows))
+    if (capped.rows.length && !state.previous) setState("previous", capped.rows[0].id)
     setState(
       "pendingIds",
       retainExecutionPendingIds(state.pendingIds, {

@@ -1,6 +1,6 @@
 import {
   applyLatestPage,
-  compareByTimeThenId,
+  insertInOrder,
   prependOlderPage,
   reconcileMessage,
   retainPendingLatestIds,
@@ -54,9 +54,10 @@ function retainOptimisticMessage<M extends MessageRef>(
   window: MessageWindowState<M>,
   message: M,
 ): MessageWindowState<M> {
-  const messages = window.messages.filter((item) => item.id !== message.id)
-  messages.push(message)
-  messages.sort(compareByTimeThenId)
+  const messages = insertInOrder(
+    window.messages.filter((item) => item.id !== message.id),
+    message,
+  )
   return { ...window, messages }
 }
 
@@ -141,11 +142,7 @@ export function planMessagePageApply<M extends MessageRef & SessionContextUsageM
     input.mode === "history"
       ? retainPendingLatestIds(
           result.window.pendingLatestIds,
-          [
-            ...current.messages,
-            ...referencedRoots.map((item) => item.info),
-            ...items.map((item) => item.info),
-          ],
+          [...current.messages, ...referencedRoots.map((item) => item.info), ...items.map((item) => item.info)],
           result.window.messages,
         )
       : result.window.pendingLatestIds

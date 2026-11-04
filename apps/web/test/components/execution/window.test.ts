@@ -54,14 +54,15 @@ test("history cap keeps the newer tail and drops only older rows", () => {
 })
 test("branch budget drops the older prefix and pending ids stay a set", () => {
   const branches = new Map([
-    ["old", { rows: [row(1), row(2), row(3)], next: false, pendingIds: ["9"] }],
-    ["new", { rows: [row(4), row(5)], next: false, pendingIds: ["5"] }],
+    ["old", { rows: [row(1), row(2), row(3)], previous: false, next: false, pendingIds: ["9"] }],
+    ["new", { rows: [row(4), row(5)], previous: false, next: false, pendingIds: ["5"] }],
   ])
   const capped = capExecutionBranchWindow(branches, 3)
   expect(capped.branches.get("old")?.rows.map((node) => node.id)).toEqual(["3"])
   expect(capped.branches.get("new")?.rows.map((node) => node.id)).toEqual(["4", "5"])
   expect(capped.droppedIds).toEqual(["1", "2"])
   expect(capped.branches.get("old")?.next).toBe(false)
+  expect(capped.branches.get("old")?.previous).toBe(true)
   expect(
     retainExecutionPendingIds(["9", "5", "8"], {
       rows: capped.branches.get("new")?.rows ?? [],
@@ -80,6 +81,14 @@ test("branch budget drops the older prefix and pending ids stay a set", () => {
       withhold: false,
     }),
   ).toEqual([])
+})
+test("branch budgets remain bounded even when more branches than rows are retained", () => {
+  const branches = new Map(
+    Array.from({ length: 5 }, (_, index) => [String(index), { rows: [row(index)], previous: false }]),
+  )
+  const capped = capExecutionBranchWindow(branches, 3)
+  expect([...capped.branches.values()].reduce((sum, branch) => sum + branch.rows.length, 0)).toBe(3)
+  expect(capped.branches.get("0")).toMatchObject({ rows: [], previous: true })
 })
 test("paging and live merges preserve selected round and physical call order", () => {
   const rounds = new Map([

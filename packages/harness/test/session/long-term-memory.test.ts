@@ -1003,6 +1003,23 @@ test("incremental review does not hydrate already-reviewed original bodies", () 
     expect(parts.mock.calls.map(([key]) => key[4])).toEqual([second.id])
   }))
 
+test("reviews bounded segments before hydrating later original messages", () =>
+  withSession(async (session) => {
+    const first = await root(session.id, "First original evidence.\n".repeat(3000), 1)
+    const later = await root(session.id, "Later evidence stays on disk until needed.", 2)
+    using hydrated = spyOn(PartContent, "hydrate")
+    let calls = 0
+    using call = spyOn(AgentCall, "text").mockImplementation(async () => {
+      if (calls++ === 0) expect(hydrated.mock.calls.some(([key]) => key[4] === later.id)).toBe(false)
+      return { text: "# Reviewed evidence", model }
+    })
+    await update(first, { fallbackModel: { ...model, limit: { context: 8192, output: 2048 } } })
+    expect(calls).toBeGreaterThan(1)
+    expect(await SessionLongTermMemory.progress(await Session.get(session.id))).toMatchObject({
+      reviewedThrough: SessionLongTermMemory.cursor(later),
+    })
+  }))
+
 test("segments oversized native text without dropping source characters or publishing intermediate memory", () =>
   withSession(async (session) => {
     const text = Array.from({ length: 2500 }, (_, index) => `line-${index}: retain original evidence.\n`).join("")

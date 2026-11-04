@@ -19,6 +19,7 @@
     "archived/bug-fix/2026-10-22-keep-welcome-playfield-at-resting-size-under-covering-composer.md": "fecc34aba831f722d8085de651560ca491710b9f175de751ab2fc2b8bd297f98",
     "archived/bug-fix/2026-10-17-steer-active-subagent-followups.md": "87d1b64452902c9f6072a899d37354c4d4604bd1471254b687681d2b4f193791",
     "archived/feature/2026-10-16-lightweight-primary-default.md": "cd1acbc2609665fe88fcfb88120560a3c2dca1ce90ce2eb18199e06501bd33de",
-    "archived/architecture/2026-10-15-independent-file-tool-groups.md": "a335456c37ce670fb4555650e3f0002a098cd729d6642bfae0190125f606260b"
+    "archived/architecture/2026-10-15-independent-file-tool-groups.md": "a335456c37ce670fb4555650e3f0002a098cd729d6642bfae0190125f606260b",
+    "archived/bug-fix/2026-11-02-history-cap-keeps-newer-tail.md": "1a09f7f851a2c0ea033ddae80555258a9c4b79f8d176c3dcbe22aa926ae90928"
   }
 }

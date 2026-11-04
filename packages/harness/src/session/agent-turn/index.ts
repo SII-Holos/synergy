@@ -233,7 +233,7 @@ export namespace AgentTurn {
           (disposed ??= (async () => {
             // Rollout disposal can replay a provider error after the executor has acknowledged release.
             await source.dispose()
-            await RuntimeResources.sample()
+            await RuntimeResources.sampleAfterAllocation()
             resource.release()
           })()),
       }
@@ -309,8 +309,8 @@ export namespace AgentTurn {
         },
       )
       if (cost.startup) {
+        await RuntimeResources.sampleAfterAllocation()
         resource.checkpoint(cost.turn)
-        await RuntimeResources.sample()
       }
       return result
     } catch (error) {
@@ -325,7 +325,7 @@ export namespace AgentTurn {
           throw new AggregateError([error, disposalError], "Model startup and disposal failed")
         }
       } else {
-        await RuntimeResources.sample()
+        await RuntimeResources.sampleAfterAllocation()
         resource.release()
       }
       throw error

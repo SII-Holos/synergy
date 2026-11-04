@@ -188,16 +188,19 @@ export namespace SessionLongTermMemory {
         if (input.through && !infos.some((info) => isSourceInfo(info) && compare(cursor(info), input.through!) === 0))
           throw new ConflictError()
         if (previous && input.through && compare(input.through, previous.reviewedThrough) < 0) return undefined
-        const messages = await SessionHistory.originalMessages({
-          sessionID,
-          after: previous?.reviewedThrough,
-          through: input.through,
-          signal: input.signal,
-        })
-        const pending = messages.filter(isSourceMessage)
+        const selected = infos.filter(
+          (info) =>
+            isSourceInfo(info) &&
+            (!previous || compare(cursor(info), previous.reviewedThrough) > 0) &&
+            (!input.through || compare(cursor(info), input.through) <= 0),
+        )
+        const end = selected.at(-1)
+        if (!end) return undefined
+        const current = await sources(session, cursor(end), infos)
+        const evidence = new Set(current.messageIDs)
+        const pending = selected.filter((info) => evidence.has(info.id))
         const last = pending.at(-1)
         if (!last) return undefined
-        const current = await sources(session, cursor(last.info), infos)
         const events = await SessionHistory.readEvents(sessionID)
         input.signal.throwIfAborted()
         return {
@@ -211,7 +214,7 @@ export namespace SessionLongTermMemory {
           messageIDs: current.messageIDs,
           events: JSON.stringify(events),
           pending,
-          through: cursor(last.info),
+          through: cursor(last),
         } as const
       }).catch(async (error) => {
         if (!(error instanceof MetadataUnavailableError)) throw error
@@ -446,10 +449,10 @@ export namespace SessionLongTermMemory {
     const inputLimit =
       budget.context > 0 ? Math.min(budget.inputEnvelope, budget.context - budget.margin - budget.output) : Infinity
     const groups: Group[] = []
-    for (const message of captured.pending)
-      groups.push(...(await project(captured.session, message, model, input.signal)))
+    const pending = captured.pending.values()
+    let exhausted = false
     let markdown = captured.session.longTermMemory?.markdown ?? ""
-    while (groups.length) {
+    while (groups.length || !exhausted) {
       input.signal.throwIfAborted()
       const head = envelope(markdown)
       const tail: ModelMessage = {
@@ -458,6 +461,24 @@ export namespace SessionLongTermMemory {
       }
       const plan = { system: agent.prompt ? [agent.prompt] : [], messages: [head, tail], toolDefinitions: [] }
       const fixed = await PromptBudgeter.measure(plan, model.id)
+      let staged = groups.reduce((total, group) => total + group.cost, 0)
+      while (!exhausted && (!groups.length || fixed.total + staged < inputLimit)) {
+        input.signal.throwIfAborted()
+        const next = pending.next()
+        if (next.done) {
+          exhausted = true
+          break
+        }
+        const parts = await SessionHistory.originalParts({
+          sessionID: input.sessionID,
+          messageID: next.value.id,
+          signal: input.signal,
+        })
+        const projected = await project(captured.session, { info: next.value, parts }, model, input.signal)
+        groups.push(...projected)
+        staged += projected.reduce((total, group) => total + group.cost, 0)
+      }
+      if (!groups.length) break
       let total = fixed.total
       let count = 0
       let maxOutputTokens = budget.output

@@ -631,6 +631,16 @@ function createGlobalSync() {
     return true
   }
 
+  function validateResourceResponse(
+    scopeKey: string,
+    sessionID: string,
+    resource: SyncResource,
+    request: SyncResourceRequest,
+    headers: Pick<Headers, "get"> | undefined,
+  ) {
+    return resourceFreshness.canAcceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers))
+  }
+
   function applyResourceMutationResponse(
     scopeKey: string,
     sessionID: string,
@@ -2852,6 +2862,7 @@ function createGlobalSync() {
     scopeRecoveryPending: (scopeKey: string) =>
       (scopeRecoveryTargets[scopeKey] ?? 0) > (scopeReconnectVersions[scopeKey] ?? 0),
     captureResourceRequest,
+    validateResourceResponse,
     applyResourceResponse,
     loadCurrentTurn,
     applyResourceMutationResponse,

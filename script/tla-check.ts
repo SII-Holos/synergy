@@ -42,7 +42,7 @@ const REQUIRED_INVARIANTS: Record<(typeof MODULES)[number], readonly string[]> =
     "InvUnloaded",
     "InvCursorOnlyHistory",
     "InvLatestPageIsSuffix",
-    "InvHistoryCapKeepsNewerTail",
+    "InvHistoryPagingProgress",
     "InvPendingIsNewer",
     "CandidatePendingIsNewer",
     "InvPendingStep",
@@ -63,7 +63,7 @@ const README_MARKERS = [
   "tlc2.TLC",
   "ScopeEpochReplay",
   "MessageWindow",
-  "InvHistoryCapKeepsNewerTail",
+  "InvHistoryPagingProgress",
   "InvPendingIsNewer",
   "CandidatePendingIsNewer",
   "SYNERGY_TLC",
@@ -111,11 +111,7 @@ export function definedOperators(text: string): Set<string> {
   return names
 }
 
-export function auditModule(input: {
-  name: (typeof MODULES)[number]
-  tla: string
-  cfgText: string
-}): string[] {
+export function auditModule(input: { name: (typeof MODULES)[number]; tla: string; cfgText: string }): string[] {
   const errors: string[] = []
   const cfg = parseCfg(input.cfgText)
   const defined = definedOperators(input.tla)

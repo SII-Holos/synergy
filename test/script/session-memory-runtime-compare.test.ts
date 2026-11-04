@@ -43,6 +43,13 @@ function result(mutate?: (label: string, delta: typeof METRICS) => void, patch: 
 }
 
 describe("session memory runtime compare", () => {
+  test("rejects limits that cannot provide a finite non-negative byte allowance", () => {
+    for (const limit of [Infinity, NaN, -1]) {
+      expect(() => compareSessionMemoryResults(result(), result(), { rssBytes: limit })).toThrow("finite")
+    }
+    expect(() => parseCompareArguments(["--max-rss-mib", "9".repeat(400)])).toThrow("finite")
+  })
+
   test("documents the default byte allowances", () => {
     expect(DEFAULT_SESSION_MEMORY_COMPARE_LIMITS).toEqual({
       rssBytes: 64 * 1024 * 1024,

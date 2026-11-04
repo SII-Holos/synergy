@@ -75,6 +75,10 @@ export function compareSessionMemoryResults(
   overrides: Partial<Record<SessionMemoryCompareMetric, number>> = {},
 ): SessionMemoryCompareReport {
   const limits = { ...DEFAULT_SESSION_MEMORY_COMPARE_LIMITS, ...overrides }
+  for (const metric of SESSION_MEMORY_COMPARE_METRICS) {
+    if (!Number.isFinite(limits[metric]) || limits[metric] < 0)
+      throw new Error(`${metric} limit must be a finite non-negative number of bytes`)
+  }
   const baselineResult = unwrap(baselineInput, "baseline")
   const candidateResult = unwrap(candidateInput, "candidate")
   const baseline = identity(baselineResult, "baseline")
@@ -130,8 +134,10 @@ export function parseCompareArguments(argv: string[]) {
     if (token === "--baseline") baseline = value
     else if (token === "--candidate") candidate = value
     else if (metric) {
-      if (!/^\d+(\.\d+)?$/.test(value)) throw new Error(`${token} must be a non-negative number of MiB`)
-      limits[metric] = Math.round(Number(value) * MiB)
+      const bytes = Math.round(Number(value) * MiB)
+      if (!/^\d+(\.\d+)?$/.test(value) || !Number.isFinite(bytes))
+        throw new Error(`${token} must be a finite non-negative number of MiB`)
+      limits[metric] = bytes
     }
   }
   if (!baseline || !candidate) throw new Error(USAGE)

@@ -2,10 +2,10 @@
 
 Bounded models of two frontend sync rules. The specs are the models. They do not run the server or the Web app.
 
-| Path | What it checks |
-| --- | --- |
-| `ScopeEpochReplay.tla` | One Scope's epoch, contiguous seq, journal prune, and reconnect replay/resync |
-| `MessageWindow.tla` | One session window: latest/history, `pendingLatest`, stale cursor, prepend, and the history cap that keeps the newer tail |
+| Path                   | What it checks                                                                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `ScopeEpochReplay.tla` | One Scope's epoch, contiguous seq, journal prune, and reconnect replay/resync                                                       |
+| `MessageWindow.tla`    | One session window: latest/history, `pendingLatest`, stale cursor, prepend, and bounded backward paging with recoverable newer rows |
 
 `ScopeEpochReplay.cfg` and `MessageWindow.cfg` are the checked models. Constants in those files are the state-space bounds. Raising them is a local experiment.
 
@@ -35,7 +35,7 @@ SYNERGY_TLC=1 bun run tla:check
 
 `bun run tla:check` is the structural gate: both specs exist, each checked cfg names its invariants, and those operators are defined. It does not download Java or the jar.
 
-`SYNERGY_TLC=1` also runs TLC on `ScopeEpochReplay.cfg` and `MessageWindow.cfg`. It reads `TLA2TOOLS_JAR`. `InvHistoryCapKeepsNewerTail` is one of the checked message-window invariants.
+`SYNERGY_TLC=1` also runs TLC on `ScopeEpochReplay.cfg` and `MessageWindow.cfg`. It reads `TLA2TOOLS_JAR`. `InvHistoryPagingProgress` is one of the checked message-window invariants.
 
 One spec from this directory:
 
@@ -75,7 +75,7 @@ A live client with no watermark seeds the first state event and does not replay 
 - `InvUnloaded` — an event does not create a window before a latest page load.
 - `InvCursorOnlyHistory` — a stale cursor is a loaded history window.
 - `InvLatestPageIsSuffix` — a latest load, return to latest, or stale-cursor recovery replaces the window with the newest `Cap` published ids and clears pending, the tail gap, and the stale cursor.
-- `InvHistoryCapKeepsNewerTail` — a history page keeps the newest ids of the combined slice, within `Cap` and the page bound. Every dropped id is older than every id that remains, and the window's maximum id is at least the pre-cap maximum. Evicted and newly visible ids leave `pending`. The tail flag is preserved, not set by the drop.
+- `InvHistoryPagingProgress` — older paging keeps the oldest ids of the combined slice within `Cap`, advances its minimum and records any evicted newer rows through the tail flag. Evicted and newly visible ids leave `pending`.
 - `InvPendingIsNewer` — when the window is non-empty, every pending id is strictly newer than its maximum. `CandidatePendingIsNewer` is the same formula. TLC used to refute it by parking older id `1` after a history window `{3, 4}`; that state is not reachable.
 - `InvPendingStep` — a history reconcile records an id only when it is newer than the window maximum, once, and does not insert it. The tail flag stays.
 - `InvOlderIgnored` — an id that is only absent, and not newer than the window, is not parked. A non-empty window also drops that id if it was pending. An empty window does not admit an id and does not drop ids already pending.
@@ -90,9 +90,9 @@ The model has a quiescent state once every id is published and the window is idl
 TLC found no violation of the checked invariants.
 
 - `ScopeEpochReplay`: 4,353 distinct states, search depth 17. `CaughtUp` holds.
-- `MessageWindow`: 1,831 distinct states, search depth 14. `InvPendingIsNewer` and `InvHistoryCapKeepsNewerTail` hold.
+- `MessageWindow`: 1,831 distinct states, search depth 14. `InvPendingIsNewer` and `InvHistoryPagingProgress` hold.
 
-The reducer test covers the trace publish `m1`–`m4`, latest cap `{m3, m4}`, prepend `m2`: the window stays `{m3, m4}`. Reconciling older id `m1` leaves `pendingLatestIds` empty, so it does not reduce the history total, set bottom-return recovery, or count as inbox materialization. That trace was the `CandidatePendingIsNewer` counterexample; `InvPendingIsNewer` now holds on it.
+The reducer test covers publish `m1`–`m4`, latest cap `{m3, m4}`, then prepend `m2`: the window becomes `{m2, m3}` and the tail flag exposes recovery of `m4`. An event for older absent `m1` does not enter pending or count as inbox materialization. A separate 1,200-message reducer trace proves that every explicitly requested older page becomes readable after the cap fills.
 
 ## Sources
 
@@ -100,4 +100,4 @@ The epoch model follows [State event sequencing](../../docs/architecture/fronten
 
 The window model follows [Message window and cursor pagination](../../docs/architecture/frontend-data-sync.md#message-window-and-cursor-pagination) and the invariants on that page, `apps/web/src/context/session-message-window.ts`, and `apps/web/src/context/session-message-page-recovery.ts`.
 
-The method is TLA+ and TLC (Leslie Lamport, *Specifying Systems*; the [TLA+ tools](https://github.com/tlaplus/tlaplus)).
+The method is TLA+ and TLC (Leslie Lamport, _Specifying Systems_; the [TLA+ tools](https://github.com/tlaplus/tlaplus)).

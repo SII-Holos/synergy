@@ -15,7 +15,7 @@ InvLatestClean == TRUE
 InvUnloaded == TRUE
 InvCursorOnlyHistory == TRUE
 InvLatestPageIsSuffix == TRUE
-InvHistoryCapKeepsNewerTail == TRUE
+InvHistoryPagingProgress == TRUE
 InvPendingStep == TRUE
 InvHistoryTouchPreserves == TRUE
 InvRemovePreserves == TRUE
@@ -51,7 +51,7 @@ PROPERTY CaughtUp
       tla: windowTla,
       cfgText: "SPECIFICATION Spec\nINVARIANT TypeOK\n",
     })
-    expect(missing.some((error) => error.includes("missing INVARIANT InvHistoryCapKeepsNewerTail"))).toBe(true)
+    expect(missing.some((error) => error.includes("missing INVARIANT InvHistoryPagingProgress"))).toBe(true)
   })
 
   test("rejects an invariant the module does not define", () => {

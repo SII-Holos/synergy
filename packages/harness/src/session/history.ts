@@ -1097,23 +1097,32 @@ export namespace SessionHistory {
             (info.time.created === through.created && info.id.localeCompare(through.messageID) <= 0))
         )
       })
-      const messages = await mapWithConcurrency(selected, PAGE_HYDRATION_CONCURRENCY, async (info) => {
-        input.signal?.throwIfAborted()
-        const parts: MessageV2.Part[] = []
-        for await (const record of Storage.records<SessionPartContent.Stored>({
-          kind: "part",
-          scopeID: session.scope.id,
-          sessionID: session.id,
-          messageID: info.id,
-        })) {
-          input.signal?.throwIfAborted()
-          parts.push(upgradeAccessRecord(record.key, await SessionPartContent.hydrate(record.key, record.value)))
-        }
-        parts.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-        return { info, parts }
-      })
+      const messages = await mapWithConcurrency(selected, PAGE_HYDRATION_CONCURRENCY, async (info) => ({
+        info,
+        parts: await readOriginalParts(session, info.id, input.signal),
+      }))
       return MessageV2.deriveSemantics(messages)
     })
+  }
+
+  export async function originalParts(input: { sessionID: string; messageID: string; signal?: AbortSignal }) {
+    const session = await prepareInfoRead(input.sessionID)
+    return Storage.snapshot(() => readOriginalParts(session, input.messageID, input.signal))
+  }
+
+  async function readOriginalParts(session: Info, messageID: string, signal?: AbortSignal) {
+    signal?.throwIfAborted()
+    const parts: MessageV2.Part[] = []
+    for await (const record of Storage.records<SessionPartContent.Stored>({
+      kind: "part",
+      scopeID: session.scope.id,
+      sessionID: session.id,
+      messageID,
+    })) {
+      signal?.throwIfAborted()
+      parts.push(upgradeAccessRecord(record.key, await SessionPartContent.hydrate(record.key, record.value)))
+    }
+    return parts.sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {

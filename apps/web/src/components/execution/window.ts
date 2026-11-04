@@ -56,7 +56,7 @@ export function mergeExecutionWindow(
   return { rows: capped.rows, addedIds, droppedIds: capped.droppedIds }
 }
 
-export function capExecutionBranchWindow<T extends { rows: readonly { id: string }[] }>(
+export function capExecutionBranchWindow<T extends { rows: readonly { id: string }[]; previous?: boolean }>(
   branches: ReadonlyMap<string, T>,
   cap: number,
 ): { branches: Map<string, T>; droppedIds: string[] } {
@@ -69,13 +69,13 @@ export function capExecutionBranchWindow<T extends { rows: readonly { id: string
       next.set(key, branch)
       continue
     }
-    const removed = Math.min(count - cap, Math.max(0, branch.rows.length - 1))
+    const removed = Math.min(count - Math.max(0, cap), branch.rows.length)
     if (!removed) {
       next.set(key, branch)
       continue
     }
     droppedIds.push(...branch.rows.slice(0, removed).map((row) => row.id))
-    next.set(key, { ...branch, rows: branch.rows.slice(removed) })
+    next.set(key, { ...branch, rows: branch.rows.slice(removed), previous: true })
     count -= removed
   }
   return { branches: next, droppedIds }

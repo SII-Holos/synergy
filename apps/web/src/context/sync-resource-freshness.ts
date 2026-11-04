@@ -73,11 +73,21 @@ export class SyncResourceFreshness {
   }
 
   acceptResponse(input: SyncResourceKey, request: SyncResourceRequest, version: SyncVersion | undefined): boolean {
+    if (!this.canAcceptResponse(input, request, version)) return false
+    return this.acceptSnapshot(input, version)
+  }
+
+  canAcceptResponse(input: SyncResourceKey, request: SyncResourceRequest, version: SyncVersion | undefined): boolean {
     if (this.generation(input.scopeKey) !== request.generation) return false
     if (this.revisions.get(resourceKey(input)) !== request.revision) {
       if (!isValidVersion(version) || !this.current(input)) return false
     }
-    return this.acceptSnapshot(input, version)
+    if (!isValidVersion(version)) return true
+    if (this.retiredEpochs.get(input.scopeKey)?.has(version.epoch)) return false
+    const scope = this.scopes.get(input.scopeKey)
+    if (scope && (scope.epoch !== version.epoch || version.seq < scope.seq)) return false
+    const current = this.current(input)
+    return !current || current.epoch !== version.epoch || version.seq >= current.seq
   }
 
   acceptMutationResponse(

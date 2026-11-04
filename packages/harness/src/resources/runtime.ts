@@ -37,7 +37,7 @@ export namespace RuntimeResources {
       async release() {
         if (released) return
         released = true
-        await sample()
+        await sampleAfterAllocation()
         lease.release()
       },
     }
@@ -49,7 +49,7 @@ export namespace RuntimeResources {
       request.signal?.throwIfAborted()
       return await work()
     } finally {
-      await sample()
+      await sampleAfterAllocation()
       lease.release()
     }
   }
@@ -108,6 +108,12 @@ export namespace RuntimeResources {
       schedule()
     })
     return current.sampling
+  }
+
+  export async function sampleAfterAllocation(): Promise<void> {
+    // An in-flight native observation may have captured headroom before the allocation completed.
+    await state().sampling
+    await sample()
   }
 
   export function closeAdmission() {

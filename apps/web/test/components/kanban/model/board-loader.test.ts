@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { createStore, reconcile } from "solid-js/store"
 import type { Message, Part } from "@ericsanchezok/synergy-sdk/client"
 import { createBoardLoader, type BoardLoaderDeps } from "../../../../src/components/kanban/model/board-loader"
-import type { SyncResourceRequest } from "../../../../src/context/sync-resource-freshness"
+import { SyncResourceFreshness, readSyncVersion } from "../../../../src/context/sync-resource-freshness"
 import type { SessionPartSnapshotRequest } from "../../../../src/context/session-part-snapshot-freshness"
 import { createScopeRetention } from "../../../../src/context/scope-retention"
 import { planMessagePageApply } from "../../../../src/context/session-message-page"
@@ -24,7 +24,9 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
   scopeVersions: Record<string, number>
   dropSnapshot: (scopeKey: string, sessionID: string) => void
   partActions: Record<string, "apply" | "preserve" | "retry">
+  freshness: SyncResourceFreshness
 } {
+  const freshness = new SyncResourceFreshness()
   const touches: string[] = []
   const messagePages: { sessionID: string; limit: number }[] = []
   const scopeVersions: Record<string, number> = {}
@@ -39,6 +41,7 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     return store
   }
   return {
+    freshness,
     touches,
     messagePages,
     scopeVersions,
@@ -50,11 +53,14 @@ function makeDeps(overrides: Partial<BoardLoaderDeps> = {}): BoardLoaderDeps & {
     partActions,
     ensureScopeState,
     retainScopeState: () => ({ release() {} }),
-    captureResourceRequest: (_s, sessionID) => ({ sessionID }) as unknown as SyncResourceRequest,
+    captureResourceRequest: (scopeKey, sessionID, resource) => freshness.capture({ scopeKey, sessionID, resource }),
     capturePartSnapshotRequest: (_s, _sid) => ({ generation: 1, revisions: new Map() }) as SessionPartSnapshotRequest,
     partSnapshotAction: (_s, _sid, messageID) => partActions[messageID] ?? "apply",
     beginContextProjection: () => 1,
-    applyResourceResponse: (_s, _sid, _r, _req, _h, apply) => {
+    validateResourceResponse: (scopeKey, sessionID, resource, request, headers) =>
+      freshness.canAcceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers)),
+    applyResourceResponse: (scopeKey, sessionID, resource, request, headers, apply) => {
+      if (!freshness.acceptResponse({ scopeKey, sessionID, resource }, request, readSyncVersion(headers))) return false
       apply()
       return true
     },
@@ -225,6 +231,7 @@ describe("createBoardLoader", () => {
         contexts.push(value)
       },
       messagePage: async () => ({
+        response: { headers: new Headers({ "x-synergy-epoch": "epoch", "x-synergy-seq": "12" }) },
         data: {
           items: [{ info: latest, parts: [{ id: "p-latest" } as Part] }],
           referencedRoots: [],
@@ -239,6 +246,8 @@ describe("createBoardLoader", () => {
       },
     })
     const [store, setStore] = deps.ensureScopeState("/a") as ReturnType<typeof createStore<FakeStore>>
+    const resource = { scopeKey: "/a", sessionID: "s1", resource: "message" as const }
+    deps.freshness.acceptSnapshot(resource, { epoch: "epoch", seq: 10 })
     setStore("message", "s1", [message("older", 1)])
     setStore("part", "older", [{ id: "p-older" } as Part])
     setStore("messageWindow", "s1", {
@@ -267,6 +276,7 @@ describe("createBoardLoader", () => {
       expect(store.part.older?.map((part) => part.id)).toEqual(["p-older"])
       expect(store.part.latest).toBeUndefined()
       expect(contexts.at(-1)).toMatchObject({ id: "latest" })
+      expect(deps.freshness.acceptEvent(resource, { epoch: "epoch", seq: 11 })).toBe(true)
     } finally {
       loader.dispose()
     }
