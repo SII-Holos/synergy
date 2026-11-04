@@ -98,13 +98,13 @@ test("starts Context Usage estimation only after the Agent worker starts", () =>
       } as any)
 
       await preparing.promise
-      expect(phases).toEqual([])
+      expect(phases).toEqual(["waiting_resources"])
       prepared.resolve()
       const enqueued = await queued.promise
-      expect(phases).toEqual(["queued_agent"])
+      expect(phases).toEqual(["waiting_resources", "queued_agent"])
       expect(estimationStarts).toBe(0)
       enqueued.onPhase?.("waiting_model")
-      expect(phases).toEqual(["queued_agent", "waiting_model"])
+      expect(phases).toEqual(["waiting_resources", "queued_agent", "waiting_model"])
 
       started.resolve({
         fullStream: (async function* () {})(),
@@ -232,7 +232,7 @@ test("reuses a prepared request without rerunning final prompt or parameter hook
     }
   }))
 
-test("prewarm creates the worker pool eagerly and stays a no-op for the in-process adapter", () =>
+test("prewarm skips zero idle demand and the in-process adapter", () =>
   runtime.run(async () => {
     try {
       await AgentTurn.stop()
@@ -240,14 +240,14 @@ test("prewarm creates the worker pool eagerly and stays a no-op for the in-proce
       AgentTurn.setInProcessStream(undefined)
       expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
 
-      AgentTurn.prewarm()
-      expect(() => AgentTurn.configure()).toThrow("cannot be reconfigured")
+      await AgentTurn.prewarm()
+      expect(() => AgentTurn.configure({ size: 1, minIdle: 0 })).not.toThrow()
       expect(AgentTurn.stats()).toMatchObject({ configured: 1, workers: 0, active: 0 })
 
       await AgentTurn.stop()
       AgentTurn.configure({ size: 1, minIdle: 0 })
       AgentTurn.setInProcessStream(runInProcessStream)
-      AgentTurn.prewarm()
+      await AgentTurn.prewarm()
       expect(() => AgentTurn.configure()).not.toThrow()
     } finally {
       AgentTurn.setInProcessStream(runInProcessStream)

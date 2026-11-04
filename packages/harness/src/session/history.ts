@@ -929,6 +929,17 @@ export namespace SessionHistory {
     })
   }
 
+  export async function hydrationSize(input: { sessionID: string; signal?: AbortSignal }) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const infos = await modelMessageInfos(input)
+    return SessionHistoryDisplay.contentBytes(
+      session.scope.id,
+      session.id,
+      infos.map((info) => info.id),
+      input.signal,
+    )
+  }
+
   async function finiteMessages(input: { sessionID: string; limit?: number; raw?: boolean }) {
     const session = await prepareInfoRead(input.sessionID)
     return Storage.snapshot(async () => {
@@ -986,7 +997,12 @@ export namespace SessionHistory {
     return MessageV2.deriveSemantics(result)
   }
 
-  export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+  export async function modelMessages(input: {
+    sessionID: string
+    onLoadParts?: (messageID: string) => void
+    signal?: AbortSignal
+  }) {
+    input.signal?.throwIfAborted()
     const policy = (await Config.current()).execution?.messageCache
     const useCache = policy?.enabled !== false
     let cached = useCache ? SessionMessageCache.get(input.sessionID) : undefined

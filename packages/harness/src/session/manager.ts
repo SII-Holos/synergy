@@ -75,6 +75,7 @@ export namespace SessionManager {
   export type LoopPhase = "starting" | "running" | "stopping"
   export type ExecutionPhase =
     | "preparing"
+    | "waiting_resources"
     | "queued_agent"
     | "running_agent"
     | "authorizing_tools"

@@ -130,7 +130,7 @@ test.each([false, true])(
               for await (const part of stream.fullStream) if (part.type === "text-delta") text += part.text
               await stream.dispose()
               expect(text).toBe("hello")
-              expect(phases).toEqual(["queued_agent", "waiting_model"])
+              expect(phases).toEqual(["waiting_resources", "queued_agent", "waiting_model"])
               expect(await stream.usage).toMatchObject({ inputTokens: 2, outputTokens: 1 })
               expect(await RolloutLedger.calls(owner, operationID)).toMatchObject([
                 { usageRole: "conversation", status: "completed", transportCaptured: true },

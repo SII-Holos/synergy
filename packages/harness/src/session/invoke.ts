@@ -1,4 +1,7 @@
 import { SessionTransferGate } from "./transfer-gate"
+import { RuntimeResources } from "../resources/runtime"
+import { sessionResourceOwner } from "../resources/owner"
+import { ResourceCosts } from "../resources/costs"
 import { SessionExecutionOwners } from "./execution-owners"
 import { SessionPauseRecovery } from "./pause-recovery"
 import { prepareSessionMigrations } from "../migration"
@@ -631,9 +634,15 @@ export namespace SessionInvoke {
 
     while (true) {
       session = await Session.get(sessionID)
-      const root = (await SessionHistory.modelMessages({ sessionID })).findLast(
-        (message) => message.info.role === "user" && message.info.isRoot === true,
+      const rootInfo = (await SessionHistory.modelMessageInfos({ sessionID })).findLast(
+        (message) => message.role === "user" && message.isRoot === true,
       )
+      const root = rootInfo
+        ? await RuntimeResources.allocation(
+            { owner: await sessionResourceOwner(sessionID), bytes: 64 * 1024 ** 2, signal: abort },
+            () => MessageV2.get({ sessionID, messageID: rootInfo.id }),
+          )
+        : undefined
       const rootAvailable =
         root &&
         (await SessionExecutionOwners.allowsMessage(session, root.info)) &&
@@ -691,10 +700,19 @@ export namespace SessionInvoke {
                 }
                 SessionManager.assertExecutionContext(session, "session loop refresh")
                 scopeID = (session.scope as Scope).id
+                SessionManager.setActivity(sessionID, { phase: "waiting_resources" }, { generation: lease.generation })
                 let msgs = MessageV2.executionMessages(
-                  await effectiveCompactedMessages(sessionID),
+                  await RuntimeResources.allocation(
+                    {
+                      owner: await sessionResourceOwner(sessionID),
+                      bytes: ResourceCosts.history(await SessionHistory.hydrationSize({ sessionID, signal: abort })),
+                      signal: abort,
+                    },
+                    () => effectiveCompactedMessages(sessionID, abort),
+                  ),
                   root.info as MessageV2.User,
                 )
+                SessionManager.setActivity(sessionID, { phase: "preparing_context" }, { generation: lease.generation })
 
                 // Find R: the latest root user message. R is the anchor for the entire
                 // loop: rootID, model, agent, system, and compaction anchor all derive
@@ -1301,24 +1319,33 @@ export namespace SessionInvoke {
                 })
                 await memoryTurn.stabilizeBeforeProjection()
                 async function projectHistory() {
-                  const messages = WorkflowUserWrapper.projectMessages({
-                    messages: sessionMessages,
-                    session,
-                    agent,
-                    root: R!,
-                  })
-                  return {
-                    messages,
-                    projection: await MessageV2.projectModelMessages(modelWorkingSetForPrompt(messages), {
-                      maxHistoryImages: jobCtx.compactionMaxHistoryImages,
-                      model: {
-                        providerID: model.providerID,
-                        modelID: model.id,
-                        profileID: producingProvider?.profileID,
-                        apiModelID: model.api.id,
-                      },
-                    }),
-                  }
+                  return RuntimeResources.allocation(
+                    {
+                      owner: await sessionResourceOwner(sessionID),
+                      bytes: 64 * 1024 ** 2 + historyBeforeBytes * 3,
+                      signal: abort,
+                    },
+                    async () => {
+                      const messages = WorkflowUserWrapper.projectMessages({
+                        messages: sessionMessages,
+                        session,
+                        agent,
+                        root: R!,
+                      })
+                      return {
+                        messages,
+                        projection: await MessageV2.projectModelMessages(modelWorkingSetForPrompt(messages), {
+                          maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+                          model: {
+                            providerID: model.providerID,
+                            modelID: model.id,
+                            profileID: producingProvider?.profileID,
+                            apiModelID: model.api.id,
+                          },
+                        }),
+                      }
+                    },
+                  )
                 }
                 let { messages: modelSessionMessages, projection: modelProjection } = await projectHistory()
                 const { converted, dropped, failed } = modelProjection.sanitization
@@ -3026,7 +3053,7 @@ export namespace SessionInvoke {
     }
   }
 
-  async function effectiveCompactedMessages(sessionID: string) {
-    return SessionHistory.modelMessages({ sessionID })
+  async function effectiveCompactedMessages(sessionID: string, signal: AbortSignal) {
+    return SessionHistory.modelMessages({ sessionID, signal })
   }
 }

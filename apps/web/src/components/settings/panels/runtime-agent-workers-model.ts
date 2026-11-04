@@ -12,5 +12,5 @@ export function agentWorkerCapacityDisplay(
   status: AgentWorkerCapacityStatus | undefined,
 ): AgentWorkerCapacityDisplay | undefined {
   if (!status) return undefined
-  return { source: status.source, value: String(status.effective) }
+  return { source: status.source, value: String(status.ceiling) }
 }

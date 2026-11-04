@@ -182,6 +182,7 @@ export const Activity = z
       "materializing_input",
       "preparing_files",
       "preparing_context",
+      "waiting_resources",
       "queued_agent",
       "waiting_model",
       "responding",

@@ -7,13 +7,8 @@ import { DEFAULT_TOOL_TASK_SCHEDULER_OPTIONS, ToolScheduler } from "../session/t
 import { PolicyWorker, DEFAULT_POLICY_WORKER_POOL_OPTIONS } from "../enforcement/policy-worker"
 import { resolveRuntimeShutdownTimeoutMs } from "@ericsanchezok/synergy-util/runtime-shutdown"
 import { availableParallelism, cpus } from "os"
-import { ServiceMemory } from "../process/service-memory"
 import { ObservabilityMetrics } from "../observability/metrics"
 
-// Share of the effective memory limit the Agent worker pool may reserve. The
-// remainder covers the Control Plane, the storage and telemetry workers, tool
-// processes, and page cache.
-const AGENT_POOL_MEMORY_UTILIZATION = 0.5
 const AGENT_WORKER_CAPACITY_MAX = 64
 
 export type AgentWorkerCapacity = {
@@ -21,26 +16,16 @@ export type AgentWorkerCapacity = {
   source: "explicit" | "derived"
 }
 
-export function defaultAgentWorkers(
-  config: Config.Info,
-  mode: "server" | "oneshot",
-  budget = ServiceMemory.resolveMemoryBudget(),
-): number {
-  const reserveBytes = Math.max(1, Math.floor(resolvedAgentWorkerMaxRssBytes(config) / 2))
-  const memoryCap = Math.max(1, Math.floor((budget.limitBytes * AGENT_POOL_MEMORY_UTILIZATION) / reserveBytes))
+export function defaultAgentWorkers(config: Config.Info, mode: "server" | "oneshot"): number {
   const cpuCap = Math.max(1, (availableParallelism() || cpus().length) - 1)
-  const derived = Math.min(memoryCap, cpuCap, AGENT_WORKER_CAPACITY_MAX)
+  const derived = Math.min(cpuCap, AGENT_WORKER_CAPACITY_MAX)
   return Math.max(1, derived, desiredAgentWorkerMinIdle(config, mode))
 }
 
-export function resolveAgentWorkerCapacity(
-  config: Config.Info,
-  mode: "server" | "oneshot",
-  budget = ServiceMemory.resolveMemoryBudget(),
-): AgentWorkerCapacity {
+export function resolveAgentWorkerCapacity(config: Config.Info, mode: "server" | "oneshot"): AgentWorkerCapacity {
   const explicit = config.execution?.agentWorkers ?? undefined
   if (explicit !== undefined) return { size: explicit, source: "explicit" }
-  return { size: defaultAgentWorkers(config, mode, budget), source: "derived" }
+  return { size: defaultAgentWorkers(config, mode), source: "derived" }
 }
 
 export const AgentWorkerCapacityStatus = z
@@ -52,21 +37,23 @@ export const AgentWorkerCapacityStatus = z
       .max(AGENT_WORKER_CAPACITY_MAX)
       .nullable()
       .describe("Explicit execution.agentWorkers ceiling, or null when the machine derives it"),
-    effective: z.number().int().positive().describe("Capacity the Agent worker pool runs with"),
+    ceiling: z.number().int().positive().describe("Configured or CPU-derived model execution ceiling"),
+    workers: z.number().int().nonnegative(),
+    active: z.number().int().nonnegative(),
+    queued: z.number().int().nonnegative(),
     source: z.enum(["explicit", "derived"]).describe("Whether configuration or the machine sizes the pool"),
   })
   .meta({ ref: "AgentWorkerCapacityStatus" })
 export type AgentWorkerCapacityStatus = z.infer<typeof AgentWorkerCapacityStatus>
 
-export function agentWorkerCapacityStatus(
-  config: Config.Info,
-  mode: "server" | "oneshot",
-  budget = ServiceMemory.resolveMemoryBudget(),
-): AgentWorkerCapacityStatus {
-  const capacity = resolveAgentWorkerCapacity(config, mode, budget)
+export function agentWorkerCapacityStatus(config: Config.Info, mode: "server" | "oneshot"): AgentWorkerCapacityStatus {
+  const capacity = resolveAgentWorkerCapacity(config, mode)
   return {
     configured: config.execution?.agentWorkers ?? null,
-    effective: capacity.size,
+    ceiling: capacity.size,
+    workers: AgentTurn.stats().workers,
+    active: AgentTurn.stats().active,
+    queued: AgentTurn.stats().queued,
     source: capacity.source,
   }
 }
@@ -79,12 +66,6 @@ export function recordAgentPoolSize(capacity: AgentWorkerCapacity) {
     module: "session",
     labels: { source: capacity.source },
   })
-}
-
-export function resolvedAgentWorkerMaxRssBytes(config: Config.Info): number {
-  const megabytes =
-    config.execution?.agentWorkerMaxRssMb ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxRssBytes / (1024 * 1024)
-  return megabytes * 1024 * 1024
 }
 
 export function configureExecution(config: Config.Info, mode: "server" | "oneshot") {
@@ -170,10 +151,8 @@ export function resolveExecutionConfiguration(config: Config.Info, mode: "server
       agentQueueMaxMb:
         config.execution?.agentQueueMaxMb ?? (DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxQueuedBytes ?? 0) / (1024 * 1024),
       agentWorkerMaxTurns: config.execution?.agentWorkerMaxTurns ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxTurns,
-      agentWorkerMaxRssMb:
-        config.execution?.agentWorkerMaxRssMb ?? (DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxRssBytes ?? 0) / (1024 * 1024),
-      agentWorkerMaxHeapMb:
-        config.execution?.agentWorkerMaxHeapMb ?? (DEFAULT_AGENT_WORKER_POOL_OPTIONS.maxHeapBytes ?? 0) / (1024 * 1024),
+      agentWorkerMaxRssMb: config.execution?.agentWorkerMaxRssMb,
+      agentWorkerMaxHeapMb: config.execution?.agentWorkerMaxHeapMb,
       agentWorkerIdleBaselineRecycle:
         config.execution?.agentWorkerIdleBaselineRecycle ?? DEFAULT_AGENT_WORKER_POOL_OPTIONS.idleBaselineRecycle,
       agentWorkerIdleBaselineRssGrowthMb:

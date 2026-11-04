@@ -16979,6 +16979,10 @@ msgstr "等待后台任务"
 msgid "session.activity.waitingModel"
 msgstr "等待模型回复"
 
+#. js-lingui-explicit-id
+msgid "session.activity.waitingResources"
+msgstr "等待可用资源"
+
 #. Runtime translation descriptors for all wake-indicator UI strings.
  *  Each is a base MessageDescriptor with `id` + English `message`.
  *  Call sites spread in `values` when the message contains ICU placeholders.
@@ -23541,14 +23545,6 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "设置同时运行的协作任务上限。内存不足时，新任务可能提前进入队列。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryLimit"
-msgstr "内存安全限额已生效：{value}。新任务将排队，直到内存压力下降。"
-
-#. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memoryLimitManaged"
-msgstr "由环境变量管理 · 内存安全限额已生效：{value}"
-
-#. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
 msgstr "并行协作任务"
 
@@ -23979,6 +23975,46 @@ msgstr "从不"
 #. js-lingui-explicit-id
 msgid "settings.runtime.questions.timeout.title"
 msgstr "超时"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.available"
+msgstr "可以开始新工作"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.blocked"
+msgstr "新工作已暂停，等待内存压力缓解"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.capacity"
+msgstr "等待可用执行名额"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.constrained"
+msgstr "内存压力较高，已放缓新工作启动"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.counts"
+msgstr "{active} 个阶段运行中 · {queued} 个等待中 · 可供新工作使用的内存 {memory} MiB"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.headroom"
+msgstr "等待更多可用内存"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.incomplete"
+msgstr "内存信息不完整，正在逐步启动新任务"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.recovering"
+msgstr "内存恢复中，正在逐步恢复执行"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.title"
+msgstr "资源准入"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.resources.unavailable"
+msgstr "等待最新资源信息"
 
 #. js-lingui-explicit-id
 msgid "settings.sandbox.available"

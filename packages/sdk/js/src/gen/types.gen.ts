@@ -3165,6 +3165,7 @@ export type SessionActivity = {
     | "materializing_input"
     | "preparing_files"
     | "preparing_context"
+    | "waiting_resources"
     | "queued_agent"
     | "waiting_model"
     | "responding"
@@ -6760,7 +6761,7 @@ export type Config = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
+     * Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.
      */
     agentWorkers?: number | null
     /**
@@ -6772,11 +6773,11 @@ export type Config = {
      */
     agentWorkerIdleTimeoutMs?: number
     /**
-     * Maximum queued Agent turns waiting for a worker (default: 256)
+     * Maximum queued model requests waiting for resource admission (default: 256)
      */
     agentQueueMax?: number
     /**
-     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     * Maximum aggregate retained model admission payload size in MiB (default: 256)
      */
     agentQueueMaxMb?: number
     /**
@@ -6784,11 +6785,11 @@ export type Config = {
      */
     agentWorkerMaxTurns?: number
     /**
-     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)
+     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)
      */
     agentWorkerMaxRssMb?: number
     /**
-     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)
+     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)
      */
     agentWorkerMaxHeapMb?: number
     /**
@@ -7819,6 +7820,42 @@ export type SecretResolveAuditEntry = {
   outcome: "resolved" | "denied_policy" | "denied_limit" | "removed"
 }
 
+export type ResourceSnapshot = {
+  sampledAt: number
+  quality: "complete" | "partial" | "unavailable"
+  pressure: "normal" | "warning" | "critical"
+  domains: Array<{
+    kind: "physical" | "cgroup" | "commit" | "job" | "process"
+    capacityBytes: number | null
+    availableBytes: number
+    reclaimableBytes?: number
+  }>
+  processRssBytes: number
+}
+
+export type ResourceStatus = {
+  revision: number
+  snapshot: ResourceSnapshot | null
+  state: "normal" | "constrained" | "blocked" | "recovering"
+  reason:
+    | "available"
+    | "memory_pressure"
+    | "critical_pressure"
+    | "unavailable_sample"
+    | "incomplete_sample"
+    | "stale_sample"
+    | "headroom"
+    | "execution_capacity"
+    | "recovering"
+    | "closed"
+  reserveBytes: number
+  reservedBytes: number
+  headroomBytes: number
+  active: number
+  queued: number
+  nextReviewAt: number
+}
+
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
 export type AgentWorkerCapacityStatus = {
@@ -7827,9 +7864,12 @@ export type AgentWorkerCapacityStatus = {
    */
   configured: number | null
   /**
-   * Capacity the Agent worker pool runs with
+   * Configured or CPU-derived model execution ceiling
    */
-  effective: number
+  ceiling: number
+  workers: number
+  active: number
+  queued: number
   /**
    * Whether configuration or the machine sizes the pool
    */
@@ -9043,7 +9083,7 @@ export type ExperimentSnapshotRuntime = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
+     * Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.
      */
     agentWorkers?: number | null
     /**
@@ -9055,11 +9095,11 @@ export type ExperimentSnapshotRuntime = {
      */
     agentWorkerIdleTimeoutMs?: number
     /**
-     * Maximum queued Agent turns waiting for a worker (default: 256)
+     * Maximum queued model requests waiting for resource admission (default: 256)
      */
     agentQueueMax?: number
     /**
-     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     * Maximum aggregate retained model admission payload size in MiB (default: 256)
      */
     agentQueueMaxMb?: number
     /**
@@ -9067,11 +9107,11 @@ export type ExperimentSnapshotRuntime = {
      */
     agentWorkerMaxTurns?: number
     /**
-     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)
+     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)
      */
     agentWorkerMaxRssMb?: number
     /**
-     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)
+     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)
      */
     agentWorkerMaxHeapMb?: number
     /**
@@ -10135,7 +10175,7 @@ export type ExperimentRuntime = {
      */
     lspIdleReap?: boolean
     /**
-     * Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.
+     * Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.
      */
     agentWorkers?: number | null
     /**
@@ -10147,11 +10187,11 @@ export type ExperimentRuntime = {
      */
     agentWorkerIdleTimeoutMs?: number
     /**
-     * Maximum queued Agent turns waiting for a worker (default: 256)
+     * Maximum queued model requests waiting for resource admission (default: 256)
      */
     agentQueueMax?: number
     /**
-     * Maximum aggregate queued Agent-turn payload size in MiB (default: 256)
+     * Maximum aggregate retained model admission payload size in MiB (default: 256)
      */
     agentQueueMaxMb?: number
     /**
@@ -10159,11 +10199,11 @@ export type ExperimentRuntime = {
      */
     agentWorkerMaxTurns?: number
     /**
-     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)
+     * Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)
      */
     agentWorkerMaxRssMb?: number
     /**
-     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)
+     * Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)
      */
     agentWorkerMaxHeapMb?: number
     /**
@@ -11279,41 +11319,14 @@ export type SessionTransferPrepare = {
 }
 
 export type CortexConcurrencyStatus = {
-  /**
-   * User-configured global limit, or null when unset
-   */
   configured: number | null
-  /**
-   * Process environment override, or null when unset
-   */
   environment: number | null
   /**
-   * Actual admission limit from environment, config, or default
+   * Configured global task ceiling
    */
   effective: number
-  /**
-   * Memory-pressure ceiling applied to new task admission
-   */
-  memoryPressureLimit: number | null
-  /**
-   * Reason for the memory-pressure admission ceiling
-   */
-  memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
-  /**
-   * Source of the effective admission limit
-   */
   source: "default" | "config" | "environment"
-  /**
-   * Fixed maximum for each individual agent
-   */
-  perAgentLimit: number
-  /**
-   * Currently admitted Cortex tasks
-   */
   running: number
-  /**
-   * Cortex tasks waiting for an admission slot
-   */
   queued: number
 }
 
@@ -14236,6 +14249,11 @@ export type WellKnownAuth = {
 
 export type Auth = OAuth | ApiAuth | WellKnownAuth
 
+export type EventRuntimeResources = {
+  type: "runtime.resources"
+  properties: ResourceStatus
+}
+
 export type EventConfigUpdated = {
   type: "config.updated"
   properties: {
@@ -15273,6 +15291,7 @@ export type EventExecutionProjection = {
 }
 
 export type Event =
+  | EventRuntimeResources
   | EventConfigUpdated
   | EventScopeUpdated
   | EventScopeRemoved
@@ -18967,6 +18986,34 @@ export type SecretsHistoryResponses = {
 }
 
 export type SecretsHistoryResponse = SecretsHistoryResponses[keyof SecretsHistoryResponses]
+
+export type RuntimeResourcesData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/runtime/resources"
+}
+
+export type RuntimeResourcesErrors = {
+  /**
+   * Runtime shutting down
+   */
+  503: RuntimeShuttingDownError
+}
+
+export type RuntimeResourcesError = RuntimeResourcesErrors[keyof RuntimeResourcesErrors]
+
+export type RuntimeResourcesResponses = {
+  /**
+   * Runtime resource admission
+   */
+  200: ResourceStatus
+}
+
+export type RuntimeResourcesResponse = RuntimeResourcesResponses[keyof RuntimeResourcesResponses]
 
 export type RuntimeReloadData = {
   body?: {

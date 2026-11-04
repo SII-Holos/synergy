@@ -17,6 +17,7 @@ import { Shell } from "@ericsanchezok/synergy-harness/util/shell"
 import { WorkspaceBinding } from "@ericsanchezok/synergy-harness/workspace"
 import { ProcessEnvironment } from "../process/environment"
 import { SandboxHost } from "@ericsanchezok/synergy-harness/sandbox/host"
+import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
 
 const Allocation = z.object({ id: z.string(), capabilities: z.array(z.string()), target: Environment.Target })
 
@@ -68,6 +69,7 @@ export function registerNativeEnvironment(options: { coordinator?: WorkspaceCoor
       let pending = executors.get(request.requestID)
       if (!pending) {
         pending = NativeExecutor.open({
+          admit: (signal) => RuntimeResources.reserve({ owner: request.environmentID, bytes: 64 * 1024 ** 2, signal }),
           target,
           directory: path.join(path.dirname(filename(request)), request.requestID),
           coordinator,

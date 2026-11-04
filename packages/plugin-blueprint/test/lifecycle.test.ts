@@ -4,12 +4,14 @@ import { Bus } from "@ericsanchezok/synergy-harness/bus"
 import { Cortex } from "@ericsanchezok/synergy-harness/cortex"
 import { Identifier } from "@ericsanchezok/synergy-harness/id/id"
 import { Session } from "@ericsanchezok/synergy-harness/session"
+import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
 import { NoteMarkdown, NoteStore } from "@ericsanchezok/synergy-note"
 import { NoteReadTool } from "@ericsanchezok/synergy-note/tools/note-read"
 import { hash as sha256 } from "@ericsanchezok/synergy-util/encode"
 import { hasDeadlineTimer } from "@ericsanchezok/synergy-blueprint/blueprint/deadline"
 import { LoopEvent } from "@ericsanchezok/synergy-blueprint/blueprint/event"
 import { BlueprintLoopStore } from "@ericsanchezok/synergy-blueprint/blueprint/loop-store"
+import { BlueprintLoopRuntime } from "@ericsanchezok/synergy-blueprint/blueprint/loop-runtime"
 import { BlueprintLoopService } from "@ericsanchezok/synergy-blueprint/blueprint/service"
 import { BlueprintPluginErrorCode, cancelBlueprint, getBlueprint, startBlueprint } from "../src/adapter"
 import { auditAgent, executionAgent, generation, pluginID, withLifecycle } from "./support/lifecycle"
@@ -132,14 +134,17 @@ test(
         if (event.properties.loop.status === "failed") expired.resolve()
       })
       try {
-        const loop = await startBlueprint({
-          ...input,
-          request: { ...input.request, budget: { maxRuntimeMs: 1500, maxIterations: 3 } },
-        })
-        await boundary.started(loop.sessionID)
+        const loop = await startBlueprint(input)
+        const call = await boundary.started(loop.sessionID)
         const execution = await Session.get(loop.sessionID)
+        expect(hasDeadlineTimer(parent.scope.id, loop.id)).toBe(true)
+        expect(call.abort.aborted).toBe(false)
+        // Expire after confirmed model startup so preparation cannot consume the lifecycle fixture's deadline.
+        BlueprintLoopRuntime.scheduleDeadline(parent.scope.id, loop.id, 0)
         await expired.promise
         await Cortex.drain(execution.cortex!.taskID)
+        expect(call.abort.aborted).toBe(true)
+        expect(RuntimeResources.status()).toMatchObject({ active: 0, queued: 0, reservedBytes: 0 })
         await BlueprintLoopStore.deliverTerminalHook(parent.scope.id, loop.id)
         expect(
           await getBlueprint({

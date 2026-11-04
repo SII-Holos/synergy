@@ -2,14 +2,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import { mkdtemp, rm } from "node:fs/promises"
 import path from "node:path"
 import { chromium, type Browser, type Page } from "playwright"
-import { createServer, type ViteDevServer } from "vite"
-import solidPlugin from "vite-plugin-solid"
-import tailwind from "@tailwindcss/vite"
-import { fixturePort } from "@ericsanchezok/synergy-testing/fixture"
+import { createBrowserFixture, type BrowserFixture } from "../../support/browser-fixture"
 
 let browser: Browser
 let page: Page
-let server: ViteDevServer
+let server: BrowserFixture
 let fixtureDirectory: string
 let baseUrl: string
 const pageErrors: Error[] = []
@@ -213,51 +210,21 @@ beforeAll(async () => {
     ),
   ])
 
-  server = await createServer({
-    configFile: false,
+  server = await createBrowserFixture({
     root: fixtureDirectory,
-    plugins: [solidPlugin(), tailwind()],
-    resolve: {
-      alias: [
-        { find: /^@\/context\/file$/, replacement: fileStubPath },
-        {
-          find: "@ericsanchezok/synergy-plugin/theme",
-          replacement: path.resolve(import.meta.dir, "../../../../..", "packages/plugin/src/theme/index.ts"),
-        },
-        { find: "@", replacement: appSrc },
-      ],
-    },
-    optimizeDeps: {
-      include: [
-        "solid-js",
-        "solid-js/web",
-        "solid-js/store",
-        "solid-js/jsx-runtime",
-        "zod",
-        "@lingui/core",
-        "@lingui/solid",
-      ],
-      noDiscovery: true,
-    },
-    cacheDir: path.join(fixtureDirectory, ".vite"),
-    server: {
-      host: "127.0.0.1",
-      port: await fixturePort(),
-      strictPort: true,
-      watch: null,
-      hmr: false,
-      fs: { allow: [path.resolve(import.meta.dir, "../../../../..")] },
-    },
+    styled: true,
+    aliases: [
+      { find: /^@\/context\/file$/, replacement: fileStubPath },
+      {
+        find: "@ericsanchezok/synergy-plugin/theme",
+        replacement: path.resolve(import.meta.dir, "../../../../..", "packages/plugin/src/theme/index.ts"),
+      },
+      { find: "@", replacement: appSrc },
+    ],
   })
-  await server.listen()
-  await server.warmupRequest("/main.tsx")
-
-  const resolved = server.resolvedUrls?.local[0]
-  if (!resolved) throw new Error("Expected Vite test server URL")
-  baseUrl = resolved
-
+  baseUrl = server.url
   browser = await chromium.launch({ headless: true })
-})
+}, 60_000)
 
 beforeEach(async () => {
   pageErrors.length = 0
@@ -523,6 +490,7 @@ describe("file explorer expanded-state restore", () => {
     await page.getByRole("textbox", { name: "Name", exact: true }).fill("root-folder")
     await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter")
     await page.locator('[data-path="root-folder"]').waitFor()
+    await page.getByRole("textbox", { name: "Name", exact: true }).waitFor({ state: "hidden" })
     await page.locator('[data-path="docs/api.md"]').click({ button: "right" })
     await page.getByRole("menuitem", { name: "Copy", exact: true }).click()
     await tree.click({ button: "right", position: { x: 5, y: 300 } })

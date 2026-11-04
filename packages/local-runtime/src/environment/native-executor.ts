@@ -31,6 +31,7 @@ interface NativeExecutorOptions {
   directory: string
   coordinator: WorkspaceCoordinator
   acquire?: (command: ExecutionProtocol.Command, signal: AbortSignal) => Promise<WorkspaceAccess.Lease>
+  admit?: (signal: AbortSignal) => Promise<{ release(): Promise<void> }>
   maxOutputBytes?: number
   runAs?: { uid: number; gid: number }
   files?: { materializationRoot?: string; allowedRoots?: string[]; acquire?: WorkspaceAccess.Host["acquire"] }
@@ -218,7 +219,9 @@ export class NativeExecutor implements Executor {
   private async launch(command: ExecutionProtocol.Command, operation: Operation) {
     let timer: ReturnType<typeof setTimeout> | undefined
     let streams: Promise<unknown> | undefined
+    let admission: Awaited<ReturnType<NonNullable<NativeExecutorOptions["admit"]>>> | undefined
     try {
+      admission = await this.options.admit?.(operation.abort.signal)
       operation.lease = this.options.acquire
         ? await this.options.acquire(command, operation.abort.signal)
         : await this.options.coordinator.acquire({
@@ -294,6 +297,8 @@ export class NativeExecutor implements Executor {
       operation.status.effectsStarted = true
       await this.persist(operation)
       await owned.activate()
+      await admission?.release()
+      admission = undefined
       operation.status.state = "running"
       await this.persist(operation)
       if (command.timeoutMs)
@@ -350,6 +355,7 @@ export class NativeExecutor implements Executor {
       }
     } finally {
       clearTimeout(timer)
+      await admission?.release()
       await this.persist(operation)
     }
   }

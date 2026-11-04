@@ -334,6 +334,30 @@ export namespace SessionHistoryDisplay {
 
   export const summarizePart = MessageV2.summarizePart
 
+  export async function contentBytes(scopeID: string, sessionID: string, messageIDs: string[], signal?: AbortSignal) {
+    return Storage.snapshot(async () => {
+      let bytes = messageIDs.length * 16 * 1024
+      let count = 0
+      for (const messageID of messageIDs) {
+        signal?.throwIfAborted()
+        const [saved] = await Storage.readMany<PartsState>([partStateKey(scopeID, sessionID, messageID)])
+        if (!saved?.ready || saved.version !== 1) return undefined
+        for await (const record of Storage.records<PartSummary>({
+          kind: "display_part",
+          scopeID,
+          sessionID,
+          messageID,
+          limit: 64,
+        })) {
+          signal?.throwIfAborted()
+          if (++count > 10_000) return undefined
+          bytes += record.value.content.bytes
+        }
+      }
+      return bytes
+    })
+  }
+
   export function summarizeMessage(info: MessageV2.Info): MessageSummary {
     let metadataBytes = 0
     const metadata =

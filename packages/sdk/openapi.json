@@ -7299,6 +7299,57 @@
         ]
       }
     },
+    "/runtime/resources": {
+      "get": {
+        "operationId": "runtime.resources",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get runtime resource admission",
+        "description": "Native memory availability, pending commitments, pressure and admission state for this Runtime.",
+        "responses": {
+          "200": {
+            "description": "Runtime resource admission",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceStatus"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Runtime shutting down",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeShuttingDownError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.runtime.resources({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/runtime/reload": {
       "post": {
         "operationId": "runtime.reload",
@@ -49937,6 +49988,7 @@
               "materializing_input",
               "preparing_files",
               "preparing_context",
+              "waiting_resources",
               "queued_agent",
               "waiting_model",
               "responding",
@@ -57946,7 +57998,7 @@
                 "type": "boolean"
               },
               "agentWorkers": {
-                "description": "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+                "description": "Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.",
                 "anyOf": [
                   {
                     "type": "integer",
@@ -57971,13 +58023,13 @@
                 "maximum": 3600000
               },
               "agentQueueMax": {
-                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "description": "Maximum queued model requests waiting for resource admission (default: 256)",
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 32768
               },
               "agentQueueMaxMb": {
-                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "description": "Maximum aggregate retained model admission payload size in MiB (default: 256)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 4096
@@ -57989,13 +58041,13 @@
                 "maximum": 10000
               },
               "agentWorkerMaxRssMb": {
-                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
               },
               "agentWorkerMaxHeapMb": {
-                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
@@ -60317,6 +60369,135 @@
         },
         "required": ["at", "outcome"]
       },
+      "ResourceSnapshot": {
+        "type": "object",
+        "properties": {
+          "sampledAt": {
+            "type": "number"
+          },
+          "quality": {
+            "type": "string",
+            "enum": ["complete", "partial", "unavailable"]
+          },
+          "pressure": {
+            "type": "string",
+            "enum": ["normal", "warning", "critical"]
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["physical", "cgroup", "commit", "job", "process"]
+                },
+                "capacityBytes": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "availableBytes": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "reclaimableBytes": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "required": ["kind", "capacityBytes", "availableBytes"]
+            }
+          },
+          "processRssBytes": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": ["sampledAt", "quality", "pressure", "domains", "processRssBytes"]
+      },
+      "ResourceStatus": {
+        "type": "object",
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResourceSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": ["normal", "constrained", "blocked", "recovering"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "available",
+              "memory_pressure",
+              "critical_pressure",
+              "unavailable_sample",
+              "incomplete_sample",
+              "stale_sample",
+              "headroom",
+              "execution_capacity",
+              "recovering",
+              "closed"
+            ]
+          },
+          "reserveBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reservedBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "headroomBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "active": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "nextReviewAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "revision",
+          "snapshot",
+          "state",
+          "reason",
+          "reserveBytes",
+          "reservedBytes",
+          "headroomBytes",
+          "active",
+          "queued",
+          "nextReviewAt"
+        ]
+      },
       "RuntimeReloadScope": {
         "type": "string",
         "enum": ["auto", "global", "project"]
@@ -60337,11 +60518,26 @@
             ],
             "description": "Explicit execution.agentWorkers ceiling, or null when the machine derives it"
           },
-          "effective": {
+          "ceiling": {
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991,
-            "description": "Capacity the Agent worker pool runs with"
+            "description": "Configured or CPU-derived model execution ceiling"
+          },
+          "workers": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "active": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           },
           "source": {
             "type": "string",
@@ -60349,7 +60545,7 @@
             "description": "Whether configuration or the machine sizes the pool"
           }
         },
-        "required": ["configured", "effective", "source"]
+        "required": ["configured", "ceiling", "workers", "active", "queued", "source"]
       },
       "ControlProfileSummary": {
         "type": "object",
@@ -64233,7 +64429,7 @@
                 "type": "boolean"
               },
               "agentWorkers": {
-                "description": "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+                "description": "Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.",
                 "anyOf": [
                   {
                     "type": "integer",
@@ -64258,13 +64454,13 @@
                 "maximum": 3600000
               },
               "agentQueueMax": {
-                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "description": "Maximum queued model requests waiting for resource admission (default: 256)",
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 32768
               },
               "agentQueueMaxMb": {
-                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "description": "Maximum aggregate retained model admission payload size in MiB (default: 256)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 4096
@@ -64276,13 +64472,13 @@
                 "maximum": 10000
               },
               "agentWorkerMaxRssMb": {
-                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
               },
               "agentWorkerMaxHeapMb": {
-                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
@@ -68126,7 +68322,7 @@
                 "type": "boolean"
               },
               "agentWorkers": {
-                "description": "Maximum number of isolated Agent workers (default: derived from the effective memory limit, capped by available CPUs and 64, never below agentWorkerMinIdle). Pass null to clear the explicit ceiling and derive it from the machine.",
+                "description": "Maximum number of isolated Agent workers (default: derived from available CPUs, capped at 64, never below agentWorkerMinIdle; actual admission also checks current memory). Pass null to clear the explicit ceiling and derive it from the machine.",
                 "anyOf": [
                   {
                     "type": "integer",
@@ -68151,13 +68347,13 @@
                 "maximum": 3600000
               },
               "agentQueueMax": {
-                "description": "Maximum queued Agent turns waiting for a worker (default: 256)",
+                "description": "Maximum queued model requests waiting for resource admission (default: 256)",
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 32768
               },
               "agentQueueMaxMb": {
-                "description": "Maximum aggregate queued Agent-turn payload size in MiB (default: 256)",
+                "description": "Maximum aggregate retained model admission payload size in MiB (default: 256)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 4096
@@ -68169,13 +68365,13 @@
                 "maximum": 10000
               },
               "agentWorkerMaxRssMb": {
-                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 3072)",
+                "description": "Hard RSS limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
               },
               "agentWorkerMaxHeapMb": {
-                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (default: 2048)",
+                "description": "Hard heap-used limit in MiB for an Agent worker; the soft recycle watermark is half this value (unset by default)",
                 "type": "integer",
                 "exclusiveMinimum": 0,
                 "maximum": 131072
@@ -71533,8 +71729,7 @@
               {
                 "type": "null"
               }
-            ],
-            "description": "User-configured global limit, or null when unset"
+            ]
           },
           "environment": {
             "anyOf": [
@@ -71546,68 +71741,30 @@
               {
                 "type": "null"
               }
-            ],
-            "description": "Process environment override, or null when unset"
+            ]
           },
           "effective": {
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991,
-            "description": "Actual admission limit from environment, config, or default"
-          },
-          "memoryPressureLimit": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Memory-pressure ceiling applied to new task admission"
-          },
-          "memoryPressureReason": {
-            "type": "string",
-            "enum": ["normal", "memory_pressure", "critical_memory_pressure"],
-            "description": "Reason for the memory-pressure admission ceiling"
+            "description": "Configured global task ceiling"
           },
           "source": {
             "type": "string",
-            "enum": ["default", "config", "environment"],
-            "description": "Source of the effective admission limit"
-          },
-          "perAgentLimit": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "description": "Fixed maximum for each individual agent"
+            "enum": ["default", "config", "environment"]
           },
           "running": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 9007199254740991,
-            "description": "Currently admitted Cortex tasks"
+            "maximum": 9007199254740991
           },
           "queued": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 9007199254740991,
-            "description": "Cortex tasks waiting for an admission slot"
+            "maximum": 9007199254740991
           }
         },
-        "required": [
-          "configured",
-          "environment",
-          "effective",
-          "memoryPressureLimit",
-          "memoryPressureReason",
-          "source",
-          "perAgentLimit",
-          "running",
-          "queued"
-        ]
+        "required": ["configured", "environment", "effective", "source", "running", "queued"]
       },
       "CortexTask": {
         "type": "object",
@@ -80938,6 +81095,19 @@
           }
         ]
       },
+      "Event.runtime.resources": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "runtime.resources"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/ResourceStatus"
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.config.updated": {
         "type": "object",
         "properties": {
@@ -84114,6 +84284,9 @@
       },
       "Event": {
         "oneOf": [
+          {
+            "$ref": "#/components/schemas/Event.runtime.resources"
+          },
           {
             "$ref": "#/components/schemas/Event.config.updated"
           },

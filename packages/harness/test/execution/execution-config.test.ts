@@ -10,12 +10,6 @@ import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
 const runtime = await testRuntime()
 
-const GIB = 1024 * 1024 * 1024
-
-function budget(limitBytes: number) {
-  return { totalBytes: limitBytes, limitBytes, source: "host" as const }
-}
-
 describe("resolveExecutionConfiguration", () => {
   test("keeps policy prewarming enabled by default and preserves an explicit lazy selection", () =>
     runtime.run(() => {
@@ -43,48 +37,45 @@ describe("resolveExecutionConfiguration", () => {
 })
 
 describe("resolveAgentWorkerCapacity", () => {
-  test("shrinks to a single worker when the memory budget admits no more", () =>
+  test("keeps worker hard limits absent by default and preserves explicit old-default values", () =>
     runtime.run(() => {
-      expect(resolveAgentWorkerCapacity({} as Config.Info, "server", budget(4 * GIB))).toEqual({
-        size: 1,
-        source: "derived",
-      })
-    }))
-
-  test("never lowers capacity as the memory budget grows", () =>
-    runtime.run(() => {
-      const sizes = [4, 16, 62].map(
-        (gib) => resolveAgentWorkerCapacity({} as Config.Info, "server", budget(gib * GIB)).size,
-      )
-      expect(sizes[0]).toBeLessThanOrEqual(sizes[1])
-      expect(sizes[1]).toBeLessThanOrEqual(sizes[2])
+      const defaults = resolveExecutionConfiguration({}, "server").execution
+      expect(defaults?.agentWorkerMaxRssMb).toBeUndefined()
+      expect(defaults?.agentWorkerMaxHeapMb).toBeUndefined()
+      const explicit = resolveExecutionConfiguration(
+        { execution: { agentWorkerMaxRssMb: 3072, agentWorkerMaxHeapMb: 2048 } },
+        "server",
+      ).execution
+      expect(explicit?.agentWorkerMaxRssMb).toBe(3072)
+      expect(explicit?.agentWorkerMaxHeapMb).toBe(2048)
     }))
 
   test("reports whether the capacity came from configuration or the machine", () =>
     runtime.run(() => {
-      expect(resolveAgentWorkerCapacity({} as Config.Info, "server", budget(62 * GIB)).source).toBe("derived")
-      expect(
-        resolveAgentWorkerCapacity({ execution: { agentWorkers: 3 } } as Config.Info, "server", budget(62 * GIB)),
-      ).toEqual({ size: 3, source: "explicit" })
+      expect(resolveAgentWorkerCapacity({} as Config.Info, "server").source).toBe("derived")
+      expect(resolveAgentWorkerCapacity({ execution: { agentWorkers: 3 } } as Config.Info, "server")).toEqual({
+        size: 3,
+        source: "explicit",
+      })
     }))
 
   test("honors an explicit capacity even when the machine would derive less", () =>
     runtime.run(() => {
       const config = { execution: { agentWorkers: 64 } } as Config.Info
-      expect(resolveAgentWorkerCapacity(config, "server", budget(4 * GIB))).toEqual({ size: 64, source: "explicit" })
+      expect(resolveAgentWorkerCapacity(config, "server")).toEqual({ size: 64, source: "explicit" })
     }))
 
   test("honors an explicit capacity of one", () =>
     runtime.run(() => {
       const config = { execution: { agentWorkers: 1 } } as Config.Info
-      expect(resolveAgentWorkerCapacity(config, "server", budget(62 * GIB))).toEqual({ size: 1, source: "explicit" })
+      expect(resolveAgentWorkerCapacity(config, "server")).toEqual({ size: 1, source: "explicit" })
     }))
 
   test("treats a cleared (null) capacity as unset and derives it again", () =>
     runtime.run(() => {
       const cleared = { execution: { agentWorkers: null } } as Config.Info
-      expect(resolveAgentWorkerCapacity(cleared, "server", budget(62 * GIB))).toEqual(
-        resolveAgentWorkerCapacity({} as Config.Info, "server", budget(62 * GIB)),
+      expect(resolveAgentWorkerCapacity(cleared, "server")).toEqual(
+        resolveAgentWorkerCapacity({} as Config.Info, "server"),
       )
     }))
 
@@ -97,27 +88,37 @@ describe("resolveAgentWorkerCapacity", () => {
 
   test("reports the resolved capacity and its source for the settings surface", () =>
     runtime.run(() => {
-      expect(
-        agentWorkerCapacityStatus({ execution: { agentWorkers: 6 } } as Config.Info, "server", budget(4 * GIB)),
-      ).toEqual({ configured: 6, effective: 6, source: "explicit" })
-      const derived = agentWorkerCapacityStatus({} as Config.Info, "server", budget(62 * GIB))
-      expect(derived).toEqual({ configured: null, effective: derived.effective, source: "derived" })
-      expect(
-        agentWorkerCapacityStatus({ execution: { agentWorkers: null } } as Config.Info, "server", budget(62 * GIB)),
-      ).toEqual(derived)
+      expect(agentWorkerCapacityStatus({ execution: { agentWorkers: 6 } } as Config.Info, "server")).toEqual({
+        configured: 6,
+        ceiling: 6,
+        workers: 0,
+        active: 0,
+        queued: 0,
+        source: "explicit",
+      })
+      const derived = agentWorkerCapacityStatus({} as Config.Info, "server")
+      expect(derived).toEqual({
+        configured: null,
+        ceiling: derived.ceiling,
+        workers: 0,
+        active: 0,
+        queued: 0,
+        source: "derived",
+      })
+      expect(agentWorkerCapacityStatus({ execution: { agentWorkers: null } } as Config.Info, "server")).toEqual(derived)
     }))
 
   test("never derives a capacity below the resolved warm reserve", () =>
     runtime.run(() => {
       const config = { execution: { agentWorkerMinIdle: 4 } } as Config.Info
-      expect(resolveAgentWorkerCapacity(config, "server", budget(4 * GIB))).toEqual({ size: 4, source: "derived" })
+      expect(resolveAgentWorkerCapacity(config, "server").size).toBeGreaterThanOrEqual(4)
     }))
 
-  test("grows capacity when the per-worker RSS reserve shrinks", () =>
+  test("does not derive a second capacity from per-worker RSS limits", () =>
     runtime.run(() => {
       const trimmed = { execution: { agentWorkerMaxRssMb: 768 } } as Config.Info
-      expect(resolveAgentWorkerCapacity(trimmed, "server", budget(62 * GIB)).size).toBeGreaterThanOrEqual(
-        resolveAgentWorkerCapacity({} as Config.Info, "server", budget(62 * GIB)).size,
+      expect(resolveAgentWorkerCapacity(trimmed, "server").size).toBe(
+        resolveAgentWorkerCapacity({} as Config.Info, "server").size,
       )
     }))
 

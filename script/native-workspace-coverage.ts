@@ -9,6 +9,7 @@ const output = path.join(directory, "coverage/shards", windows ? "1000001" : "10
 export function nativeWorkspaceBatches(windows: boolean) {
   const suites = windows
     ? [
+        "test/resources/native.test.ts",
         "test/process/owned-process-windows.test.ts",
         "test/workspace/windows-bash-footprint.test.ts",
         "test/workspace-file/long-path.test.ts",
@@ -24,6 +25,7 @@ export function nativeWorkspaceBatches(windows: boolean) {
         "test/session/tool-resolver-bash-profile.test.ts",
       ]
     : [
+        "test/resources/native.test.ts",
         "test/process/owned-process.test.ts",
         "test/session/shell.test.ts",
         "test/workspace/change-attribution.test.ts",

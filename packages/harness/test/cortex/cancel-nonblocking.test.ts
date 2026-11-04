@@ -22,6 +22,34 @@ describe("Cortex non-blocking cancel", () => {
     }),
   )
 
+  test("launch returns a queued handle when the global ceiling is occupied", () =>
+    runtime.run(async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          CortexConcurrency.configure(1)
+          await CortexConcurrency.acquire("occupied")
+          const parent = await Session.create({ title: "queued background task" })
+          const task = await Cortex.launch({
+            description: "Queued task",
+            prompt: "Wait",
+            agent: "developer",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_queued_background",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            notifyParentOnComplete: false,
+          })
+          expect(task.status).toBe("queued")
+          await Cortex.cancel(task.id)
+          await Cortex.drain(task.id)
+          expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
+          CortexConcurrency.release("occupied")
+          expect(CortexConcurrency.globalStatus()).toMatchObject({ running: 0, queued: 0 })
+        },
+      })
+    }))
+
   test.each([
     { operation: "cancel", count: 1 },
     { operation: "cancelAll", count: 2 },
@@ -86,7 +114,7 @@ describe("Cortex non-blocking cancel", () => {
               expect(Cortex.get(task.id)?.status).toBe("cancelled")
               expect((await Session.get(task.sessionID)).cortex?.status).toBe("cancelled")
             }
-            expect(CortexConcurrency.status().developer?.running).toBe(0)
+            expect(CortexConcurrency.globalStatus().running).toBe(0)
             release.resolve()
             await drainage
             expect(drained).toBe(true)

@@ -9,9 +9,26 @@ import { RuntimeReloadExecutor } from "@ericsanchezok/synergy-harness/config/rel
 import { RuntimeSchema } from "@ericsanchezok/synergy-harness/config/reload-schema"
 import { ScopeStartup } from "@ericsanchezok/synergy-harness/scope/startup"
 import { errors } from "./error"
+import { RuntimeResources } from "@ericsanchezok/synergy-harness/resources/runtime"
+import { ResourceStatus } from "@ericsanchezok/synergy-harness/resources/schema"
 
 export const RuntimeRoute = () =>
   new Hono()
+    .get(
+      "/resources",
+      describeRoute({
+        summary: "Get runtime resource admission",
+        description: "Native memory availability, pending commitments, pressure and admission state for this Runtime.",
+        operationId: "runtime.resources",
+        responses: {
+          200: {
+            description: "Runtime resource admission",
+            content: { "application/json": { schema: resolver(ResourceStatus) } },
+          },
+        },
+      }),
+      (c) => c.json(RuntimeResources.status()),
+    )
     .post(
       "/reload",
       describeRoute({

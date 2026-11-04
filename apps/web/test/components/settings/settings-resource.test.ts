@@ -2,6 +2,29 @@ import { createRoot, createSignal } from "solid-js"
 import { expect, test } from "bun:test"
 import { createSettingsResource } from "../../../src/components/settings/settings-resource"
 
+test("newer events survive an older snapshot response without another fetch", async () => {
+  let resolve!: (value: { revision: number }) => void
+  let calls = 0
+  const [data, resource] = createSettingsResource(
+    () => {
+      calls++
+      return new Promise<{ revision: number }>((done) => {
+        resolve = done
+      })
+    },
+    () => false,
+    undefined,
+    (current, next) => (current && current.revision > next.revision ? current : next),
+  )
+  const pending = resource.retry()
+  await Bun.sleep(0)
+  resource.update({ revision: 4 })
+  resolve({ revision: 2 })
+  await pending
+  expect(data()?.revision).toBe(4)
+  expect(calls).toBe(1)
+})
+
 test("an unused section stays unloaded, and a failed section can retry independently", async () => {
   let calls = 0
   let fail = true

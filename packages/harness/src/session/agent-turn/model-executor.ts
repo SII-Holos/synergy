@@ -10,7 +10,6 @@ type Options = { size: number; maxQueued: number; maxQueuedBytes: number }
 type SDKPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
 type Task = {
   controller: AbortController
-  bytes: number
   start(): Promise<void>
   reject(reason: unknown): void
   removeAbort(): void
@@ -20,9 +19,7 @@ type Task = {
 
 /** Owns provider streams until consumption or confirmed disposal, without an IPC buffer. */
 export class InProcessModelExecutor {
-  private readonly queue: Task[] = []
   private readonly active = new Set<Task>()
-  private queuedBytes = 0
   private stopping = false
   private stopPromise?: Promise<void>
   private readonly failures: unknown[] = []
@@ -32,28 +29,17 @@ export class InProcessModelExecutor {
     private readonly stream: (input: LLM.StreamInput) => Promise<LLM.StreamOutput> = LLM.stream,
   ) {
     this.resize(options.size)
-    if (!Number.isSafeInteger(options.maxQueued) || options.maxQueued < 0)
-      throw new Error("Model queue maxQueued must be a non-negative integer")
-    if (!Number.isSafeInteger(options.maxQueuedBytes) || options.maxQueuedBytes <= 0)
-      throw new Error("Model queue maxQueuedBytes must be a positive integer")
   }
 
   resize(size: number): void {
     if (!Number.isSafeInteger(size) || size <= 0) throw new Error("Model concurrency must be a positive integer")
     this.options = { ...this.options, size }
-    this.drain()
   }
 
   run(input: AgentTurnPoolInput): Promise<AgentTurnStream> {
     if (this.stopping) return Promise.reject(new Error("Model executor is stopping"))
     if (input.abort.aborted) return Promise.reject(input.abort.reason)
-    if (this.active.size >= this.options.size && this.queue.length >= this.options.maxQueued)
-      return Promise.reject(new Error("Model queue is full"))
     const { abort, archive, onPhase, ...payload } = input
-    const bytes = Buffer.byteLength(JSON.stringify(payload))
-    if (bytes + this.queuedBytes > this.options.maxQueuedBytes)
-      return Promise.reject(new Error(`Model queue exceeded ${this.options.maxQueuedBytes} bytes`))
-
     return new Promise((resolve, reject) => {
       const controller = new AbortController()
       const done = Promise.withResolvers<void>()
@@ -61,18 +47,10 @@ export class InProcessModelExecutor {
       void done.promise.catch(() => {})
       const cancel = () => {
         controller.abort(abort.reason)
-        const index = this.queue.indexOf(task)
-        if (index !== -1) {
-          this.queue.splice(index, 1)
-          this.queuedBytes -= bytes
-          task.removeAbort()
-          reject(controller.signal.reason)
-          done.resolve()
-        } else if (task.close) void task.close().catch(() => {})
+        if (task.close) void task.close().catch(() => {})
       }
       const task: Task = {
         controller,
-        bytes,
         reject,
         removeAbort: () => abort.removeEventListener("abort", cancel),
         done,
@@ -102,7 +80,6 @@ export class InProcessModelExecutor {
                 } catch (error) {
                   this.stopping = true
                   this.failures.push(error)
-                  this.rejectQueued(error)
                   usage.resolve(undefined)
                   done.reject(error)
                   throw error
@@ -111,7 +88,6 @@ export class InProcessModelExecutor {
                   reader?.releaseLock()
                   task.removeAbort()
                   this.active.delete(task)
-                  this.drain()
                 }
               })()),
           )
@@ -161,36 +137,15 @@ export class InProcessModelExecutor {
         }),
       }
       abort.addEventListener("abort", cancel, { once: true })
-      this.queue.push(task)
-      this.queuedBytes += bytes
-      this.drain()
-    })
-  }
-
-  private drain(): void {
-    while (!this.stopping && this.active.size < this.options.size && this.queue.length) {
-      const task = this.queue.shift()!
-      this.queuedBytes -= task.bytes
       this.active.add(task)
       void task.start()
-    }
-  }
-
-  private rejectQueued(reason: unknown): void {
-    for (const task of this.queue.splice(0)) {
-      task.removeAbort()
-      task.controller.abort(reason)
-      task.reject(reason)
-      task.done.resolve()
-    }
-    this.queuedBytes = 0
+    })
   }
 
   stop(): Promise<void> {
     if (this.stopPromise) return this.stopPromise
     this.stopping = true
     const reason = new Error("Model executor is stopping")
-    this.rejectQueued(reason)
     const tasks = [...this.active]
     for (const task of tasks) {
       task.controller.abort(reason)
@@ -215,8 +170,8 @@ export class InProcessModelExecutor {
       workers: 0,
       ready: 0,
       active: this.active.size,
-      queued: this.queue.length,
-      queuedBytes: this.queuedBytes,
+      queued: 0,
+      queuedBytes: 0,
       rssBytes: 0,
       heapUsedBytes: 0,
       heapTotalBytes: 0,

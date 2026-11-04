@@ -12,6 +12,7 @@ export function createSettingsResource<T>(
   loader: () => Promise<T>,
   needed: () => boolean = () => true,
   ownerKey?: () => unknown,
+  merge?: (current: T | undefined, next: T) => T,
 ) {
   const [data, setData] = createSignal<T>()
   const [ready, setReady] = createSignal(false)
@@ -22,6 +23,12 @@ export function createSettingsResource<T>(
   let requested = false
   let disposed = false
   let pending: Promise<T | undefined> | undefined
+  function update(value: T) {
+    if (disposed || !requested || owner !== untrack(() => ownerKey?.())) return
+    setData((current) => (merge ? merge(current, value) : value))
+    setReady(true)
+    setError(undefined)
+  }
   if (getOwner())
     onCleanup(() => {
       disposed = true
@@ -36,9 +43,7 @@ export function createSettingsResource<T>(
       .then(loader)
       .then((value) => {
         if (!disposed && token === generation) {
-          setData(() => value)
-          setReady(true)
-          setError(undefined)
+          update(value)
         }
         return value
       })
@@ -69,5 +74,5 @@ export function createSettingsResource<T>(
     }
     if (needed() && !requested) untrack(() => void retry())
   })
-  return [data, { ready, loading, error, refetch, retry }] as const
+  return [data, { ready, loading, error, refetch, retry, update }] as const
 }
