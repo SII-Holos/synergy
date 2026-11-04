@@ -107,7 +107,7 @@ test("the required aggregate waits for native macOS results from the tested revi
   }
   const native = workflow.jobs.macos
   expect(native).toBeDefined()
-  expect(native!["runs-on"]).toBe("macos-15")
+  expect(native!["runs-on"]).toBe("macos-26")
   expect(workflow.jobs["all-checks-passed"]!.needs).toContain("macos")
   expect(native!.steps!.find((step) => step.uses?.startsWith("actions/checkout"))!.with!.ref).toBe(
     "${{ needs.plan.outputs.sha }}",

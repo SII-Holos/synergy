@@ -16,11 +16,20 @@ interface ResumeJob {
 }
 
 const recoverableFiles = new Set([
+  ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
+  "script/ci.ts",
   "script/changelog.ts",
   "script/release/stable-start.ts",
+  "script/release/dev.ts",
   "script/release/stable-complete.ts",
   "script/release/shared/runtime.ts",
+  "script/release/shared/module-seed.ts",
+  "script/release/shared/seed-payload.ts",
+  "script/release/shared/publish-generic.ts",
+  "script/release/shared/publish-modules.ts",
+  "script/release/nodes/publish-synergy-candidate.ts",
+  "script/release/nodes/package-binary-assets.ts",
   "script/release/validate-resume.ts",
   "packages/local-runtime/execution-host.Dockerfile",
 ])

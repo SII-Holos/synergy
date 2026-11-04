@@ -4,12 +4,19 @@ import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { buildWorkspace } from "../../../script/build-workspace"
+import { pruneSeedPayload } from "../../../script/release/shared/seed-payload"
 
 test("the Library module initializes its own WASM backend outside the repository", async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-library-modules-"))
   try {
-    const { output } = await buildWorkspace("packages/library", { output: directory })
+    const { output } = await buildWorkspace("packages/library", {
+      output: path.join(directory, "node_modules/@ericsanchezok/synergy-library/dist"),
+    })
     expect(await Bun.file(path.join(output, "vector/packaged-embedding.js")).exists()).toBe(true)
+    const unused = path.join(directory, "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm")
+    await Bun.write(unused, "unused backend")
+    await pruneSeedPayload(directory)
+    expect(await Bun.file(unused).exists()).toBe(false)
     const entry = pathToFileURL(path.join(output, "vector/embedding-runtime.js")).href
     const child = Bun.spawn(
       [

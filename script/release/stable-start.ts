@@ -17,7 +17,7 @@ import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
 import { publishModuleCandidates } from "./shared/publish-modules"
-import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
+import { prepareSynergyCandidate, publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 import { createBinaryChecksums, packageBinaryAssets } from "./nodes/package-binary-assets"
 import { ensureDraftRelease } from "./nodes/create-draft-release"
 import { ensureStableTag } from "./nodes/ensure-stable-tag"
@@ -61,8 +61,9 @@ try {
   const platformPackages = await prepareSynergyPackages(version, platformNames)
   await validateLocalArtifacts(platformNames)
 
+  const candidate = await prepareSynergyCandidate(version)
   const modules = await publishModuleCandidates(version, state.channel)
-  const synergy = await publishSynergyCandidate(version, state.channel)
+  const synergy = await publishSynergyCandidate(candidate, state.channel)
 
   state.registryPackages = [...new Set([...state.registryPackages, ...modules, ...platformPackages])]
   const synergyAssets = await packageBinaryAssets(PRESETS_DIST_DIR, synergy.platformNames)

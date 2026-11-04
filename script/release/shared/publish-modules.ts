@@ -4,6 +4,15 @@ import { readPackedArchives, type PackedArchive } from "../../package-install-ch
 import { DESKTOP_APP_PACKAGE, NPM_REGISTRY, PRESETS_DIST_DIR } from "./packages"
 import { npmAuthArgs, npmEnsureDistTag, npmVersionExists, retry, waitForNpmVersion } from "./runtime"
 
+export const NPM_ARCHIVE_BUDGET = 190 * 1024 * 1024
+
+export async function assertNpmArchiveSize(pkg: Pick<PackedArchive, "name" | "archive">) {
+  const archive = Bun.file(pkg.archive)
+  if (!(await archive.exists())) throw new Error(`Missing publication archive: ${pkg.name}`)
+  if (archive.size > NPM_ARCHIVE_BUDGET)
+    throw new Error(`Publication archive exceeds the ${NPM_ARCHIVE_BUDGET}-byte budget: ${pkg.name} (${archive.size})`)
+}
+
 export function modulePublishOrder(archives: PackedArchive[], deferred: string[] = []) {
   const byName = new Map(archives.map((pkg) => [pkg.name, pkg]))
   if (byName.size !== archives.length) throw new Error("Duplicate module publication identity")
@@ -35,9 +44,14 @@ export function modulePublishOrder(archives: PackedArchive[], deferred: string[]
 }
 
 export async function publishPackedArchive(pkg: Pick<PackedArchive, "name" | "version" | "archive">, channel: string) {
+  await assertNpmArchiveSize(pkg)
   if (!(await npmVersionExists(pkg.name, pkg.version))) {
     const auth = npmAuthArgs()
-    await retry(() => $`npm publish ${pkg.archive} --registry ${NPM_REGISTRY} --tag ${channel} --access public ${auth}`)
+    console.log(`Publishing ${pkg.name}@${pkg.version} to ${channel}`)
+    await retry(
+      () =>
+        $`npm publish ${pkg.archive} --registry ${NPM_REGISTRY} --tag ${channel} --access public --loglevel warn ${auth}`,
+    )
   }
   if (!(await waitForNpmVersion(pkg.name, pkg.version)))
     throw new Error(`Published module is not available: ${pkg.name}@${pkg.version}`)

@@ -12,6 +12,7 @@ import type { SandboxRuntimeTarget } from "./build/sandbox-assets"
 import { nativePackageName } from "../../../packages/util/src/native-assets"
 import type { PackageJson } from "./package-manifest"
 import { NATIVE_TARGETS } from "./native-package"
+import { pruneSeedPayload } from "./seed-payload"
 
 async function packGenerated(
   directory: string,
@@ -141,6 +142,7 @@ export async function stageModuleSeed(options: {
           force: true,
         })
       }
+      if (options.profile === "full") await pruneSeedPayload(directory, options.target)
       const generation = await seedInstalledCore(
         path.join(directory, "seed"),
         path.join(directory, "node_modules", cli),
