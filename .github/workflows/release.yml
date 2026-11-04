@@ -180,7 +180,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
+          - os: macos-26
             platform: darwin
             runtime_targets: darwin-x64,darwin-arm64
             builder_args: --mac pkg dmg zip --x64 --arm64
