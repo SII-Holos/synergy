@@ -56,6 +56,7 @@ test("native Workspace verification stays in the plan with fresh platform covera
   expect(macos).toBeDefined()
   const windows = tasks.find((task) => task.id === "windows-native")!
   expect(windows.owners).toContain("packages/cli")
+  expect(windows.owners).toContain("packages/plugin-host")
   for (const task of [macos!, windows]) {
     expect(task.package).toBe("packages/local-runtime")
     expect(task.outputs).toContain("lcov")
@@ -94,6 +95,9 @@ test("native Workspace verification stays in the plan with fresh platform covera
   expect((await commands(windows, plan)).some((command) => command.args.includes("test/cli/data-files.test.ts"))).toBe(
     true,
   )
+  const installation = (await commands(windows, plan)).find((command) => command.cwd === "packages/plugin-host")
+  expect(installation?.args).toContain("test/installation/files.test.ts")
+  expect(installation?.args).toContain("test/installation/generations.test.ts")
   const unit = plan.units.find((entry) => entry.tasks.includes(macos!.id))!
   expect(executionQueue(unit, tasks)).toBe("macos")
 })

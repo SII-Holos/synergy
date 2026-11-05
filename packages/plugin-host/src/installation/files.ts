@@ -15,7 +15,9 @@ export async function sha256File(filename: string, durable = false) {
     reader.releaseLock()
   }
   if (durable) {
-    const file = await fs.open(filename, "r")
+    // Windows flushing requires write access; POSIX inventory files can remain read-only.
+    // Provenance: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
+    const file = await fs.open(filename, process.platform === "win32" ? "r+" : "r")
     try {
       await file.sync()
     } finally {

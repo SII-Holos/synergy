@@ -89,6 +89,8 @@ Exercise cancellation delivery that reenters `start()` for the same failing gene
 
 Verify sealed installation inventories independently of locale and object-key order, including bundled seeds. Keep manifest digests, file membership, content hashes and symlink targets strict; test an equivalently sealed reordered inventory and an added unlisted file.
 
+Verify durable inventory publication on Windows through the real file and generation tests before publication. Preserve file bytes and POSIX read-only access, propagate synchronization failures, and retain these entries in Windows CI when installation tests change.
+
 Derive first-party upgrade ownership from the preset catalog, including separately selected Desktop-only components. Exercise a newer bundled launcher against an existing selection and require the matching offline seed to upgrade it without registry resolution, while retaining third-party pins and old worker generations. A fresh-install package smoke does not cover that transition.
 
 Installed module preparation precedes Harness startup. Managed launchers must announce that bounded stage before verification or offline copying, without importing Harness early. Verify both an upgrade exceeding the ordinary health deadline and a stalled or repeated stage that still times out.

@@ -210,6 +210,7 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
         "packages/util",
         "packages/lsp",
         "packages/formatter",
+        "packages/plugin-host",
       ],
       {
         pool: "windows",

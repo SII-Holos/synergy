@@ -76,6 +76,8 @@ The authoritative selection catalog is `packages/plugin-host/src/installation/ca
 
 Installation metadata is published through `synergy-plugin/package`. Plugin Host owns source resolution and verified immutable module generations; `atomic-file` and `io-retry` are public Util primitives used by both startup verification and existing plugin recovery.
 
+Generation publication synchronizes staged file contents before committing the active selection. Inventory synchronization preserves file bytes and uses the host platform's required file access; failures abort publication. See [installation durability across platforms](../decisions/implemented/bug-fix/2026-11-05-windows-installation-inventory-durability.md).
+
 ## Installation commands
 
 `synergy install <spec...>` accepts built-in selections, npm and Git sources, local directories and archives. `synergy list --json` reports package identities, versions, explicit selections and dependency owners alongside legacy plugins. `synergy update [name...]` updates explicit selections; omitting names selects all roots. `synergy remove <name...>` removes a root and dependencies that no retained selection needs. Removing an indirect dependency reports the package that selects it. Existing `plugin add`, `plugin update` and `plugin remove` commands route managed packages through the same installer.
