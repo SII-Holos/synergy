@@ -338,6 +338,8 @@ test("the actual catalog keeps Desktop validation separate from native coverage 
     ["packages/util/test/fs-lock.test.ts", ["windows-native"]],
     ["packages/plugin-host/test/installation/files.test.ts", ["windows-native"]],
     ["packages/plugin-host/test/installation/generations.test.ts", ["windows-native"]],
+    ["packages/plugin-host/test/installation/applications.test.ts", ["windows-native"]],
+    ["packages/plugin-host/test/installation/applications-windows.test.ts", ["windows-native"]],
     ["packages/lsp/test/lsp/owner-runtime.test.ts", ["windows-native", "macos-workspace"]],
     ["packages/formatter/test/format/formatter.test.ts", ["windows-native", "macos-workspace"]],
     ["packages/harness/test/session/snapshot-long-path.test.ts", ["windows-native", "macos-workspace"]],
