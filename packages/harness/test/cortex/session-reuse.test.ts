@@ -6,6 +6,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { BusyError } from "../../src/session/error"
+import { RuntimeContext } from "../../src/lifecycle/context"
 import { tmpdir } from "../support/fixture"
 import { afterAll as afterRuntimeTests } from "bun:test"
 import { testRuntime } from "../support/runtime"
@@ -169,6 +170,7 @@ describe("Cortex session reuse", () => {
 
 test("closing the reuse fixture releases terminal task retention timers", async () => {
   const fixture = await createReuseRuntime()
+  const owner = fixture.run(() => RuntimeContext.current())
   const timers = new Set<ReturnType<typeof setTimeout>>()
   const schedule = setTimeout
   const cancel = clearTimeout
@@ -176,7 +178,7 @@ test("closing the reuse fixture releases terminal task retention timers", async 
     new Proxy(schedule, {
       apply(target, receiver, args) {
         const timer = Reflect.apply(target, receiver, args) as ReturnType<typeof setTimeout>
-        if (args[1] === 30_000 || args[1] === 300_000) timers.add(timer)
+        if (RuntimeContext.tryCurrent() === owner && (args[1] === 30_000 || args[1] === 300_000)) timers.add(timer)
         return timer
       },
     }),
@@ -189,6 +191,7 @@ test("closing the reuse fixture releases terminal task retention timers", async 
       },
     }),
   )
+  const unrelated = runtime.run(() => setTimeout(() => {}, 30_000))
   try {
     await fixture.run(async () => {
       await using temporary = await tmpdir({ git: true })
@@ -212,8 +215,10 @@ test("closing the reuse fixture releases terminal task retention timers", async 
     expect(timers.size).toBe(2)
     await fixture.close()
     expect(timers.size).toBe(0)
+    expect(cancelling.mock.calls.some(([timer]) => timer === unrelated)).toBe(false)
   } finally {
     await fixture.close()
+    cancel(unrelated)
     for (const timer of timers) cancel(timer)
   }
 })

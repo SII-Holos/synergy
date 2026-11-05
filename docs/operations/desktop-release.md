@@ -178,7 +178,7 @@ Use `synergy-linux-x64` on Linux. `--archive` accepts a local copy of the pinned
 
 The scenario creates history and a completed tool effect with 3.0.22, approves a process plugin through the real review API, uploads an image and saves locale configuration. The candidate must retain message identities, text, completed tool records, image bytes, configuration and executable plugin behavior; continue the old task exactly once; survive restart; and execute new work. Recovery boots 3.0.22 against the restored pre-upgrade Home and continues the old task without replaying completed work. Model responses are deterministic fixtures, not live-provider acceptance. This does not replace UI, native OS permissions, Developer ID signing, notarization or the complete platform matrix.
 
-User-facing backup and rollback requirements are in [Upgrading from 3.0.22 to 3.1.0](../migrations/upgrading-to-3.1.0.md). Product release workflows publish candidates and are not a no-publication preflight entry point.
+User-facing backup and rollback requirements are in [Upgrading from 3.0.22 to 3.1](../migrations/upgrading-to-3.1.md). Product release workflows publish candidates and are not a no-publication preflight entry point.
 
 ## Validation Checklist
 

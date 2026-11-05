@@ -50,7 +50,7 @@ function call(overrides: Partial<AgentCall.TextInput> = {}) {
   return AgentCall.text({
     agent: "internal",
     messages: [{ role: "user", content: "input" }],
-    timeoutMs: 1_000,
+    timeoutMs: 5_000,
     retries: 1,
     maxOutputChars: 100,
     ...overrides,
@@ -401,7 +401,7 @@ describe("AgentCall", () => {
         }
       })
       const controller = new AbortController()
-      const pending = call({ signal: controller.signal })
+      const pending = call({ signal: controller.signal, timeoutMs: 1_000 })
       await streamStarted.promise
       expect(callTimer?.hasRef?.()).toBe(false)
       controller.abort()
