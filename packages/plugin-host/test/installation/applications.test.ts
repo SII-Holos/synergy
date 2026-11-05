@@ -104,6 +104,22 @@ test("native signature validation requires both a valid signature and the expect
       stderr: "",
     })),
   ).resolves.toBeUndefined()
+  await expect(
+    verifyApplicationSignature("C:/app/Synergy.exe", artifact, async () => ({
+      code: 1,
+      stdout: "",
+      stderr: "Get-AuthenticodeSignature could not load its system module",
+    })),
+  ).rejects.toThrow("Get-AuthenticodeSignature could not load its system module")
+  for (const status of ["NotSigned", "HashMismatch", ""]) {
+    await expect(
+      verifyApplicationSignature("C:/app/Synergy.exe", artifact, async () => ({
+        code: 0,
+        stdout: JSON.stringify({ status, publisher: "Example Company" }),
+        stderr: "",
+      })),
+    ).rejects.toThrow()
+  }
   const apple: AppArtifact = {
     ...artifact,
     target: "darwin-arm64",

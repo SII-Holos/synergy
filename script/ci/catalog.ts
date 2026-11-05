@@ -216,6 +216,9 @@ export async function catalog(root = ROOT, timingInput?: Timings): Promise<Task[
         pool: "windows",
         variant: "native",
         package: "packages/local-runtime",
+        scenarios: [
+          "Windows application signatures ignore inherited PowerShell 7 modules without weakening publisher checks",
+        ],
       },
     ),
     task("windows-desktop", "windows", 120, ["apps/desktop"], {

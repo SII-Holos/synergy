@@ -98,6 +98,8 @@ test("native Workspace verification stays in the plan with fresh platform covera
   const installation = (await commands(windows, plan)).find((command) => command.cwd === "packages/plugin-host")
   expect(installation?.args).toContain("test/installation/files.test.ts")
   expect(installation?.args).toContain("test/installation/generations.test.ts")
+  expect(installation?.args).toContain("test/installation/applications.test.ts")
+  expect(installation?.args).toContain("test/installation/applications-windows.test.ts")
   const unit = plan.units.find((entry) => entry.tasks.includes(macos!.id))!
   expect(executionQueue(unit, tasks)).toBe("macos")
 })

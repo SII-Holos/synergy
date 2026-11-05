@@ -14,7 +14,13 @@ type Run = (
   env?: Record<string, string>,
 ) => Promise<{ code: number; stdout: string; stderr: string }>
 const run: Run = async (command, env) => {
-  const child = Bun.spawn(command, { env: { ...process.env, ...env }, stdout: "pipe", stderr: "pipe" })
+  const environment = { ...process.env, ...env }
+  if (command[0] === "powershell.exe") {
+    // Bun intermediates retain PowerShell 7 module paths that Windows PowerShell cannot load.
+    // https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_psmodulepath#starting-windows-powershell-from-powershell-7
+    for (const key of Object.keys(environment)) if (key.toLowerCase() === "psmodulepath") delete environment[key]
+  }
+  const child = Bun.spawn(command, { env: environment, stdout: "pipe", stderr: "pipe" })
   const [code, stdout, stderr] = await Promise.all([
     child.exited,
     new Response(child.stdout).text(),
@@ -62,6 +68,21 @@ export async function extractApplicationZip(archivePath: string, directory: stri
   for (const link of links) inside(directory, path.relative(directory, await fs.realpath(link.filename)))
 }
 
+export async function inspectWindowsApplicationSignature(executable: string, execute: Run = run) {
+  const result = await execute(
+    [
+      "powershell.exe",
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "$ErrorActionPreference = 'Stop'; $s = Get-AuthenticodeSignature -LiteralPath $env:SYNERGY_VERIFY_APP; @{ status = [string]$s.Status; publisher = if ($s.SignerCertificate) { $s.SignerCertificate.GetNameInfo('SimpleName', $false) } else { '' } } | ConvertTo-Json -Compress",
+    ],
+    { SYNERGY_VERIFY_APP: executable },
+  )
+  if (result.code !== 0) throw new Error(`Application signature inspection failed: ${result.stderr.trim()}`)
+  return z.object({ status: z.string().min(1), publisher: z.string() }).parse(JSON.parse(result.stdout))
+}
+
 export async function verifyApplicationSignature(executable: string, artifact: AppArtifact, execute: Run = run) {
   if (artifact.signing.type === "checksum") {
     if (artifact.target.startsWith("darwin-")) throw new Error("This platform requires a signed application")
@@ -80,18 +101,8 @@ export async function verifyApplicationSignature(executable: string, artifact: A
       throw new Error("Application notarization assessment failed")
     return
   }
-  const result = await execute(
-    [
-      "powershell.exe",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "$s = Get-AuthenticodeSignature -LiteralPath $env:SYNERGY_VERIFY_APP; @{ status = [string]$s.Status; publisher = if ($s.SignerCertificate) { $s.SignerCertificate.GetNameInfo('SimpleName', $false) } else { '' } } | ConvertTo-Json -Compress",
-    ],
-    { SYNERGY_VERIFY_APP: executable },
-  )
-  const signature = z.object({ status: z.string(), publisher: z.string() }).parse(JSON.parse(result.stdout))
-  if (result.code !== 0 || signature.status !== "Valid" || signature.publisher !== artifact.signing.publisher)
+  const signature = await inspectWindowsApplicationSignature(executable, execute)
+  if (signature.status !== "Valid" || signature.publisher !== artifact.signing.publisher)
     throw new Error("Application signature or publisher is invalid")
 }
 

@@ -233,7 +233,12 @@ export async function commands(task: Task, plan: Plan, root = ROOT): Promise<Com
         test("windows-util", ["test/fs-lock.test.ts", "test/process-identity.test.ts"], "packages/util"),
         test(
           "windows-installation",
-          ["test/installation/files.test.ts", "test/installation/generations.test.ts"],
+          [
+            "test/installation/files.test.ts",
+            "test/installation/generations.test.ts",
+            "test/installation/applications.test.ts",
+            "test/installation/applications-windows.test.ts",
+          ],
           "packages/plugin-host",
         ),
         test("windows-home-copy", ["test/cli/data-files.test.ts"], "packages/cli"),

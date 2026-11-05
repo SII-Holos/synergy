@@ -1,31 +1,17 @@
 #!/usr/bin/env bun
 import path from "node:path"
-import { z } from "zod"
 import { AppArtifact } from "../../packages/plugin/src/package"
-import { verifyApplicationSignature } from "../../packages/plugin-host/src/installation/applications"
+import {
+  inspectWindowsApplicationSignature,
+  verifyApplicationSignature,
+} from "../../packages/plugin-host/src/installation/applications"
 import { sha256File } from "../../packages/plugin-host/src/installation/files"
 import { currentRepo } from "../shared/current-repo"
 import { DESKTOP_RELEASE_DIR } from "./shared/packages"
 import { DesktopAppReceipt, desktopApplicationArtifacts } from "./shared/desktop-app-package"
 
 async function windowsSigning(executable: string): Promise<AppArtifact["signing"]> {
-  const child = Bun.spawn(
-    [
-      "powershell.exe",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "$s = Get-AuthenticodeSignature -LiteralPath $env:SYNERGY_VERIFY_APP; @{ status = [string]$s.Status; publisher = if ($s.SignerCertificate) { $s.SignerCertificate.GetNameInfo('SimpleName', $false) } else { '' } } | ConvertTo-Json -Compress",
-    ],
-    { env: { ...process.env, SYNERGY_VERIFY_APP: executable }, stdout: "pipe", stderr: "pipe" },
-  )
-  const [code, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ])
-  if (code) throw new Error(`Desktop signature inspection failed: ${stderr}`)
-  const signature = z.object({ status: z.string(), publisher: z.string() }).parse(JSON.parse(stdout))
+  const signature = await inspectWindowsApplicationSignature(executable)
   if (signature.status === "Valid" && signature.publisher)
     return { type: "authenticode", publisher: signature.publisher }
   if (signature.status === "NotSigned" && !process.env.WINDOWS_CERTIFICATE?.trim()) return { type: "checksum" }
