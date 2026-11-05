@@ -96,12 +96,16 @@ beforeAll(async () => {
       alias: [
         { find: "@/composables/use-navigate-to-session", replacement: transport },
         { find: /^@\/components\/dialog$/, replacement: path.join(source, "components/dialog/confirm-dialog.tsx") },
+        {
+          find: "lucide-solid",
+          replacement: Bun.resolveSync("lucide-solid", path.resolve(source, "../../../packages/ui")),
+        },
         { find: "@", replacement: source },
       ],
     },
     optimizeDeps: {
       noDiscovery: true,
-      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid"],
+      include: ["solid-js", "solid-js/web", "solid-js/store", "@lingui/core", "@lingui/solid", "lucide-solid"],
     },
     server: {
       host: "127.0.0.1",
