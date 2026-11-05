@@ -31,6 +31,16 @@ beforeEach(async () => {
   )
 })
 
+// Kobalte defers initial menu focus until items mount, so visibility alone cannot admit keyboard input.
+// Provenance: https://github.com/kobaltedev/kobalte/blob/675b4a11f4f074007c98b47a573760a1b60849ff/packages/core/src/menu/menu-content-base.tsx
+async function waitForMenuFocus() {
+  await page.waitForFunction(
+    () => document.querySelector('[data-component="image-viewer-menu"]')?.contains(document.activeElement),
+    undefined,
+    { timeout: 3000 },
+  )
+}
+
 test("fit and actual size use source pixels and rotation refits the stage", async () => {
   await page.getByRole("button", { name: "Fit image", exact: true }).waitFor({ timeout: 3000 })
   const image = page.locator('[data-slot="image-viewer-image"]')
@@ -322,7 +332,7 @@ test("wheel anchors source pixels and captured dragging remains bounded", async 
   await page.getByRole("button", { name: "Actual size (1:1)", exact: true }).click()
   await stage.click({ button: "right", position: { x: 20, y: 20 } })
   await page.getByRole("menu").waitFor()
-  await page.waitForFunction(() => document.querySelector('[role="menu"]')?.contains(document.activeElement))
+  await waitForMenuFocus()
   const beforeDrag = (await image.boundingBox())!
   expect(
     await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.getAttribute("data-slot"), {
@@ -354,12 +364,14 @@ test("context and overflow menus share actions and Escape closes only the menu",
   const fit = page.getByRole("menuitemcheckbox", { name: "Fit image", exact: true })
   const actual = page.getByRole("menuitemcheckbox", { name: "Actual size (1:1)", exact: true })
   await grid.waitFor({ timeout: 3000 })
+  await waitForMenuFocus()
   expect(await grid.getAttribute("aria-checked")).toBe("true")
   await grid.press("Space")
   await page.getByRole("menu").waitFor({ state: "detached" })
   expect(await page.locator('[data-slot="image-viewer-stage"]').getAttribute("data-grid")).toBeNull()
   await page.getByRole("button", { name: "Image actions", exact: true }).click()
   await actual.waitFor()
+  await waitForMenuFocus()
   expect(await grid.getAttribute("aria-checked")).toBe("false")
   expect(await fit.getAttribute("aria-checked")).toBe("true")
   expect(await actual.getAttribute("aria-checked")).toBe("false")
@@ -368,6 +380,7 @@ test("context and overflow menus share actions and Escape closes only the menu",
   expect((await page.locator('[data-slot="image-viewer-image"]').boundingBox())!.width).toBeCloseTo(4000, 0)
   await page.locator('[data-slot="image-viewer-stage"]').click({ button: "right" })
   await actual.waitFor()
+  await waitForMenuFocus()
   expect(await actual.getAttribute("aria-checked")).toBe("true")
   expect(await fit.getAttribute("aria-checked")).toBe("false")
   await page.keyboard.press("Escape")
@@ -389,6 +402,7 @@ test("keyboard context menus return focus to the image stage", async () => {
     await stage.focus()
     await page.keyboard.press(key)
     await page.getByRole("menuitem", { name: "Save image", exact: true }).waitFor({ timeout: 3000 })
+    await waitForMenuFocus()
     await page.keyboard.press("Escape")
     await page.locator('[data-component="image-viewer-menu"]').waitFor({ state: "detached" })
     await page.waitForFunction(
@@ -461,11 +475,7 @@ test("context menu retains internal clicks and reopens across mouse and keyboard
   await next.focus()
   await page.keyboard.press("Shift+F10")
   await menu.waitFor()
-  await page.waitForFunction(
-    () => document.querySelector('[data-component="image-viewer-menu"]')?.contains(document.activeElement),
-    undefined,
-    { timeout: 3000 },
-  )
+  await waitForMenuFocus()
   await page.keyboard.press("Escape")
   await menu.waitFor({ state: "detached" })
   await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Next image", undefined, {
@@ -776,6 +786,7 @@ test("fullscreen Tab and Shift+Tab wrap within visible viewer controls", async (
   await page.waitForFunction(() => !!document.fullscreenElement)
   await page.locator('[data-slot="image-viewer-stage"]').click({ button: "right" })
   await page.getByRole("menu").waitFor()
+  await waitForMenuFocus()
   await page.keyboard.press("Escape")
   await page.locator('[data-component="image-viewer-menu"]').waitFor({ state: "detached" })
   await page.locator('[data-component="image-viewer"] > [data-focus-trap]').first().waitFor({ state: "attached" })
