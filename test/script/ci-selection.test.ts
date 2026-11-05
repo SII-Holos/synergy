@@ -304,6 +304,7 @@ test("the actual catalog keeps Desktop validation separate from native coverage 
     { directory: "packages/harness", name: "harness", dependencies: [], testDependencies: [] },
     { directory: "packages/lsp", name: "lsp", dependencies: [], testDependencies: [] },
     { directory: "packages/formatter", name: "formatter", dependencies: [], testDependencies: [] },
+    { directory: "packages/plugin-host", name: "plugin-host", dependencies: [], testDependencies: [] },
   ]
   const plan = (changed: string[], mode: "affected" | "shadow" = "affected", leafTests: string[] = []) =>
     createPlan({
@@ -335,6 +336,8 @@ test("the actual catalog keeps Desktop validation separate from native coverage 
     ["packages/local-runtime/test/process/owned-process-windows.test.ts", ["windows-native", "macos-workspace"]],
     ["packages/cli/test/cli/data-files.test.ts", ["windows-native"]],
     ["packages/util/test/fs-lock.test.ts", ["windows-native"]],
+    ["packages/plugin-host/test/installation/files.test.ts", ["windows-native"]],
+    ["packages/plugin-host/test/installation/generations.test.ts", ["windows-native"]],
     ["packages/lsp/test/lsp/owner-runtime.test.ts", ["windows-native", "macos-workspace"]],
     ["packages/formatter/test/format/formatter.test.ts", ["windows-native", "macos-workspace"]],
     ["packages/harness/test/session/snapshot-long-path.test.ts", ["windows-native", "macos-workspace"]],
