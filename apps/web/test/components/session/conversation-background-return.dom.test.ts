@@ -91,13 +91,23 @@ for (const ended of [false, true]) {
           const latest = viewport.querySelector<HTMLElement>(
             '[data-slot="activity-step"][data-part-id="backlog-23-tool-3"]',
           )
-          const bounds = latest?.closest('[data-component="process-viewport"]')?.getBoundingClientRect()
+          const process = latest?.closest<HTMLElement>('[data-component="process-viewport"]')
+          const bounds = process?.getBoundingClientRect()
           const rect = latest?.getBoundingClientRect()
           samples.push({
             open: open.length,
             rows: viewport.querySelectorAll("[data-display-row]").length,
             latest:
               !!rect && !!bounds && rect.height > 0 && rect.top >= bounds.top - 1 && rect.bottom <= bounds.bottom + 1,
+            geometry: {
+              top: rect?.top,
+              bottom: rect?.bottom,
+              viewportTop: bounds?.top,
+              viewportBottom: bounds?.bottom,
+              offset: process?.scrollTop,
+              height: process?.scrollHeight,
+              visibleHeight: process?.clientHeight,
+            },
             gap: viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop,
             moving: viewport.querySelectorAll("[data-motion-changing]").length,
             placeholders: [...viewport.querySelectorAll<HTMLElement>('[data-row-kind="load"]')]
@@ -130,7 +140,10 @@ for (const ended of [false, true]) {
         expect(result.answer).toBe(true)
         expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-"))).toEqual([])
       } else {
-        expect(result.samples.slice(8).every((sample) => sample.latest)).toBe(true)
+        expect(
+          result.samples.slice(8).every((sample) => sample.latest),
+          JSON.stringify(result.samples.map((sample, frame) => ({ frame, ...sample }))),
+        ).toBe(true)
         expect(Object.keys(result.reads).filter((id) => id.startsWith("backlog-")).length).toBeLessThan(40)
       }
       expect(errors).toEqual([])
